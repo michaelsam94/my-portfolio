@@ -1,0 +1,28 @@
+.cert-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cert-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.cert-name {
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+.cert-meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

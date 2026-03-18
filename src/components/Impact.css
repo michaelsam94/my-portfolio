@@ -1,0 +1,33 @@
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.impact-card {
+  text-align: center;
+  padding: 24px 16px !important;
+}
+
+.impact-value {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.impact-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+@media (max-width: 640px) {
+  .impact-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
