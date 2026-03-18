@@ -11,7 +11,7 @@ npm run dev
 
 ## Add your CV
 
-Place your PDF in the `public/` folder as `Michael_Samuel_Naeem_CV4.pdf`, or update `cvUrl` in `src/data/portfolio.ts` to your file name or a full URL.
+The CV is `public/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf` (see `cvUrl` in `src/data/portfolio.ts` to change it).
 
 ## Build
 

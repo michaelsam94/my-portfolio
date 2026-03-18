@@ -7,7 +7,7 @@ export const profile = {
   phone: "+20 109 800 2198",
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
-  cvUrl: "/Michael_Samuel_Naeem_CV4.pdf", // Put your CV in public/ and name it or use full URL
+  cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "https://avatars.githubusercontent.com/u/9461037?v=4",
   headline:
     "Android Engineer and Architect with 10+ years delivering production mobile systems across robotics, EV infrastructure, fintech, and real-time streaming.",
