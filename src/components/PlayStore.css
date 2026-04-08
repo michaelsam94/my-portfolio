@@ -1,0 +1,149 @@
+.play-store-intro {
+  text-align: center;
+  max-width: 640px;
+  margin: -24px auto 40px;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.play-store-intro a {
+  color: var(--accent);
+}
+
+.play-store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.play-store-card {
+  display: block;
+  text-align: left;
+  color: inherit;
+}
+
+.play-store-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.play-store-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.play-store-name {
+  font-size: 1.15rem;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.play-store-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.play-store-badge--play {
+  color: #01875f;
+  background: rgba(1, 135, 95, 0.15);
+}
+
+.play-store-badge--ios {
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.15);
+}
+
+.play-store-developer {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+
+.play-store-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 16px;
+  margin: 0 0 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.play-store-meta dt {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 2px;
+}
+
+.play-store-meta dd {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-h);
+  font-family: var(--mono);
+}
+
+.play-store-about {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.play-store-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.play-store-tags .tag {
+  font-size: 11px;
+}
+
+.play-store-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.play-store-cta {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.play-store-cta:hover {
+  color: var(--cyan);
+}
+
+.play-store-cta--ios {
+  color: #5ac8fa;
+}
+
+@media (max-width: 640px) {
+  .play-store-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .play-store-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+}

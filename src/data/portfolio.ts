@@ -8,7 +8,7 @@ export const profile = {
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
-  avatar: "https://avatars.githubusercontent.com/u/9461037?v=4",
+  avatar: "/profile-photo.png",
   headline:
     "Android Engineer and Architect with 10+ years delivering production mobile systems across robotics, EV infrastructure, fintech, and real-time streaming.",
 };
@@ -99,11 +99,11 @@ export const experience = [
 
 export const projects = [
   {
-    name: "EV Charging Management Platform",
+    name: "EV Charging Management Platform · Mega Plug",
     company: "Tadafuq",
     description:
-      "Full-stack EV charging: Python/OCPP v1.6 CMS, Node.js WebSocket middleware, Flutter app. P2P LAN control with sub-100ms sync.",
-    link: "https://github.com/michaelsam94",
+      "Full-stack EV charging: Python/OCPP v1.6 CMS, Node.js WebSocket middleware, Flutter app. P2P LAN control with sub-100ms sync. Consumer app Mega Plug on Google Play and App Store.",
+    link: "https://play.google.com/store/apps/details?id=com.mega.plug",
     tags: ["Flutter", "OCPP", "WebSocket", "IoT"],
     highlight: true,
   },
@@ -120,17 +120,17 @@ export const projects = [
     name: "Doworkss · Service Marketplace",
     company: "Mazaady",
     description:
-      "240+ categories, Jetpack Compose, MVVM Clean Architecture. Delivered MVP with 2-engineer team in under 3 months.",
-    link: "https://github.com/michaelsam94",
+      "240+ categories, Jetpack Compose, MVVM Clean Architecture. Delivered MVP with 2-engineer team in under 3 months. Live on Google Play (100K+ installs).",
+    link: "https://play.google.com/store/apps/details?id=com.doworkss",
     tags: ["Compose", "MVVM", "Clean Architecture"],
     highlight: true,
   },
   {
-    name: "Mazaady Live Auction",
+    name: "Mazaady · Live Auction & Commerce",
     company: "Mazaady",
     description:
-      "Real-time bidding with ExoPlayer + WebRTC; 120k+ MAU, 20% engagement increase.",
-    link: "https://github.com/michaelsam94",
+      "Real-time bidding with ExoPlayer + WebRTC; 120k+ MAU, 20% engagement increase. Play listing: auctions, live broadcast, 100K+ installs.",
+    link: "https://play.google.com/store/apps/details?id=com.mazaady",
     tags: ["WebRTC", "ExoPlayer", "Real-time"],
   },
   {
@@ -168,6 +168,120 @@ export const projects = [
     description: "Jetpack Compose sample app.",
     link: "https://github.com/michaelsam94/Compose-ToDo",
     tags: ["Kotlin", "Compose"],
+  },
+];
+
+/** Listing details aligned with Google Play / App Store (as of early 2026). */
+export const playStoreApps = [
+  {
+    name: "Mega Plug",
+    packageId: "com.mega.plug",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.mega.plug",
+    appStoreUrl: "https://apps.apple.com/eg/app/mega-plug/id6759159407",
+    developer: "MEGA PLUG FOR VEHICLE CHARGING STATIONS",
+    category: "Auto & Vehicles",
+    installs: "10+",
+    contentRating: "Everyone",
+    iosCategory: "Business",
+    iosRating: "5.0",
+    iosRatingsCount: "2 ratings",
+    about:
+      "Complete EV charging companion: map of nearby stations with filters (location, availability, connector), QR start/stop, live session metrics via WebSocket, wallet and cards, RFID cards, charging history and PDF reports, multi-vehicle profiles, guest mode, offline maps for saved stations, push notifications, dark mode, and multi-language support.",
+    tags: ["EV", "OCPP ecosystem", "WebSocket", "Maps", "Flutter"],
+  },
+  {
+    name: "Mazaady",
+    packageId: "com.mazaady",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.mazaady",
+    developer: "mazaady portal",
+    category: "Shopping",
+    installs: "100K+",
+    contentRating: "Everyone",
+    about:
+      "Marketplace for wholesalers, retailers, and individuals: 55+ classifications to buy and sell new or used products through auctions, with live video or audio broadcast. Online payment and shipping coming soon; reschedule auctions and sell to the next bidder without recreating listings.",
+    tags: ["Auction", "Live stream", "E‑commerce"],
+  },
+  {
+    name: "Doworkss",
+    packageId: "com.doworkss",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.doworkss",
+    developer: "mazaady portal",
+    category: "Business",
+    installs: "100K+",
+    contentRating: "Teen",
+    about:
+      "Free service platform affiliated with Mazaady: post or request services across 240+ categories. One account can be provider, requester, or both; connect with others at no platform fee.",
+    tags: ["Services", "Marketplace", "Mazaady"],
+  },
+  {
+    name: "myfawry",
+    packageId: "com.fawry.myfawry",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.fawry.myfawry",
+    developer: "Fawry for Banking & Payment Technology Services",
+    category: "Finance",
+    installs: "10M+",
+    rating: "3.7",
+    reviewCount: "173K+",
+    contentRating: "Everyone",
+    about:
+      "Bills, payments, and banking in one app—including yellowcard prepaid (with Banque Misr & Meeza), card vault, QuickPay for recurring bills, recharges, donations, loans, insurance, and partner discounts.",
+    tags: ["Payments", "Wallet", "Banking"],
+  },
+  {
+    name: "NBE PhoneCash",
+    packageId: "com.emeint.android.mwallet",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.emeint.android.mwallet",
+    developer: "National Bank of Egypt",
+    category: "Finance",
+    installs: "1M+",
+    rating: "2.3",
+    reviewCount: "28.8K+",
+    contentRating: "Everyone",
+    about:
+      "NBE mobile wallet: load from NBE cards, ATM cash in/out (Meeza), instant transfers, scan-and-pay, virtual card for online purchases, branch/agent cash, bill payments, Aman Elmasryeen, and Tahya Masr donations.",
+    tags: ["eWallet", "Meeza", "NBE"],
+  },
+  {
+    name: "BM Wallet",
+    packageId: "com.emeint.android.mwallet.bm",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.emeint.android.mwallet.bm",
+    developer: "Banque Misr",
+    category: "Finance",
+    installs: "1M+",
+    rating: "3.1",
+    reviewCount: "14K+",
+    contentRating: "Everyone",
+    about:
+      "Banque Misr wallet without needing a bank account: deposit/withdraw via agents, retailers, or 9,000+ ATMs; send/receive to any Egyptian wallet; link BM cards; pay mobile, utilities, syndicates, flights, and Fawry QR; favorites and dedicated support.",
+    tags: ["eWallet", "Banque Misr", "Bills"],
+  },
+  {
+    name: "CIB Smart Wallet",
+    packageId: "paymob.cib.smartwallet",
+    storeUrl: "https://play.google.com/store/apps/details?id=paymob.cib.smartwallet",
+    developer: "CIB Egypt",
+    category: "Finance",
+    installs: "1M+",
+    rating: "2.2",
+    reviewCount: "7.14K+",
+    contentRating: "Everyone",
+    about:
+      "CIB Smart Wallet (with Meeza Digital): send/receive between wallets, in-store QR purchases, virtual cards, airtime, deposit/withdraw at CIB agents and ATMs, link up to two CIB cards, bills, charities, favorites, and fee overview—no CIB account required to register.",
+    tags: ["eWallet", "CIB", "QR pay"],
+  },
+  {
+    name: "QNB Egypt E-Wallet",
+    packageId: "com.emeint.android.mwallet.qnb",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.emeint.android.mwallet.qnb",
+    developer: "QNB",
+    category: "Finance",
+    installs: "500K+",
+    rating: "3.3",
+    reviewCount: "6.13K+",
+    contentRating: "Everyone",
+    about:
+      "QNB Egypt wallet: load from accounts, cards, retailers, or Meeza ATMs; mobile top-up; telecom, utility, traffic, and subscription payments; transfers; withdraw at agents/ATMs; QR purchases; favorites; nearest Fawry agents on map.",
+    tags: ["eWallet", "QNB", "Meeza"],
   },
 ];
 
