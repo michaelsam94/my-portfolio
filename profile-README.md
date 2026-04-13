@@ -256,17 +256,9 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 
 ---
 
-## 📁 About this repository
+## 🔗 Portfolio & code
 
-To show this same story on your **GitHub profile** Overview (like [EslamFareed](https://github.com/EslamFareed)), use the special repo **`michaelsam94/michaelsam94`** — see **[GITHUB_PROFILE_SETUP.md](./GITHUB_PROFILE_SETUP.md)** and copy **`profile-README.md`** there as **`README.md`**.
-
-This repo hosts my **portfolio website** (React, TypeScript, Vite, Framer Motion). Live site: **[michaelsam00.netlify.app](https://michaelsam00.netlify.app)** (update if your URL differs).
-
-```bash
-npm install
-npm run dev      # local dev
-npm run build    # production build
-npm run preview  # preview dist
-```
-
-CV asset: `public/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf` — configure `cvUrl` in `src/data/portfolio.ts` if you rename it.
+| | |
+|:---|:---|
+| **Live portfolio** | **[https://michaelsam00.netlify.app](https://michaelsam00.netlify.app)** |
+| **Repository** | **[github.com/michaelsam94/my-portfolio](https://github.com/michaelsam94/my-portfolio)** |
