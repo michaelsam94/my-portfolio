@@ -9,6 +9,8 @@ export const profile = {
   github: "https://github.com/michaelsam94",
   vscodeMarketplace: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
   openVsx: "https://open-vsx.org/namespace/michaelsam94",
+  /** Google Play developer catalog (published apps under developer id MichaelSam94). */
+  playStoreDeveloper: "https://play.google.com/store/apps/developer?id=MichaelSam94",
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
   headline:
@@ -27,6 +29,7 @@ export const about = {
     "120k+ MAU live auction app with WebRTC; 99.9% crash-free production builds",
     "Led teams of 4–6; defined ADRs and reduced cross-team integration issues by ~40%",
     "VS Code extensions published on the Visual Studio Marketplace and Open VSX",
+    "Google Play developer catalog (MichaelSam94): apps on the Play Store",
   ],
 };
 

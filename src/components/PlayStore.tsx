@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { playStoreApps } from "../data/portfolio";
+import { playStoreApps, profile } from "../data/portfolio";
 import "./PlayStore.css";
 
 const container = {
@@ -34,7 +34,11 @@ export default function PlayStore() {
         viewport={{ once: true }}
         transition={{ duration: 0.45 }}
       >
-        Production apps I’ve shipped or contributed to—summaries from{" "}
+        Production apps I’ve shipped or contributed to—see also my{" "}
+        <a href={profile.playStoreDeveloper} target="_blank" rel="noopener noreferrer">
+          Google Play developer page (MichaelSam94)
+        </a>
+        . Summaries from{" "}
         <a href="https://play.google.com/" target="_blank" rel="noopener noreferrer">
           Google Play
         </a>{" "}

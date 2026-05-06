@@ -13,6 +13,7 @@
 [![Portfolio](https://img.shields.io/badge/Portfolio-Live-7c5cff?style=for-the-badge)](https://michaelsam00.netlify.app)
 [![Source](https://img.shields.io/badge/Source-my--portfolio-24292f?style=for-the-badge&logo=github)](https://github.com/michaelsam94/my-portfolio)
 
+[![Google Play Developer](https://img.shields.io/badge/Google_Play_Developer-MichaelSam94-01875f?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/developer?id=MichaelSam94)
 [![VS Code Marketplace](https://img.shields.io/badge/VS_Code_Marketplace-MichaelSam94-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/publishers/MichaelSam94)
 [![Open VSX](https://img.shields.io/badge/Open_VSX-michaelsam94-181717?style=for-the-badge)](https://open-vsx.org/namespace/michaelsam94)
 
@@ -37,6 +38,7 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 - 🌍 **Domains** — Smart cities, EV/IoT, marketplaces, banking wallets, health/pharmacy, e‑commerce, Android TV.
 - 💡 **Always learning** — Blockchain/Web3, system design, Flutter, and iOS essentials.
 - 🔌 **VS Code extensions** — Published extensions on the **[Visual Studio Marketplace](https://marketplace.visualstudio.com/publishers/MichaelSam94)** and **[Open VSX](https://open-vsx.org/namespace/michaelsam94)**.
+- 📱 **Google Play developer** — Apps published under **[MichaelSam94 on Google Play](https://play.google.com/store/apps/developer?id=MichaelSam94)**.
 
 ---
 
@@ -174,6 +176,11 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 - **[System Design Academy](https://github.com/michaelsam94/system-design-academy)** (fork / newsletter)
 - **[Compose ToDo](https://github.com/michaelsam94/Compose-ToDo)** · **[Android REST OAuth template](https://github.com/michaelsam94/android-rest-client-template)**
 
+### 📱 Google Play developer
+**Published Android apps**
+
+- **[Developer page — Google Play (MichaelSam94)](https://play.google.com/store/apps/developer?id=MichaelSam94)**
+
 ### 🔌 VS Code extensions
 **TypeScript · VS Code Extension API**
 
@@ -275,3 +282,4 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 |:---|:---|
 | **Live portfolio** | **[https://michaelsam00.netlify.app](https://michaelsam00.netlify.app)** |
 | **Repository** | **[github.com/michaelsam94/my-portfolio](https://github.com/michaelsam94/my-portfolio)** |
+| **Google Play developer** | **[play.google.com/store/apps/developer?id=MichaelSam94](https://play.google.com/store/apps/developer?id=MichaelSam94)** |
