@@ -64,6 +64,31 @@
   font-size: 11px;
 }
 
+.projects-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.projects-footer-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  transition: opacity var(--transition), transform 0.2s;
+}
+
+.projects-footer-link:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
 @media (max-width: 640px) {
   .projects-grid {
     grid-template-columns: 1fr;

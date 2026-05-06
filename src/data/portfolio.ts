@@ -7,20 +7,26 @@ export const profile = {
   phone: "+20 109 800 2198",
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
+  vscodeMarketplace: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
+  openVsx: "https://open-vsx.org/namespace/michaelsam94",
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
   headline:
     "Android Engineer and Architect with 10+ years delivering production mobile systems across robotics, EV infrastructure, fintech, and real-time streaming.",
+  /** Descriptive alt text for the hero image (SEO & accessibility). */
+  avatarAlt:
+    "Michael Samuel Naeem — senior Android developer, mobile software engineer, technical lead, and staff-level architect. Professional portfolio photo, Cairo, Egypt.",
 };
 
 export const about = {
   summary:
-    "I architect and ship Android & cross-platform solutions at scale. I led the Android platform for NEOM City's humanoid robotics deployment, built a full-stack EV Charging Management Platform, and delivered apps serving 120k+ MAU. I'm passionate about Clean Architecture, Kotlin, Jetpack Compose, and emerging tech—blockchain, Web3, and AI integration.",
+    "I'm Michael Samuel Naeem — a senior Android developer, mobile engineer, software engineer, and technical lead with 10+ years of experience (staff-level mobile architect). I architect and ship Android and cross-platform solutions at scale, including lead Android developer responsibilities across squads. I led the Android platform for NEOM City's humanoid robotics deployment, built a full-stack EV Charging Management Platform, and delivered apps serving 120k+ MAU. I'm passionate about Clean Architecture, Kotlin, Jetpack Compose, and emerging tech—blockchain, Web3, and AI integration.",
   highlights: [
     "Architected Android platform for NEOM City humanoid robots (CRUZR, Pepper)",
     "Full-stack EV Charging Platform: Python/OCPP, Node.js WebSocket, Flutter",
     "120k+ MAU live auction app with WebRTC; 99.9% crash-free production builds",
     "Led teams of 4–6; defined ADRs and reduced cross-team integration issues by ~40%",
+    "VS Code extensions published on the Visual Studio Marketplace and Open VSX",
   ],
 };
 
@@ -97,7 +103,25 @@ export const experience = [
   },
 ];
 
-export const projects = [
+export type Project =
+  | {
+      name: string;
+      company: string;
+      description: string;
+      tags: string[];
+      highlight?: boolean;
+      link: string;
+    }
+  | {
+      name: string;
+      company: string;
+      description: string;
+      tags: string[];
+      highlight?: boolean;
+      links: { label: string; href: string }[];
+    };
+
+export const projects: Project[] = [
   {
     name: "EV Charging Management Platform · Mega Plug",
     company: "Tadafuq",
@@ -132,6 +156,20 @@ export const projects = [
       "Real-time bidding with ExoPlayer + WebRTC; 120k+ MAU, 20% engagement increase. Play listing: auctions, live broadcast, 100K+ installs.",
     link: "https://play.google.com/store/apps/details?id=com.mazaady",
     tags: ["WebRTC", "ExoPlayer", "Real-time"],
+  },
+  {
+    name: "VS Code Extensions",
+    company: "MichaelSam94",
+    description:
+      "Extensions for Visual Studio Code: published on the Microsoft marketplace and the Open VSX Registry (TypeScript, VS Code Extension API).",
+    links: [
+      {
+        label: "VS Code Marketplace",
+        href: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
+      },
+      { label: "Open VSX", href: "https://open-vsx.org/namespace/michaelsam94" },
+    ],
+    tags: ["VS Code Extension API", "TypeScript", "Open VSX"],
   },
   {
     name: "Intelligent Trading Bot",
@@ -348,6 +386,12 @@ export const skills = {
     "JUnit",
     "Mockito",
     "Espresso",
+  ],
+  tooling: [
+    "VS Code Extension API",
+    "TypeScript",
+    "Visual Studio Marketplace",
+    "Open VSX",
   ],
 };
 

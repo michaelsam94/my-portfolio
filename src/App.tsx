@@ -13,7 +13,7 @@ function App() {
   return (
     <>
       <Nav />
-      <main>
+      <main id="main-content" aria-label="Michael Samuel Naeem portfolio — Android developer, mobile engineer, technical lead">
         <Hero />
         <About />
         <Experience />

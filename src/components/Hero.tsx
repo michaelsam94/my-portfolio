@@ -17,8 +17,11 @@ export default function Hero() {
       >
         <motion.img
           src={profile.avatar}
-          alt={profile.name}
+          alt={profile.avatarAlt}
           className="hero-avatar"
+          width={120}
+          height={120}
+          fetchPriority="high"
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
@@ -54,6 +57,14 @@ export default function Hero() {
           transition={{ delay: 0.6, duration: 0.5 }}
         >
           {profile.location}
+        </motion.p>
+        <motion.p
+          className="hero-headline"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65, duration: 0.5 }}
+        >
+          {profile.headline}
         </motion.p>
         <motion.div
           className="hero-cta"

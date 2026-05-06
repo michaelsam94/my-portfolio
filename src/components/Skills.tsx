@@ -11,6 +11,7 @@ const groups = [
   { title: "Media & IoT", items: skills.media },
   { title: "AI & Emerging", items: skills.emerging },
   { title: "DevOps & QA", items: skills.devops },
+  { title: "Tooling & extensions", items: skills.tooling },
 ];
 
 const container = {

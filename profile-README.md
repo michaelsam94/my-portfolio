@@ -13,6 +13,9 @@
 [![Portfolio](https://img.shields.io/badge/Portfolio-Live-7c5cff?style=for-the-badge)](https://michaelsam00.netlify.app)
 [![Source](https://img.shields.io/badge/Source-my--portfolio-24292f?style=for-the-badge&logo=github)](https://github.com/michaelsam94/my-portfolio)
 
+[![VS Code Marketplace](https://img.shields.io/badge/VS_Code_Marketplace-MichaelSam94-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/publishers/MichaelSam94)
+[![Open VSX](https://img.shields.io/badge/Open_VSX-michaelsam94-181717?style=for-the-badge)](https://open-vsx.org/namespace/michaelsam94)
+
 </div>
 
 ---
@@ -33,6 +36,7 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 - 🏗️ **Leadership** — Led **4–6** engineers; introduced **ADRs**, code review standards, and **MVVM + Clean Architecture** migrations (**15+** feature modules).
 - 🌍 **Domains** — Smart cities, EV/IoT, marketplaces, banking wallets, health/pharmacy, e‑commerce, Android TV.
 - 💡 **Always learning** — Blockchain/Web3, system design, Flutter, and iOS essentials.
+- 🔌 **VS Code extensions** — Published extensions on the **[Visual Studio Marketplace](https://marketplace.visualstudio.com/publishers/MichaelSam94)** and **[Open VSX](https://open-vsx.org/namespace/michaelsam94)**.
 
 ---
 
@@ -61,6 +65,9 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 
 ### DevOps, Quality & Store
 `Git` `GitHub` `GitLab` `Jenkins` `Gradle` `Play Store` `CI/CD` `JUnit` `Mockito` `Espresso` `Firebase` (Crashlytics, Analytics, FCM, Remote Config, Realtime DB)
+
+### Tooling & extensions
+`VS Code Extension API` `TypeScript` `Visual Studio Marketplace` `Open VSX`
 
 ---
 
@@ -166,6 +173,12 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 - **[Intelligent Trading Bot](https://github.com/michaelsam94/intelleigent-trading-bot)** (Python)
 - **[System Design Academy](https://github.com/michaelsam94/system-design-academy)** (fork / newsletter)
 - **[Compose ToDo](https://github.com/michaelsam94/Compose-ToDo)** · **[Android REST OAuth template](https://github.com/michaelsam94/android-rest-client-template)**
+
+### 🔌 VS Code extensions
+**TypeScript · VS Code Extension API**
+
+- **[Publisher — Visual Studio Marketplace](https://marketplace.visualstudio.com/publishers/MichaelSam94)**
+- **[Namespace — Open VSX Registry](https://open-vsx.org/namespace/michaelsam94)**
 
 ---
 

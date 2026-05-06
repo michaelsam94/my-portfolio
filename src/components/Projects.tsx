@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { projects } from "../data/portfolio";
+import { projects, type Project } from "../data/portfolio";
 import "./Projects.css";
 
 const container = {
@@ -14,6 +14,65 @@ const card = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0 },
 };
+
+function ProjectCard({ proj }: { proj: Project }) {
+  const cardClass = `projects-card glass-card ${proj.highlight ? "highlight" : ""}`;
+  const body = (
+    <>
+      {proj.highlight && <span className="projects-badge">Featured</span>}
+      <p className="projects-company">{proj.company}</p>
+      <h3 className="projects-name">{proj.name}</h3>
+      <p className="projects-desc">{proj.description}</p>
+      <div className="projects-tags">
+        {proj.tags.map((tag) => (
+          <span key={tag} className="tag">
+            {tag}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+
+  if ("links" in proj) {
+    return (
+      <motion.div
+        className={cardClass}
+        variants={card}
+        whileHover={{ y: -4 }}
+        whileTap={{ scale: 0.99 }}
+      >
+        {body}
+        <div className="projects-card-links">
+          {proj.links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="projects-footer-link"
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.a
+      href={proj.link}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cardClass}
+      variants={card}
+      whileHover={{ y: -4 }}
+      whileTap={{ scale: 0.99 }}
+    >
+      {body}
+    </motion.a>
+  );
+}
 
 export default function Projects() {
   return (
@@ -35,26 +94,7 @@ export default function Projects() {
         viewport={{ once: true, margin: "-60px" }}
       >
         {projects.map((proj) => (
-          <motion.a
-            key={proj.name}
-            href={proj.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`projects-card glass-card ${proj.highlight ? "highlight" : ""}`}
-            variants={card}
-            whileHover={{ y: -4 }}
-            whileTap={{ scale: 0.99 }}
-          >
-            {proj.highlight && <span className="projects-badge">Featured</span>}
-            <p className="projects-company">{proj.company}</p>
-            <h3 className="projects-name">{proj.name}</h3>
-            <p className="projects-desc">{proj.description}</p>
-            <div className="projects-tags">
-              {proj.tags.map((tag) => (
-                <span key={tag} className="tag">{tag}</span>
-              ))}
-            </div>
-          </motion.a>
+          <ProjectCard key={proj.name} proj={proj} />
         ))}
       </motion.div>
     </section>
