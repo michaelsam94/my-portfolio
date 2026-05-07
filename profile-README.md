@@ -172,6 +172,7 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 - **50k+** users; **50%** faster search across **100+** branches.
 
 ### 💻 Open source & learning
+- **Shoply Flutter Storefront MVP** (Flutter · Riverpod · GoRouter · Shopify Storefront GraphQL · Supabase) — **Website:** **[github.com/michaelsam94/shoply](https://github.com/michaelsam94/shoply)** · **Source:** **[github.com/michaelsam94/shoply](https://github.com/michaelsam94/shoply)**
 - **[Intelligent Trading Bot](https://github.com/michaelsam94/intelleigent-trading-bot)** (Python)
 - **[System Design Academy](https://github.com/michaelsam94/system-design-academy)** (fork / newsletter)
 - **[Compose ToDo](https://github.com/michaelsam94/Compose-ToDo)** · **[Android REST OAuth template](https://github.com/michaelsam94/android-rest-client-template)**

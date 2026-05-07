@@ -175,6 +175,14 @@ export const projects: Project[] = [
     tags: ["VS Code Extension API", "TypeScript", "Open VSX"],
   },
   {
+    name: "Shoply Flutter Storefront MVP",
+    company: "GitHub",
+    description:
+      "Flutter eCommerce MVP with Shopify Storefront GraphQL for catalog/checkout and Supabase for auth and app-owned data.",
+    link: "https://github.com/michaelsam94/shoply",
+    tags: ["Flutter", "Riverpod", "GoRouter", "Shopify GraphQL", "Supabase"],
+  },
+  {
     name: "Intelligent Trading Bot",
     company: "GitHub",
     description: "Python-based trading bot project. Active development.",
