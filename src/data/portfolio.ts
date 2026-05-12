@@ -431,7 +431,12 @@ export const skills = {
     "Visual Studio Marketplace",
     "Open VSX",
   ],
-};
+} as const;
+
+/** Every skill string once, sorted — used for SEO structured data and discovery. */
+export const allSkillsFlat: readonly string[] = Array.from(
+  new Set(Object.values(skills).flat() as string[]),
+).sort((a, b) => a.localeCompare(b));
 
 export const certifications = [
   { name: "Android Developer Nanodegree", org: "Udacity", year: "2017" },
