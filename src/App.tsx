@@ -10,12 +10,10 @@ import Skills from "./components/Skills";
 import Impact from "./components/Impact";
 import Certifications from "./components/Certifications";
 import Contact from "./components/Contact";
-import CustomCursor from "./components/CustomCursor";
 
 function App() {
   return (
     <>
-      <CustomCursor />
       <StructuredData />
       <SkillsStructuredData />
       <Nav />
