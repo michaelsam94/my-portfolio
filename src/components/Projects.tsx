@@ -1,19 +1,11 @@
 import { motion } from "framer-motion";
 import { projects, type Project } from "../data/portfolio";
+import {
+  scrollCard,
+  scrollCardList,
+  scrollListViewport,
+} from "../motion/scrollReveal";
 import "./Projects.css";
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06 },
-  },
-};
-
-const card = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
 
 function ProjectCard({ proj }: { proj: Project }) {
   const cardClass = `projects-card glass-card ${proj.highlight ? "highlight" : ""}`;
@@ -37,8 +29,8 @@ function ProjectCard({ proj }: { proj: Project }) {
     return (
       <motion.div
         className={cardClass}
-        variants={card}
-        whileHover={{ y: -4 }}
+        variants={scrollCard}
+        whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
         whileTap={{ scale: 0.99 }}
       >
         {body}
@@ -65,8 +57,8 @@ function ProjectCard({ proj }: { proj: Project }) {
       target="_blank"
       rel="noopener noreferrer"
       className={cardClass}
-      variants={card}
-      whileHover={{ y: -4 }}
+      variants={scrollCard}
+      whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
       whileTap={{ scale: 0.99 }}
     >
       {body}
@@ -88,10 +80,10 @@ export default function Projects() {
       </motion.h2>
       <motion.div
         className="projects-grid"
-        variants={container}
+        variants={scrollCardList}
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, margin: "-60px" }}
+        viewport={scrollListViewport}
       >
         {projects.map((proj) => (
           <ProjectCard key={proj.name} proj={proj} />

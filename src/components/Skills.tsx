@@ -1,5 +1,10 @@
 import { motion } from "framer-motion";
 import { skills } from "../data/portfolio";
+import {
+  scrollCardCompact,
+  scrollCardListDense,
+  scrollListViewport,
+} from "../motion/scrollReveal";
 import "./Skills.css";
 
 const groups = [
@@ -13,19 +18,6 @@ const groups = [
   { title: "DevOps & QA", items: skills.devops },
   { title: "Tooling & extensions", items: skills.tooling },
 ];
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.04 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0 },
-};
 
 export default function Skills() {
   return (
@@ -41,13 +33,18 @@ export default function Skills() {
       </motion.h2>
       <motion.div
         className="skills-grid"
-        variants={container}
+        variants={scrollCardListDense}
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, margin: "-60px" }}
+        viewport={scrollListViewport}
       >
         {groups.map((group) => (
-          <motion.div key={group.title} className="skills-group glass-card" variants={item}>
+          <motion.div
+            key={group.title}
+            className="skills-group glass-card"
+            variants={scrollCardCompact}
+            whileHover={{ y: -3, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+          >
             <h3 className="skills-group-title">{group.title}</h3>
             <div className="skills-tags">
               {group.items.map((skill) => (

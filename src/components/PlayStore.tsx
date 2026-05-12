@@ -1,19 +1,11 @@
 import { motion } from "framer-motion";
 import { playStoreApps, profile } from "../data/portfolio";
+import {
+  scrollCard,
+  scrollCardListDense,
+  scrollListViewport,
+} from "../motion/scrollReveal";
 import "./PlayStore.css";
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 },
-  },
-};
-
-const card = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
 
 export default function PlayStore() {
   return (
@@ -50,17 +42,17 @@ export default function PlayStore() {
       </motion.p>
       <motion.div
         className="play-store-grid"
-        variants={container}
+        variants={scrollCardListDense}
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, margin: "-60px" }}
+        viewport={scrollListViewport}
       >
         {playStoreApps.map((app) => (
           <motion.article
             key={app.packageId}
             className="play-store-card glass-card"
-            variants={card}
-            whileHover={{ y: -4 }}
+            variants={scrollCard}
+            whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
           >
             <div className="play-store-card-head">
               <h3 className="play-store-name">{app.name}</h3>

@@ -1,19 +1,11 @@
 import { motion } from "framer-motion";
 import { experience } from "../data/portfolio";
+import {
+  scrollCard,
+  scrollCardList,
+  scrollListViewport,
+} from "../motion/scrollReveal";
 import "./Experience.css";
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06 },
-  },
-};
-
-const card = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0 },
-};
 
 export default function Experience() {
   return (
@@ -29,13 +21,18 @@ export default function Experience() {
       </motion.h2>
       <motion.div
         className="experience-list"
-        variants={container}
+        variants={scrollCardList}
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, margin: "-60px" }}
+        viewport={scrollListViewport}
       >
         {experience.map((job) => (
-          <motion.article key={job.company + job.period} className="experience-card glass-card" variants={card}>
+          <motion.article
+            key={job.company + job.period}
+            className="experience-card glass-card"
+            variants={scrollCard}
+            whileHover={{ y: -3, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+          >
             <div className="experience-header">
               <span className="experience-icon" aria-hidden>{job.icon}</span>
               <div>

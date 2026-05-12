@@ -1,18 +1,20 @@
 import { motion } from "framer-motion";
 import { impact } from "../data/portfolio";
+import {
+  scrollCardList,
+  scrollListViewport,
+  scrollEase,
+} from "../motion/scrollReveal";
 import "./Impact.css";
 
-const container = {
-  hidden: { opacity: 0 },
+const scrollStat = {
+  hidden: { opacity: 0, y: 22, scale: 0.94 },
   show: {
     opacity: 1,
-    transition: { staggerChildren: 0.08 },
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.48, ease: scrollEase },
   },
-};
-
-const stat = {
-  hidden: { opacity: 0, scale: 0.95 },
-  show: { opacity: 1, scale: 1 },
 };
 
 export default function Impact() {
@@ -29,13 +31,13 @@ export default function Impact() {
       </motion.h2>
       <motion.div
         className="impact-grid"
-        variants={container}
+        variants={scrollCardList}
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, margin: "-60px" }}
+        viewport={scrollListViewport}
       >
         {impact.map(({ value, label }) => (
-          <motion.div key={label} className="impact-card glass-card" variants={stat}>
+          <motion.div key={label} className="impact-card glass-card" variants={scrollStat}>
             <span className="impact-value">{value}</span>
             <span className="impact-label">{label}</span>
           </motion.div>
