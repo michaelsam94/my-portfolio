@@ -1,0 +1,107 @@
+/**
+ * Custom cursor — only active when `body` has `.custom-cursor-on`
+ * (fine pointer + hover + no reduced motion). Native cursor hidden then.
+ */
+body.custom-cursor-on,
+body.custom-cursor-on * {
+  cursor: none !important;
+}
+
+body.custom-cursor-on input,
+body.custom-cursor-on textarea,
+body.custom-cursor-on select {
+  cursor: text !important;
+}
+
+.custom-cursor-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10000;
+  overflow: hidden;
+}
+
+.custom-cursor-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  margin-left: -20px;
+  margin-top: -20px;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 92, 255, 0.65);
+  box-shadow:
+    0 0 12px rgba(124, 92, 255, 0.45),
+    0 0 28px rgba(34, 211, 238, 0.2),
+    inset 0 0 12px rgba(124, 92, 255, 0.12);
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 0.08) 0%,
+    transparent 55%
+  );
+  transition:
+    width 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    margin 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    opacity 0.2s ease;
+  will-change: transform;
+}
+
+.custom-cursor-root.is-hidden .custom-cursor-ring,
+.custom-cursor-root.is-hidden .custom-cursor-dot {
+  opacity: 0;
+}
+
+.custom-cursor-root.is-pressing .custom-cursor-ring {
+  border-color: rgba(34, 211, 238, 0.85);
+  box-shadow:
+    0 0 16px rgba(34, 211, 238, 0.5),
+    0 0 36px rgba(124, 92, 255, 0.35),
+    inset 0 0 10px rgba(34, 211, 238, 0.15);
+}
+
+.custom-cursor-root.is-hover .custom-cursor-ring {
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  margin-top: -26px;
+  border-color: rgba(34, 211, 238, 0.75);
+  box-shadow:
+    0 0 20px rgba(34, 211, 238, 0.45),
+    0 0 40px rgba(124, 92, 255, 0.35),
+    inset 0 0 14px rgba(34, 211, 238, 0.12);
+}
+
+.custom-cursor-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c4b5fd 0%, #22d3ee 100%);
+  box-shadow:
+    0 0 8px rgba(124, 92, 255, 0.9),
+    0 0 16px rgba(34, 211, 238, 0.55);
+  transition: transform 0.12s ease, opacity 0.2s ease;
+  will-change: transform;
+}
+
+.custom-cursor-root.is-pressing .custom-cursor-dot {
+  transform: scale(0.75);
+}
+
+.custom-cursor-root.is-hover .custom-cursor-dot {
+  transform: scale(1.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-cursor-root {
+    display: none !important;
+  }
+}
