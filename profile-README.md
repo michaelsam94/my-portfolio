@@ -10,7 +10,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/michaelsam94)
 [![Email](https://img.shields.io/badge/Email-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:michaelsam00@yahoo.com)
 
-[![Portfolio](https://img.shields.io/badge/Portfolio-Live-7c5cff?style=for-the-badge)](https://michaelsam00.netlify.app)
+[![Portfolio](https://img.shields.io/badge/Portfolio-Live-7c5cff?style=for-the-badge)](https://michaelsam94.tech)
 [![Source](https://img.shields.io/badge/Source-my--portfolio-24292f?style=for-the-badge&logo=github)](https://github.com/michaelsam94/my-portfolio)
 
 [![Google Play Developer](https://img.shields.io/badge/Google_Play_Developer-MichaelSam94-01875f?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/developer?id=MichaelSam94)
@@ -21,7 +21,7 @@
 
 ---
 
-**Portfolio:** **[michaelsam00.netlify.app](https://michaelsam00.netlify.app)** · **Source:** **[github.com/michaelsam94/my-portfolio](https://github.com/michaelsam94/my-portfolio)**
+**Portfolio:** **[michaelsam94.tech](https://michaelsam94.tech)** · **Source:** **[github.com/michaelsam94/my-portfolio](https://github.com/michaelsam94/my-portfolio)**
 
 ---
 
@@ -281,6 +281,6 @@ Welcome to my GitHub profile! I'm a passionate **Android engineer and architect*
 
 | | |
 |:---|:---|
-| **Live portfolio** | **[https://michaelsam00.netlify.app](https://michaelsam00.netlify.app)** |
+| **Live portfolio** | **[https://michaelsam94.tech](https://michaelsam94.tech)** |
 | **Repository** | **[github.com/michaelsam94/my-portfolio](https://github.com/michaelsam94/my-portfolio)** |
 | **Google Play developer** | **[play.google.com/store/apps/developer?id=MichaelSam94](https://play.google.com/store/apps/developer?id=MichaelSam94)** |

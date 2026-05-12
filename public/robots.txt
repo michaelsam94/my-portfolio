@@ -1,5 +1,5 @@
-# https://michaelsam00.netlify.app — update host if you use a custom domain
+# Primary site: https://michaelsam94.tech
 User-agent: *
 Allow: /
 
-Sitemap: https://michaelsam00.netlify.app/sitemap.xml
+Sitemap: https://michaelsam94.tech/sitemap.xml
