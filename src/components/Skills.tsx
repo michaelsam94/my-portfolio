@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "../lib/motion";
 import { skills } from "../data/portfolio";
 import {
   scrollCardCompact,

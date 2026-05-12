@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { animate, motion, useInView } from "framer-motion";
+import { animate, motion, useInView } from "../lib/motion";
 import { impact } from "../data/portfolio";
 import {
   scrollCardList,

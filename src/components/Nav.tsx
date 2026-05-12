@@ -1,4 +1,4 @@
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform } from "../lib/motion";
 import { useState } from "react";
 import { profile } from "../data/portfolio";
 import "./Nav.css";

@@ -113,6 +113,14 @@ a:hover {
   box-shadow: 0 20px 40px -20px rgba(124, 92, 255, 0.2);
 }
 
+@media (max-width: 768px) {
+  .glass,
+  .glass-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .tag {
   display: inline-block;
   padding: 4px 10px;

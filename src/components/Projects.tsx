@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "../lib/motion";
 import { projects, type Project } from "../data/portfolio";
 import {
   scrollCard,
