@@ -5,6 +5,7 @@ import "./Contact.css";
 const links = [
   { href: profile.linkedin, label: "LinkedIn", icon: "in" },
   { href: profile.github, label: "GitHub", icon: "gh" },
+  { href: profile.techBlog, label: "Code & Coffee", icon: "ext" },
   { href: profile.playStoreDeveloper, label: "Google Play (developer)", icon: "ext" },
   { href: profile.vscodeMarketplace, label: "VS Code Marketplace", icon: "ext" },
   { href: profile.openVsx, label: "Open VSX", icon: "ext" },

@@ -7,6 +7,8 @@ export const profile = {
   phone: "+20 109 800 2198",
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
+  /** Tech blog — technology trends and engineering notes. */
+  techBlog: "https://codeandcoffe.netlify.app/",
   vscodeMarketplace: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
   openVsx: "https://open-vsx.org/namespace/michaelsam94",
   /** Google Play developer catalog (published apps under developer id MichaelSam94). */
