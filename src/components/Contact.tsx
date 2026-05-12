@@ -1,4 +1,5 @@
 import { profile } from "../data/portfolio";
+import LinkedInProfileBadge from "./LinkedInProfileBadge";
 import "./Contact.css";
 
 const links = [
@@ -17,6 +18,7 @@ export default function Contact() {
     <section className="section contact" id="contact">
       <h2 className="section-title">Get in Touch</h2>
       <p className="contact-intro">Open to remote opportunities and interesting projects. Let’s connect.</p>
+      <LinkedInProfileBadge />
       <div className="contact-links">
         {links.map(({ href, label, icon }) => (
           <a

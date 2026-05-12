@@ -5,6 +5,20 @@
   color: var(--text-muted);
 }
 
+.contact-linkedin-badge-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 28px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+.contact-linkedin-badge-wrap .LI-profile-badge {
+  flex-shrink: 0;
+}
+
 .contact-links {
   display: flex;
   flex-wrap: wrap;
