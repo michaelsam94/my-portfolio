@@ -16,8 +16,10 @@
   font-size: 1.75rem;
   font-weight: 700;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   color: var(--accent);
   margin-bottom: 4px;
+  min-height: 2.25rem;
 }
 
 .impact-label {
