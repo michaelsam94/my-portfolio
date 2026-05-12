@@ -43,6 +43,16 @@ function parseImpactValue(raw: string) {
 const COUNT_DURATION = 2.35;
 const COUNT_STAGGER = 0.12;
 
+/**
+ * Count-up starts when the section overlaps the middle of the viewport only.
+ * Negative top/bottom rootMargin shrinks the intersection root (a horizontal band).
+ * Percentages are relative to the viewport height for top/bottom insets.
+ */
+const impactCountViewport = {
+  once: true,
+  margin: "-35% 0px -35% 0px",
+} as const;
+
 function ImpactAnimatedValue({
   raw,
   start,
@@ -80,11 +90,11 @@ function ImpactAnimatedValue({
 }
 
 export default function Impact() {
-  const gridRef = useRef<HTMLDivElement>(null);
-  const inView = useInView(gridRef, { once: true, amount: 0.2, margin: "0px 0px -8% 0px" });
+  const sectionRef = useRef<HTMLElement>(null);
+  const countsInView = useInView(sectionRef, impactCountViewport);
 
   return (
-    <section className="section impact">
+    <section ref={sectionRef} className="section impact">
       <motion.h2
         className="section-title"
         initial={{ opacity: 0, y: 20 }}
@@ -95,7 +105,6 @@ export default function Impact() {
         Impact at a Glance
       </motion.h2>
       <motion.div
-        ref={gridRef}
         className="impact-grid"
         variants={scrollCardList}
         initial="hidden"
@@ -104,7 +113,7 @@ export default function Impact() {
       >
         {impact.map(({ value, label }, index) => (
           <motion.div key={label} className="impact-card glass-card" variants={scrollStat}>
-            <ImpactAnimatedValue raw={value} start={inView} delay={index * COUNT_STAGGER} />
+            <ImpactAnimatedValue raw={value} start={countsInView} delay={index * COUNT_STAGGER} />
             <span className="impact-label">{label}</span>
           </motion.div>
         ))}
