@@ -27,7 +27,7 @@ export default function Nav() {
       }}
     >
       <div className="nav-inner">
-        <a href="#" className="nav-logo">
+        <a href="#hero" className="nav-logo">
           {profile.name.split(" ")[0]}
         </a>
         <nav className={`nav-links ${open ? "open" : ""}`}>

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { about } from "../data/portfolio";
+import { about, portfolioFaq } from "../data/portfolio";
 import "./About.css";
 
 const container = {
@@ -44,6 +44,17 @@ export default function About() {
             </motion.li>
           ))}
         </ul>
+        <div className="about-faq">
+          <h3 className="about-faq-title">Quick answers</h3>
+          <dl className="about-faq-list">
+            {portfolioFaq.map((f) => (
+              <div key={f.question} className="about-faq-item">
+                <dt>{f.question}</dt>
+                <dd>{f.answer}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </motion.div>
     </section>
   );

@@ -1,5 +1,6 @@
 import Nav from "./components/Nav";
 import Hero from "./components/Hero";
+import StructuredData from "./components/StructuredData";
 import About from "./components/About";
 import Experience from "./components/Experience";
 import Projects from "./components/Projects";
@@ -12,6 +13,7 @@ import Contact from "./components/Contact";
 function App() {
   return (
     <>
+      <StructuredData />
       <Nav />
       <main id="main-content" aria-label="Michael Samuel Naeem portfolio — Android developer, mobile engineer, technical lead">
         <Hero />

@@ -40,3 +40,42 @@
   border-radius: 50%;
   background: var(--accent);
 }
+
+.about-faq {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.about-faq-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--text);
+}
+
+.about-faq-list {
+  margin: 0;
+}
+
+.about-faq-item {
+  margin-bottom: 18px;
+}
+
+.about-faq-item:last-child {
+  margin-bottom: 0;
+}
+
+.about-faq-item dt {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.about-faq-item dd {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+}

@@ -14,7 +14,7 @@ export const profile = {
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
   headline:
-    "Android Engineer and Architect with 10+ years delivering production mobile systems across robotics, EV infrastructure, fintech, and real-time streaming.",
+    "Android engineer and architect with 10+ years shipping production mobile software—Kotlin, Jetpack Compose, and Flutter—for robotics, EV infrastructure, fintech, and real-time streaming.",
   /** Descriptive alt text for the hero image (SEO & accessibility). */
   avatarAlt:
     "Michael Samuel Naeem — senior Android developer, mobile software engineer, technical lead, and staff-level architect. Professional portfolio photo, Cairo, Egypt.",
@@ -22,7 +22,7 @@ export const profile = {
 
 export const about = {
   summary:
-    "I'm Michael Samuel Naeem — a senior Android developer, mobile engineer, software engineer, and technical lead with 10+ years of experience (staff-level mobile architect). I architect and ship Android and cross-platform solutions at scale, including lead Android developer responsibilities across squads. I led the Android platform for NEOM City's humanoid robotics deployment, built a full-stack EV Charging Management Platform, and delivered apps serving 120k+ MAU. I'm passionate about Clean Architecture, Kotlin, Jetpack Compose, and emerging tech—blockchain, Web3, and AI integration.",
+    "I'm Michael Samuel Naeem — a senior Android developer, mobile engineer, software engineer, and technical lead with 10+ years of experience (staff-level mobile architect). I architect and ship Android and cross-platform solutions at scale, including lead Android developer responsibilities across squads. I led the Android platform for NEOM City's humanoid robotics deployment, built a full-stack EV Charging Management Platform, and delivered apps serving 120k+ MAU. I'm passionate about Clean Architecture, Kotlin, Jetpack Compose, and emerging tech—blockchain, Web3, and AI integration. I'm based in Cairo, Egypt, and I'm open to remote collaboration with teams across Europe, the United States, and worldwide.",
   highlights: [
     "Architected Android platform for NEOM City humanoid robots (CRUZR, Pepper)",
     "Full-stack EV Charging Platform: Python/OCPP, Node.js WebSocket, Flutter",
@@ -32,6 +32,33 @@ export const about = {
     "Google Play developer catalog (MichaelSam94): apps on the Play Store",
   ],
 };
+
+/**
+ * Shown in About and mirrored as FAQPage JSON-LD (`StructuredData`).
+ * Keep question/answer text aligned with what is visible on the page.
+ */
+export const portfolioFaq = [
+  {
+    question: "What roles does Michael Samuel Naeem focus on?",
+    answer:
+      "He works as a senior Android developer, staff Android engineer, mobile developer, software engineer, technical lead (tech lead), mobile architect, and Flutter developer—leading delivery end-to-end while staying hands-on with Kotlin, Jetpack Compose, and Flutter.",
+  },
+  {
+    question: "Where is he based, and does he work remotely?",
+    answer:
+      "He is based in Cairo, Egypt, and collaborates with teams globally. He is open to remote roles with companies in Europe, the United States, and other regions, as well as hybrid arrangements when travel is required.",
+  },
+  {
+    question: "What domains and platforms has he shipped?",
+    answer:
+      "Production work spans humanoid robotics (NEOM), EV charging and IoT (OCPP, WebSocket, Flutter), live auctions and streaming at scale (120k+ MAU), fintech and e-wallets, e-commerce, and Android TV—typically on MVVM or Clean Architecture with strong quality bars.",
+  },
+  {
+    question: "How can recruiters or hiring managers contact him?",
+    answer:
+      "Use the contact section on this portfolio, reach out on LinkedIn (michaelsam00), or email michaelsam00@yahoo.com. A downloadable CV is linked from the hero section.",
+  },
+] as const;
 
 export const experience = [
   {
