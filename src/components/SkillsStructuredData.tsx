@@ -36,7 +36,6 @@ export default function SkillsStructuredData() {
   return (
     <script
       type="application/ld+json"
-      // eslint-disable-next-line react/no-danger -- JSON-LD requires raw script output
       dangerouslySetInnerHTML={{ __html: JSON.stringify(graph) }}
     />
   );

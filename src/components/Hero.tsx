@@ -16,7 +16,7 @@ export default function Hero() {
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
         <motion.img
-          src={profile.avatar}
+          src={profile.heroAvatar}
           alt={profile.avatarAlt}
           className="hero-avatar"
           width={120}

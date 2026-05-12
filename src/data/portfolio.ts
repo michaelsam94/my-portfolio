@@ -13,6 +13,8 @@ export const profile = {
   playStoreDeveloper: "https://play.google.com/store/apps/developer?id=MichaelSam94",
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
+  /** Lighter square image for the hero (LCP); full `avatar` remains for OG / consistency elsewhere. */
+  heroAvatar: "/profile-photo-hero.jpg",
   headline:
     "Android engineer and architect with 10+ years shipping production mobile software—Kotlin, Jetpack Compose, and Flutter—for robotics, EV infrastructure, fintech, and real-time streaming.",
   /** Descriptive alt text for the hero image (SEO & accessibility). */

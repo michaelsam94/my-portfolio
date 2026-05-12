@@ -69,7 +69,6 @@ function ImpactAnimatedValue({
     if (!start || !parsed) return;
 
     const { to, format, value } = parsed;
-    setText(format(0));
 
     const controls = animate(0, to, {
       duration: COUNT_DURATION,
