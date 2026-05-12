@@ -18,6 +18,11 @@
 
 .skills-group {
   text-align: left;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.skills-group:hover {
+  transform: translateY(-3px);
 }
 
 .skills-group-title {

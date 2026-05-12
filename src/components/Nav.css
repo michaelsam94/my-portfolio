@@ -4,6 +4,9 @@
   left: 0;
   right: 0;
   z-index: 100;
+  background-color: rgba(12, 11, 15, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
   transition: border-color var(--transition);
 }

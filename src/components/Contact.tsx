@@ -1,4 +1,3 @@
-import { motion } from "../lib/motion";
 import { profile } from "../data/portfolio";
 import "./Contact.css";
 
@@ -16,31 +15,9 @@ const links = [
 export default function Contact() {
   return (
     <section className="section contact" id="contact">
-      <motion.h2
-        className="section-title"
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.5 }}
-      >
-        Get in Touch
-      </motion.h2>
-      <motion.p
-        className="contact-intro"
-        initial={{ opacity: 0, y: 12 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.1 }}
-      >
-        Open to remote opportunities and interesting projects. Let’s connect.
-      </motion.p>
-      <motion.div
-        className="contact-links"
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.2 }}
-      >
+      <h2 className="section-title">Get in Touch</h2>
+      <p className="contact-intro">Open to remote opportunities and interesting projects. Let’s connect.</p>
+      <div className="contact-links">
         {links.map(({ href, label, icon }) => (
           <a
             key={label}
@@ -91,16 +68,8 @@ export default function Contact() {
             <span className="contact-label">{label}</span>
           </a>
         ))}
-      </motion.div>
-      <motion.p
-        className="contact-footer"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.3 }}
-      >
-        Cairo, Egypt · Available for remote roles worldwide
-      </motion.p>
+      </div>
+      <p className="contact-footer">Cairo, Egypt · Available for remote roles worldwide</p>
     </section>
   );
 }

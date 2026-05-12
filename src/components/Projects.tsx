@@ -1,10 +1,4 @@
-import { motion } from "../lib/motion";
 import { projects, type Project } from "../data/portfolio";
-import {
-  scrollCard,
-  scrollCardList,
-  scrollListViewport,
-} from "../motion/scrollReveal";
 import "./Projects.css";
 
 function ProjectCard({ proj }: { proj: Project }) {
@@ -27,12 +21,7 @@ function ProjectCard({ proj }: { proj: Project }) {
 
   if ("links" in proj) {
     return (
-      <motion.div
-        className={cardClass}
-        variants={scrollCard}
-        whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
-        whileTap={{ scale: 0.99 }}
-      >
+      <div className={cardClass}>
         {body}
         <div className="projects-card-links">
           {proj.links.map((l) => (
@@ -47,48 +36,26 @@ function ProjectCard({ proj }: { proj: Project }) {
             </a>
           ))}
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.a
-      href={proj.link}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cardClass}
-      variants={scrollCard}
-      whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
-      whileTap={{ scale: 0.99 }}
-    >
+    <a href={proj.link} target="_blank" rel="noopener noreferrer" className={cardClass}>
       {body}
-    </motion.a>
+    </a>
   );
 }
 
 export default function Projects() {
   return (
     <section className="section projects" id="projects">
-      <motion.h2
-        className="section-title"
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.5 }}
-      >
-        Projects
-      </motion.h2>
-      <motion.div
-        className="projects-grid"
-        variants={scrollCardList}
-        initial="hidden"
-        whileInView="show"
-        viewport={scrollListViewport}
-      >
+      <h2 className="section-title">Projects</h2>
+      <div className="projects-grid">
         {projects.map((proj) => (
           <ProjectCard key={proj.name} proj={proj} />
         ))}
-      </motion.div>
+      </div>
     </section>
   );
 }

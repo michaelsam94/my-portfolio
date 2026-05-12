@@ -1,4 +1,3 @@
-import { motion, useScroll, useTransform } from "../lib/motion";
 import { useState } from "react";
 import { profile } from "../data/portfolio";
 import "./Nav.css";
@@ -14,18 +13,9 @@ const links = [
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
-  const { scrollY } = useScroll();
-  const navBg = useTransform(scrollY, [0, 120], ["rgba(12,11,15,0)", "rgba(12,11,15,0.92)"]);
-  const navBlur = useTransform(scrollY, [0, 120], ["blur(0px)", "blur(14px)"]);
 
   return (
-    <motion.header
-      className="nav"
-      style={{
-        backgroundColor: navBg,
-        backdropFilter: navBlur,
-      }}
-    >
+    <header className="nav">
       <div className="nav-inner">
         <a href="#hero" className="nav-logo">
           {profile.name.split(" ")[0]}
@@ -48,6 +38,6 @@ export default function Nav() {
           <span />
         </button>
       </div>
-    </motion.header>
+    </header>
   );
 }

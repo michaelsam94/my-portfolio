@@ -1,31 +1,11 @@
-import { motion } from "../lib/motion";
 import { playStoreApps, profile } from "../data/portfolio";
-import {
-  scrollCard,
-  scrollCardListDense,
-  scrollListViewport,
-} from "../motion/scrollReveal";
 import "./PlayStore.css";
 
 export default function PlayStore() {
   return (
     <section className="section play-store" id="play-store">
-      <motion.h2
-        className="section-title"
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.5 }}
-      >
-        Google Play & App Store
-      </motion.h2>
-      <motion.p
-        className="play-store-intro"
-        initial={{ opacity: 0, y: 12 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.45 }}
-      >
+      <h2 className="section-title">Google Play & App Store</h2>
+      <p className="play-store-intro">
         Production apps I’ve shipped or contributed to—see also my{" "}
         <a href={profile.playStoreDeveloper} target="_blank" rel="noopener noreferrer">
           Google Play developer page (MichaelSam94)
@@ -39,21 +19,10 @@ export default function PlayStore() {
           App Store
         </a>
         .
-      </motion.p>
-      <motion.div
-        className="play-store-grid"
-        variants={scrollCardListDense}
-        initial="hidden"
-        whileInView="show"
-        viewport={scrollListViewport}
-      >
+      </p>
+      <div className="play-store-grid">
         {playStoreApps.map((app) => (
-          <motion.article
-            key={app.packageId}
-            className="play-store-card glass-card"
-            variants={scrollCard}
-            whileHover={{ y: -4, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
-          >
+          <article key={app.packageId} className="play-store-card glass-card">
             <div className="play-store-card-head">
               <h3 className="play-store-name">{app.name}</h3>
               <div className="play-store-badges">
@@ -130,9 +99,9 @@ export default function PlayStore() {
                 </a>
               ) : null}
             </div>
-          </motion.article>
+          </article>
         ))}
-      </motion.div>
+      </div>
     </section>
   );
 }
