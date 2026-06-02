@@ -157,6 +157,51 @@ export type Project =
 
 export const projects: Project[] = [
   {
+    name: "InsightlySpend",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Offline-first Android personal finance app for wallets, budgets, transactions, receipts, and local insights using Room-backed storage.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.insightlyspend",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/InsightlySpend" },
+    ],
+    tags: ["Kotlin", "Room", "Finance", "Offline-first"],
+    highlight: true,
+  },
+  {
+    name: "SubTrackr",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Subscription and license manager with renewal tracking, spending analytics, cancellation workflows, and AI-assisted portfolio insights.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.aistudio.subtrackr",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/SubtrackrAnroid" },
+    ],
+    tags: ["Kotlin", "AI", "Analytics", "Subscriptions"],
+    highlight: true,
+  },
+  {
+    name: "PrivAI",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Privacy-first workspace for notes, voice transcripts, OCR extracts, and on-device summaries without cloud uploads.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.privai",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/PrivAI" },
+    ],
+    tags: ["Kotlin", "On-device AI", "OCR", "Privacy"],
+    highlight: true,
+  },
+  {
     name: "EV Charging Management Platform · Mega Plug",
     company: "Tadafuq",
     description:
@@ -243,6 +288,132 @@ export const projects: Project[] = [
     tags: ["Java", "Android", "OAuth"],
   },
   {
+    name: "Tic Tac Toe",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Classic offline two-player Tic Tac Toe with a clean 3x3 board, instant win/draw detection, and no sign-in requirement.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.tic_tac_toe",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/tic_tac_toe" },
+    ],
+    tags: ["Kotlin", "Game", "Offline"],
+  },
+  {
+    name: "WalkPlanner",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Route planner for circular walking and running loops with OpenStreetMap overlays, GPS session tracking, and saved history.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.walkplanner",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/TrailMate" },
+    ],
+    tags: ["Kotlin", "Maps", "GPS", "OpenStreetMap"],
+  },
+  {
+    name: "Photo Optimizer",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Local photo compression, duplicate cleanup, EXIF metadata wiping, and batch processing with WorkManager.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.photo.optimizer",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/Photo-Optimizer" },
+    ],
+    tags: ["Kotlin", "WorkManager", "Media", "Privacy"],
+  },
+  {
+    name: "ClearVoice AI",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Offline speech enhancement tool with live loopback, batch audio processing, multiband DSP filters, and local noise isolation.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.clearvoiceai",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/ClearVoice-AI" },
+    ],
+    tags: ["Kotlin", "DSP", "Audio", "Offline AI"],
+  },
+  {
+    name: "Todo App",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Focused task manager with priorities, categories, due dates, search, filters, sorting, and local productivity stats.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.todoapps",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/TodoAppAiStudio" },
+    ],
+    tags: ["Kotlin", "Productivity", "Local DB"],
+  },
+  {
+    name: "NotchCommand",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Interactive camera-cutout utility ring for shortcuts, battery status, audio visualization, charging state, and RGB effects.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.notchcommand",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/NotchCommand" },
+    ],
+    tags: ["Kotlin", "Overlay", "Accessibility", "UI"],
+  },
+  {
+    name: "Wi-Fi Drop",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Local-network file transfer app for sending files, folders, and browser downloads over the same Wi-Fi without cloud uploads.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.wifidrop",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/Wi-Fi-Drop" },
+    ],
+    tags: ["Kotlin", "Networking", "P2P", "Privacy"],
+  },
+  {
+    name: "PDF Toolkit",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Offline PDF utility for merging, splitting, signing, and converting Markdown notes into generated PDFs on-device.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.pdftoolkit",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/PDF-Toolkit" },
+    ],
+    tags: ["Kotlin", "PDF", "Documents", "Offline"],
+  },
+  {
+    name: "Bulk QR & Barcode Suite",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Offline barcode suite for continuous ML Kit scanning, batch sessions, CSV/XLSX export, and branded QR code generation.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.bulkqrscanner",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/Bulk-QR-Barcode-Suite" },
+    ],
+    tags: ["Kotlin", "ML Kit", "QR", "Barcode"],
+  },
+  {
     name: "Compose ToDo",
     company: "GitHub",
     description: "Jetpack Compose sample app.",
@@ -253,6 +424,162 @@ export const projects: Project[] = [
 
 /** Listing details aligned with Google Play / App Store (as of early 2026). */
 export const playStoreApps = [
+  {
+    name: "InsightlySpend",
+    packageId: "com.michael.insightlyspend",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.insightlyspend",
+    repoUrl: "https://github.com/michaelsam94/InsightlySpend",
+    developer: "MichaelSam94",
+    category: "Finance",
+    installs: "1+",
+    contentRating: "Rated 3+",
+    about:
+      "Offline-first money manager for Android: wallets, budgets, transaction search, receipt vault, spending trends, category breakdowns, and on-device insights backed by local storage.",
+    tags: ["Finance", "Room", "Budgets", "Receipts"],
+  },
+  {
+    name: "Tic Tac Toe",
+    packageId: "com.michael.tic_tac_toe",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.tic_tac_toe",
+    repoUrl: "https://github.com/michaelsam94/tic_tac_toe",
+    developer: "MichaelSam94",
+    category: "Casual",
+    installs: "1+",
+    contentRating: "Rated 3+",
+    about:
+      "Classic offline two-player Tic Tac Toe with a clean 3x3 board, instant win and draw detection, one-tap reset, and no ads or sign-in requirement.",
+    tags: ["Game", "Offline", "Kotlin"],
+  },
+  {
+    name: "SubTrackr",
+    packageId: "com.aistudio.subtrackr",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.aistudio.subtrackr",
+    repoUrl: "https://github.com/michaelsam94/SubtrackrAnroid",
+    developer: "MichaelSam94",
+    category: "Finance",
+    installs: "1+",
+    contentRating: "Rated 3+",
+    about:
+      "Subscription and software-license manager with renewal forecasts, spending charts, cancellation checklists, CSV import, and AI-assisted optimization insights.",
+    tags: ["Subscriptions", "AI", "Analytics"],
+  },
+  {
+    name: "WalkPlanner",
+    packageId: "com.michael.walkplanner",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.walkplanner",
+    repoUrl: "https://github.com/michaelsam94/TrailMate",
+    developer: "MichaelSam94",
+    category: "Health & Fitness",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Walking and running loop planner with OpenStreetMap data, surface preferences, multiple route options, live GPS tracking, unit settings, and local session history.",
+    tags: ["Maps", "GPS", "OpenStreetMap"],
+  },
+  {
+    name: "Photo Optimizer",
+    packageId: "com.michael.photo.optimizer",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.photo.optimizer",
+    repoUrl: "https://github.com/michaelsam94/Photo-Optimizer",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Local photo library optimizer for batch WebP/JPEG/PNG compression, EXIF metadata wiping, duplicate detection, before/after previews, and background processing.",
+    tags: ["Media", "EXIF", "WorkManager"],
+  },
+  {
+    name: "ClearVoice AI",
+    packageId: "com.michael.clearvoiceai",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.clearvoiceai",
+    repoUrl: "https://github.com/michaelsam94/ClearVoice-AI",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "On-device speech enhancer with real-time loopback, waveform visualization, multiband DSP isolation, noise gates, and batch audio-file processing.",
+    tags: ["Audio", "DSP", "Offline AI"],
+  },
+  {
+    name: "Todo App",
+    packageId: "com.michael.todoapps",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.todoapps",
+    repoUrl: "https://github.com/michaelsam94/TodoAppAiStudio",
+    developer: "MichaelSam94",
+    category: "Productivity",
+    installs: "1+",
+    contentRating: "Rated 3+",
+    about:
+      "Private everyday task manager with categories, priority levels, due dates, smart filters, sorting, search, detailed task views, and weekly progress stats.",
+    tags: ["Tasks", "Productivity", "Offline-first"],
+  },
+  {
+    name: "NotchCommand",
+    packageId: "com.michael.notchcommand",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.notchcommand",
+    repoUrl: "https://github.com/michaelsam94/NotchCommand",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Camera-cutout command ring with configurable tap gestures, system shortcuts, battery sweep, charging indicator, audio visualizer, and RGB animation modes.",
+    tags: ["Overlay", "Accessibility", "Visualizer"],
+  },
+  {
+    name: "PrivAI",
+    packageId: "com.michael.privai",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.privai",
+    repoUrl: "https://github.com/michaelsam94/PrivAI",
+    developer: "MichaelSam94",
+    category: "Productivity",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Private AI workspace for local notes, voice transcription, OCR extraction, summaries, keyword highlights, and sentiment hints without cloud uploads.",
+    tags: ["On-device AI", "OCR", "Notes"],
+  },
+  {
+    name: "Wi-Fi Drop",
+    packageId: "com.michael.wifidrop",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.wifidrop",
+    repoUrl: "https://github.com/michaelsam94/Wi-Fi-Drop",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Cloud-free local-network file transfer for photos, videos, documents, folders, nearby receivers, transfer history, and browser downloads through Web Share.",
+    tags: ["Wi-Fi", "P2P", "File transfer"],
+  },
+  {
+    name: "PDF Toolkit",
+    packageId: "com.michael.pdftoolkit",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.pdftoolkit",
+    repoUrl: "https://github.com/michaelsam94/PDF-Toolkit",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Privacy-first PDF app for merging documents, splitting by page range, drawing and stamping signatures, and converting Markdown into PDFs locally.",
+    tags: ["PDF", "Documents", "Offline"],
+  },
+  {
+    name: "Bulk QR & Barcode Suite",
+    packageId: "com.michael.bulkqrscanner",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.bulkqrscanner",
+    repoUrl: "https://github.com/michaelsam94/Bulk-QR-Barcode-Suite",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Offline barcode operations suite with continuous ML Kit scanning, duplicate detection, batch/session auditing, CSV/XLSX export, and branded QR generation.",
+    tags: ["ML Kit", "Barcode", "QR", "Export"],
+  },
   {
     name: "Mega Plug",
     packageId: "com.mega.plug",

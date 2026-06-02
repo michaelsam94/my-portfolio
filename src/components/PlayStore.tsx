@@ -98,6 +98,16 @@ export default function PlayStore() {
                   App Store →
                 </a>
               ) : null}
+              {app.repoUrl ? (
+                <a
+                  href={app.repoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="play-store-cta play-store-cta--github"
+                >
+                  GitHub →
+                </a>
+              ) : null}
             </div>
           </article>
         ))}

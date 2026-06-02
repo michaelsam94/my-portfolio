@@ -143,6 +143,10 @@
   color: #5ac8fa;
 }
 
+.play-store-cta--github {
+  color: var(--text-h);
+}
+
 @media (max-width: 640px) {
   .play-store-grid {
     grid-template-columns: 1fr;
