@@ -202,6 +202,21 @@ export const projects: Project[] = [
     highlight: true,
   },
   {
+    name: "DevPocket",
+    company: "MichaelSam94 · Google Play",
+    description:
+      "Offline Android developer toolbox with a code workspace, formatters, regex playground, local JS/math sandbox, and reference docs.",
+    links: [
+      {
+        label: "Google Play",
+        href: "https://play.google.com/store/apps/details?id=com.michael.devpocket",
+      },
+      { label: "GitHub", href: "https://github.com/michaelsam94/DevPocket" },
+    ],
+    tags: ["Kotlin", "Developer Tools", "Room", "Offline-first"],
+    highlight: true,
+  },
+  {
     name: "EV Charging Management Platform · Mega Plug",
     company: "Tadafuq",
     description:
@@ -540,6 +555,19 @@ export const playStoreApps = [
     about:
       "Private AI workspace for local notes, voice transcription, OCR extraction, summaries, keyword highlights, and sentiment hints without cloud uploads.",
     tags: ["On-device AI", "OCR", "Notes"],
+  },
+  {
+    name: "DevPocket",
+    packageId: "com.michael.devpocket",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.michael.devpocket",
+    repoUrl: "https://github.com/michaelsam94/DevPocket",
+    developer: "MichaelSam94",
+    category: "Tools",
+    installs: "0+",
+    contentRating: "Rated 3+",
+    about:
+      "Offline developer utility suite with syntax-highlighted code workspace, JSON/XML/HTML/CSS/SQL formatting, regex playground, local JavaScript and math sandbox, and reference docs stored locally.",
+    tags: ["Developer Tools", "Formatter", "Regex", "Offline"],
   },
   {
     name: "Wi-Fi Drop",
