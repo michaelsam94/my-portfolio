@@ -20,7 +20,7 @@ export default function Hero() {
           fetchPriority="high"
         />
         <h1 className="hero-name">
-          {profile.name} — Senior Android Developer &amp; Tech Lead
+          {profile.name} — Senior Android Developer &amp; Tech Lead | Cairo
         </h1>
         <p className="hero-title">
           {profile.title}
