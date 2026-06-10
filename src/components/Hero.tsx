@@ -1,4 +1,3 @@
-import { motion } from "../lib/motion";
 import { profile } from "../data/portfolio";
 import "./Hero.css";
 
@@ -9,69 +8,33 @@ export default function Hero() {
         <div className="hero-gradient" />
         <div className="hero-grid" />
       </div>
-      <motion.div
-        className="hero-content"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <motion.img
+      <div className="hero-content">
+        <img
           src={profile.heroAvatar}
           alt={profile.avatarAlt}
           className="hero-avatar"
           width={120}
           height={120}
+          loading="eager"
+          decoding="sync"
           fetchPriority="high"
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
         />
-        <motion.h1
-          className="hero-name"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-        >
+        <h1 className="hero-name">
           {profile.name}
-        </motion.h1>
-        <motion.p
-          className="hero-title"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
-        >
+        </h1>
+        <p className="hero-title">
           {profile.title}
-        </motion.p>
-        <motion.p
-          className="hero-tagline"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
-        >
+        </p>
+        <p className="hero-tagline">
           {profile.tagline}
-        </motion.p>
-        <motion.p
-          className="hero-location"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6, duration: 0.5 }}
-        >
+        </p>
+        <p className="hero-location">
           {profile.location}
-        </motion.p>
-        <motion.p
-          className="hero-headline"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.65, duration: 0.5 }}
-        >
+        </p>
+        <p className="hero-headline">
           {profile.headline}
-        </motion.p>
-        <motion.div
-          className="hero-cta"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.5 }}
-        >
+        </p>
+        <div className="hero-cta">
           <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="btn">
             LinkedIn
           </a>
@@ -84,8 +47,8 @@ export default function Hero() {
           <a href="#contact" className="btn btn-ghost">
             Contact
           </a>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </section>
   );
 }
