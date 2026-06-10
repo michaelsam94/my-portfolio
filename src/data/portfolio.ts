@@ -16,12 +16,12 @@ export const profile = {
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
   /** Lighter square image for the hero (LCP); full `avatar` remains for OG / consistency elsewhere. */
-  heroAvatar: "/profile-photo-hero.jpg",
+  heroAvatar: "/profile-photo-hero.webp",
   headline:
     "Android engineer and architect with 10+ years shipping production mobile software—Kotlin, Jetpack Compose, and Flutter—for robotics, EV infrastructure, fintech, and real-time streaming.",
   /** Descriptive alt text for the hero image (SEO & accessibility). */
   avatarAlt:
-    "Michael Samuel Naeem — senior Android developer, mobile software engineer, technical lead, and staff-level architect. Professional portfolio photo, Cairo, Egypt.",
+    "Michael Samuel Naeem — senior Android developer and tech lead based in Cairo, Egypt.",
 };
 
 export const about = {
@@ -61,6 +61,11 @@ export const portfolioFaq = [
     question: "How can recruiters or hiring managers contact him?",
     answer:
       "Use the contact section on this portfolio, reach out on LinkedIn (michaelsam00), or email michaelsam00@yahoo.com. A downloadable CV is linked from the hero section.",
+  },
+  {
+    question: "Does Michael Samuel Naeem match Arabic searches for Android developers?",
+    answer:
+      "Yes. He is an Android developer in Cairo, Egypt: مطور أندرويد أول، مهندس تطبيقات موبايل، مطور Kotlin، ومطور Flutter available for remote English-speaking teams first, with Arabic search visibility as a secondary target.",
   },
 ] as const;
 

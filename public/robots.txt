@@ -1,4 +1,5 @@
 # Primary site: https://michaelsam94.tech
+# LLM-readable summary: https://michaelsam94.tech/llms.txt
 User-agent: *
 Allow: /
 
