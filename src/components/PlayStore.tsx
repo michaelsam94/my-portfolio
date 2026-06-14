@@ -1,4 +1,4 @@
-import { playStoreApps, profile } from "../data/portfolio";
+import { playStoreApps, vscodeExtensions, workSlug, profile } from "../data/portfolio";
 import "./PlayStore.css";
 
 const featuredApps = playStoreApps.slice(0, 3);
@@ -31,10 +31,8 @@ export default function PlayStore() {
           {featuredApps.map((app, index) => (
             <a
               className="apps-featured-card"
-              href={app.playStoreUrl}
+              href={`/apps/${workSlug(app.name)}/`}
               key={app.packageId}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <span className="apps-feature-number">0{index + 1}</span>
               <img src={app.image} alt={`${app.name} app icon`} loading="lazy" />
@@ -49,15 +47,32 @@ export default function PlayStore() {
           {remainingApps.map((app) => (
             <a
               className="apps-card"
-              href={app.playStoreUrl}
+              href={`/apps/${workSlug(app.name)}/`}
               key={app.packageId}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <img src={app.image} alt={`${app.name} app icon`} loading="lazy" />
               <span>{app.category}</span>
               <h3>{app.name}</h3>
               <p>{app.description}</p>
+            </a>
+          ))}
+        </div>
+
+        <div className="apps-heading apps-heading-secondary">
+          <p className="apps-kicker">Developer Tools</p>
+          <h2>VS Code Extensions</h2>
+          <a className="apps-store-link" href="/vscode/">
+            Browse all extensions
+          </a>
+        </div>
+
+        <div className="apps-grid" aria-label="VS Code extensions">
+          {vscodeExtensions.map((ext) => (
+            <a className="apps-card apps-ext-card" href={`/vscode/${ext.slug}/`} key={ext.slug}>
+              <span className="apps-ext-mark" aria-hidden="true">&lt;/&gt;</span>
+              <span>VS Code</span>
+              <h3>{ext.name}</h3>
+              <p>{ext.description}</p>
             </a>
           ))}
         </div>

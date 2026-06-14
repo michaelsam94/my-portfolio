@@ -172,6 +172,22 @@ export const workSlug = (name: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+/**
+ * VS Code extensions published under publisher MichaelSam94.
+ * `slug` matches the marketplace item name and the generated page at /vscode/<slug>/.
+ */
+export const vscodeExtensions = [
+  { slug: "csv-studio", name: "CSV Studio", description: "View and edit CSV files as interactive spreadsheets in VS Code." },
+  { slug: "contextporterext", name: "Context Porter", description: "Export AI session and project context to Markdown for handoff." },
+  { slug: "pdfviewerext", name: "PdfViewer", description: "Open PDF files quickly from VS Code." },
+  { slug: "pdftomdext", name: "PdfToMd", description: "Convert PDF files to Markdown from VS Code." },
+  { slug: "mdviewerext", name: "MdViewer", description: "Preview Markdown files quickly from VS Code." },
+  { slug: "mdtopdfext", name: "MdToPdf", description: "Convert Markdown files to PDF from VS Code." },
+  { slug: "docxviewerext", name: "DocxViewer", description: "Preview DOCX files quickly from VS Code." },
+  { slug: "docxtopdfext", name: "DocxToPdf", description: "Convert DOCX files to PDF from VS Code." },
+  { slug: "docxtomdext", name: "DocxToMd", description: "Convert DOCX files to Markdown from VS Code." },
+] as const;
+
 export const projects: Project[] = [
   {
     name: "InsightlySpend",
