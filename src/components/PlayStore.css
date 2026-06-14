@@ -1,158 +1,219 @@
-.play-store-intro {
-  text-align: center;
-  max-width: 640px;
-  margin: -24px auto 40px;
-  font-size: 0.95rem;
-  color: var(--text-muted);
-  line-height: 1.55;
+.apps-section {
+  padding: 6rem 1.5rem;
+  background:
+    radial-gradient(circle at 82% 10%, rgba(69, 219, 181, 0.16), transparent 24rem),
+    linear-gradient(180deg, #f7fbff 0%, #edf5ff 100%);
+  color: #132033;
 }
 
-.play-store-intro a {
-  color: var(--accent);
-}
-
-.play-store-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  max-width: 1100px;
+.apps-shell {
+  width: min(1180px, 100%);
   margin: 0 auto;
 }
 
-.play-store-card {
-  display: block;
-  text-align: left;
-  color: inherit;
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+.apps-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: end;
+  margin-bottom: 2rem;
 }
 
-.play-store-card:hover {
+.apps-kicker {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #087b63;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.apps-heading h2 {
+  margin: 0;
+  color: #102033;
+  font-size: clamp(2rem, 4vw, 3.35rem);
+  line-height: 1.04;
+}
+
+.apps-heading p:not(.apps-kicker) {
+  max-width: 760px;
+  margin: 0.9rem 0 0;
+  color: #56657a;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.apps-store-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.8rem;
+  padding: 0 1rem;
+  border: 1px solid rgba(12, 35, 59, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0c5f50;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 14px 34px rgba(21, 45, 78, 0.08);
+}
+
+.apps-store-link:hover {
+  color: #043c33;
+  transform: translateY(-1px);
+}
+
+.apps-featured {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.apps-featured-card,
+.apps-card {
+  position: relative;
+  min-width: 0;
+  border: 1px solid rgba(13, 35, 61, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 18px 46px rgba(20, 45, 76, 0.1);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.apps-featured-card:hover,
+.apps-card:hover {
+  border-color: rgba(8, 123, 99, 0.28);
+  box-shadow: 0 24px 56px rgba(20, 45, 76, 0.16);
   transform: translateY(-4px);
 }
 
-.play-store-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.play-store-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.play-store-name {
-  font-size: 1.15rem;
-  color: var(--text-h);
-  margin: 0;
-}
-
-.play-store-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
-.play-store-badge--play {
-  color: #01875f;
-  background: rgba(1, 135, 95, 0.15);
-}
-
-.play-store-badge--ios {
-  color: #0a84ff;
-  background: rgba(10, 132, 255, 0.15);
-}
-
-.play-store-developer {
-  font-size: 0.85rem;
-  color: var(--accent);
-  margin: 0 0 14px;
-}
-
-.play-store-meta {
+.apps-featured-card {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px 16px;
-  margin: 0 0 14px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  min-height: 15.5rem;
+  padding: 1.35rem;
+  overflow: hidden;
 }
 
-.play-store-meta dt {
-  font-size: 10px;
-  font-weight: 600;
+.apps-featured-card::after {
+  position: absolute;
+  right: -2rem;
+  bottom: -2rem;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 50%;
+  background: rgba(76, 209, 181, 0.14);
+  content: "";
+}
+
+.apps-feature-number {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  color: rgba(16, 32, 51, 0.14);
+  font-size: 2rem;
+  font-weight: 900;
+}
+
+.apps-featured-card img,
+.apps-card img {
+  width: 4.8rem;
+  height: 4.8rem;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 12px 30px rgba(14, 37, 62, 0.18);
+}
+
+.apps-featured-card img {
+  grid-row: span 4;
+}
+
+.apps-category,
+.apps-card span {
+  width: fit-content;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(8, 123, 99, 0.1);
+  color: #087b63;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin: 0 0 2px;
 }
 
-.play-store-meta dd {
+.apps-featured-card h3,
+.apps-card h3 {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--text-h);
-  font-family: var(--mono);
+  color: #102033;
+  font-size: 1.14rem;
+  line-height: 1.2;
 }
 
-.play-store-about {
-  font-size: 0.88rem;
-  color: var(--text-muted);
+.apps-featured-card p,
+.apps-card p {
+  margin: 0;
+  color: #607086;
+  font-size: 0.9rem;
   line-height: 1.55;
-  margin: 0 0 12px;
 }
 
-.play-store-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 1rem;
 }
 
-.play-store-tags .tag {
-  font-size: 11px;
+.apps-card {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+  padding: 1rem;
 }
 
-.play-store-ctas {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
+.apps-card h3 {
+  overflow-wrap: anywhere;
 }
 
-.play-store-cta {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.play-store-cta:hover {
-  color: var(--cyan);
-}
-
-.play-store-cta--ios {
-  color: #5ac8fa;
-}
-
-.play-store-cta--github {
-  color: var(--text-h);
-}
-
-@media (max-width: 640px) {
-  .play-store-grid {
+@media (max-width: 920px) {
+  .apps-heading,
+  .apps-featured {
     grid-template-columns: 1fr;
   }
 
-  .play-store-meta {
-    grid-template-columns: 1fr 1fr;
+  .apps-store-link {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 560px) {
+  .apps-section {
+    padding: 4.5rem 1rem;
+  }
+
+  .apps-featured-card {
+    grid-template-columns: 4.2rem minmax(0, 1fr);
+    min-height: 0;
+    padding: 1rem;
+  }
+
+  .apps-featured-card img,
+  .apps-card img {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 14px;
+  }
+
+  .apps-grid {
+    grid-template-columns: 1fr;
   }
 }
