@@ -53,7 +53,7 @@ type OpenSourceData = {
   pullRequestItems: GitHubIssue[];
   commitItems: GitHubCommit[];
   contributionDays: ContributionDay[];
-  source: "github" | "public-events";
+  source: "github-history" | "public-events";
 };
 
 type SearchResponse<T> = {
@@ -62,6 +62,7 @@ type SearchResponse<T> = {
 };
 
 type ContributionsFunctionResponse = {
+  accountCreatedAt?: string;
   commits?: number;
   pullRequests?: number;
   issues?: number;
@@ -205,7 +206,7 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
     pullRequestItems: pullRequests.items,
     commitItems: commits.items,
     contributionDays: contributionDetails?.contributionDays ?? mergeEventContributions(events),
-    source: contributionDetails?.contributionDays ? "github" : "public-events",
+    source: contributionDetails?.contributionDays ? "github-history" : "public-events",
   };
 }
 
@@ -270,6 +271,8 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
               data-level={getContributionLevel(day.count)}
               key={`${day.date || weekIndex}-${dayIndex}`}
               title={day.date ? `${day.count} contributions on ${day.date}` : undefined}
+              aria-label={day.date ? `${day.count} contributions on ${day.date}` : undefined}
+              data-count={day.date ? day.count : undefined}
             />
           ))}
         </div>
@@ -287,8 +290,8 @@ export default function OpenSource() {
         <div className="open-source-heading">
           <p className="section-kicker">Open Source</p>
           <h2>GitHub contribution activity</h2>
-          <p>
-            Recent public repositories, pull requests, commits, and a year-style
+            <p>
+            Recent public repositories, pull requests, commits, and a scrollable
             contribution view pulled from GitHub.
           </p>
         </div>
@@ -319,7 +322,11 @@ export default function OpenSource() {
                       <dd>{data.stars}</dd>
                     </div>
                     <div>
-                      <dt>{data.source === "github" ? "Commits (year)" : "Commits (recent)"}</dt>
+                      <dt>
+                        {data.source === "github-history"
+                          ? "Commits (lifetime)"
+                          : "Commits (recent)"}
+                      </dt>
                       <dd>{data.commits}</dd>
                     </div>
                     <div>
@@ -332,7 +339,8 @@ export default function OpenSource() {
                     </div>
                     <div>
                       <dt>
-                        Contributed to {data.source === "github" ? "(year)" : "(recent)"}
+                        Contributed to{" "}
+                        {data.source === "github-history" ? "(lifetime)" : "(recent)"}
                       </dt>
                       <dd>{data.contributedRepos}</dd>
                     </div>
@@ -346,7 +354,9 @@ export default function OpenSource() {
               <div className="open-source-card open-source-calendar-card">
                 <div className="open-source-card-title">
                   <h3>Contribution graph</h3>
-                  <span>{data.source === "github" ? "Last year" : "Recent public events"}</span>
+                  <span>
+                    {data.source === "github-history" ? "Full account history" : "Recent public events"}
+                  </span>
                 </div>
                 <ContributionGraph days={data.contributionDays} />
               </div>
