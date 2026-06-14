@@ -406,7 +406,238 @@ function renderWork(p, posts) {
 </html>`;
 }
 
-function buildSitemap(posts, workSlugs) {
+/* ---- Play Store app & VS Code extension pages --------------------------- */
+
+/** Supplemental FAQ for apps whose upstream copy is short, keyed by slug. */
+const APP_FAQ = {
+  "bulk-qr-barcode-suite": [
+    {
+      q: "Does Bulk QR & Barcode Suite work offline?",
+      a: "Yes. It is an offline-first Android suite — high-speed barcode and QR scanning, batch sessions, and CSV/Excel export all run on-device without an internet connection.",
+    },
+    {
+      q: "Can it scan barcodes in bulk and export them?",
+      a: "Yes. You can capture barcodes in continuous batch sessions and export each session to CSV or Excel for inventory and stock-taking workflows.",
+    },
+    {
+      q: "Can it generate custom QR codes?",
+      a: "Yes. It includes branded QR code generation, including custom logo QR codes alongside the bulk scanning tools.",
+    },
+  ],
+  "todo-app": [
+    {
+      q: "What is this Todo app built with?",
+      a: "It is a clean-architecture Android to-do application built with Jetpack Compose for the UI and Room for local database persistence.",
+    },
+    {
+      q: "Does the Todo app store data locally?",
+      a: "Yes. Tasks are captured, organized, and completed with on-device Room storage, so your daily work stays on your phone.",
+    },
+  ],
+};
+
+async function loadContentDir(dirName) {
+  const dir = path.join(ROOT, "content", dirName);
+  let files = [];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+  const items = [];
+  for (const file of files) {
+    const { data, content } = matter(await readFile(path.join(dir, file), "utf8"));
+    if (data.draft) continue;
+    items.push({ ...data, markdown: content, html: content.trim() ? marked.parse(content) : "" });
+  }
+  return items.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function storeJsonLd(p, url) {
+  const faq = p.kind === "app" ? APP_FAQ[p.slug] : undefined;
+  const node =
+    p.kind === "app"
+      ? {
+          "@type": "MobileApplication",
+          operatingSystem: "Android",
+          applicationCategory: p.category ? `${p.category}Application` : "MobileApplication",
+          ...(p.image ? { image: p.image, screenshot: p.image } : {}),
+          downloadUrl: p.playStoreUrl,
+          installUrl: p.playStoreUrl,
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        }
+      : {
+          "@type": "SoftwareApplication",
+          applicationCategory: "DeveloperApplication",
+          operatingSystem: "Visual Studio Code",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        };
+  const sameAs = [p.playStoreUrl, p.marketplaceUrl, p.openVsxUrl, p.githubUrl].filter(Boolean);
+  const section = p.kind === "app" ? "Apps" : "Extensions";
+  const sectionUrl = p.kind === "app" ? `${SITE_ORIGIN}/apps/` : `${SITE_ORIGIN}/vscode/`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        ...node,
+        "@id": `${url}#software`,
+        name: p.title,
+        description: p.description,
+        url,
+        sameAs,
+        author: { "@id": PERSON_ID },
+        publisher: { "@id": PERSON_ID },
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_ORIGIN}/` },
+          { "@type": "ListItem", position: 2, name: section, item: sectionUrl },
+          { "@type": "ListItem", position: 3, name: p.title, item: url },
+        ],
+      },
+      ...(faq
+        ? [
+            {
+              "@type": "FAQPage",
+              "@id": `${url}#faq`,
+              mainEntity: faq.map((f) => ({
+                "@type": "Question",
+                name: f.q,
+                acceptedAnswer: { "@type": "Answer", text: f.a },
+              })),
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+function renderStoreItem(p, posts) {
+  const base = p.kind === "app" ? "apps" : "vscode";
+  const section = p.kind === "app" ? "Apps" : "Extensions";
+  const url = `${SITE_ORIGIN}/${base}/${p.slug}/`;
+  const links =
+    p.kind === "app"
+      ? [
+          { label: "Get it on Google Play", href: p.playStoreUrl },
+          { label: "Source on GitHub", href: p.githubUrl },
+        ]
+      : [
+          { label: "VS Code Marketplace", href: p.marketplaceUrl },
+          { label: "Open VSX", href: p.openVsxUrl },
+          { label: "Source on GitHub", href: p.githubUrl },
+        ];
+  const linkRow = links
+    .filter((l) => l.href)
+    .map((l) => `<a class="btn" href="${l.href}" rel="noopener" target="_blank">${escapeHtml(l.label)} ↗</a>`)
+    .join(" ");
+  const faq = p.kind === "app" ? APP_FAQ[p.slug] : undefined;
+  const faqBlock = faq
+    ? `<section class="faq"><h2>Frequently asked questions</h2>${faq
+        .map((f) => `<h3>${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`)
+        .join("")}</section>`
+    : "";
+  const hero =
+    p.kind === "app" && p.image
+      ? `<img class="app-icon" src="${p.image}" alt="${escapeHtml(p.title)} app icon" width="88" height="88" loading="eager" />`
+      : "";
+  const related = relatedPostFor({ name: `${p.title} ${p.category || ""}`, tags: [] }, posts);
+  const relatedBlock = related
+    ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="/blog/${related.slug}/">${escapeHtml(related.title)}</a></li></ul></aside>`
+    : "";
+  const kindLabel = p.kind === "app" ? `Android app${p.category ? ` · ${p.category}` : ""}` : "VS Code extension";
+  const title =
+    p.kind === "app"
+      ? `${p.title} — Android App by Michael Samuel Naeem`
+      : `${p.title} — VS Code Extension by Michael Samuel Naeem`;
+  return `${head({
+    title,
+    description: p.description,
+    canonical: url,
+    ogImage: p.image || DEFAULT_OG,
+    ogType: "website",
+    jsonLd: storeJsonLd(p, url),
+  })}
+<body>
+  ${siteNav}
+  <div class="wrap">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">Home</a> / <a href="/${base}/">${section}</a> / <span>${escapeHtml(p.title)}</span>
+    </nav>
+    <article>
+      <div class="store-head">${hero}<div><p class="post-meta">${escapeHtml(kindLabel)}</p><h1>${escapeHtml(p.title)}</h1></div></div>
+      <p class="lede">${escapeHtml(p.description)}</p>
+      <p>${linkRow}</p>
+      ${p.html}
+      ${faqBlock}
+      ${relatedBlock}
+      ${postCta}
+    </article>
+  </div>
+  ${siteFooter}
+</body>
+</html>`;
+}
+
+function renderStoreHub(items, kind) {
+  const base = kind === "app" ? "apps" : "vscode";
+  const isApp = kind === "app";
+  const heading = isApp ? "Android Apps" : "VS Code Extensions";
+  const lede = isApp
+    ? "Published Android apps on Google Play by Michael Samuel Naeem — offline-first, privacy-respecting tools across finance, productivity, AI, and developer utilities."
+    : "VS Code extensions by Michael Samuel Naeem on the Visual Studio Marketplace and Open VSX — document tooling, converters, and developer productivity helpers.";
+  const cards = items
+    .map(
+      (p) => `<a class="post-card store-card" href="/${base}/${p.slug}/">
+        ${isApp && p.image ? `<img class="app-icon" src="${p.image}" alt="${escapeHtml(p.title)} icon" width="56" height="56" loading="lazy" />` : ""}
+        <div><h2>${escapeHtml(p.title)}</h2><p>${escapeHtml(p.description)}</p></div>
+      </a>`,
+    )
+    .join("\n");
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "@id": `${SITE_ORIGIN}/${base}/#collection`,
+    name: `${heading} — Michael Samuel Naeem`,
+    description: lede,
+    url: `${SITE_ORIGIN}/${base}/`,
+    inLanguage: "en",
+    isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
+    about: { "@id": PERSON_ID },
+    hasPart: items.map((p) => ({
+      "@type": isApp ? "MobileApplication" : "SoftwareApplication",
+      name: p.title,
+      url: `${SITE_ORIGIN}/${base}/${p.slug}/`,
+    })),
+  };
+  return `${head({
+    title: isApp
+      ? "Android Apps on Google Play — Michael Samuel Naeem"
+      : "VS Code Extensions — Michael Samuel Naeem",
+    description: lede,
+    canonical: `${SITE_ORIGIN}/${base}/`,
+    ogImage: DEFAULT_OG,
+    ogType: "website",
+    jsonLd,
+  })}
+<body>
+  ${siteNav}
+  <div class="wrap hub-wrap">
+    <header class="hub-head">
+      <h1>${heading}</h1>
+      <p class="lede">${escapeHtml(lede)}</p>
+    </header>
+    <main class="post-grid">
+      ${cards}
+    </main>
+  </div>
+  ${siteFooter}
+</body>
+</html>`;
+}
+
+function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
@@ -422,6 +653,24 @@ function buildSitemap(posts, workSlugs) {
       lastmod: today,
       changefreq: "monthly",
       priority: "0.7",
+    })),
+    ...(appSlugs.length
+      ? [{ loc: `${SITE_ORIGIN}/apps/`, lastmod: today, changefreq: "monthly", priority: "0.7" }]
+      : []),
+    ...appSlugs.map((slug) => ({
+      loc: `${SITE_ORIGIN}/apps/${slug}/`,
+      lastmod: today,
+      changefreq: "monthly",
+      priority: "0.6",
+    })),
+    ...(extSlugs.length
+      ? [{ loc: `${SITE_ORIGIN}/vscode/`, lastmod: today, changefreq: "monthly", priority: "0.7" }]
+      : []),
+    ...extSlugs.map((slug) => ({
+      loc: `${SITE_ORIGIN}/vscode/${slug}/`,
+      lastmod: today,
+      changefreq: "monthly",
+      priority: "0.6",
     })),
     {
       loc: `${SITE_ORIGIN}/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf`,
@@ -477,8 +726,9 @@ async function main() {
 
   await writeFile(path.join(BLOG_DIST, "index.html"), renderHub(posts));
 
-  // Project case-study pages — flagship projects only (avoid thin pages).
-  const flagship = projects.filter((p) => p.highlight);
+  // Project case-study pages — flagship projects, EXCEPT the self-published apps
+  // (company "MichaelSam94"), which get richer dedicated pages under /apps instead.
+  const flagship = projects.filter((p) => p.highlight && !p.company.includes("MichaelSam94"));
   const workSlugs = [];
   for (const project of flagship) {
     const slug = workSlug(project.name);
@@ -488,10 +738,30 @@ async function main() {
     await writeFile(path.join(dir, "index.html"), renderWork(project, posts));
   }
 
-  await writeFile(path.join(DIST, "sitemap.xml"), buildSitemap(posts, workSlugs));
+  // Play Store app pages (/apps/<slug>) + VS Code extension pages (/vscode/<slug>).
+  const apps = await loadContentDir("apps");
+  const extensions = await loadContentDir("extensions");
+  const appSlugs = [];
+  for (const app of apps) {
+    appSlugs.push(app.slug);
+    const dir = path.join(DIST, "apps", app.slug);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "index.html"), renderStoreItem(app, posts));
+  }
+  const extSlugs = [];
+  for (const ext of extensions) {
+    extSlugs.push(ext.slug);
+    const dir = path.join(DIST, "vscode", ext.slug);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "index.html"), renderStoreItem(ext, posts));
+  }
+  if (apps.length) await writeFile(path.join(DIST, "apps", "index.html"), renderStoreHub(apps, "app"));
+  if (extensions.length) await writeFile(path.join(DIST, "vscode", "index.html"), renderStoreHub(extensions, "ext"));
+
+  await writeFile(path.join(DIST, "sitemap.xml"), buildSitemap(posts, workSlugs, appSlugs, extSlugs));
 
   console.log(
-    `[build-blog] Generated ${posts.length} post(s), ${workSlugs.length} /work page(s), /blog hub, and sitemap.xml`,
+    `[build-blog] Generated ${posts.length} post(s), ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, and sitemap.xml`,
   );
 }
 

@@ -21,15 +21,17 @@ function ProjectCard({ proj }: { proj: Project }) {
 
   const externalLinks = "links" in proj ? proj.links : [{ label: "View project", href: proj.link }];
 
-  // Flagship projects have a static case-study page at /work/<slug> (see scripts/build-blog.mjs).
-  // Render them as a div so the in-app case-study link can sit alongside external links.
+  // Flagship projects get a static detail page: self-published apps (company "MichaelSam94")
+  // live under /apps/<slug>, other professional work under /work/<slug> (see scripts/build-blog.mjs).
+  // Render as a div so the in-app detail link can sit alongside external links.
   if (proj.highlight) {
+    const detailBase = proj.company.includes("MichaelSam94") ? "apps" : "work";
     return (
       <div className={cardClass}>
         {body}
         <div className="projects-card-links">
-          <a href={`/work/${workSlug(proj.name)}/`} className="projects-footer-link projects-casestudy">
-            Case study →
+          <a href={`/${detailBase}/${workSlug(proj.name)}/`} className="projects-footer-link projects-casestudy">
+            {detailBase === "apps" ? "App details →" : "Case study →"}
           </a>
           {externalLinks.map((l) => (
             <a
