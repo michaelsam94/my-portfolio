@@ -45,6 +45,7 @@ type ContributionDay = {
 
 type OpenSourceData = {
   stars: number;
+  totalContributions: number;
   pullRequests: number;
   issues: number;
   contributedRepos: number;
@@ -53,7 +54,7 @@ type OpenSourceData = {
   pullRequestItems: GitHubIssue[];
   commitItems: GitHubCommit[];
   contributionDays: ContributionDay[];
-  source: "github-history" | "public-events";
+  source: "github-history" | "github-public-history" | "public-events";
 };
 
 type SearchResponse<T> = {
@@ -63,11 +64,13 @@ type SearchResponse<T> = {
 
 type ContributionsFunctionResponse = {
   accountCreatedAt?: string;
+  totalContributions?: number;
   commits?: number;
   pullRequests?: number;
   issues?: number;
   contributedRepos?: number;
   contributionDays?: ContributionDay[];
+  source?: "github-history" | "github-public-history";
 };
 
 function formatDate(value: string) {
@@ -195,9 +198,13 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
 
     return total + (event.payload.commits?.length ?? 0);
   }, 0);
+  const contributionDays = contributionDetails?.contributionDays ?? mergeEventContributions(events);
 
   return {
     stars,
+    totalContributions:
+      contributionDetails?.totalContributions ??
+      contributionDays.reduce((total, day) => total + day.count, 0),
     pullRequests: contributionDetails?.pullRequests ?? pullRequests.total_count,
     issues: contributionDetails?.issues ?? issues.total_count,
     contributedRepos: contributionDetails?.contributedRepos ?? eventRepos.size,
@@ -205,8 +212,10 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
     repos: sourceRepos.slice(0, 5),
     pullRequestItems: pullRequests.items,
     commitItems: commits.items,
-    contributionDays: contributionDetails?.contributionDays ?? mergeEventContributions(events),
-    source: contributionDetails?.contributionDays ? "github-history" : "public-events",
+    contributionDays,
+    source: contributionDetails?.contributionDays
+      ? contributionDetails.source ?? "github-history"
+      : "public-events",
   };
 }
 
@@ -323,7 +332,14 @@ export default function OpenSource() {
                     </div>
                     <div>
                       <dt>
-                        {data.source === "github-history"
+                        Total Contributions{" "}
+                        {data.source !== "public-events" ? "(lifetime)" : "(recent)"}
+                      </dt>
+                      <dd>{data.totalContributions}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        {data.source !== "public-events"
                           ? "Commits (lifetime)"
                           : "Commits (recent)"}
                       </dt>
@@ -340,7 +356,7 @@ export default function OpenSource() {
                     <div>
                       <dt>
                         Contributed to{" "}
-                        {data.source === "github-history" ? "(lifetime)" : "(recent)"}
+                        {data.source !== "public-events" ? "(lifetime)" : "(recent)"}
                       </dt>
                       <dd>{data.contributedRepos}</dd>
                     </div>
@@ -355,7 +371,9 @@ export default function OpenSource() {
                 <div className="open-source-card-title">
                   <h3>Contribution graph</h3>
                   <span>
-                    {data.source === "github-history" ? "Full account history" : "Recent public events"}
+                    {data.source !== "public-events"
+                      ? "Full account history"
+                      : "Recent public events"}
                   </span>
                 </div>
                 <ContributionGraph days={data.contributionDays} />
