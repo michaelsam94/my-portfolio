@@ -10,6 +10,7 @@ const Experience = lazy(() => import("./Experience"));
 const Projects = lazy(() => import("./Projects"));
 const PlayStore = lazy(() => import("./PlayStore"));
 const Impact = lazy(() => import("./Impact"));
+const OpenSource = lazy(() => import("./OpenSource"));
 const Skills = lazy(() => import("./Skills"));
 const Certifications = lazy(() => import("./Certifications"));
 const Contact = lazy(() => import("./Contact"));
@@ -94,6 +95,7 @@ export default function DeferredPortfolioSections() {
       <Projects />
       <PlayStore />
       <Impact />
+      <OpenSource />
       <Skills />
       <Certifications />
       <Contact />

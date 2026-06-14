@@ -1,0 +1,437 @@
+import { useEffect, useMemo, useState } from "react";
+import "./OpenSource.css";
+
+const GITHUB_USERNAME = "michaelsam94";
+
+type GitHubRepo = {
+  id: number;
+  name: string;
+  html_url: string;
+  description: string | null;
+  stargazers_count: number;
+  forks_count: number;
+  language: string | null;
+  pushed_at: string;
+  fork: boolean;
+};
+
+type GitHubIssue = {
+  id: number;
+  title: string;
+  html_url: string;
+  repository_url: string;
+  state: string;
+  updated_at: string;
+};
+
+type GitHubCommit = {
+  sha: string;
+  html_url: string;
+  commit: {
+    message: string;
+    author: {
+      date: string;
+    };
+  };
+  repository?: {
+    full_name: string;
+  };
+};
+
+type ContributionDay = {
+  date: string;
+  count: number;
+};
+
+type OpenSourceData = {
+  stars: number;
+  pullRequests: number;
+  issues: number;
+  contributedRepos: number;
+  commits: number;
+  repos: GitHubRepo[];
+  pullRequestItems: GitHubIssue[];
+  commitItems: GitHubCommit[];
+  contributionDays: ContributionDay[];
+  source: "github" | "public-events";
+};
+
+type SearchResponse<T> = {
+  total_count: number;
+  items: T[];
+};
+
+type ContributionsFunctionResponse = {
+  commits?: number;
+  pullRequests?: number;
+  issues?: number;
+  contributedRepos?: number;
+  contributionDays?: ContributionDay[];
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function getRepoName(repositoryUrl: string) {
+  return repositoryUrl.split("/repos/")[1] ?? "GitHub";
+}
+
+function startOfContributionYear() {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function buildEmptyContributionDays() {
+  const start = startOfContributionYear();
+  const end = new Date();
+  const days: ContributionDay[] = [];
+
+  for (const day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
+    days.push({ date: day.toISOString().slice(0, 10), count: 0 });
+  }
+
+  return days;
+}
+
+function mergeEventContributions(events: GitHubEvent[]) {
+  const days = buildEmptyContributionDays();
+  const byDate = new Map(days.map((day) => [day.date, day]));
+
+  for (const event of events) {
+    const date = event.created_at.slice(0, 10);
+    const day = byDate.get(date);
+
+    if (!day) {
+      continue;
+    }
+
+    if (event.type === "PushEvent") {
+      day.count += event.payload.commits?.length ?? 1;
+    } else if (["PullRequestEvent", "IssuesEvent", "CreateEvent"].includes(event.type)) {
+      day.count += 1;
+    }
+  }
+
+  return days;
+}
+
+type GitHubEvent = {
+  id: string;
+  type: string;
+  created_at: string;
+  repo: {
+    name: string;
+  };
+  payload: {
+    commits?: Array<{ sha: string; message: string }>;
+  };
+};
+
+async function githubFetch<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchContributionDetails(username: string) {
+  const response = await fetch(`/.netlify/functions/github-contributions?username=${username}`);
+
+  if (!response.ok) {
+    throw new Error("Contribution function unavailable");
+  }
+
+  return response.json() as Promise<ContributionsFunctionResponse>;
+}
+
+async function fetchOpenSourceData(): Promise<OpenSourceData> {
+  const [
+    repos,
+    pullRequests,
+    issues,
+    commits,
+    events,
+    contributionDetails,
+  ] = await Promise.all([
+    githubFetch<GitHubRepo[]>(
+      `https://api.github.com/users/${GITHUB_USERNAME}/repos?per_page=100&sort=pushed`,
+    ),
+    githubFetch<SearchResponse<GitHubIssue>>(
+      `https://api.github.com/search/issues?q=author:${GITHUB_USERNAME}+type:pr&sort=updated&order=desc&per_page=6`,
+    ),
+    githubFetch<SearchResponse<GitHubIssue>>(
+      `https://api.github.com/search/issues?q=author:${GITHUB_USERNAME}+type:issue&sort=updated&order=desc&per_page=1`,
+    ),
+    githubFetch<SearchResponse<GitHubCommit>>(
+      `https://api.github.com/search/commits?q=author:${GITHUB_USERNAME}&sort=author-date&order=desc&per_page=6`,
+    ).catch(() => ({ total_count: 0, items: [] })),
+    githubFetch<GitHubEvent[]>(
+      `https://api.github.com/users/${GITHUB_USERNAME}/events/public?per_page=100`,
+    ).catch(() => []),
+    fetchContributionDetails(GITHUB_USERNAME).catch(() => undefined),
+  ]);
+
+  const sourceRepos = repos.filter((repo) => !repo.fork);
+  const stars = sourceRepos.reduce((total, repo) => total + repo.stargazers_count, 0);
+  const eventRepos = new Set(events.map((event) => event.repo.name));
+  const eventCommits = events.reduce((total, event) => {
+    if (event.type !== "PushEvent") {
+      return total;
+    }
+
+    return total + (event.payload.commits?.length ?? 0);
+  }, 0);
+
+  return {
+    stars,
+    pullRequests: contributionDetails?.pullRequests ?? pullRequests.total_count,
+    issues: contributionDetails?.issues ?? issues.total_count,
+    contributedRepos: contributionDetails?.contributedRepos ?? eventRepos.size,
+    commits: contributionDetails?.commits ?? eventCommits,
+    repos: sourceRepos.slice(0, 5),
+    pullRequestItems: pullRequests.items,
+    commitItems: commits.items,
+    contributionDays: contributionDetails?.contributionDays ?? mergeEventContributions(events),
+    source: contributionDetails?.contributionDays ? "github" : "public-events",
+  };
+}
+
+function getContributionLevel(count: number) {
+  if (count === 0) return "0";
+  if (count < 2) return "1";
+  if (count < 5) return "2";
+  if (count < 10) return "3";
+  return "4";
+}
+
+function useOpenSourceData() {
+  const [data, setData] = useState<OpenSourceData | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+
+    fetchOpenSourceData()
+      .then((nextData) => {
+        if (!active) return;
+        setData(nextData);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return { data, status };
+}
+
+function ContributionGraph({ days }: { days: ContributionDay[] }) {
+  const weeks = useMemo(() => {
+    const padded = [...days];
+    const firstDay = new Date(padded[0]?.date ?? new Date()).getDay();
+
+    for (let i = 0; i < firstDay; i += 1) {
+      padded.unshift({ date: "", count: 0 });
+    }
+
+    const grouped: ContributionDay[][] = [];
+    for (let i = 0; i < padded.length; i += 7) {
+      grouped.push(padded.slice(i, i + 7));
+    }
+
+    return grouped;
+  }, [days]);
+
+  return (
+    <div className="open-source-graph" aria-label="GitHub contribution graph for the past year">
+      {weeks.map((week, weekIndex) => (
+        <div className="open-source-week" key={`week-${weekIndex}`}>
+          {week.map((day, dayIndex) => (
+            <span
+              className="open-source-day"
+              data-level={getContributionLevel(day.count)}
+              key={`${day.date || weekIndex}-${dayIndex}`}
+              title={day.date ? `${day.count} contributions on ${day.date}` : undefined}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function OpenSource() {
+  const { data, status } = useOpenSourceData();
+
+  return (
+    <section className="open-source" id="open-source">
+      <div className="open-source-inner">
+        <div className="open-source-heading">
+          <p className="section-kicker">Open Source</p>
+          <h2>GitHub contribution activity</h2>
+          <p>
+            Recent public repositories, pull requests, commits, and a year-style
+            contribution view pulled from GitHub.
+          </p>
+        </div>
+
+        {status === "loading" && (
+          <div className="open-source-card open-source-loading">
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="open-source-card open-source-error">
+            GitHub activity is temporarily unavailable. The section will retry on the next visit.
+          </div>
+        )}
+
+        {data && (
+          <>
+            <div className="open-source-stats" aria-label="GitHub contribution totals">
+              <div className="open-source-card open-source-score-card">
+                <div>
+                  <h3>Michael Sam's GitHub Stats</h3>
+                  <dl>
+                    <div>
+                      <dt>Total Stars Earned</dt>
+                      <dd>{data.stars}</dd>
+                    </div>
+                    <div>
+                      <dt>{data.source === "github" ? "Commits (year)" : "Commits (recent)"}</dt>
+                      <dd>{data.commits}</dd>
+                    </div>
+                    <div>
+                      <dt>Total PRs</dt>
+                      <dd>{data.pullRequests}</dd>
+                    </div>
+                    <div>
+                      <dt>Total Issues</dt>
+                      <dd>{data.issues}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Contributed to {data.source === "github" ? "(year)" : "(recent)"}
+                      </dt>
+                      <dd>{data.contributedRepos}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="open-source-grade" aria-label="GitHub activity grade">
+                  B-
+                </div>
+              </div>
+
+              <div className="open-source-card open-source-calendar-card">
+                <div className="open-source-card-title">
+                  <h3>Contribution graph</h3>
+                  <span>{data.source === "github" ? "Last year" : "Recent public events"}</span>
+                </div>
+                <ContributionGraph days={data.contributionDays} />
+              </div>
+            </div>
+
+            <div className="open-source-lists">
+              <div className="open-source-card">
+                <div className="open-source-card-title">
+                  <h3>Recent repos</h3>
+                  <a href={`https://github.com/${GITHUB_USERNAME}?tab=repositories`}>View all</a>
+                </div>
+                <ul className="open-source-list">
+                  {data.repos.map((repo) => (
+                    <li key={repo.id}>
+                      <a href={repo.html_url} target="_blank" rel="noreferrer">
+                        {repo.name}
+                      </a>
+                      <p>{repo.description ?? "Public repository"}</p>
+                      <span>
+                        {repo.language ?? "Code"} · {repo.stargazers_count} stars · updated{" "}
+                        {formatDate(repo.pushed_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="open-source-card">
+                <div className="open-source-card-title">
+                  <h3>Recent pull requests</h3>
+                  <a
+                    href={`https://github.com/search?q=author%3A${GITHUB_USERNAME}+type%3Apr&type=pullrequests`}
+                  >
+                    View all
+                  </a>
+                </div>
+                <ul className="open-source-list">
+                  {data.pullRequestItems.map((pullRequest) => (
+                    <li key={pullRequest.id}>
+                      <a href={pullRequest.html_url} target="_blank" rel="noreferrer">
+                        {pullRequest.title}
+                      </a>
+                      <span>
+                        {getRepoName(pullRequest.repository_url)} · {pullRequest.state} · updated{" "}
+                        {formatDate(pullRequest.updated_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="open-source-card">
+                <div className="open-source-card-title">
+                  <h3>Recent commits</h3>
+                  <a
+                    href={`https://github.com/search?q=author%3A${GITHUB_USERNAME}&type=commits`}
+                  >
+                    View all
+                  </a>
+                </div>
+                <ul className="open-source-list">
+                  {data.commitItems.length > 0 ? (
+                    data.commitItems.map((commit) => (
+                      <li key={commit.sha}>
+                        <a href={commit.html_url} target="_blank" rel="noreferrer">
+                          {commit.commit.message.split("\n")[0]}
+                        </a>
+                        <span>
+                          {commit.repository?.full_name ?? "GitHub"} ·{" "}
+                          {formatDate(commit.commit.author.date)}
+                        </span>
+                      </li>
+                    ))
+                  ) : (
+                    <li>
+                      <a href={`https://github.com/${GITHUB_USERNAME}`}>Commit search unavailable</a>
+                      <span>GitHub occasionally rate-limits public commit search.</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
