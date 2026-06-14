@@ -253,7 +253,14 @@ function useOpenSourceData() {
   return { data, status };
 }
 
+type ContributionTooltip = {
+  text: string;
+  left: number;
+  top: number;
+};
+
 function ContributionGraph({ days }: { days: ContributionDay[] }) {
+  const [tooltip, setTooltip] = useState<ContributionTooltip | null>(null);
   const weeks = useMemo(() => {
     const padded = [...days];
     const firstDay = new Date(padded[0]?.date ?? new Date()).getDay();
@@ -270,22 +277,51 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
     return grouped;
   }, [days]);
 
+  const showTooltip = (day: ContributionDay, element: HTMLElement) => {
+    if (!day.date) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    setTooltip({
+      text: `${day.count} contributions on ${day.date}`,
+      left: rect.left + rect.width / 2,
+      top: rect.top,
+    });
+  };
+
   return (
-    <div className="open-source-graph" aria-label="GitHub contribution graph for the past year">
-      {weeks.map((week, weekIndex) => (
-        <div className="open-source-week" key={`week-${weekIndex}`}>
-          {week.map((day, dayIndex) => (
-            <span
-              className="open-source-day"
-              data-level={getContributionLevel(day.count)}
-              key={`${day.date || weekIndex}-${dayIndex}`}
-              title={day.date ? `${day.count} contributions on ${day.date}` : undefined}
-              aria-label={day.date ? `${day.count} contributions on ${day.date}` : undefined}
-              data-count={day.date ? day.count : undefined}
-            />
-          ))}
+    <div className="open-source-graph-wrap">
+      <div className="open-source-graph" aria-label="GitHub contribution graph">
+        {weeks.map((week, weekIndex) => (
+          <div className="open-source-week" key={`week-${weekIndex}`}>
+            {week.map((day, dayIndex) => (
+              <span
+                className="open-source-day"
+                data-level={getContributionLevel(day.count)}
+                key={`${day.date || weekIndex}-${dayIndex}`}
+                aria-label={day.date ? `${day.count} contributions on ${day.date}` : undefined}
+                data-count={day.date ? day.count : undefined}
+                tabIndex={day.date ? 0 : -1}
+                onBlur={() => setTooltip(null)}
+                onFocus={(event) => showTooltip(day, event.currentTarget)}
+                onMouseEnter={(event) => showTooltip(day, event.currentTarget)}
+                onMouseLeave={() => setTooltip(null)}
+                onMouseMove={(event) => showTooltip(day, event.currentTarget)}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      {tooltip ? (
+        <div
+          className="open-source-tooltip"
+          role="status"
+          style={{ left: tooltip.left, top: tooltip.top }}
+        >
+          {tooltip.text}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -339,7 +375,7 @@ export default function OpenSource() {
                     </div>
                     <div>
                       <dt>
-                        {data.source !== "public-events"
+                        {data.source === "github-history"
                           ? "Commits (lifetime)"
                           : "Commits (recent)"}
                       </dt>
@@ -356,7 +392,7 @@ export default function OpenSource() {
                     <div>
                       <dt>
                         Contributed to{" "}
-                        {data.source !== "public-events" ? "(lifetime)" : "(recent)"}
+                        {data.source === "github-history" ? "(lifetime)" : "(recent)"}
                       </dt>
                       <dd>{data.contributedRepos}</dd>
                     </div>
