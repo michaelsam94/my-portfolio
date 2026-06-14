@@ -1,4 +1,4 @@
-import { projects, type Project } from "../data/portfolio";
+import { projects, workSlug, type Project } from "../data/portfolio";
 import "./Projects.css";
 
 function ProjectCard({ proj }: { proj: Project }) {
@@ -18,6 +18,34 @@ function ProjectCard({ proj }: { proj: Project }) {
       </div>
     </>
   );
+
+  const externalLinks = "links" in proj ? proj.links : [{ label: "View project", href: proj.link }];
+
+  // Flagship projects have a static case-study page at /work/<slug> (see scripts/build-blog.mjs).
+  // Render them as a div so the in-app case-study link can sit alongside external links.
+  if (proj.highlight) {
+    return (
+      <div className={cardClass}>
+        {body}
+        <div className="projects-card-links">
+          <a href={`/work/${workSlug(proj.name)}/`} className="projects-footer-link projects-casestudy">
+            Case study →
+          </a>
+          {externalLinks.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="projects-footer-link"
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if ("links" in proj) {
     return (

@@ -7,8 +7,8 @@ export const profile = {
   phone: "+20 109 800 2198",
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
-  /** Tech blog — technology trends and engineering notes. */
-  techBlog: "https://codeandcoffe.netlify.app/",
+  /** Native engineering blog — statically generated at /blog (see scripts/build-blog.mjs). */
+  techBlog: "/blog/",
   vscodeMarketplace: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
   openVsx: "https://open-vsx.org/namespace/michaelsam94",
   /** Google Play developer catalog (published apps under developer id MichaelSam94). */
@@ -159,6 +159,18 @@ export type Project =
       highlight?: boolean;
       links: { label: string; href: string }[];
     };
+
+/**
+ * Slug for a project's static case-study page at `/work/<slug>`.
+ * Shared by `Projects.tsx` (in-app link) and `scripts/build-blog.mjs` (page generation)
+ * so the two never drift apart.
+ */
+export const workSlug = (name: string): string =>
+  name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 
 export const projects: Project[] = [
   {

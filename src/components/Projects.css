@@ -98,6 +98,12 @@
   transform: translateY(-1px);
 }
 
+/* Internal case-study link — filled accent to read as the primary action. */
+.projects-casestudy {
+  color: var(--text-h);
+  background: var(--accent);
+}
+
 @media (max-width: 640px) {
   .projects-grid {
     grid-template-columns: 1fr;
