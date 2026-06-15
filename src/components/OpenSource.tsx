@@ -161,6 +161,20 @@ async function fetchContributionDetails(username: string) {
   return response.json() as Promise<ContributionsFunctionResponse>;
 }
 
+// Committed snapshot of the full history (scripts/fetch-contributions.mjs). Used when the
+// live function is unavailable or rate-limited, so the graph still spans from account creation.
+async function fetchStaticContributions(): Promise<ContributionsFunctionResponse | undefined> {
+  try {
+    const response = await fetch("/contributions.json");
+    if (!response.ok) {
+      return undefined;
+    }
+    return (await response.json()) as ContributionsFunctionResponse;
+  } catch {
+    return undefined;
+  }
+}
+
 async function fetchOpenSourceData(): Promise<OpenSourceData> {
   const [
     repos,
@@ -198,7 +212,13 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
 
     return total + (event.payload.commits?.length ?? 0);
   }, 0);
-  const contributionDays = contributionDetails?.contributionDays ?? mergeEventContributions(events);
+  // Prefer the live function only when it returned real history (> ~1 year of days);
+  // otherwise fall back to the committed full-history snapshot, then to recent events.
+  const liveDays = contributionDetails?.contributionDays;
+  const contributionDays =
+    liveDays && liveDays.length >= 366
+      ? liveDays
+      : ((await fetchStaticContributions())?.contributionDays ?? liveDays ?? mergeEventContributions(events));
 
   return {
     stars,
@@ -281,9 +301,15 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
   // Weeks run oldest → newest left-to-right; show the most recent contributions by default.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) {
-      el.scrollLeft = el.scrollWidth;
+    if (!el) {
+      return;
     }
+    const scrollToLatest = () => {
+      el.scrollLeft = el.scrollWidth;
+    };
+    scrollToLatest();
+    const raf = requestAnimationFrame(scrollToLatest);
+    return () => cancelAnimationFrame(raf);
   }, [weeks]);
 
   const showTooltip = (day: ContributionDay, element: HTMLElement) => {
@@ -300,8 +326,8 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
   };
 
   return (
-    <div className="open-source-graph-wrap" ref={scrollRef}>
-      <div className="open-source-graph" aria-label="GitHub contribution graph">
+    <div className="open-source-graph-wrap">
+      <div className="open-source-graph" aria-label="GitHub contribution graph" ref={scrollRef}>
         {weeks.map((week, weekIndex) => (
           <div className="open-source-week" key={`week-${weekIndex}`}>
             {week.map((day, dayIndex) => (
