@@ -696,6 +696,11 @@ ${urls
 }
 
 // --- RSS 2.0 feed for the engineering blog ---------------------------------
+function buildTextSitemap(...args) {
+  const xml = buildSitemap(...args);
+  const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
+  return urls.join("\n") + "\n";
+}
 function buildFeed(posts) {
   const now = new Date().toUTCString();
   const items = posts
@@ -925,6 +930,7 @@ async function main() {
   if (extensions.length) await writeFile(path.join(DIST, "vscode", "index.html"), renderStoreHub(extensions, "ext"));
 
   await writeFile(path.join(DIST, "sitemap.xml"), buildSitemap(posts, workSlugs, appSlugs, extSlugs));
+  await writeFile(path.join(DIST, "sitemap.txt"), buildTextSitemap(posts, workSlugs, appSlugs, extSlugs));
 
   // RSS feed for the blog.
   await writeFile(path.join(BLOG_DIST, "feed.xml"), buildFeed(posts));
