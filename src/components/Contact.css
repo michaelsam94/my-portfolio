@@ -72,3 +72,52 @@
     justify-content: center;
   }
 }
+
+.share-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 24px;
+}
+
+.share-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), transform 0.2s;
+}
+
+.share-btn:hover,
+.share-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.share-btn svg {
+  display: block;
+}
