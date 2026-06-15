@@ -51,3 +51,12 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://michaelsam94.tech/sitemap.xml
+
+# Bing / OpenAI search discovery
+User-agent: bingbot
+Allow: /
+
+User-agent: msnbot
+Allow: /
+
+Host: michaelsam94.tech
