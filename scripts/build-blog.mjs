@@ -25,7 +25,7 @@ const BLOG_DIST = path.join(DIST, "blog");
 const SITE_ORIGIN = "https://michaelsam94.tech";
 const AUTHOR = "Michael Samuel Naeem";
 const PERSON_ID = `${SITE_ORIGIN}/#person`;
-const DEFAULT_OG = `${SITE_ORIGIN}/profile-photo.png`;
+const DEFAULT_OG = `${SITE_ORIGIN}/og-image.png`;
 
 const escapeHtml = (s = "") =>
   String(s)
