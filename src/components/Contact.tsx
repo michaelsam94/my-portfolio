@@ -4,6 +4,8 @@ import "./Contact.css";
 
 const SITE_URL = "https://michaelsam94.tech/";
 const SHARE_TITLE = "Michael Samuel Naeem — Senior Android Developer & Tech Lead";
+const SHARE_TEXT =
+  "Michael Samuel Naeem — Senior Android Developer & Tech Lead, open to remote jobs and freelance projects.";
 
 function currentUrl() {
   return typeof window !== "undefined" ? window.location.href : SITE_URL;
@@ -15,7 +17,7 @@ async function shareVia(network: string) {
   const url = currentUrl();
   if (typeof navigator !== "undefined" && navigator.share) {
     try {
-      await navigator.share({ title: SHARE_TITLE, text: SHARE_TITLE, url });
+      await navigator.share({ title: SHARE_TITLE, text: SHARE_TEXT, url });
     } catch {
       /* user dismissed the share sheet */
     }
@@ -116,7 +118,7 @@ export default function Contact() {
           </a>
           <a
             className="share-btn"
-            href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(currentUrl())}&text=${encodeURIComponent(SHARE_TITLE)}`}
+            href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(currentUrl())}&text=${encodeURIComponent(SHARE_TEXT)}`}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Share on X (Twitter)"
