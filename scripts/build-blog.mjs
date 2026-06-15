@@ -877,10 +877,10 @@ function renderStoreHub(items, kind) {
 function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
 const urls = [
-    { loc: `${SITE_ORIGIN}/wikipedia/`, priority: "0.6" },
-    { loc: `${SITE_ORIGIN}/llms.txt`, priority: "0.7" },
-    { loc: `${SITE_ORIGIN}/llms-full.txt`, priority: "0.7" },
-    { loc: `${SITE_ORIGIN}/0eb1eb625c28368318e34f58bec177b0.txt`, priority: "0.3", changefreq: "yearly" },
+    { loc: `${SITE_ORIGIN}/wikipedia/`, lastmod: today, changefreq: "monthly", priority: "0.6" },
+    { loc: `${SITE_ORIGIN}/llms.txt`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+    { loc: `${SITE_ORIGIN}/llms-full.txt`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+    { loc: `${SITE_ORIGIN}/0eb1eb625c28368318e34f58bec177b0.txt`, lastmod: today, changefreq: "yearly", priority: "0.3" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
     { loc: `${SITE_ORIGIN}/blog/`, lastmod: today, changefreq: "weekly", priority: "0.8" },
     ...posts.map((p) => ({
@@ -923,10 +923,13 @@ const urls = [
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls
-  .map(
-    (u) =>
-      `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`,
-  )
+  .map((u) => {
+    const lines = [`    <loc>${u.loc}</loc>`];
+    if (u.lastmod) lines.push(`    <lastmod>${u.lastmod}</lastmod>`);
+    if (u.changefreq) lines.push(`    <changefreq>${u.changefreq}</changefreq>`);
+    if (u.priority) lines.push(`    <priority>${u.priority}</priority>`);
+    return `  <url>\n${lines.join("\n")}\n  </url>`;
+  })
   .join("\n")}
 </urlset>\n`;
 }
