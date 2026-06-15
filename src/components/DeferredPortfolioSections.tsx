@@ -13,6 +13,7 @@ const Impact = lazy(() => import("./Impact"));
 const OpenSource = lazy(() => import("./OpenSource"));
 const Skills = lazy(() => import("./Skills"));
 const Certifications = lazy(() => import("./Certifications"));
+const Citations = lazy(() => import("./Citations"));
 const Contact = lazy(() => import("./Contact"));
 
 function scheduleAfterPageSettles(callback: () => void) {
@@ -98,6 +99,7 @@ export default function DeferredPortfolioSections() {
       <OpenSource />
       <Skills />
       <Certifications />
+      <Citations />
       <Contact />
     </Suspense>
   );

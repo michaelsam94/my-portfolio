@@ -1,9 +1,11 @@
 import { portfolioFaq, profile } from "../data/portfolio";
+import { citations } from "../data/citations";
 
 const SITE_ORIGIN = "https://michaelsam94.tech";
 const PERSON_ID = `${SITE_ORIGIN}/#person`;
 const SERVICE_ID = `${SITE_ORIGIN}/#software-engineering-services`;
 const FAQ_ID = `${SITE_ORIGIN}/#portfolio-faq`;
+const BIBLIOGRAPHY_ID = `${SITE_ORIGIN}/#bibliography`;
 
 const serviceKeywords = [
   "senior Android developer",
@@ -66,6 +68,12 @@ export default function SeoKnowledgeGraph() {
         },
         email: profile.email,
         sameAs: [profile.linkedin, profile.github, profile.playStoreDeveloper],
+        citation: citations.map((citation) => ({
+          "@type": "CreativeWork",
+          name: citation.title,
+          publisher: citation.publisher,
+          url: citation.url,
+        })),
       },
       {
         "@type": "FAQPage",
@@ -87,6 +95,19 @@ export default function SeoKnowledgeGraph() {
           "@type": "ListItem",
           position: index + 1,
           name,
+        })),
+      },
+      {
+        "@type": "CreativeWork",
+        "@id": BIBLIOGRAPHY_ID,
+        name: "Michael Samuel Naeem portfolio bibliography",
+        url: `${SITE_ORIGIN}/#citations`,
+        citation: citations.map((citation) => ({
+          "@type": "CreativeWork",
+          name: citation.title,
+          publisher: citation.publisher,
+          url: citation.url,
+          description: citation.supports,
         })),
       },
     ],

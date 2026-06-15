@@ -1,0 +1,74 @@
+.citations-section {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 64px 0;
+}
+
+.citations-heading {
+  max-width: 760px;
+  margin-bottom: 26px;
+}
+
+.citations-heading p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.citations-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.citation-card {
+  min-height: 154px;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.citation-card cite {
+  display: block;
+  font-style: normal;
+}
+
+.citation-card a {
+  color: #f8fafc;
+  font-weight: 700;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.citation-card a:hover {
+  color: #8bd3dd;
+}
+
+.citation-card span {
+  display: block;
+  margin-top: 8px;
+  color: #8bd3dd;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.citation-card p {
+  margin: 12px 0 0;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .citations-section {
+    width: min(100% - 24px, 1120px);
+    padding: 48px 0;
+  }
+
+  .citations-list {
+    grid-template-columns: 1fr;
+  }
+}

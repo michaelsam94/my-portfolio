@@ -63,3 +63,12 @@ Quantified proof points:
 - 30% lower mobile crash rate.
 - 20% faster API responses.
 - 50k+ app users reached.
+
+Bibliography and external references:
+- Schema.org citation property: https://schema.org/citation
+- Google Search Central structured data intro: https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data
+- Google Search Central structured data guidelines: https://developers.google.com/search/docs/appearance/structured-data/sd-policies
+- Bing IndexNow setup: https://www.bing.com/indexnow/getstarted
+- IndexNow documentation: https://www.indexnow.org/documentation
+- Brave Search crawler: https://search.brave.com/help/brave-search-crawler
+- Brave Web Discovery Project: https://support.brave.app/hc/en-us/articles/4409406835469-What-is-the-Web-Discovery-Project
