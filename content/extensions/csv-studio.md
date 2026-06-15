@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.csv-studio"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/csv-studio"
 githubUrl: "https://github.com/michaelsam94/csvstuidoext"
-description: "View and edit CSV files as interactive spreadsheets in VS Code."
+description: "View and edit CSV and TSV files as fast, interactive spreadsheets inside VS Code, with sorting, filtering, and column tools — free, offline, privacy-friendly."
 thin: false
 ---
 

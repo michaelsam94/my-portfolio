@@ -39,6 +39,36 @@ const fmtDate = (iso) =>
 
 const readingTime = (md) => Math.max(1, Math.round(md.split(/\s+/).length / 200));
 
+/**
+ * Keep <title> tags within the ~60-char SERP limit. Returns `full` when it
+ * already fits, otherwise the first provided fallback that fits, otherwise the
+ * shortest fallback (trimmed) so we never emit an over-long title.
+ */
+const fitTitle = (full, ...fallbacks) => {
+  if (full.length <= 60) return full;
+  for (const f of fallbacks) {
+    if (f && f.length <= 60) return f;
+  }
+  const last = fallbacks.filter(Boolean).pop() || full;
+  return last.length <= 60 ? last : last.slice(0, 57).trimEnd() + "…";
+};
+
+/** Lowercase the first letter so a name can lead a sentence fragment cleanly. */
+const lowerFirst = (s = "") => (s ? s[0].toLowerCase() + s.slice(1) : s);
+
+/** Drop a trailing period so fragments compose into longer sentences. */
+const stripDot = (s = "") => s.replace(/\.\s*$/, "");
+
+/** Pull the first few feature bullets out of a markdown body for FAQ/TL;DR copy. */
+function firstFeatures(md = "", n = 3) {
+  const m = md.match(/##+\s*Features?\b[^\n]*\n([\s\S]*?)(?:\n#{2,}\s|\n*$)/i);
+  if (!m) return [];
+  return [...m[1].matchAll(/^\s*[-*]\s+(.+?)\s*$/gm)]
+    .map((x) => x[1].replace(/\*\*/g, "").replace(/`/g, "").trim())
+    .filter(Boolean)
+    .slice(0, n);
+}
+
 /** Shared <head> markup for every generated page. */
 function head({ title, description, canonical, ogImage, jsonLd, ogType = "article" }) {
   return `<!doctype html>
@@ -91,7 +121,7 @@ const siteNav = `<header class="site-nav">
 const siteFooter = `<footer class="site-footer">
   <div class="wrap">
     <p>Written by <a href="/">${AUTHOR}</a> — senior Android &amp; Flutter developer, mobile architect, based in Cairo, Egypt. Open to remote roles in Europe and the US.</p>
-    <p><a href="/">← Back to portfolio</a> · <a href="/blog/">All articles</a></p>
+    <p><a href="/">← Back to portfolio</a> · <a href="/blog/">All articles</a> · <a href="/apps/">Android apps</a> · <a href="/vscode/">VS Code extensions</a> · <a href="/wikipedia/">Wikipedia notability dossier</a></p>
   </div>
 </footer>`;
 
@@ -130,6 +160,7 @@ function postJsonLd(p) {
           { "@type": "ListItem", position: 3, name: p.title, item: url },
         ],
       },
+      ...(p.faq && p.faq.length ? [faqPageNode(p.faq, `${url}#faq`)] : []),
     ],
   };
 }
@@ -143,7 +174,7 @@ function renderPost(p, related) {
     : "";
   const tags = (p.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
   return `${head({
-    title: `${p.title} — Michael Samuel Naeem`,
+    title: fitTitle(`${p.title} — Michael Samuel Naeem`, p.seoTitle, p.title),
     description: p.description,
     canonical: url,
     ogImage: p.ogImage || DEFAULT_OG,
@@ -160,6 +191,7 @@ function renderPost(p, related) {
       <p class="post-meta">By ${AUTHOR} · ${fmtDate(p.datePublished)} · ${readingTime(p.markdown)} min read</p>
       <div class="tags">${tags}</div>
       ${p.html}
+      ${faqSection(p.faq)}
       ${postCta}
       ${relatedBlock}
     </article>
@@ -181,25 +213,30 @@ function renderHub(posts) {
     .join("\n");
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "Blog",
-    "@id": `${SITE_ORIGIN}/blog/#blog`,
-    name: "Engineering Insights — Michael Samuel Naeem",
-    description:
-      "Deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems by senior Android developer Michael Samuel Naeem.",
-    url: `${SITE_ORIGIN}/blog/`,
-    inLanguage: "en",
-    publisher: { "@id": PERSON_ID },
-    blogPost: posts.map((p) => ({
-      "@type": "BlogPosting",
-      headline: p.title,
-      url: `${SITE_ORIGIN}/blog/${p.slug}/`,
-      datePublished: p.datePublished,
-    })),
+    "@graph": [
+      {
+        "@type": "Blog",
+        "@id": `${SITE_ORIGIN}/blog/#blog`,
+        name: "Engineering Insights — Michael Samuel Naeem",
+        description:
+          "Deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems by senior Android developer Michael Samuel Naeem.",
+        url: `${SITE_ORIGIN}/blog/`,
+        inLanguage: "en",
+        publisher: { "@id": PERSON_ID },
+        blogPost: posts.map((p) => ({
+          "@type": "BlogPosting",
+          headline: p.title,
+          url: `${SITE_ORIGIN}/blog/${p.slug}/`,
+          datePublished: p.datePublished,
+        })),
+      },
+      faqPageNode(HUB_FAQ.blog, `${SITE_ORIGIN}/blog/#faq`),
+    ],
   };
   return `${head({
-    title: "Engineering Insights — Android, Kotlin, Flutter | Michael Samuel Naeem",
+    title: "Engineering Blog — Android, Kotlin & Flutter | MSN",
     description:
-      "Technical deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems from a senior Android developer and mobile architect in Cairo.",
+      "Technical deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems by a senior Android developer in Cairo.",
     canonical: `${SITE_ORIGIN}/blog/`,
     ogImage: DEFAULT_OG,
     jsonLd,
@@ -214,6 +251,7 @@ function renderHub(posts) {
     <main class="post-grid">
       ${cards}
     </main>
+    ${faqSection(HUB_FAQ.blog)}
   </div>
   ${siteFooter}
 </body>
@@ -377,7 +415,12 @@ function renderWork(p, posts) {
   const relatedBlock = related
     ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="/blog/${related.slug}/">${escapeHtml(related.title)}</a></li></ul></aside>`
     : "";
-  const title = `${p.name}${p.company ? ` · ${p.company}` : ""} — Case Study | Michael Samuel Naeem`;
+  const title = fitTitle(
+    `${p.name}${p.company ? ` · ${p.company}` : ""} — Case Study | Michael Samuel Naeem`,
+    `${p.name} — Case Study | Michael Samuel Naeem`,
+    `${p.name} — Case Study`,
+    p.name,
+  );
   return `${head({
     title,
     description: p.description,
@@ -438,6 +481,180 @@ const APP_FAQ = {
   ],
 };
 
+/** Hand-written FAQ overrides for specific VS Code extensions, keyed by slug. */
+const EXT_FAQ = {
+  "csv-studio": [
+    {
+      q: "What is CSV Studio for VS Code?",
+      a: "CSV Studio is a free Visual Studio Code extension that opens CSV and TSV files in a fast, spreadsheet-style grid with sorting, filtering, and column tools — without leaving the editor.",
+    },
+    {
+      q: "Does CSV Studio handle large CSV files?",
+      a: "Yes. CSV Studio renders tabular data in a virtualized grid so you can browse, sort, and filter large delimited files locally inside VS Code without exporting them to another app.",
+    },
+    {
+      q: "Is CSV Studio free and offline?",
+      a: "Yes. CSV Studio is free on the Visual Studio Marketplace and Open VSX, and it parses files locally on your machine, so your data never leaves your computer.",
+    },
+    {
+      q: "How do I install CSV Studio in VS Code?",
+      a: "Open the Extensions view in Visual Studio Code, search for \"CSV Studio\", and click Install — or get it from the Visual Studio Marketplace or Open VSX. No sign-in or account is required.",
+    },
+    {
+      q: "Why edit CSV files inside VS Code instead of a spreadsheet app?",
+      a: "Editing CSV and TSV files in VS Code keeps tabular data next to the code, scripts, and docs that use it, so you can review and adjust datasets without switching tools or breaking your workflow.",
+    },
+  ],
+};
+
+/**
+ * Generate a tailored, truthful FAQ for any app or extension so every store
+ * page ships FAQPage schema and question-style headings. Hand-written entries
+ * in APP_FAQ / EXT_FAQ take precedence.
+ */
+function autoFaq(p) {
+  const feats = firstFeatures(p.markdown, 3);
+  const featList = feats.map((f) => lowerFirst(stripDot(f))).join("; ");
+  if (p.kind === "ext") {
+    return [
+      {
+        q: `What is the ${p.title} VS Code extension?`,
+        a: `${p.title} is a free Visual Studio Code extension by Michael Samuel Naeem that ${lowerFirst(stripDot(p.description))}. It runs inside the editor so document work stays next to your code and notes.`,
+      },
+      {
+        q: `How do I install ${p.title}?`,
+        a: `Open the Extensions view in VS Code and search for "${p.title}", or install it from the Visual Studio Marketplace or the Open VSX registry. No account or sign-in is required.`,
+      },
+      {
+        q: `Is ${p.title} free to use?`,
+        a: `Yes. ${p.title} is free on both the Visual Studio Marketplace and Open VSX, and its source code is published on GitHub for review.`,
+      },
+      {
+        q: `Does ${p.title} work offline?`,
+        a: `Yes. ${p.title} processes files locally inside VS Code, so it works without an internet connection and your documents never leave your machine.`,
+      },
+      ...(featList
+        ? [{ q: `What can ${p.title} do?`, a: `Key capabilities include ${featList}.` }]
+        : []),
+    ];
+  }
+  return [
+    {
+      q: `What is ${p.title}?`,
+      a: `${p.title} is a free Android app by Michael Samuel Naeem${p.category ? ` in the ${p.category} category` : ""}. ${stripDot(p.description)}.`,
+    },
+    {
+      q: `How much does ${p.title} cost?`,
+      a: `${p.title} is free to download on the Google Play Store, with no subscription required to get started.`,
+    },
+    {
+      q: `Where can I download ${p.title}?`,
+      a: `You can install ${p.title} from the Google Play Store${p.githubUrl ? ", and the source code is available on GitHub" : ""}.`,
+    },
+    ...(featList
+      ? [{ q: `What are the main features of ${p.title}?`, a: `Key features include ${featList}.` }]
+      : []),
+  ];
+}
+
+/** Resolve the FAQ for a store item: explicit override first, else generated. */
+const faqFor = (p) => (p.kind === "app" ? APP_FAQ[p.slug] : EXT_FAQ[p.slug]) || autoFaq(p);
+
+/** FAQ for the apps, vscode, and blog hub/index pages. */
+const HUB_FAQ = {
+  apps: [
+    {
+      q: "Who develops these Android apps?",
+      a: "Every app is designed and published by Michael Samuel Naeem, a senior Android and Flutter developer based in Cairo, Egypt, with more than 10 years of mobile experience.",
+    },
+    {
+      q: "Are the Android apps free to download?",
+      a: "Yes. All apps listed here are free to download from the Google Play Store, and several are open source on GitHub.",
+    },
+    {
+      q: "Are these apps offline and privacy-respecting?",
+      a: "Most are offline-first and process your data on-device rather than on a server. Each app page describes its specific privacy and connectivity behaviour.",
+    },
+    {
+      q: "Where can I see the source code?",
+      a: "Many apps link directly to their GitHub repositories from the individual app pages so you can review how they work.",
+    },
+  ],
+  vscode: [
+    {
+      q: "What do these VS Code extensions do?",
+      a: "They are focused document tools for viewing and converting Markdown, PDF, and DOCX files directly inside Visual Studio Code, without switching to a separate application.",
+    },
+    {
+      q: "Are the VS Code extensions free?",
+      a: "Yes. Every extension is free to install from both the Visual Studio Marketplace and the Open VSX registry, with source code on GitHub.",
+    },
+    {
+      q: "Do the extensions work offline?",
+      a: "Yes. They process files locally inside VS Code, so they work without an internet connection and your documents never leave your machine.",
+    },
+    {
+      q: "How do I install a VS Code extension?",
+      a: "Search for the extension name in the VS Code Extensions view, or install it from the Visual Studio Marketplace or Open VSX. No sign-in is required.",
+    },
+  ],
+  blog: [
+    {
+      q: "What does this engineering blog cover?",
+      a: "It covers practical software notes on Android, Kotlin, Jetpack Compose, Flutter, Riverpod, OCPP and WebSocket systems, EV charging platforms, and production delivery.",
+    },
+    {
+      q: "Who writes the articles?",
+      a: "Michael Samuel Naeem, a senior Android and Flutter developer and mobile architect based in Cairo, Egypt, open to remote roles in Europe and the US.",
+    },
+    {
+      q: "How can I follow new posts?",
+      a: "New deep dives are published periodically. You can subscribe through the RSS feed at /blog/feed.xml to follow updates.",
+    },
+  ],
+};
+
+/** Visible FAQ section markup from a [{q,a}] list. */
+const faqSection = (faq) =>
+  faq && faq.length
+    ? `<section class="faq"><h2>Frequently asked questions</h2>${faq
+        .map((f) => `<h3>${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`)
+        .join("")}</section>`
+    : "";
+
+/** FAQPage JSON-LD node from a [{q,a}] list. */
+const faqPageNode = (faq, id) => ({
+  "@type": "FAQPage",
+  "@id": id,
+  mainEntity: faq.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+});
+
+/** A short TL;DR / definition block (quotable, AI-extractable) for store pages. */
+function keyTakeaways(p) {
+  const feats = firstFeatures(p.markdown, 3);
+  const featLine = feats.length
+    ? `<li>Core capabilities include ${escapeHtml(feats.map((f) => lowerFirst(stripDot(f))).join("; "))}.</li>`
+    : "";
+  const items =
+    p.kind === "ext"
+      ? [
+          `<li><strong>${escapeHtml(p.title)}</strong> is a free Visual Studio Code extension that ${escapeHtml(lowerFirst(stripDot(p.description)))}.</li>`,
+          `<li>It runs entirely offline inside the editor and keeps your files on your own machine.</li>`,
+          `<li>Install it free from the Visual Studio Marketplace or Open VSX in seconds.</li>`,
+          featLine,
+        ]
+      : [
+          `<li><strong>${escapeHtml(p.title)}</strong> is a free Android app${p.category ? ` in the ${escapeHtml(p.category)} category` : ""}: ${escapeHtml(lowerFirst(stripDot(p.description)))}.</li>`,
+          `<li>Download it free from the Google Play Store${p.packageId ? ` (package <code>${escapeHtml(p.packageId)}</code>)` : ""}.</li>`,
+          featLine,
+        ];
+  return `<section class="tldr" id="key-takeaways"><h2>Key takeaways</h2><ul>${items.filter(Boolean).join("")}</ul></section>`;
+}
+
 async function loadContentDir(dirName) {
   const dir = path.join(ROOT, "content", dirName);
   let files = [];
@@ -456,7 +673,7 @@ async function loadContentDir(dirName) {
 }
 
 function storeJsonLd(p, url) {
-  const faq = p.kind === "app" ? APP_FAQ[p.slug] : undefined;
+  const faq = faqFor(p);
   const node =
     p.kind === "app"
       ? {
@@ -534,8 +751,8 @@ function renderStoreItem(p, posts) {
     .filter((l) => l.href)
     .map((l) => `<a class="btn" href="${l.href}" rel="noopener" target="_blank">${escapeHtml(l.label)} ↗</a>`)
     .join(" ");
-  const faq = p.kind === "app" ? APP_FAQ[p.slug] : undefined;
-  const faqBlock = faq
+  const faq = faqFor(p);
+  const faqBlock = faq.length
     ? `<section class="faq"><h2>Frequently asked questions</h2>${faq
         .map((f) => `<h3>${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`)
         .join("")}</section>`
@@ -551,8 +768,18 @@ function renderStoreItem(p, posts) {
   const kindLabel = p.kind === "app" ? `Android app${p.category ? ` · ${p.category}` : ""}` : "VS Code extension";
   const title =
     p.kind === "app"
-      ? `${p.title} — Android App by Michael Samuel Naeem`
-      : `${p.title} — VS Code Extension by Michael Samuel Naeem`;
+      ? fitTitle(
+          `${p.title} — Android App by Michael Samuel Naeem`,
+          `${p.title} — Android App by Michael Samuel`,
+          `${p.title} — Android App`,
+          p.title,
+        )
+      : fitTitle(
+          `${p.title} — VS Code Extension by Michael Samuel Naeem`,
+          `${p.title} — VS Code Extension`,
+          `${p.title} — VS Code`,
+          p.title,
+        );
   return `${head({
     title,
     description: p.description,
@@ -571,6 +798,7 @@ function renderStoreItem(p, posts) {
       <div class="store-head">${hero}<div><p class="post-meta">${escapeHtml(kindLabel)}</p><h1>${escapeHtml(p.title)}</h1></div></div>
       <p class="lede">${escapeHtml(p.description)}</p>
       <p>${linkRow}</p>
+      ${keyTakeaways(p)}
       ${p.html}
       ${faqBlock}
       ${relatedBlock}
@@ -587,7 +815,7 @@ function renderStoreHub(items, kind) {
   const isApp = kind === "app";
   const heading = isApp ? "Android Apps" : "VS Code Extensions";
   const lede = isApp
-    ? "Published Android apps on Google Play by Michael Samuel Naeem — offline-first, privacy-respecting tools across finance, productivity, AI, and developer utilities."
+    ? "Free Android apps on Google Play by Michael Samuel Naeem — offline-first, privacy-respecting tools across finance, productivity, AI, and developer utilities."
     : "VS Code extensions by Michael Samuel Naeem on the Visual Studio Marketplace and Open VSX — document tooling, converters, and developer productivity helpers.";
   const cards = items
     .map(
@@ -597,21 +825,27 @@ function renderStoreHub(items, kind) {
       </a>`,
     )
     .join("\n");
+  const hubFaq = HUB_FAQ[base];
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    "@id": `${SITE_ORIGIN}/${base}/#collection`,
-    name: `${heading} — Michael Samuel Naeem`,
-    description: lede,
-    url: `${SITE_ORIGIN}/${base}/`,
-    inLanguage: "en",
-    isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
-    about: { "@id": PERSON_ID },
-    hasPart: items.map((p) => ({
-      "@type": isApp ? "MobileApplication" : "SoftwareApplication",
-      name: p.title,
-      url: `${SITE_ORIGIN}/${base}/${p.slug}/`,
-    })),
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        "@id": `${SITE_ORIGIN}/${base}/#collection`,
+        name: `${heading} — Michael Samuel Naeem`,
+        description: lede,
+        url: `${SITE_ORIGIN}/${base}/`,
+        inLanguage: "en",
+        isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
+        about: { "@id": PERSON_ID },
+        hasPart: items.map((p) => ({
+          "@type": isApp ? "MobileApplication" : "SoftwareApplication",
+          name: p.title,
+          url: `${SITE_ORIGIN}/${base}/${p.slug}/`,
+        })),
+      },
+      ...(hubFaq ? [faqPageNode(hubFaq, `${SITE_ORIGIN}/${base}/#faq`)] : []),
+    ],
   };
   return `${head({
     title: isApp
@@ -633,6 +867,7 @@ function renderStoreHub(items, kind) {
     <main class="post-grid">
       ${cards}
     </main>
+    ${faqSection(hubFaq)}
   </div>
   ${siteFooter}
 </body>

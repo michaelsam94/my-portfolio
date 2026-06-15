@@ -230,6 +230,50 @@ function blogHubArticle() {
   `;
 }
 
+function appsHubArticle() {
+  return `
+    <section class="longform" id="android-apps-guide">
+      <h2>Android apps by Michael Samuel Naeem: offline-first tools on Google Play</h2>
+      ${paragraphs([
+        "This page is the index of Android apps built and published by Michael Samuel Naeem, a senior Android and Flutter developer based in Cairo, Egypt. Each app is free on the Google Play Store and designed to do one job well, with privacy and offline use as defaults rather than afterthoughts.",
+        "An offline-first app is software that keeps working without a network connection and stores your data on the device instead of a remote server. That approach matters for privacy-sensitive tasks such as budgeting, document scanning, audio capture, and file management, where sending data to the cloud is unnecessary risk.",
+        "The collection spans several categories: personal finance and budgeting, productivity and utilities, media and audio tools, on-device AI, and developer helpers. The goal is consistent: useful, fast, respectful software that does not ask for accounts, ads, or tracking when it does not need them.",
+      ])}
+
+      <h2>What kinds of apps are here?</h2>
+      ${paragraphs([
+        "Finance apps focus on private money management. They track wallets, budgets, subscriptions, and spending insights on the device, so financial data never has to leave your phone to be useful.",
+        "Productivity and utility apps remove small daily frictions: clipboard history, folder organization, storage cleanup, to-do management, and quick device controls. Each one is small enough to learn in minutes and reliable enough to keep installed.",
+        "Media and AI apps handle photos, audio, and on-device intelligence. They compress images, clean up recordings, and run focused AI features locally so the work stays fast and private.",
+      ])}
+
+      <h2>Why choose offline-first apps?</h2>
+      ${list([
+        "Privacy: your data stays on the device, which removes an entire class of server-side data risk.",
+        "Speed: local processing avoids network round-trips, so common actions feel instant.",
+        "Reliability: the app keeps working on a plane, on the metro, or with a weak connection.",
+        "Cost: every app here is free to download, with no subscription required to get started.",
+        "Transparency: many apps are open source, so you can read exactly how they handle your data.",
+      ])}
+
+      <h2>How to choose the right app</h2>
+      ${paragraphs([
+        "Start from the task, not the feature list. If you want to control recurring charges, a subscription tracker fits. If you want smaller photos, an image optimizer fits. Each app page describes the specific problem it solves and the platform behaviour you can expect.",
+        "Check the privacy and connectivity notes on the individual app page before installing. Most apps are offline-first, but a few use on-device AI models or optional online features, and each page is explicit about what runs where.",
+      ])}
+
+      <h2>Key takeaways</h2>
+      ${list([
+        "Every app on this page is free on the Google Play Store and built by one developer with a consistent privacy-first philosophy.",
+        "Most apps are offline-first and keep your data on the device instead of a server.",
+        "The catalog covers finance, productivity, media, on-device AI, and developer tools.",
+        "Many apps are open source, with source code linked from each app page.",
+        "Pick by the task you want to solve; each app page explains its scope, features, and privacy behaviour.",
+      ])}
+    </section>
+  `;
+}
+
 function injectBeforeMainClose(html, addition) {
   if (html.includes('id="extension-guide"') || html.includes('id="vscode-extension-guide"')) {
     return html;
@@ -255,4 +299,12 @@ export async function enrichVscodePages(distDir) {
   const blogPath = path.join(distDir, "blog", "index.html");
   const blogHtml = await readFile(blogPath, "utf8");
   await writeFile(blogPath, injectBeforeMainClose(blogHtml, blogHubArticle()));
+
+  const appsHubPath = path.join(distDir, "apps", "index.html");
+  try {
+    const appsHtml = await readFile(appsHubPath, "utf8");
+    await writeFile(appsHubPath, injectBeforeMainClose(appsHtml, appsHubArticle()));
+  } catch {
+    // apps hub not generated (no app content) — skip silently.
+  }
 }

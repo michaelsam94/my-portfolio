@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.pdfviewerext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/pdfviewerext"
 githubUrl: "https://github.com/michaelsam94/pdfviewerext"
-description: "Open PDF files quickly from VS Code."
+description: "Open and read PDF files quickly inside VS Code, beside your code, docs, and notes — keep specs and reports in view without switching apps, free and offline."
 thin: false
 ---
 

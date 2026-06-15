@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.contextporterext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/contextporterext"
 githubUrl: "https://github.com/michaelsam94/contextporterext"
-description: "Export AI session and project context to Markdown for handoff."
+description: "Export your AI assistant session and project context to clean Markdown for fast handoff between tools, teammates, or fresh chats — free and offline in VS Code."
 thin: false
 ---
 

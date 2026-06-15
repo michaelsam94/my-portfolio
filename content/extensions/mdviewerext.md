@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.mdviewerext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/mdviewerext"
 githubUrl: "https://github.com/michaelsam94/mdviewerext"
-description: "Preview Markdown files quickly from VS Code."
+description: "Preview rendered Markdown instantly inside VS Code while you edit, with a clean live view of headings, lists, tables, and code blocks — free, fast, and offline."
 thin: false
 ---
 

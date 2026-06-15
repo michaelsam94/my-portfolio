@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.docxtopdfext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/docxtopdfext"
 githubUrl: "https://github.com/michaelsam94/docxtopdfext"
-description: "Convert DOCX files to PDF from VS Code."
+description: "Convert Microsoft Word .docx files into portable, shareable PDF documents directly inside VS Code — no separate Office suite required, free and fully offline."
 thin: false
 ---
 

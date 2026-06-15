@@ -1,11 +1,19 @@
 ---
 title: "How I Architected an EV Charging Platform (OCPP, WebSocket, Flutter)"
+seoTitle: "Architecting an EV Charging Platform with OCPP & Flutter"
 slug: "how-i-architected-an-ev-charging-platform"
-description: "A full-stack walkthrough of an EV charging management platform: OCPP 1.6 over WebSocket, a Node.js middleware layer, sub-100ms P2P local control, and a Flutter app — and the architecture decisions behind zero critical post-launch defects."
+description: "A walkthrough of an EV charging platform: OCPP 1.6 over WebSocket, a Node.js middleware layer, sub-100ms local control, and a Flutter app — with key decisions."
 datePublished: "2026-06-04"
 dateModified: "2026-06-04"
 tags: ["Flutter", "OCPP", "WebSocket", "Architecture", "IoT"]
 keywords: "EV charging platform architecture, OCPP 1.6, OCPP WebSocket, Flutter IoT app, charging management system, real-time mobile architecture"
+faq:
+  - q: "What is OCPP and why does it matter for EV charging?"
+    a: "OCPP (Open Charge Point Protocol) is the open standard that lets charging stations and management systems communicate. Running OCPP 1.6 over WebSocket kept the platform vendor-neutral."
+  - q: "How did the platform achieve sub-100ms local control?"
+    a: "A peer-to-peer local control path let the app talk directly to the charger on the same network, avoiding a cloud round-trip so start and stop actions felt instant."
+  - q: "Why add a Node.js middleware layer?"
+    a: "The Node.js middleware brokered OCPP WebSocket sessions, normalized messages, and isolated charger quirks from the app, which simplified the client and improved reliability."
 ---
 
 Charging an electric vehicle looks simple from the driver's seat: tap, plug in, watch the kilowatts climb. Underneath is a real-time distributed system speaking a 15-year-old industrial protocol to hardware you don't control, over networks that drop. I led the architecture for one such platform end-to-end — the charging management backend, the protocol middleware, and the Flutter apps. It shipped with **zero critical post-launch defects**. Here's how it was put together and why each layer exists.

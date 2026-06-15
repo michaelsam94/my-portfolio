@@ -1,11 +1,18 @@
 ---
 title: "Optimizing State Management in Flutter with Riverpod"
 slug: "flutter-riverpod-state-management"
-description: "How I structured Riverpod state for a production Flutter EV-charging app — provider scoping, AsyncNotifier, real-time WebSocket sync, and the patterns that kept rebuilds cheap."
+description: "How I structured Riverpod state for a production Flutter EV-charging app: provider scoping, AsyncNotifier, real-time WebSocket sync, and keeping rebuilds cheap."
 datePublished: "2026-06-12"
 dateModified: "2026-06-12"
 tags: ["Flutter", "Riverpod", "State Management", "Dart"]
 keywords: "Flutter Riverpod, Flutter state management, AsyncNotifier, Riverpod best practices, Flutter WebSocket state"
+faq:
+  - q: "Why use Riverpod instead of Provider for Flutter state management?"
+    a: "Riverpod removes Provider's dependency on BuildContext, catches more errors at compile time, and makes provider scoping and testing easier — which matters in a large real-time app."
+  - q: "How do you keep Riverpod rebuilds cheap?"
+    a: "Scope providers narrowly, use select to watch only the fields a widget needs, and prefer AsyncNotifier for async state so unrelated UI does not rebuild on every update."
+  - q: "Is Riverpod a good fit for real-time WebSocket data?"
+    a: "Yes. Exposing a WebSocket stream through an AsyncNotifier or StreamProvider lets the UI react to live updates while keeping connection logic isolated and testable."
 ---
 
 Most Flutter state-management debates stop at "which library." The harder question — the one that actually shows up in production — is *how you shape state once you've picked one*. On an EV-charging platform I built, the app had to track live charger status over a WebSocket, survive flaky connectivity, and stay responsive while a 3D map and a session timer rendered on the same screen. Riverpod made that tractable. Here is how I structured it, and the decisions that mattered.

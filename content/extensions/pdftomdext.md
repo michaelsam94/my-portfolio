@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.pdftomdext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/pdftomdext"
 githubUrl: "https://github.com/michaelsam94/pdftomdext"
-description: "Convert PDF files to Markdown from VS Code."
+description: "Convert PDF files into editable, AI-ready Markdown text directly inside VS Code — extract content from reports and papers for editing or summaries, offline."
 thin: false
 ---
 

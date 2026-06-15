@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.docxtomdext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/docxtomdext"
 githubUrl: "https://github.com/michaelsam94/docxtomdext"
-description: "Convert DOCX files to Markdown from VS Code."
+description: "Convert Microsoft Word .docx files to clean, repository-friendly Markdown directly in VS Code — keep documents next to your code, free and fully offline."
 thin: false
 ---
 

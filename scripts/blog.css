@@ -187,6 +187,18 @@ article { padding: 8px 0 40px; }
 .store-card .app-icon { border-radius: 14px; }
 .store-card h2 { margin: 0 0 4px; }
 
+.tldr {
+  margin: 28px 0;
+  padding: 18px 22px;
+  background: rgba(124, 92, 255, 0.07);
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  border-radius: 14px;
+}
+.tldr h2 { margin: 0 0 10px; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.tldr ul { margin: 0; padding-left: 1.2em; }
+.tldr li { margin: 6px 0; }
+.tldr code { font-size: 0.85em; }
+
 .related { margin: 40px 0; }
 .related h3 { margin-bottom: 12px; }
 .related ul { list-style: none; padding: 0; }

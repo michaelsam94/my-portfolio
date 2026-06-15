@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.mdtopdfext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/mdtopdfext"
 githubUrl: "https://github.com/michaelsam94/mdtopdfext"
-description: "Convert Markdown files to PDF from VS Code."
+description: "Convert Markdown files into clean, shareable PDF documents inside VS Code — turn READMEs, notes, and docs into portable PDFs in one step, free and offline."
 thin: false
 ---
 

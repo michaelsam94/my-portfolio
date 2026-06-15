@@ -1,11 +1,18 @@
 ---
 title: "Jetpack Compose: Lessons From 10 Years in Android"
 slug: "jetpack-compose-lessons-10-years-android"
-description: "Hard-won Jetpack Compose lessons from migrating production Android apps off XML — recomposition, state hoisting, stability, and the Clean Architecture boundaries that kept it maintainable."
+description: "Hard-won Jetpack Compose lessons from migrating production Android apps off XML: recomposition, state hoisting, stability, and Clean Architecture boundaries."
 datePublished: "2026-06-08"
 dateModified: "2026-06-08"
 tags: ["Android", "Jetpack Compose", "Kotlin", "Clean Architecture"]
 keywords: "Jetpack Compose, Compose recomposition, state hoisting, Compose performance, Android Clean Architecture, Kotlin UI"
+faq:
+  - q: "What are the most common Jetpack Compose performance mistakes?"
+    a: "Unstable parameters, reading state too high in the tree, and unkeyed lists cause unnecessary recomposition. Stable models and state hoisting keep recomposition scoped and cheap."
+  - q: "Is it worth migrating an XML Android app to Jetpack Compose?"
+    a: "For actively developed apps, yes. Compose reduces UI boilerplate and speeds iteration, but migrate screen by screen behind Clean Architecture boundaries rather than all at once."
+  - q: "How does Clean Architecture help a Compose migration?"
+    a: "Separating UI, domain, and data layers means you can swap the XML view layer for Compose without touching business logic, which keeps the migration incremental and safe."
 ---
 
 I shipped my first Android app on XML layouts and `findViewById`. A decade later I lead Compose migrations on production apps with hundreds of thousands of users. The framework is a genuine leap — but it punishes habits carried over from the View system. These are the lessons that mattered most when moving real apps, not toy demos, to Jetpack Compose.

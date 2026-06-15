@@ -5,7 +5,7 @@ kind: "ext"
 marketplaceUrl: "https://marketplace.visualstudio.com/items?itemName=michaelsam94.docxviewerext"
 openVsxUrl: "https://open-vsx.org/extension/michaelsam94/docxviewerext"
 githubUrl: "https://github.com/michaelsam94/docxviewerext"
-description: "Preview DOCX files quickly from VS Code."
+description: "Open and preview Microsoft Word .docx files directly inside VS Code with zoom controls, without launching a separate Office app — free, fast, and fully offline."
 thin: false
 ---
 
