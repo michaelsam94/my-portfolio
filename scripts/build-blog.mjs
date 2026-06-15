@@ -958,6 +958,9 @@ async function main() {
       await writeFile(filePath, current.trimEnd() + "\n\n" + wikipediaLlmNote + "\n");
     }
   }
+  const { enrichVscodePages } = await import("./vscode-longform.mjs");
+  await enrichVscodePages(DIST);
+
 console.log(
     `[build-blog] Generated ${posts.length} post(s), ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt`,
   );
