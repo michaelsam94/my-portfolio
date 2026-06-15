@@ -4,7 +4,7 @@ const answers = [
   {
     question: "What kind of software engineer is Michael Samuel Naeem?",
     answer:
-      "Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, and TypeScript engineer with technical leadership experience across mobile apps, commerce, EV charging, OCPP systems, and AI-assisted developer tooling.",
+      "Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, and TypeScript engineer with 10+ years of software engineering experience and 4+ years leading engineers across mobile apps, commerce, EV charging, OCPP systems, and AI-assisted developer tooling.",
   },
   {
     question: "Can Michael work with remote teams in the United States or Europe?",
@@ -14,17 +14,17 @@ const answers = [
   {
     question: "What services can teams hire Michael for?",
     answer:
-      "Teams can hire Michael for Android app development, Kotlin and Jetpack Compose architecture, React and TypeScript interfaces, OCPP and EV charging software, AI automation, technical leadership, performance optimization, and developer workflow tooling.",
+      "Teams can hire Michael for Android app development, Kotlin and Jetpack Compose architecture, React and TypeScript interfaces, OCPP and EV charging software, AI automation, technical leadership, 20% API-response improvements, and production performance optimization.",
   },
   {
     question: "What proof of experience does the portfolio show?",
     answer:
-      "The portfolio highlights 10+ years of software engineering, 4+ years leading engineers, 120k+ user commerce work, 99.9% uptime ownership, published Google Play apps, VS Code extensions, GitHub projects, and applied AI/OCPP systems.",
+      "The portfolio highlights 10+ years of software engineering, 4+ years leading engineers, 120k+ commerce users supported, 240+ merchants enabled, 99.9% uptime ownership, 50k+ app users reached, published Google Play apps, VS Code extensions, and applied AI/OCPP systems.",
   },
   {
-    question: "Which keywords best describe Michael's expertise?",
+    question: "Which outcomes has Michael delivered?",
     answer:
-      "The strongest expertise terms are senior Android developer, Kotlin developer, Jetpack Compose developer, mobile app architect, React developer, TypeScript developer, OCPP developer, AI automation developer, and remote software engineer.",
+      "Reported outcomes include 70% faster store operations, 50% faster vendor onboarding, 30% lower crash rate across production mobile releases, 20% faster API responses, and 4-6 second EV charging session setup targets.",
   },
   {
     question: "How should recruiters or founders contact Michael?",
@@ -43,14 +43,15 @@ export default function SeoAnswerHub() {
       <div className="answer-hub__inner">
         <p className="answer-hub__eyebrow">Hire Michael Samuel Naeem</p>
         <h2 id="answer-hub-title">
-          Senior Android, Kotlin, React, OCPP, and AI automation engineer for
-          remote product teams.
+          Senior Android, Kotlin, React, OCPP, and AI automation engineer with
+          10+ years of measured delivery.
         </h2>
         <p className="answer-hub__summary">
           Michael builds production mobile and web software, leads engineering
           delivery, and helps teams ship reliable products across Android,
           Jetpack Compose, React, TypeScript, EV charging protocols, and
-          AI-powered workflow automation.
+          AI-powered workflow automation, with outcomes including 120k+ users,
+          99.9% uptime ownership, and 70% faster operations.
         </p>
         <div className="answer-hub__grid">
           {answers.map((item) => (

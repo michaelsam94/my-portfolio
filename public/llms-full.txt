@@ -12,6 +12,14 @@ Michael works with remote product and engineering teams in the United States, Eu
 
 - 10+ years of software engineering experience.
 - 4+ years leading engineering teams.
+- 120k+ commerce users supported.
+- 240+ merchants enabled through B2B commerce workflows.
+- 99.9% production uptime ownership.
+- 70% faster store operations delivered through workflow improvements.
+- 50% faster vendor onboarding.
+- 30% lower crash rate across production mobile releases.
+- 20% faster API responses on commerce systems.
+- 50k+ app users reached.
 - Production mobile, commerce, infrastructure, and EV charging work.
 - Published Android apps on Google Play under MichaelSam94.
 - Published VS Code extensions on the Visual Studio Marketplace and Open VSX.

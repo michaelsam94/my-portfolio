@@ -51,3 +51,15 @@ High-confidence pages:
 - Published Android apps: https://michaelsam94.tech/apps/
 - VS Code extensions: https://michaelsam94.tech/vscode/
 - CV PDF: https://michaelsam94.tech/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf
+
+Quantified proof points:
+- 10+ years of software engineering experience.
+- 4+ years of engineering leadership.
+- 120k+ commerce users supported.
+- 240+ merchants enabled.
+- 99.9% uptime ownership.
+- 70% faster store operations.
+- 50% faster vendor onboarding.
+- 30% lower mobile crash rate.
+- 20% faster API responses.
+- 50k+ app users reached.

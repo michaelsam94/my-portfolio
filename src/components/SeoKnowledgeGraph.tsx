@@ -29,10 +29,20 @@ export default function SeoKnowledgeGraph() {
         url: SITE_ORIGIN,
         image: `${SITE_ORIGIN}/profile-photo.png`,
         description:
-          "Senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineering for product teams hiring remote or contract software development help.",
+          "Senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineering for product teams hiring remote or contract software development help, backed by 10+ years of experience, 120k+ users supported, and 99.9% uptime ownership.",
         founder: { "@id": PERSON_ID },
         employee: { "@id": PERSON_ID },
         keywords: serviceKeywords.join(", "),
+        additionalProperty: [
+          { "@type": "PropertyValue", name: "Software engineering experience", value: "10+ years" },
+          { "@type": "PropertyValue", name: "Engineering leadership", value: "4+ years" },
+          { "@type": "PropertyValue", name: "Commerce users supported", value: "120k+" },
+          { "@type": "PropertyValue", name: "Merchants enabled", value: "240+" },
+          { "@type": "PropertyValue", name: "Production uptime ownership", value: "99.9%" },
+          { "@type": "PropertyValue", name: "Store operations improvement", value: "70% faster" },
+          { "@type": "PropertyValue", name: "Vendor onboarding improvement", value: "50% faster" },
+          { "@type": "PropertyValue", name: "API response improvement", value: "20% faster" },
+        ],
         areaServed: [
           { "@type": "Country", name: "United States" },
           { "@type": "Country", name: "Egypt" },
