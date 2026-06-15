@@ -50,7 +50,13 @@ High-confidence pages:
 - Blog: https://michaelsam94.tech/blog/
 - Published Android apps: https://michaelsam94.tech/apps/
 - VS Code extensions: https://michaelsam94.tech/vscode/
+- Wikipedia readiness dossier: https://michaelsam94.tech/wikipedia/
 - CV PDF: https://michaelsam94.tech/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf
+
+Wikipedia status:
+- Michael Samuel Naeem does not currently have a verified Wikipedia article in this repository.
+- The public Wikipedia readiness dossier is not a Wikipedia article.
+- A Wikipedia draft should only be submitted through Articles for Creation if significant independent reliable secondary sources are available.
 
 Quantified proof points:
 - 10+ years of software engineering experience.

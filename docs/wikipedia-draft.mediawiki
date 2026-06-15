@@ -1,0 +1,35 @@
+{{subst:AfC submission/draftnew}}
+{{short description|Egyptian software engineer}}
+{{BLP sources|date=June 2026}}
+
+'''Michael Samuel Naeem''' is an Egyptian software engineer and mobile
+application developer based in Cairo. He has worked on Android applications,
+Kotlin and Jetpack Compose software, React and TypeScript interfaces, electric
+vehicle charging software, and developer tooling.
+
+== Career ==
+
+Naeem has described his work as including Android application development,
+mobile architecture, OCPP and electric vehicle charging systems, AI automation,
+and engineering leadership.<ref name="portfolio">{{cite web |title=Michael Samuel Naeem portfolio |url=https://michaelsam94.tech/ |website=Michael Samuel Naeem |access-date=15 June 2026}}</ref>
+
+He has published Android applications under the developer name MichaelSam94 on
+Google Play.<ref name="googleplay">{{cite web |title=MichaelSam94 apps on Google Play |url=https://play.google.com/store/apps/developer?id=MichaelSam94 |website=Google Play |access-date=15 June 2026}}</ref>
+He has also published developer tools and extensions under the MichaelSam94 name
+on software marketplaces.<ref name="vscode">{{cite web |title=MichaelSam94 publisher profile |url=https://marketplace.visualstudio.com/publishers/MichaelSam94 |website=Visual Studio Marketplace |access-date=15 June 2026}}</ref>
+
+== Public work ==
+
+Naeem maintains public software projects on GitHub under the username
+MichaelSam94.<ref name="github">{{cite web |title=MichaelSam94 GitHub profile |url=https://github.com/michaelsam94 |website=GitHub |access-date=15 June 2026}}</ref>
+
+== Notes for reviewers ==
+
+This draft is not ready for submission until significant independent secondary
+coverage is added. The references above are mainly primary or directory-style
+sources and can verify basic facts, but they are not enough by themselves to
+establish notability under Wikipedia's biography guidelines.
+
+== References ==
+
+{{reflist}}

@@ -65,3 +65,6 @@ User-agent: msnbot
 Allow: /
 
 Host: michaelsam94.tech
+
+# Wikipedia readiness dossier
+# https://michaelsam94.tech/wikipedia/

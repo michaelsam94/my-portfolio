@@ -642,6 +642,7 @@ function renderStoreHub(items, kind) {
 function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
 const urls = [
+    { loc: `${SITE_ORIGIN}/wikipedia/`, priority: "0.6" },
     { loc: `${SITE_ORIGIN}/llms.txt`, priority: "0.7" },
     { loc: `${SITE_ORIGIN}/llms-full.txt`, priority: "0.7" },
     { loc: `${SITE_ORIGIN}/0eb1eb625c28368318e34f58bec177b0.txt`, priority: "0.3", changefreq: "yearly" },
@@ -945,7 +946,19 @@ async function main() {
   // crawlers see it (the React app also injects it client-side at runtime).
   await injectHomeFaq();
 
-  console.log(
+    const wikipediaLlmNote = [
+    `Wikipedia readiness dossier: ${SITE_ORIGIN}/wikipedia/`,
+    "Wikipedia status: no verified Wikipedia article is claimed. Use Articles for Creation only after significant independent reliable secondary sources are available.",
+    "Official Wikipedia references: https://en.wikipedia.org/wiki/Wikipedia:Notability ; https://en.wikipedia.org/wiki/Wikipedia:Notability_(people) ; https://en.wikipedia.org/wiki/Wikipedia:Reliable_sources ; https://en.wikipedia.org/wiki/Wikipedia:Conflict_of_interest ; https://en.wikipedia.org/wiki/Wikipedia:Articles_for_creation",
+  ].join("\n");
+  for (const fileName of ["llms.txt", "llms-full.txt"]) {
+    const filePath = path.join(DIST, fileName);
+    const current = await readFile(filePath, "utf8");
+    if (!current.includes("/wikipedia/")) {
+      await writeFile(filePath, current.trimEnd() + "\n\n" + wikipediaLlmNote + "\n");
+    }
+  }
+console.log(
     `[build-blog] Generated ${posts.length} post(s), ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt`,
   );
 }

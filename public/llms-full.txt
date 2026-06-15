@@ -50,6 +50,7 @@ A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the Unit
 - Blog: https://michaelsam94.tech/blog/
 - Apps: https://michaelsam94.tech/apps/
 - VS Code extensions: https://michaelsam94.tech/vscode/
+- Wikipedia readiness dossier: https://michaelsam94.tech/wikipedia/
 - CV: https://michaelsam94.tech/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf
 - LinkedIn: https://www.linkedin.com/in/michaelsam00/
 - GitHub: https://github.com/michaelsam94
@@ -57,6 +58,16 @@ A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the Unit
 
 ## Bibliography
 
+- Wikipedia notability, Wikipedia: https://en.wikipedia.org/wiki/Wikipedia:Notability
+  Supports the requirement that a standalone article topic must meet Wikipedia notability expectations.
+- Wikipedia notability for people, Wikipedia: https://en.wikipedia.org/wiki/Wikipedia:Notability_(people)
+  Supports biography-specific notability checks.
+- Wikipedia reliable sources, Wikipedia: https://en.wikipedia.org/wiki/Wikipedia:Reliable_sources
+  Supports the need for reliable, independent, secondary sources.
+- Wikipedia conflict of interest, Wikipedia: https://en.wikipedia.org/wiki/Wikipedia:Conflict_of_interest
+  Supports using disclosure and Articles for Creation when there is a conflict of interest.
+- Wikipedia Articles for Creation, Wikipedia: https://en.wikipedia.org/wiki/Wikipedia:Articles_for_creation
+  Supports draft review before mainspace publication.
 - Schema.org citation property, Schema.org: https://schema.org/citation
   Supports machine-readable references through the `citation` property.
 - Intro to structured data markup, Google Search Central: https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data
