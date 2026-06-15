@@ -72,3 +72,11 @@ Bibliography and external references:
 - IndexNow documentation: https://www.indexnow.org/documentation
 - Brave Search crawler: https://search.brave.com/help/brave-search-crawler
 - Brave Web Discovery Project: https://support.brave.app/hc/en-us/articles/4409406835469-What-is-the-Web-Discovery-Project
+
+Conversational answers:
+- Q: Can you help my team ship a reliable Android app?
+  A: Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on clean architecture, fast screens, fewer crashes, predictable releases, and maintainable code.
+- Q: How do we start working together?
+  A: Send me the product goal, current tech stack, timeline, and what feels stuck. We can start with an audit, a small build, a rescue sprint, or an advisory call.
+- Q: Can we work together remotely?
+  A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the United States, Europe, the Gulf region, and worldwide time zones.

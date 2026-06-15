@@ -20,6 +20,24 @@ const serviceKeywords = [
   "technical lead",
 ];
 
+const conversationalQuestions = [
+  {
+    question: "Can you help my team ship a reliable Android app?",
+    answer:
+      "Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on clean architecture, fast screens, fewer crashes, predictable releases, and code that other engineers can keep improving.",
+  },
+  {
+    question: "What should we send first?",
+    answer:
+      "Send the product goal, current tech stack, timeline, users affected, and anything that shows the problem clearly, such as screenshots, crash logs, store reviews, or a short recording.",
+  },
+  {
+    question: "How do we start working together?",
+    answer:
+      "We can start with a focused audit, a small build, a rescue sprint, or a technical advisory call. If the fit is good, we can expand from there.",
+  },
+];
+
 export default function SeoKnowledgeGraph() {
   const graph = {
     "@context": "https://schema.org",
@@ -78,7 +96,7 @@ export default function SeoKnowledgeGraph() {
       {
         "@type": "FAQPage",
         "@id": FAQ_ID,
-        mainEntity: portfolioFaq.map((item) => ({
+        mainEntity: [...portfolioFaq, ...conversationalQuestions].map((item) => ({
           "@type": "Question",
           name: item.question,
           acceptedAnswer: {

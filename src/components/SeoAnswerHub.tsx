@@ -2,34 +2,34 @@ import "./SeoAnswerHub.css";
 
 const answers = [
   {
-    question: "What kind of software engineer is Michael Samuel Naeem?",
+    question: "Can you help my team ship a reliable Android app?",
     answer:
-      "Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, and TypeScript engineer with 10+ years of software engineering experience and 4+ years leading engineers across mobile apps, commerce, EV charging, OCPP systems, and AI-assisted developer tooling.",
+      "Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on the parts teams usually care about most: clean architecture, fast screens, fewer crashes, predictable releases, and code that other engineers can keep improving.",
   },
   {
-    question: "Can Michael work with remote teams in the United States or Europe?",
+    question: "What do you bring beyond writing code?",
     answer:
-      "Yes. Michael is based in Cairo, Egypt and works with remote product and engineering teams across the United States, Europe, the Gulf region, and worldwide time zones for full-time, contract, and freelance software development.",
+      "I bring 10+ years of software engineering experience and 4+ years leading engineers. That means I can help your team decide what to build, break the work into practical milestones, review architecture, mentor developers, and still stay hands-on in the code.",
   },
   {
-    question: "What services can teams hire Michael for?",
+    question: "Can we work together if my company is outside Egypt?",
     answer:
-      "Teams can hire Michael for Android app development, Kotlin and Jetpack Compose architecture, React and TypeScript interfaces, OCPP and EV charging software, AI automation, technical leadership, 20% API-response improvements, and production performance optimization.",
+      "Yes. I am based in Cairo, Egypt, and I work with remote teams across the United States, Europe, the Gulf region, and worldwide time zones. We can collaborate async, join planning calls, and keep delivery visible.",
   },
   {
-    question: "What proof of experience does the portfolio show?",
+    question: "What kinds of projects are a strong fit?",
     answer:
-      "The portfolio highlights 10+ years of software engineering, 4+ years leading engineers, 120k+ commerce users supported, 240+ merchants enabled, 99.9% uptime ownership, 50k+ app users reached, published Google Play apps, VS Code extensions, and applied AI/OCPP systems.",
+      "The best fit is a product team that needs Android, Kotlin, Jetpack Compose, React, TypeScript, OCPP, EV charging software, AI automation, or technical leadership. I can help with new builds, performance fixes, migrations, and production rescue work.",
   },
   {
-    question: "Which outcomes has Michael delivered?",
+    question: "What proof do you have?",
     answer:
-      "Reported outcomes include 70% faster store operations, 50% faster vendor onboarding, 30% lower crash rate across production mobile releases, 20% faster API responses, and 4-6 second EV charging session setup targets.",
+      "My portfolio includes 120k+ commerce users supported, 240+ merchants enabled, 99.9% uptime ownership, 50k+ app users reached, 70% faster store operations, 50% faster onboarding, 30% lower crash rates, and 20% faster API responses.",
   },
   {
-    question: "How should recruiters or founders contact Michael?",
+    question: "How do we start a conversation?",
     answer:
-      "Recruiters, founders, and engineering leaders can contact Michael through LinkedIn at linkedin.com/in/michaelsam00, GitHub at github.com/michaelsam94, or by email at michaelsam00@yahoo.com.",
+      "Send me the product goal, the current tech stack, the timeline, and what feels stuck. I can quickly tell you where I can help, what I would check first, and whether a short project, advisory call, or longer engagement makes sense.",
   },
 ];
 
@@ -41,17 +41,15 @@ export default function SeoAnswerHub() {
       aria-labelledby="answer-hub-title"
     >
       <div className="answer-hub__inner">
-        <p className="answer-hub__eyebrow">Hire Michael Samuel Naeem</p>
+        <p className="answer-hub__eyebrow">Questions teams usually ask</p>
         <h2 id="answer-hub-title">
-          Senior Android, Kotlin, React, OCPP, and AI automation engineer with
-          10+ years of measured delivery.
+          Need a senior Android, Kotlin, React, OCPP, or AI automation engineer?
+          Here is the short answer.
         </h2>
         <p className="answer-hub__summary">
-          Michael builds production mobile and web software, leads engineering
-          delivery, and helps teams ship reliable products across Android,
-          Jetpack Compose, React, TypeScript, EV charging protocols, and
-          AI-powered workflow automation, with outcomes including 120k+ users,
-          99.9% uptime ownership, and 70% faster operations.
+          I help teams turn messy product or engineering problems into shipped
+          software. If you need someone who can write production code, lead the
+          technical conversation, and explain tradeoffs clearly, we should talk.
         </p>
         <div className="answer-hub__grid">
           {answers.map((item) => (

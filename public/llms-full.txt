@@ -30,6 +30,20 @@ Michael works with remote product and engineering teams in the United States, Eu
 
 Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineer with leadership experience across mobile apps, commerce platforms, developer tooling, and EV charging systems. He is based in Cairo and works remotely with teams worldwide.
 
+## Conversational Q&A
+
+Q: Can you help my team ship a reliable Android app?
+A: Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on clean architecture, fast screens, fewer crashes, predictable releases, and maintainable code.
+
+Q: What do you bring beyond writing code?
+A: I bring 10+ years of software engineering experience and 4+ years leading engineers. I can help your team choose what to build, break work into milestones, review architecture, mentor developers, and stay hands-on in the code.
+
+Q: How do we start working together?
+A: Send me the product goal, current tech stack, timeline, and what feels stuck. We can start with a focused audit, a small build, a rescue sprint, or a technical advisory call.
+
+Q: Can we work together remotely?
+A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the United States, Europe, the Gulf region, and worldwide time zones.
+
 ## Important URLs
 
 - Portfolio: https://michaelsam94.tech/
