@@ -24,12 +24,12 @@ const conversationalQuestions = [
   {
     question: "Can you help my team ship a reliable Android app?",
     answer:
-      "Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on clean architecture, fast screens, fewer crashes, predictable releases, and code that other engineers can keep improving.",
+      "Yes. I build Kotlin and Jetpack Compose apps with clean architecture, fast screens, fewer crashes, and releases your team can trust.",
   },
   {
     question: "What should we send first?",
     answer:
-      "Send the product goal, current tech stack, timeline, users affected, and anything that shows the problem clearly, such as screenshots, crash logs, store reviews, or a short recording.",
+      "Send the product goal, tech stack, timeline, affected users, and proof of the problem, such as screenshots or crash logs.",
   },
   {
     question: "How do we start working together?",
@@ -49,7 +49,7 @@ export default function SeoKnowledgeGraph() {
         url: SITE_ORIGIN,
         image: `${SITE_ORIGIN}/profile-photo.png`,
         description:
-          "Senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineering for product teams hiring remote or contract software development help, backed by 10+ years of experience, 120k+ users supported, and 99.9% uptime ownership.",
+          "Senior Android, Kotlin, React, OCPP, and AI automation help for remote teams, backed by 10+ years, 120k+ users, and 99.9% uptime ownership.",
         founder: { "@id": PERSON_ID },
         employee: { "@id": PERSON_ID },
         keywords: serviceKeywords.join(", "),

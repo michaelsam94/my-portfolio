@@ -4,32 +4,32 @@ const prompts = [
   {
     question: "What should you send me first?",
     answer:
-      "Send me the product goal, the users affected, the current stack, and the deadline. If you have screenshots, crash logs, store reviews, or a short Loom, even better.",
+      "Send the product goal, affected users, current stack, deadline, and any screenshots, crash logs, store reviews, or short recording.",
   },
   {
     question: "How do I usually work with a team?",
     answer:
-      "We agree on the outcome, I map the riskiest parts, then we choose the smallest useful milestone. You get clear tradeoffs, visible progress, and production-minded decisions.",
+      "We agree on the outcome, map the riskiest parts, and choose the smallest useful milestone before writing more code.",
   },
   {
     question: "What will I tell you if something is risky?",
     answer:
-      "I will say it plainly. If the scope is too big, the architecture is fragile, or the timeline is unrealistic, I will explain the risk and suggest a practical path forward.",
+      "I will say it plainly, explain the risk, and suggest a practical path if the scope, architecture, or timeline looks fragile.",
   },
   {
     question: "Can I join an existing engineering team?",
     answer:
-      "Yes. I can pair with your team, review pull requests, lead a feature stream, stabilize releases, or help your Android, React, and backend engineers move faster together.",
+      "Yes. I can pair with your team, review pull requests, lead a feature stream, or help Android, React, and backend work connect.",
   },
   {
     question: "Do we need a long contract to start?",
     answer:
-      "No. We can start with a focused audit, a small build, a rescue sprint, or a technical advisory call. If the fit is good, we can expand from there.",
+      "No. We can start with a focused audit, small build, rescue sprint, or advisory call, then expand only if the fit is good.",
   },
   {
     question: "What result should you expect?",
     answer:
-      "You should expect clearer decisions, cleaner code, fewer surprises, and software that is easier to ship, measure, and maintain after the first release.",
+      "You should expect clearer decisions, cleaner code, fewer surprises, and software that is easier to ship and maintain.",
   },
 ];
 
