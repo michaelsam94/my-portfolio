@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./OpenSource.css";
 
 const GITHUB_USERNAME = "michaelsam94";
@@ -261,6 +261,7 @@ type ContributionTooltip = {
 
 function ContributionGraph({ days }: { days: ContributionDay[] }) {
   const [tooltip, setTooltip] = useState<ContributionTooltip | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const weeks = useMemo(() => {
     const padded = [...days];
     const firstDay = new Date(padded[0]?.date ?? new Date()).getDay();
@@ -277,6 +278,14 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
     return grouped;
   }, [days]);
 
+  // Weeks run oldest → newest left-to-right; show the most recent contributions by default.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollLeft = el.scrollWidth;
+    }
+  }, [weeks]);
+
   const showTooltip = (day: ContributionDay, element: HTMLElement) => {
     if (!day.date) {
       return;
@@ -291,7 +300,7 @@ function ContributionGraph({ days }: { days: ContributionDay[] }) {
   };
 
   return (
-    <div className="open-source-graph-wrap">
+    <div className="open-source-graph-wrap" ref={scrollRef}>
       <div className="open-source-graph" aria-label="GitHub contribution graph">
         {weeks.map((week, weekIndex) => (
           <div className="open-source-week" key={`week-${weekIndex}`}>
