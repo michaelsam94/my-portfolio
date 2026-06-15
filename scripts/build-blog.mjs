@@ -642,6 +642,8 @@ function renderStoreHub(items, kind) {
 function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [
+    { loc: `${SITE_ORIGIN}/llms.txt`, priority: "0.7" },
+    { loc: `${SITE_ORIGIN}/llms-full.txt`, priority: "0.7" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
     { loc: `${SITE_ORIGIN}/blog/`, lastmod: today, changefreq: "weekly", priority: "0.8" },
     ...posts.map((p) => ({
