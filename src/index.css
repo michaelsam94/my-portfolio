@@ -1,4 +1,14 @@
 :root {
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
   --text: #e2e0e7;
   --text-muted: #9b98a8;
   --text-h: #f5f4f8;
@@ -14,12 +24,76 @@
   --green-soft: rgba(52, 211, 153, 0.15);
   --cyan: #22d3ee;
   --orange: #fb923c;
-  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
-  --radius: 14px;
-  --radius-lg: 20px;
   --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --nav-bg: rgba(12, 11, 15, 0.92);
+  --grid-line: rgba(255, 255, 255, 0.02);
+  --card-hover-border: rgba(255, 255, 255, 0.12);
+  --tag-bg: rgba(255, 255, 255, 0.06);
+  --divider: rgba(255, 255, 255, 0.08);
+  --section-border: rgba(148, 163, 184, 0.22);
+  --section-surface: rgba(15, 23, 42, 0.62);
+  --section-surface-border: rgba(148, 163, 184, 0.18);
+  --section-band-top: rgba(15, 23, 42, 0.62);
+  --section-band-bottom: rgba(15, 23, 42, 0.28);
+  --section-band-base: rgba(2, 6, 23, 0.72);
+  --section-card: rgba(15, 23, 42, 0.66);
+  --section-card-strong: rgba(15, 23, 42, 0.84);
+  --section-card-mid: rgba(15, 23, 42, 0.62);
+  --section-card-base: rgba(2, 6, 23, 0.7);
+  --section-highlight: #8bd3dd;
+  --section-proof-border: rgba(139, 211, 221, 0.2);
+  --section-proof-bg: rgba(8, 47, 73, 0.28);
+  --section-proof-text: #dbeafe;
+  --btn-border: rgba(124, 92, 255, 0.4);
+  --btn-hover-bg: rgba(124, 92, 255, 0.3);
+  --card-highlight-start: rgba(124, 92, 255, 0.06);
+  --card-highlight-end: rgba(255, 255, 255, 0.02);
+  --card-highlight-border: rgba(124, 92, 255, 0.25);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --text: #3d3a47;
+  --text-muted: #6b6578;
+  --text-h: #1a1820;
+  --bg: #faf9fc;
+  --bg-elevated: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --glass: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --accent: #6b4dff;
+  --accent-soft: rgba(107, 77, 255, 0.12);
+  --accent-glow: rgba(107, 77, 255, 0.18);
+  --green: #059669;
+  --green-soft: rgba(5, 150, 105, 0.12);
+  --cyan: #0891b2;
+  --orange: #ea580c;
+  --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+  --nav-bg: rgba(250, 249, 252, 0.92);
+  --grid-line: rgba(0, 0, 0, 0.05);
+  --card-hover-border: rgba(0, 0, 0, 0.12);
+  --tag-bg: rgba(0, 0, 0, 0.04);
+  --divider: rgba(0, 0, 0, 0.08);
+  --section-border: rgba(0, 0, 0, 0.1);
+  --section-surface: rgba(255, 255, 255, 0.92);
+  --section-surface-border: rgba(0, 0, 0, 0.1);
+  --section-band-top: rgba(255, 255, 255, 0.95);
+  --section-band-bottom: rgba(248, 247, 252, 0.85);
+  --section-band-base: rgba(245, 244, 250, 0.95);
+  --section-card: rgba(255, 255, 255, 0.95);
+  --section-card-strong: rgba(255, 255, 255, 0.98);
+  --section-card-mid: rgba(255, 255, 255, 0.92);
+  --section-card-base: rgba(248, 247, 252, 0.95);
+  --section-highlight: #0891b2;
+  --section-proof-border: rgba(8, 145, 178, 0.22);
+  --section-proof-bg: rgba(8, 145, 178, 0.08);
+  --section-proof-text: #0e7490;
+  --btn-border: rgba(107, 77, 255, 0.35);
+  --btn-hover-bg: rgba(107, 77, 255, 0.2);
+  --card-highlight-start: rgba(107, 77, 255, 0.08);
+  --card-highlight-end: rgba(255, 255, 255, 0.6);
+  --card-highlight-border: rgba(107, 77, 255, 0.22);
 }
 
 * {
@@ -109,8 +183,8 @@ a:hover {
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 20px 40px -20px rgba(124, 92, 255, 0.2);
+  border-color: var(--card-hover-border);
+  box-shadow: 0 20px 40px -20px var(--accent-glow);
 }
 
 .tag {
@@ -119,7 +193,7 @@ a:hover {
   font-size: 12px;
   font-family: var(--mono);
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--tag-bg);
   border-radius: 8px;
   border: 1px solid var(--border);
 }
@@ -134,14 +208,14 @@ a:hover {
   font-weight: 500;
   color: var(--text-h);
   background: var(--accent-soft);
-  border: 1px solid rgba(124, 92, 255, 0.4);
+  border: 1px solid var(--btn-border);
   border-radius: var(--radius);
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition), transform 0.2s;
 }
 
 .btn:hover {
-  background: rgba(124, 92, 255, 0.3);
+  background: var(--btn-hover-bg);
   border-color: var(--accent);
   transform: translateY(-1px);
 }

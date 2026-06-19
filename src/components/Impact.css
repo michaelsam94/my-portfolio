@@ -11,7 +11,7 @@
 
 .impact-summary {
   margin: 12px 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 1rem;
   line-height: 1.7;
 }
@@ -25,16 +25,16 @@
 .impact-card {
   min-height: 188px;
   padding: 22px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--section-surface-border);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(15, 23, 42, 0.62)),
-    rgba(2, 6, 23, 0.7);
+    linear-gradient(180deg, var(--section-card-strong), var(--section-card-mid)),
+    var(--section-card-base);
 }
 
 .impact-card strong {
   display: block;
-  color: #f8fafc;
+  color: var(--text-h);
   font-size: clamp(2rem, 4vw, 3rem);
   line-height: 1;
   letter-spacing: 0;
@@ -43,14 +43,14 @@
 .impact-card span {
   display: block;
   margin-top: 12px;
-  color: #8bd3dd;
+  color: var(--section-highlight);
   font-weight: 700;
   line-height: 1.35;
 }
 
 .impact-card p {
   margin: 12px 0 0;
-  color: #cbd5e1;
+  color: var(--text-muted);
   font-size: 0.94rem;
   line-height: 1.6;
 }
@@ -66,10 +66,10 @@
 
 .impact-proof li {
   padding: 14px 16px;
-  border: 1px solid rgba(139, 211, 221, 0.2);
+  border: 1px solid var(--section-proof-border);
   border-radius: 8px;
-  color: #dbeafe;
-  background: rgba(8, 47, 73, 0.28);
+  color: var(--section-proof-text);
+  background: var(--section-proof-bg);
   font-size: 0.92rem;
   line-height: 1.5;
 }

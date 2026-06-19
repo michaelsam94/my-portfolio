@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
@@ -14,8 +14,23 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preload" as="image" href="/profile-photo-hero.webp" type="image/webp" fetchpriority="high" />
-    <meta name="theme-color" content="#7c5cff" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0c0b0f" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (function () {
+        var stored = localStorage.getItem("portfolio-theme");
+        var theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", theme === "light" ? "#faf9fc" : "#0c0b0f");
+      })();
+    </script>
     <meta name="author" content="Michael Samuel Naeem" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="googlebot" content="index, follow" />

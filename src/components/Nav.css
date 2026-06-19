@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background-color: rgba(12, 11, 15, 0.92);
+  background-color: var(--nav-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
@@ -40,6 +40,12 @@
 
 .nav-links a:hover {
   color: var(--text-h);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .nav-toggle {

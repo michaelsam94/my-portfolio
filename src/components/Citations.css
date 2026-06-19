@@ -11,7 +11,7 @@
 
 .citations-heading p {
   margin: 12px 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
   line-height: 1.7;
 }
 
@@ -27,9 +27,9 @@
 .citation-card {
   min-height: 154px;
   padding: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--section-surface-border);
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.62);
+  background: var(--section-surface);
 }
 
 .citation-card cite {
@@ -38,27 +38,27 @@
 }
 
 .citation-card a {
-  color: #f8fafc;
+  color: var(--text-h);
   font-weight: 700;
   line-height: 1.35;
   text-decoration: none;
 }
 
 .citation-card a:hover {
-  color: #8bd3dd;
+  color: var(--section-highlight);
 }
 
 .citation-card span {
   display: block;
   margin-top: 8px;
-  color: #8bd3dd;
+  color: var(--section-highlight);
   font-size: 0.88rem;
   font-weight: 700;
 }
 
 .citation-card p {
   margin: 12px 0 0;
-  color: #cbd5e1;
+  color: var(--text-muted);
   line-height: 1.6;
 }
 

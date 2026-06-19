@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { profile } from "../data/portfolio";
+import ThemeToggle from "./ThemeToggle";
 import "./Nav.css";
 
 const links = [
@@ -29,16 +30,19 @@ export default function Nav() {
             </a>
           ))}
         </nav>
-        <button
-          type="button"
-          className="nav-toggle"
-          aria-label="Toggle menu"
-          onClick={() => setOpen(!open)}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
+        <div className="nav-actions">
+          <ThemeToggle />
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-label="Toggle menu"
+            onClick={() => setOpen(!open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
       </div>
     </header>
   );
