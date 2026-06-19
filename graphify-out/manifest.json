@@ -1,0 +1,547 @@
+{
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/tsconfig.node.json": {
+    "mtime": 1780376353.845892,
+    "ast_hash": "eec85c9d7c6b599801557f1afd86672c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/tsconfig.app.json": {
+    "mtime": 1780376353.8456774,
+    "ast_hash": "1079e34c0d979ff4e9c96e544b296d8f",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/package.json": {
+    "mtime": 1781526211.9448428,
+    "ast_hash": "e3fc06db47f19b2f63a4bf2c63c1adf1",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/tsconfig.json": {
+    "mtime": 1780376353.8457856,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/eslint.config.js": {
+    "mtime": 1780376353.8367715,
+    "ast_hash": "b8893da386a89dfd3672dad848f4ec7e",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/vite.config.ts": {
+    "mtime": 1780376353.8459966,
+    "ast_hash": "38049e7f2491209a43ee3132f48c8e1a",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/netlify/functions/github-contributions.js": {
+    "mtime": 1781438651.3812673,
+    "ast_hash": "9b5c93b4867a1e30971ccbd73353773b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/contributions.json": {
+    "mtime": 1781509086.1100242,
+    "ast_hash": "3984a8aeb2d01262d4766956a3fb4d7c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/build-blog.mjs": {
+    "mtime": 1781861516.5886292,
+    "ast_hash": "2f7705c9d9326d004250ed51c2780845",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/submit-indexnow.mjs": {
+    "mtime": 1781523941.6471834,
+    "ast_hash": "d1b1ab46911309a4466650bf279e5eff",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/static-theme.js": {
+    "mtime": 1781861516.4697943,
+    "ast_hash": "e2be915122384e4b114a160bf47a6e58",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/vscode-longform.mjs": {
+    "mtime": 1781528787.592242,
+    "ast_hash": "64d577fa4d179587bedba946f090208e",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/fetch-contributions.mjs": {
+    "mtime": 1781509059.559921,
+    "ast_hash": "d25196e693ce7a50a68193bf27be2119",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/fetch-readmes.mjs": {
+    "mtime": 1781447025.3718731,
+    "ast_hash": "9664921cf390f33ad8dae78d20eaf548",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/scripts/check-ai-phrase-length.mjs": {
+    "mtime": 1781526310.6988575,
+    "ast_hash": "93bdb58cb0162f348dffe281bb243d94",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/App.tsx": {
+    "mtime": 1781525329.4359045,
+    "ast_hash": "b9338ef08119afc96a00d776d3f80e49",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/main.tsx": {
+    "mtime": 1781095282.1167922,
+    "ast_hash": "ac6ccbf0907df8813b7cbc0823beaed9",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/config/site.ts": {
+    "mtime": 1780376353.8448126,
+    "ast_hash": "4cd66320a1eb21ece95c1a35a1286425",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Projects.tsx": {
+    "mtime": 1781447199.8692837,
+    "ast_hash": "f0b1fefce9248d74896f1a485cb8fa70",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Hero.tsx": {
+    "mtime": 1781098997.1883605,
+    "ast_hash": "a586f8d0a8b6bcd4492c4a2c30428f91",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Nav.tsx": {
+    "mtime": 1781858780.0015643,
+    "ast_hash": "20176042a991f6efd08fd8f72e248e0c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Experience.tsx": {
+    "mtime": 1780376353.842858,
+    "ast_hash": "0863ca79d60fac1ddf64076eab85f317",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/StructuredData.tsx": {
+    "mtime": 1780376353.8446229,
+    "ast_hash": "71c9b9b5745ad5874ed6380b86d09f47",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/SeoAnswerHub.tsx": {
+    "mtime": 1781526152.0837197,
+    "ast_hash": "7849fbfa8ed476a795047b6eaf85896d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/ConversationalGuide.tsx": {
+    "mtime": 1781526181.7570627,
+    "ast_hash": "c9f5b6a84a4cdbf1389af5468cf7f6e8",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Contact.tsx": {
+    "mtime": 1781518552.6996727,
+    "ast_hash": "a1e423fa7fbb0204ab6602f69c077b18",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/LinkedInProfileBadge.tsx": {
+    "mtime": 1780376353.8434677,
+    "ast_hash": "198cee7271ce6b221843362b95ef0d3c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Citations.tsx": {
+    "mtime": 1781524979.71397,
+    "ast_hash": "dd1af89a90832aff5f9babdcda5e2576",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Impact.tsx": {
+    "mtime": 1781524606.6103733,
+    "ast_hash": "34024e1a2a67fc84f1e529d3a06d38d4",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/SkillsStructuredData.tsx": {
+    "mtime": 1780376353.8445072,
+    "ast_hash": "f4ea02ed164ab38533bc5c34588e2a6b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/OpenSource.tsx": {
+    "mtime": 1781509136.3675573,
+    "ast_hash": "826240e5430f6a6cf8656a4092403c85",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/DeferredPortfolioSections.tsx": {
+    "mtime": 1781525000.958085,
+    "ast_hash": "8183810d6b98b1af58ae7e010f209bd2",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/ThemeToggle.tsx": {
+    "mtime": 1781858770.1298087,
+    "ast_hash": "9296ef5afd5964dac93743c6aaab36a2",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/SeoKnowledgeGraph.tsx": {
+    "mtime": 1781526305.843793,
+    "ast_hash": "0da9723d771e5ea69d2261d60ded7c66",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Skills.tsx": {
+    "mtime": 1780376353.844382,
+    "ast_hash": "8b08814620d6d6af5c3d8d8ecde6d040",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/PlayStore.tsx": {
+    "mtime": 1781447832.1754386,
+    "ast_hash": "449f689de248e66650f3b7648d81622a",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/About.tsx": {
+    "mtime": 1780376353.8420842,
+    "ast_hash": "d0f3543b16b04c8fafe8614df4cc3522",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/components/Certifications.tsx": {
+    "mtime": 1780376353.8423243,
+    "ast_hash": "f6882c3dca553b2b1ec1d847f1b72a8c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/hooks/useTheme.ts": {
+    "mtime": 1781858769.2066975,
+    "ast_hash": "bbd553da8be6ecea99e9b1aa0ee1299c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/lib/motion.ts": {
+    "mtime": 1780376353.8454359,
+    "ast_hash": "41fe87cfc5e3ac58ae9a7f0b8383be3d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/lib/theme.ts": {
+    "mtime": 1781858768.4649818,
+    "ast_hash": "7ba924fbeaac83d6cfc779e8e9500678",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/data/portfolio.ts": {
+    "mtime": 1781447726.4930654,
+    "ast_hash": "da1403fbedcac38f1d02f9f7314fcbd7",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/data/citations.ts": {
+    "mtime": 1781524957.0471244,
+    "ast_hash": "01fce30f0c64b1cc91310a8dc55b6297",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/index.html": {
+    "mtime": 1781858793.115353,
+    "ast_hash": "b1b081c0b26e0a3bcf1f7124be52662c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/PUBLISH.md": {
+    "mtime": 1780376353.8364327,
+    "ast_hash": "ef22a414a03bf6cc7957acce132cd78d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/profile-README.md": {
+    "mtime": 1780376353.8377223,
+    "ast_hash": "3c6482e50f22caf84d2630e372d1475c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/README.md": {
+    "mtime": 1780376353.83664,
+    "ast_hash": "b607ccf2c249153e5d3d38dc2fa508c2",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/GITHUB_PROFILE_SETUP.md": {
+    "mtime": 1780376353.8362963,
+    "ast_hash": "262ac5160a21415f9e57662bd641ace8",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/blog/how-i-architected-an-ev-charging-platform.md": {
+    "mtime": 1781529018.6352818,
+    "ast_hash": "f516492fd31188624865501d1e8310ac",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/blog/flutter-riverpod-state-management.md": {
+    "mtime": 1781529005.132339,
+    "ast_hash": "3e492e2ba4d7137fc4e0a8707e8286e4",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/blog/jetpack-compose-lessons-10-years-android.md": {
+    "mtime": 1781529005.134327,
+    "ast_hash": "90028b92f93e6aded5918431452a0757",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/blog/world-cup-real-time-analytics-player-ball-tracking.md": {
+    "mtime": 1781871634.5718265,
+    "ast_hash": "21326875a4bcecaa5725b5ed7df1ad55",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/mdtopdfext.md": {
+    "mtime": 1781528832.988917,
+    "ast_hash": "5ec36484c5a575e7330502373ed4e054",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/pdfviewerext.md": {
+    "mtime": 1781528832.9891422,
+    "ast_hash": "74f9d0e64f01f98897e58a778f6556fd",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/mdviewerext.md": {
+    "mtime": 1781528821.5220027,
+    "ast_hash": "0afa9182ba75e52f4620b757f50ce238",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/docxtopdfext.md": {
+    "mtime": 1781528821.5206904,
+    "ast_hash": "2f143157a356f08f715ab7a3a255e5bd",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/csv-studio.md": {
+    "mtime": 1781528832.9887605,
+    "ast_hash": "153927afb92b194ca560fd33014e9f34",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/docxviewerext.md": {
+    "mtime": 1781528821.521642,
+    "ast_hash": "69526f60dfa3fa84020c9d12b7fb0dbc",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/docxtomdext.md": {
+    "mtime": 1781528821.5205412,
+    "ast_hash": "4b4c7625616034043faa58cbb69b4318",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/contextporterext.md": {
+    "mtime": 1781528821.5198276,
+    "ast_hash": "c436e1c7c040c7c014e5a64352f637ec",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/extensions/pdftomdext.md": {
+    "mtime": 1781528832.9890342,
+    "ast_hash": "0fcf387e445a840d5aa2fe9d6077532e",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/edgeflow.md": {
+    "mtime": 1781447061.455458,
+    "ast_hash": "005f5fd2075a6d050aa744faf6bebcc6",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/storeclear.md": {
+    "mtime": 1781447060.0253692,
+    "ast_hash": "1c44e6f274cd6643781173a38d69ac06",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/devpocket.md": {
+    "mtime": 1781447065.4528365,
+    "ast_hash": "325f2086f040463cfe001140957a6006",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/bulk-qr-barcode-suite.md": {
+    "mtime": 1781447056.5548737,
+    "ast_hash": "a99864739f4fc67611f594aeddf466e4",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/todo-app.md": {
+    "mtime": 1781447048.7182062,
+    "ast_hash": "1da92a1f791f379101b3e1d709b44646",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/doc-scanner-vectorizer.md": {
+    "mtime": 1781447057.92773,
+    "ast_hash": "a968f3b89138902ea2289c15cd71da56",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/aurasound.md": {
+    "mtime": 1781447044.4671376,
+    "ast_hash": "e751eec845fbe14f2ea6b2d7cba0c4ac",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/walkplanner.md": {
+    "mtime": 1781447043.7490635,
+    "ast_hash": "18ebe61ef93207b0c46a7010aa2ddf30",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/photo-optimizer.md": {
+    "mtime": 1781447062.8200343,
+    "ast_hash": "1d04a834813fb7f9d4ca5a11d220a608",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/ble-finder.md": {
+    "mtime": 1781447063.5362406,
+    "ast_hash": "cddd3b5acc87c7a9f1acbf89f4737914",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/notchcommand.md": {
+    "mtime": 1781447050.0261226,
+    "ast_hash": "9e0bb5b4ccec153d062e08218c46590b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/folderflow.md": {
+    "mtime": 1781447058.5802834,
+    "ast_hash": "242ee79eceb128662470765542b7210d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/clearvoice-ai.md": {
+    "mtime": 1781447064.785049,
+    "ast_hash": "82149a860c9fabbe95a84796be1e3053",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/privai.md": {
+    "mtime": 1781447062.1138341,
+    "ast_hash": "9b4c92a902848b59d0c1aa85666851a9",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/insightlyspend.md": {
+    "mtime": 1781447038.9120011,
+    "ast_hash": "57a019f1860e23655e3b3f72b793e9d1",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/pdf-toolkit.md": {
+    "mtime": 1781447052.6593232,
+    "ast_hash": "0e8e21f2adb236216ca1570ee03af8dd",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/sensorscope.md": {
+    "mtime": 1781447057.2872748,
+    "ast_hash": "2540ae968085f7b149cd499ff1757926",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/frozendroid.md": {
+    "mtime": 1781447051.9811993,
+    "ast_hash": "7e3b40f0d205f30a073780d85d3fbdf8",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/smooth-mo.md": {
+    "mtime": 1781447060.7740014,
+    "ast_hash": "60f913f872ba2a4dc0047229c06e54d4",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/tic-tac-toe.md": {
+    "mtime": 1781447040.7240272,
+    "ast_hash": "b5be15ec731d50c0a69db6b25c98281d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/subtrackr.md": {
+    "mtime": 1781447043.0611908,
+    "ast_hash": "9a6b037d89f3aac6b658108ff7d8040b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/micro-budgeting.md": {
+    "mtime": 1781447059.3076172,
+    "ast_hash": "fa4b6b527ef5c57b174d760e4c8bfbfe",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/clipvault.md": {
+    "mtime": 1781447051.288124,
+    "ast_hash": "97cffb7a9071cc42ed707713e8615088",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/content/apps/wi-fi-drop.md": {
+    "mtime": 1781447045.1397116,
+    "ast_hash": "973425dfd8027037568a9bf1c1cfc4ae",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/docs/wikipedia-notability-checklist.md": {
+    "mtime": 1781525594.1947322,
+    "ast_hash": "699877fb713af179cf3056d8e1fd4998",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/docs/bing-webmaster-setup.md": {
+    "mtime": 1781524000.252321,
+    "ast_hash": "ba9c4b5333ff11c65136ffb7942f143e",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/docs/brave-search-discovery.md": {
+    "mtime": 1781524226.9275327,
+    "ast_hash": "2f646df1257ec4420f01733ed034247d",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/llms.txt": {
+    "mtime": 1781525687.6727803,
+    "ast_hash": "ff46592e705787686d923064e330f4f4",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/README-assets.md": {
+    "mtime": 1780376353.8389676,
+    "ast_hash": "d60d5e772e3169672565a684901c1617",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/google42b4c336817b4c5e.html": {
+    "mtime": 1781095892.9151268,
+    "ast_hash": "56dfef4dd58c1772189a018075aee6bc",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/0eb1eb625c28368318e34f58bec177b0.txt": {
+    "mtime": 1781523927.9033024,
+    "ast_hash": "3ea9b2cd4d23d08545972692658a455b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/llms-full.txt": {
+    "mtime": 1781525701.00459,
+    "ast_hash": "9119d2f16c8ae3a3e85f5798f0b68d9b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/robots.txt": {
+    "mtime": 1781525732.3374178,
+    "ast_hash": "d917f974c0fbf111b143a904b2f7f9a9",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/sitemap.txt": {
+    "mtime": 1781525681.1117241,
+    "ast_hash": "2de89cbe32eda636b8f61989609950ba",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/wikipedia/index.html": {
+    "mtime": 1781861516.46977,
+    "ast_hash": "8f33d6c71071aedccecf1e569dfa6197",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf": {
+    "mtime": 1780376353.8387642,
+    "ast_hash": "504fdb3c9499e9ba9c307e254c7a8ca1",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/favicon-48.png": {
+    "mtime": 1780376353.839748,
+    "ast_hash": "f3bdc4dca7835eda567d751f8f043d2c",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/favicon-192.png": {
+    "mtime": 1780376353.8395405,
+    "ast_hash": "cf5eb25e2ec97664ab5a8edeb7441b34",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/apple-touch-icon.png": {
+    "mtime": 1780376353.839187,
+    "ast_hash": "ef6487b8a447b25e7561febce68aff45",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/profile-photo-hero.webp": {
+    "mtime": 1781098442.637139,
+    "ast_hash": "6e331265aad4dc77771b2c5159abbacb",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/profile-photo.png": {
+    "mtime": 1780376353.8405616,
+    "ast_hash": "a47703eba295f1c50eecf0b29730941b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/og-image.png": {
+    "mtime": 1781517680.9411628,
+    "ast_hash": "f67f4937287e485831f5d30edf359bdf",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/icons.svg": {
+    "mtime": 1780376353.8400657,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/profile-photo-hero.jpg": {
+    "mtime": 1780376353.8402565,
+    "ast_hash": "a145bb8fcaa61a15343c678d68e6c989",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/public/favicon.svg": {
+    "mtime": 1780376353.839895,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/assets/hero.png": {
+    "mtime": 1780376353.8414347,
+    "ast_hash": "5cf2b0762834cdddc0dd3ec1397b5011",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/assets/vite.svg": {
+    "mtime": 1780376353.8417609,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": ""
+  },
+  "/Users/tadafuqinformationtechnology/Desktop/my-portfolio/src/assets/react.svg": {
+    "mtime": 1780376353.8416069,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": ""
+  }
+}
