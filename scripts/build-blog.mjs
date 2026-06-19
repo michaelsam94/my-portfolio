@@ -69,13 +69,38 @@ function firstFeatures(md = "", n = 3) {
     .slice(0, n);
 }
 
+/** Blocking theme init — must match index.html and scripts/static-theme.js storage key. */
+const themeInitScript = `<script>
+(function () {
+  var stored = localStorage.getItem("portfolio-theme");
+  var theme =
+    stored === "light" || stored === "dark"
+      ? stored
+      : window.matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "light" ? "#faf9fc" : "#0c0b0f");
+})();
+</script>`;
+
+const themeToggleButton = `<button type="button" class="theme-toggle" data-theme-toggle onclick="window.portfolioTheme.toggle()" aria-label="Switch theme" title="Switch theme">
+  <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+</button>`;
+
+const themeBodyScript = `<script src="/blog/assets/theme.js" defer></script>`;
+
 /** Shared <head> markup for every generated page. */
 function head({ title, description, canonical, ogImage, jsonLd, ogType = "article" }) {
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  ${themeInitScript}
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <meta name="author" content="${AUTHOR}" />
@@ -85,8 +110,8 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="theme-color" content="#7c5cff" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0c0b0f" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="geo.region" content="EG-C" />
   <meta name="geo.placename" content="Cairo" />
   <meta property="og:type" content="${ogType}" />
@@ -110,11 +135,14 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
 const siteNav = `<header class="site-nav">
   <div class="nav-inner">
     <a class="brand" href="/">Michael Samuel Naeem</a>
-    <nav class="nav-right" aria-label="Primary">
-      <a href="/blog/">Blog</a>
-      <a href="/#projects">Projects</a>
-      <a href="/#contact">Contact</a>
-    </nav>
+    <div class="nav-right">
+      <nav aria-label="Primary">
+        <a href="/blog/">Blog</a>
+        <a href="/#projects">Projects</a>
+        <a href="/#contact">Contact</a>
+      </nav>
+      ${themeToggleButton}
+    </div>
   </div>
 </header>`;
 
@@ -197,6 +225,7 @@ function renderPost(p, related) {
     </article>
   </div>
   ${siteFooter}
+  ${themeBodyScript}
 </body>
 </html>`;
 }
@@ -254,6 +283,7 @@ function renderHub(posts) {
     ${faqSection(HUB_FAQ.blog)}
   </div>
   ${siteFooter}
+  ${themeBodyScript}
 </body>
 </html>`;
 }
@@ -447,6 +477,7 @@ function renderWork(p, posts) {
     </article>
   </div>
   ${siteFooter}
+  ${themeBodyScript}
 </body>
 </html>`;
 }
@@ -806,6 +837,7 @@ function renderStoreItem(p, posts) {
     </article>
   </div>
   ${siteFooter}
+  ${themeBodyScript}
 </body>
 </html>`;
 }
@@ -870,6 +902,7 @@ function renderStoreHub(items, kind) {
     ${faqSection(hubFaq)}
   </div>
   ${siteFooter}
+  ${themeBodyScript}
 </body>
 </html>`;
 }
@@ -1126,6 +1159,7 @@ async function main() {
 
   await mkdir(path.join(BLOG_DIST, "assets"), { recursive: true });
   await copyFile(path.join(ROOT, "scripts/blog.css"), path.join(BLOG_DIST, "assets/blog.css"));
+  await copyFile(path.join(ROOT, "scripts/static-theme.js"), path.join(BLOG_DIST, "assets/theme.js"));
 
   for (const p of posts) {
     const related = posts.filter((r) => r.slug !== p.slug).slice(0, 3);

@@ -1,8 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        var stored = localStorage.getItem("portfolio-theme");
+        var theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <title>Michael Samuel Naeem Wikipedia Readiness Dossier</title>
     <meta
@@ -40,7 +53,7 @@
       }
     </script>
     <style>
-      :root {
+      [data-theme="dark"] {
         color-scheme: dark;
         --bg: #07090f;
         --panel: #101624;
@@ -48,6 +61,22 @@
         --muted: #cbd5e1;
         --accent: #8bd3dd;
         --border: rgba(148, 163, 184, 0.24);
+        --status-border: rgba(251, 191, 36, 0.45);
+        --status-bg: rgba(69, 26, 3, 0.24);
+        --code-text: #e0f2fe;
+      }
+
+      [data-theme="light"] {
+        color-scheme: light;
+        --bg: #faf9fc;
+        --panel: #ffffff;
+        --text: #1a1820;
+        --muted: #6b6578;
+        --accent: #0891b2;
+        --border: rgba(0, 0, 0, 0.1);
+        --status-border: rgba(217, 119, 6, 0.35);
+        --status-bg: rgba(254, 243, 199, 0.8);
+        --code-text: #0e7490;
       }
 
       * {
@@ -121,8 +150,8 @@
       }
 
       .status {
-        border-color: rgba(251, 191, 36, 0.45);
-        background: rgba(69, 26, 3, 0.24);
+        border-color: var(--status-border);
+        background: var(--status-bg);
       }
 
       ul,
@@ -136,8 +165,36 @@
       }
 
       code {
-        color: #e0f2fe;
+        color: var(--code-text);
       }
+
+      .theme-toggle {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 10;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .theme-toggle svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .theme-toggle .icon-sun { display: none; }
+      .theme-toggle .icon-moon { display: block; }
+      [data-theme="light"] .theme-toggle .icon-sun { display: block; }
+      [data-theme="light"] .theme-toggle .icon-moon { display: none; }
     </style>
     <script type="application/ld+json">
       {
@@ -163,6 +220,10 @@
     </script>
   </head>
   <body>
+    <button type="button" class="theme-toggle" data-theme-toggle onclick="window.portfolioTheme.toggle()" aria-label="Switch theme" title="Switch theme">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
     <main>
       <p class="eyebrow">Wikipedia readiness</p>
       <h1>Michael Samuel Naeem neutral Wikipedia dossier</h1>
@@ -268,5 +329,6 @@
         </ul>
       </section>
     </main>
+    <script src="/blog/assets/theme.js" defer></script>
   </body>
 </html>
