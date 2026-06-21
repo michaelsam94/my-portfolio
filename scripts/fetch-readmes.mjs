@@ -15,7 +15,9 @@ import { execFileSync } from "node:child_process";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { playStoreApps, workSlug } from "../src/data/portfolio.ts";
+import { loadPortfolioData } from "./load-portfolio-data.mjs";
+
+const { playStoreApps, workSlug } = await loadPortfolioData();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const GH_USER = "michaelsam94";

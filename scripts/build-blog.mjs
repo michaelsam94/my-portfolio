@@ -15,7 +15,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
 import { marked } from "marked";
-import { projects, workSlug, portfolioFaq } from "../src/data/portfolio.ts";
+import { loadPortfolioData } from "./load-portfolio-data.mjs";
+
+const { projects, workSlug, portfolioFaq } = await loadPortfolioData();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT_DIR = path.join(ROOT, "content/blog");
