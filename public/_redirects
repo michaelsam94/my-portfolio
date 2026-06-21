@@ -1,3 +1,5 @@
+/sitemap-com.xml /sitemap.xml 301
+
 https://www.michaelsam94.com/* https://michaelsam94.com/:splat 301
 http://michaelsam94.com/* https://michaelsam94.com/:splat 301
 http://www.michaelsam94.com/* https://michaelsam94.com/:splat 301

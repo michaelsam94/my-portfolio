@@ -51,6 +51,7 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://michaelsam94.com/sitemap.xml
+Sitemap: https://michaelsam94.com/sitemap-com.xml
 Sitemap: https://michaelsam94.com/sitemap.txt
 
 # Brave Search follows Googlebot crawlability rules.
