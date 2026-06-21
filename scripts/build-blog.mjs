@@ -22,7 +22,7 @@ const CONTENT_DIR = path.join(ROOT, "content/blog");
 const DIST = path.join(ROOT, "dist");
 const BLOG_DIST = path.join(DIST, "blog");
 
-const SITE_ORIGIN = "https://michaelsam94.tech";
+const SITE_ORIGIN = "https://michaelsam94.com";
 const AUTHOR = "Michael Samuel Naeem";
 const PERSON_ID = `${SITE_ORIGIN}/#person`;
 const DEFAULT_OG = `${SITE_ORIGIN}/og-image.png`;
@@ -1202,7 +1202,9 @@ async function main() {
   if (apps.length) await writeFile(path.join(DIST, "apps", "index.html"), renderStoreHub(apps, "app"));
   if (extensions.length) await writeFile(path.join(DIST, "vscode", "index.html"), renderStoreHub(extensions, "ext"));
 
-  await writeFile(path.join(DIST, "sitemap.xml"), buildSitemap(posts, workSlugs, appSlugs, extSlugs));
+  const sitemap = buildSitemap(posts, workSlugs, appSlugs, extSlugs);
+  await writeFile(path.join(DIST, "sitemap.xml"), sitemap);
+  await writeFile(path.join(DIST, "sitemap-com.xml"), sitemap);
   await writeFile(path.join(DIST, "sitemap.txt"), buildTextSitemap(posts, workSlugs, appSlugs, extSlugs));
 
   // RSS feed for the blog.

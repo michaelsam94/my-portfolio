@@ -3,7 +3,7 @@ import path from "node:path";
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, "dist");
-const ORIGIN = "https://michaelsam94.tech";
+const ORIGIN = "https://michaelsam94.com";
 const AUTHOR = "Michael Samuel Naeem";
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -246,6 +246,7 @@ async function ensureSitemaps(allProducts) {
       xml = xml.replace("</urlset>", `${missing.map((url) => sitemapUrl(url)).join("\n")}\n</urlset>`);
       await writeFile(sitemapPath, xml);
     }
+    await writeFile(path.join(DIST, "sitemap-com.xml"), xml);
   }
 
   const txtPath = path.join(DIST, "sitemap.txt");

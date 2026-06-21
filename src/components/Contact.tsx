@@ -2,7 +2,7 @@ import { profile } from "../data/portfolio";
 import LinkedInProfileBadge from "./LinkedInProfileBadge";
 import "./Contact.css";
 
-const SITE_URL = "https://michaelsam94.tech/";
+const SITE_URL = "https://michaelsam94.com/";
 const SHARE_TITLE = "Michael Samuel Naeem — Senior Android Developer & Tech Lead";
 const SHARE_TEXT =
   "Michael Samuel Naeem — Senior Android Developer & Tech Lead, open to remote jobs and freelance projects.";

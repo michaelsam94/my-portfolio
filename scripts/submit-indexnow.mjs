@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-const HOST = "michaelsam94.tech";
+const HOST = "michaelsam94.com";
 const ORIGIN = `https://${HOST}`;
 const KEY = "0eb1eb625c28368318e34f58bec177b0";
 const KEY_LOCATION = `${ORIGIN}/${KEY}.txt`;

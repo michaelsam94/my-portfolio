@@ -1,6 +1,6 @@
-# Primary site: https://michaelsam94.tech
-# LLM-readable summary: https://michaelsam94.tech/llms.txt
-# Full LLM context: https://michaelsam94.tech/llms-full.txt
+# Primary site: https://michaelsam94.com
+# LLM-readable summary: https://michaelsam94.com/llms.txt
+# Full LLM context: https://michaelsam94.com/llms-full.txt
 
 # Default: allow everything
 User-agent: *
@@ -50,8 +50,8 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://michaelsam94.tech/sitemap.xml
-Sitemap: https://michaelsam94.tech/sitemap.txt
+Sitemap: https://michaelsam94.com/sitemap.xml
+Sitemap: https://michaelsam94.com/sitemap.txt
 
 # Brave Search follows Googlebot crawlability rules.
 User-agent: Googlebot
@@ -64,7 +64,7 @@ Allow: /
 User-agent: msnbot
 Allow: /
 
-Host: michaelsam94.tech
+Host: michaelsam94.com
 
 # Wikipedia readiness dossier
-# https://michaelsam94.tech/wikipedia/
+# https://michaelsam94.com/wikipedia/

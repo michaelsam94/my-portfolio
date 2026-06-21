@@ -1,7 +1,7 @@
 import { portfolioFaq, profile } from "../data/portfolio";
 import { citations } from "../data/citations";
 
-const SITE_ORIGIN = "https://michaelsam94.tech";
+const SITE_ORIGIN = "https://michaelsam94.com";
 const PERSON_ID = `${SITE_ORIGIN}/#person`;
 const SERVICE_ID = `${SITE_ORIGIN}/#software-engineering-services`;
 const FAQ_ID = `${SITE_ORIGIN}/#portfolio-faq`;

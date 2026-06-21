@@ -11,7 +11,7 @@ vehicle charging software, and developer tooling.
 
 Naeem has described his work as including Android application development,
 mobile architecture, OCPP and electric vehicle charging systems, AI automation,
-and engineering leadership.<ref name="portfolio">{{cite web |title=Michael Samuel Naeem portfolio |url=https://michaelsam94.tech/ |website=Michael Samuel Naeem |access-date=15 June 2026}}</ref>
+and engineering leadership.<ref name="portfolio">{{cite web |title=Michael Samuel Naeem portfolio |url=https://michaelsam94.com/ |website=Michael Samuel Naeem |access-date=15 June 2026}}</ref>
 
 He has published Android applications under the developer name MichaelSam94 on
 Google Play.<ref name="googleplay">{{cite web |title=MichaelSam94 apps on Google Play |url=https://play.google.com/store/apps/developer?id=MichaelSam94 |website=Google Play |access-date=15 June 2026}}</ref>

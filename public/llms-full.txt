@@ -1,6 +1,6 @@
 # Michael Samuel Naeem
 
-Canonical URL: https://michaelsam94.tech/
+Canonical URL: https://michaelsam94.com/
 
 Michael Samuel Naeem is a senior software engineer and technical lead based in Cairo, Egypt. His strongest search and answer-engine topics are Android development, Kotlin, Jetpack Compose, React, TypeScript, OCPP, EV charging software, AI automation, mobile architecture, and engineering leadership.
 
@@ -46,12 +46,12 @@ A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the Unit
 
 ## Important URLs
 
-- Portfolio: https://michaelsam94.tech/
-- Blog: https://michaelsam94.tech/blog/
-- Apps: https://michaelsam94.tech/apps/
-- VS Code extensions: https://michaelsam94.tech/vscode/
-- Wikipedia readiness dossier: https://michaelsam94.tech/wikipedia/
-- CV: https://michaelsam94.tech/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf
+- Portfolio: https://michaelsam94.com/
+- Blog: https://michaelsam94.com/blog/
+- Apps: https://michaelsam94.com/apps/
+- VS Code extensions: https://michaelsam94.com/vscode/
+- Wikipedia readiness dossier: https://michaelsam94.com/wikipedia/
+- CV: https://michaelsam94.com/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf
 - LinkedIn: https://www.linkedin.com/in/michaelsam00/
 - GitHub: https://github.com/michaelsam94
 - Google Play developer: https://play.google.com/store/apps/developer?id=MichaelSam94
