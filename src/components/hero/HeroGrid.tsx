@@ -17,9 +17,10 @@ export default function HeroGrid({ data }: { data: HeroData }) {
         <p className="hero-kicker">
           {data.location} / {data.title}
         </p>
-        <h1 id="hero-heading" className="hero-title">
-          {data.name}
-        </h1>
+<h1 id="hero-heading" className="hero-title">
+ {data.name}
+ <span>{data.title}</span>
+</h1>
         <p className="hero-headline">{data.headline}</p>
         <div className="hero-actions">
           <CopyEmail email={data.email} />

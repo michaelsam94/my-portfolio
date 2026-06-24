@@ -192,7 +192,17 @@ a {
   letter-spacing: 0;
   line-height: 0.92;
   margin: 0;
-  max-width: 11ch;
+  max-width: 13ch;
+}
+
+.hero-title span {
+  color: var(--fg-muted);
+  display: block;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: clamp(1rem, 2vw, 1.35rem);
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 0.85rem;
 }
 
 .hero-headline {
@@ -393,9 +403,11 @@ a {
 }
 
 .plain-card h3,
-.catalog-card h3,
+.plain-card-title,
+.catalog-title,
 .motion-card h3 {
   font-size: 1.15rem;
+  font-weight: 700;
   line-height: 1.18;
   margin: 0.6rem 0 0;
   overflow-wrap: anywhere;
@@ -533,6 +545,16 @@ a {
   display: block;
   margin-bottom: 1rem;
   width: 100%;
+}
+
+.motion-note {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: 1rem;
+  margin: 0 0 1rem;
+  max-width: 52rem;
+  padding: 1rem;
 }
 
 .cert-list,

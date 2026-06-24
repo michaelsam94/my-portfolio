@@ -11,7 +11,7 @@ export default function Timeline({ experience }: { experience: ExperienceData[] 
             <p className="timeline-meta">
               {item.period.start} - {item.period.end}
             </p>
-            <h3>{item.role}</h3>
+<h3>{item.role} at {item.company}</h3>
             <p className="timeline-meta">{item.company}</p>
             <ul aria-label={`${item.company} responsibilities`}>
               {item.bullets.map((bullet) => (

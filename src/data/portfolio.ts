@@ -40,7 +40,7 @@ export type ExperienceData = {
 };
 
 export const site = {
-  origin: "https://michaelsam94.tech",
+  origin: "https://michaelsam94.com",
   canonicalOrigin: "https://michaelsam94.com",
   name: "Michael Samuel Naeem",
   shortName: "Michael Sam",
@@ -176,13 +176,13 @@ export const motionVideos = [
   {
     title: "Samsung Galaxy Watch 8 | Cinematic Motion Design Reel",
     description:
-      "Product launch concept exploring macro texture reveals, orbital camera sweeps, data UI motion, chrome material language, and hard-stop brand lockup.",
+      "Side product-storytelling study exploring launch pacing, wearable UI motion, material detail, and brand lockup discipline.",
     src: "/motion/storyboard-motion-video.mp4",
   },
   {
     title: "Khamrah by Lattafa | Motion Design",
     description:
-      "Luxury fragrance film concept built around crystal bottle facets, amber liquid, black/gold material contrast, and cinematic product pacing.",
+"Side visual-direction study focused on premium pacing, material contrast, close-up composition, and concise product narrative.",
     src: "/motion/luxury-performance-motion.mp4",
   },
 ] as const;

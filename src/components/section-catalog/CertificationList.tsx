@@ -5,7 +5,7 @@ export default function CertificationList() {
     <ul className="cert-list">
       {certifications.map((cert) => (
         <li key={cert.name} className="plain-card">
-          <h3>{cert.name}</h3>
+          <div className="plain-card-title">{cert.name}</div>
           <p>
             {cert.org} / {cert.year}
           </p>

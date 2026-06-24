@@ -3,7 +3,6 @@ import HeroGrid from "@/components/hero/HeroGrid";
 import ProjectGrid from "@/components/projects/ProjectGrid";
 import SectionWrapper from "@/components/SectionWrapper";
 import CertificationList from "@/components/section-catalog/CertificationList";
-import CitationList from "@/components/section-catalog/CitationList";
 import GitHubActivity from "@/components/section-catalog/GitHubActivity";
 import ImpactGrid from "@/components/section-catalog/ImpactGrid";
 import MotionGrid from "@/components/section-catalog/MotionGrid";
@@ -52,17 +51,14 @@ export default async function Home() {
       <SectionWrapper id="experience" heading="Experience" headingId="experience-heading">
         <Timeline experience={experienceData} />
       </SectionWrapper>
-      <SectionWrapper id="motion" heading="Motion" headingId="motion-heading">
-        <MotionGrid />
-      </SectionWrapper>
       <SectionWrapper id="certifications" heading="Certifications" headingId="certifications-heading">
         <CertificationList />
       </SectionWrapper>
       <SectionWrapper id="work-together" heading="How We Can Work Together" headingId="work-together-heading">
         <QuestionGrid items={workGuide} />
       </SectionWrapper>
-      <SectionWrapper id="citations" heading="Sources" headingId="citations-heading">
-        <CitationList />
+      <SectionWrapper id="motion" heading="Optional Side Creative Lab" headingId="motion-heading">
+        <MotionGrid />
       </SectionWrapper>
       <SectionWrapper id="contact" heading="Contact" headingId="contact-heading">
         <ContactLinks email={heroData.email} links={contactLinks} />

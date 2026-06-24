@@ -1,4 +1,5 @@
 import CopyEmail from "@/components/hero/CopyEmail";
+import { site } from "@/data/portfolio";
 
 type ContactLinksProps = {
   email: string;
@@ -6,12 +7,15 @@ type ContactLinksProps = {
 };
 
 export default function ContactLinks({ email, links }: ContactLinksProps) {
+  const shareUrl = encodeURIComponent(site.origin);
+  const shareText = encodeURIComponent("Michael Sam - Senior Android Engineer");
+
   return (
     <div className="contact-panel">
       <div>
         <p className="contact-copy">
-          Open to senior Android, staff mobile, mobile architect, and technical lead roles with teams that care about
-          systems, shipping, and the details users feel.
+          Open senior Android, staff mobile, mobile architect, technical lead roles with teams that care about systems,
+          shipping, and details users feel.
         </p>
         <div className="contact-actions">
           <CopyEmail email={email} />
@@ -26,6 +30,24 @@ export default function ContactLinks({ email, links }: ContactLinksProps) {
             {link.label}
           </a>
         ))}
+      </nav>
+      <nav className="hero-links contact-share" aria-label="Share this portfolio">
+        <a
+          className="text-link"
+          href={`https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Share on LinkedIn
+        </a>
+        <a
+          className="text-link"
+          href={`https://twitter.com/intent/tweet?url=${shareUrl}&text=${shareText}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Share on X
+        </a>
       </nav>
     </div>
   );

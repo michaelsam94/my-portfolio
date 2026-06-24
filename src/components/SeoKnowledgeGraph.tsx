@@ -119,7 +119,7 @@ export default function SeoKnowledgeGraph() {
         "@type": "CreativeWork",
         "@id": BIBLIOGRAPHY_ID,
         name: "Michael Samuel Naeem portfolio bibliography",
-        url: `${SITE_ORIGIN}/#citations`,
+        url: `${SITE_ORIGIN}/llms.txt`,
         citation: citations.map((citation) => ({
           "@type": "CreativeWork",
           name: citation.title,
