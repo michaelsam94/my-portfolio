@@ -4,32 +4,44 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/build-blog.mjs && node scripts/enhance-product-seo.mjs",
+    "dev": "next dev",
+    "build": "rm -rf out && next build && node scripts/build-blog.mjs && node scripts/enhance-product-seo.mjs",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "preview": "npx serve out",
+    "verify:static": "node scripts/verify-static-site.mjs",
     "submit:indexnow": "node scripts/submit-indexnow.mjs",
     "check:phrases": "node scripts/check-ai-phrase-length.mjs"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@radix-ui/react-visually-hidden": "^1.2.3",
+    "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
+    "lucide-react": "^0.562.0",
+    "next": "^16.0.10",
+    "next-themes": "^0.4.6",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@next/eslint-plugin-next": "^16.0.10",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.0",
+    "autoprefixer": "^10.4.23",
     "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "gray-matter": "^4.0.3",
     "marked": "^18.0.5",
+    "postcss": "^8.5.6",
+    "prettier": "^3.7.4",
+    "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.0"
+    "typescript-eslint": "^8.56.1"
   }
 }

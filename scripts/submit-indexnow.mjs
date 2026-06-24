@@ -10,11 +10,11 @@ function extractUrls(sitemap) {
   return [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
 }
 
-const sitemap = await readFile(new URL("../dist/sitemap.xml", import.meta.url), "utf8");
+const sitemap = await readFile(new URL("../out/sitemap.xml", import.meta.url), "utf8");
 const urlList = extractUrls(sitemap).filter((url) => url.startsWith(ORIGIN));
 
 if (urlList.length === 0) {
-  throw new Error("No canonical URLs found in dist/sitemap.xml");
+  throw new Error("No canonical URLs found in out/sitemap.xml");
 }
 
 const response = await fetch(ENDPOINT, {

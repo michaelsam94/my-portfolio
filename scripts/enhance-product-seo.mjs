@@ -2,7 +2,7 @@ import { readdir, readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const DIST = path.join(ROOT, "dist");
+const DIST = path.join(ROOT, "out");
 const ORIGIN = "https://michaelsam94.com";
 const AUTHOR = "Michael Samuel Naeem";
 const TODAY = new Date().toISOString().slice(0, 10);

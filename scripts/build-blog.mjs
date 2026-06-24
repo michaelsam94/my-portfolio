@@ -1,11 +1,11 @@
 /**
- * Static blog generator — runs AFTER `vite build`.
+ * Static blog generator — runs AFTER `next build`.
  *
  * Reads Markdown posts from `content/blog/*.md`, renders each to a fully static,
- * schema-rich HTML page at `dist/blog/<slug>/index.html`, builds the `/blog` hub
- * page, copies the standalone stylesheet, and regenerates `dist/sitemap.xml`.
+ * schema-rich HTML page at `out/blog/<slug>/index.html`, builds the `/blog` hub
+ * page, copies the standalone stylesheet, and regenerates `out/sitemap.xml`.
  *
- * Why static (not a client route): the site is a client-rendered Vite SPA, so a
+ * Why static (not a client route): the site is a client-rendered Next static export, so a
  * React-only route would be an empty shell to crawlers. These pages ship as real
  * HTML so Google indexes the full content. Each post links back to the home
  * Person entity (`#person`) so blog authority supports the main entity.
@@ -21,7 +21,7 @@ const { projects, workSlug, portfolioFaq } = await loadPortfolioData();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT_DIR = path.join(ROOT, "content/blog");
-const DIST = path.join(ROOT, "dist");
+const DIST = path.join(ROOT, "out");
 const BLOG_DIST = path.join(DIST, "blog");
 
 const SITE_ORIGIN = "https://michaelsam94.com";
@@ -1116,7 +1116,7 @@ async function injectHomeFaq() {
   try {
     html = await readFile(indexPath, "utf8");
   } catch {
-    console.warn("[build-blog] dist/index.html not found; skipping FAQ injection.");
+    console.warn("[build-blog] out/index.html not found; skipping FAQ injection.");
     return;
   }
   if (html.includes('"@type":"FAQPage"') || html.includes('"@type": "FAQPage"')) return;
@@ -1188,21 +1188,13 @@ async function main() {
   const apps = await loadContentDir("apps");
   const extensions = await loadContentDir("extensions");
   const appSlugs = [];
-  for (const app of apps) {
-    appSlugs.push(app.slug);
-    const dir = path.join(DIST, "apps", app.slug);
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, "index.html"), renderStoreItem(app, posts));
-  }
-  const extSlugs = [];
-  for (const ext of extensions) {
-    extSlugs.push(ext.slug);
-    const dir = path.join(DIST, "vscode", ext.slug);
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, "index.html"), renderStoreItem(ext, posts));
-  }
-  if (apps.length) await writeFile(path.join(DIST, "apps", "index.html"), renderStoreHub(apps, "app"));
-  if (extensions.length) await writeFile(path.join(DIST, "vscode", "index.html"), renderStoreHub(extensions, "ext"));
+for (const app of apps) {
+appSlugs.push(app.slug);
+}
+const extSlugs = [];
+for (const ext of extensions) {
+extSlugs.push(ext.slug);
+}
 
   const sitemap = buildSitemap(posts, workSlugs, appSlugs, extSlugs);
   await writeFile(path.join(DIST, "sitemap.xml"), sitemap);

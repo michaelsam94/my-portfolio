@@ -1,7 +1,7 @@
-# Netlify build output (Vite default)
+# Netlify build output (Next static export)
 [build]
   command = "npm run build"
-  publish = "dist"
+  publish = "out"
 
 [[redirects]]
   from = "https://www.michaelsam94.com/*"
