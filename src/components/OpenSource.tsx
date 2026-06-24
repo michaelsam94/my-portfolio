@@ -103,6 +103,34 @@ function buildEmptyContributionDays() {
   return days;
 }
 
+function toDateKey(date: Date) {
+  return date.toLocaleDateString("en-CA");
+}
+
+function parseDateKey(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function fillContributionDaysToToday(days: ContributionDay[]) {
+  if (days.length === 0) {
+    return buildEmptyContributionDays();
+  }
+
+  const byDate = new Map(days.map((day) => [day.date, day.count]));
+  const start = parseDateKey(days[0].date);
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const filledDays: ContributionDay[] = [];
+
+  for (const day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
+    const date = toDateKey(day);
+    filledDays.push({ date, count: byDate.get(date) ?? 0 });
+  }
+
+  return filledDays;
+}
+
 function mergeEventContributions(events: GitHubEvent[]) {
   const days = buildEmptyContributionDays();
   const byDate = new Map(days.map((day) => [day.date, day]));
@@ -215,10 +243,11 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
   // Prefer the live function only when it returned real history (> ~1 year of days);
   // otherwise fall back to the committed full-history snapshot, then to recent events.
   const liveDays = contributionDetails?.contributionDays;
-  const contributionDays =
+  const rawContributionDays =
     liveDays && liveDays.length >= 366
       ? liveDays
       : ((await fetchStaticContributions())?.contributionDays ?? liveDays ?? mergeEventContributions(events));
+  const contributionDays = fillContributionDaysToToday(rawContributionDays);
 
   return {
     stars,
