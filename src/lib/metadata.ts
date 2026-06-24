@@ -17,6 +17,16 @@ export const defaultMetadata: Metadata = {
       "application/rss+xml": "/blog/feed.xml",
     },
   },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/favicon.svg"],
+  },
+  manifest: "/site.webmanifest",
   openGraph: {
     title: "Michael Sam - Senior Android Engineer",
     description: site.description,

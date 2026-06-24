@@ -403,12 +403,15 @@ a {
 
 .plain-card:hover,
 .plain-card:focus-visible,
-.catalog-card:hover,
-.catalog-card:focus-visible {
+.catalog-card:hover {
   box-shadow: var(--shadow-card-hover);
+  transform: translateY(-4px);
+}
+
+.catalog-card h3 a:focus-visible,
+.catalog-actions a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  transform: translateY(-4px);
 }
 
 .catalog-wrap {
@@ -442,6 +445,32 @@ a {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-weight: 700;
   overflow: hidden;
+}
+
+.catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.catalog-actions a {
+  align-items: center;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  display: inline-flex;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+}
+
+.catalog-actions a:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .motion-card video {
