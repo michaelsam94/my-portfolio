@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import ProductCatalog from "@/components/section-catalog/ProductCatalog";
+import CatalogArtwork from "@/components/section-catalog/CatalogArtwork";
 import SectionWrapper from "@/components/SectionWrapper";
 import { getExtensionBySlug, getExtensionCatalog } from "@/lib/content";
 import { renderMarkdown } from "@/lib/markdown";
@@ -31,9 +32,10 @@ export default async function ExtensionDetailPage({ params }: PageProps) {
 
   return (
     <main id="main-content" className="page-main">
-      <article className="detail-article">
+        <article className="detail-article">
         <Link className="text-link" href="/#vscode">Back to portfolio</Link>
         <p className="hero-kicker">VS Code / {extension.slug}</p>
+        <CatalogArtwork title={extension.title} kind="vscode" variant="detail" />
         <h1 className="detail-title">{extension.title}</h1>
         <p className="hero-headline">{extension.description}</p>
         <div className="card-links">

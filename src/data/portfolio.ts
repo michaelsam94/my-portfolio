@@ -403,9 +403,10 @@ export const experienceData: ExperienceData[] = [
 export const contactLinks = [
   { label: "LinkedIn", href: profile.linkedin },
   { label: "GitHub", href: profile.github },
-  { label: "Play Store", href: profile.playStoreDeveloper },
-  { label: "VS Code Marketplace", href: profile.vscodeMarketplace },
-  { label: "Download CV", href: profile.cvUrl },
+{ label: "Play Store", href: profile.playStoreDeveloper },
+{ label: "VS Code Marketplace", href: profile.vscodeMarketplace },
+{ label: "Open VSX", href: profile.openVsx },
+{ label: "Download CV", href: profile.cvUrl },
 ] as const;
 
 export const portfolioFaq = [

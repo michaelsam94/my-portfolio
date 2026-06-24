@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import ProductCatalog from "@/components/section-catalog/ProductCatalog";
+import CatalogArtwork from "@/components/section-catalog/CatalogArtwork";
 import SectionWrapper from "@/components/SectionWrapper";
 import { getAppBySlug, getAppCatalog } from "@/lib/content";
 import { renderMarkdown } from "@/lib/markdown";
@@ -31,9 +32,10 @@ export default async function AppDetailPage({ params }: PageProps) {
 
   return (
     <main id="main-content" className="page-main">
-      <article className="detail-article">
+        <article className="detail-article">
         <Link className="text-link" href="/#apps">Back to portfolio</Link>
         <p className="hero-kicker">{app.category} / {app.packageId}</p>
+        <CatalogArtwork title={app.title} image={app.image} kind="apps" variant="detail" />
         <h1 className="detail-title">{app.title}</h1>
         <p className="hero-headline">{app.description}</p>
         <div className="card-links">

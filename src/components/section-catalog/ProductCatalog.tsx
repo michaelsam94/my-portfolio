@@ -1,4 +1,5 @@
 import type { CatalogItem } from "@/lib/content";
+import CatalogArtwork from "./CatalogArtwork";
 
 type ProductCatalogProps = {
   items: CatalogItem[];
@@ -13,9 +14,7 @@ export default function ProductCatalog({ items, kind }: ProductCatalogProps) {
     <div className="catalog-wrap" aria-label={label}>
       {items.map((item) => (
         <article key={item.slug} className="catalog-card">
-          <span className="catalog-mark" aria-hidden="true">
-            {kind === "apps" ? item.title.slice(0, 2).toUpperCase() : "&lt;/&gt;"}
-          </span>
+          <CatalogArtwork title={item.title} image={item.image} kind={kind} />
           <span className="project-meta">{item.category}</span>
           <h3>
             <a href={`${base}/${item.slug}/`}>{item.title}</a>

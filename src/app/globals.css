@@ -428,8 +428,7 @@ a {
   min-height: 100%;
 }
 
-.catalog-icon,
-.catalog-mark {
+.catalog-icon {
   align-items: center;
   background: var(--bg-muted);
   border: 1px solid var(--border);
@@ -441,10 +440,63 @@ a {
   width: 64px;
 }
 
-.catalog-mark {
+.catalog-extension-art,
+.detail-extension-art {
+  align-items: flex-start;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 52%),
+    var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  display: inline-flex;
+  flex-direction: column;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-weight: 700;
+  gap: 0.35rem;
+  justify-content: space-between;
   overflow: hidden;
+  padding: 0.75rem;
+}
+
+.catalog-extension-art {
+  height: 96px;
+  width: 96px;
+}
+
+.catalog-extension-art span,
+.detail-extension-art span {
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+}
+
+.catalog-extension-art strong,
+.detail-extension-art strong {
+  font-size: 0.95rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.detail-art-icon {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 112px;
+  object-fit: cover;
+  width: 112px;
+}
+
+.detail-extension-art {
+  min-height: 128px;
+  width: min(100%, 22rem);
+}
+
+.detail-extension-art strong {
+  font-size: 1.35rem;
+}
+
+.app-fallback-art {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #22c55e 18%, transparent), transparent 52%),
+    var(--bg-muted);
 }
 
 .catalog-actions {
