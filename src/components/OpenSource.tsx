@@ -131,6 +131,25 @@ function fillContributionDaysToToday(days: ContributionDay[]) {
   return filledDays;
 }
 
+function mergeRecentEventsAfterSnapshot(days: ContributionDay[], events: GitHubEvent[]) {
+  const lastSnapshotDate = days.at(-1)?.date;
+
+  if (!lastSnapshotDate) {
+    return mergeEventContributions(events);
+  }
+
+  const eventCounts = new Map(
+    mergeEventContributions(events)
+      .filter((day) => day.date > lastSnapshotDate && day.count > 0)
+      .map((day) => [day.date, day.count]),
+  );
+
+  return fillContributionDaysToToday(days).map((day) => ({
+    ...day,
+    count: eventCounts.get(day.date) ?? day.count,
+  }));
+}
+
 function mergeEventContributions(events: GitHubEvent[]) {
   const days = buildEmptyContributionDays();
   const byDate = new Map(days.map((day) => [day.date, day]));
@@ -241,13 +260,16 @@ async function fetchOpenSourceData(): Promise<OpenSourceData> {
     return total + (event.payload.commits?.length ?? 0);
   }, 0);
   // Prefer the live function only when it returned real history (> ~1 year of days);
-  // otherwise fall back to the committed full-history snapshot, then to recent events.
+  // Prefer live GitHub history; otherwise merge the stale committed snapshot
+  // with recent public events so the graph still reaches today.
   const liveDays = contributionDetails?.contributionDays;
-  const rawContributionDays =
-    liveDays && liveDays.length >= 366
-      ? liveDays
-      : ((await fetchStaticContributions())?.contributionDays ?? liveDays ?? mergeEventContributions(events));
-  const contributionDays = fillContributionDaysToToday(rawContributionDays);
+  const staticDays = (await fetchStaticContributions())?.contributionDays;
+  const hasLiveHistory = Boolean(liveDays && liveDays.length >= 366);
+  const contributionDays = hasLiveHistory
+    ? fillContributionDaysToToday(liveDays ?? [])
+    : staticDays
+      ? mergeRecentEventsAfterSnapshot(staticDays, events)
+      : fillContributionDaysToToday(liveDays ?? mergeEventContributions(events));
 
   return {
     stars,
