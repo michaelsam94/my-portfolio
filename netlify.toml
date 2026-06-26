@@ -5,6 +5,18 @@ command = "npm run build"
 publish = "out"
 
 [[redirects]]
+from = "https://michaelsam00.netlify.app/*"
+to = "https://michaelsam94.com/:splat"
+status = 301
+force = true
+
+[[redirects]]
+from = "http://michaelsam00.netlify.app/*"
+to = "https://michaelsam94.com/:splat"
+status = 301
+force = true
+
+[[redirects]]
 from = "https://www.michaelsam94.com/*"
 to = "https://michaelsam94.com/:splat"
 status = 301
