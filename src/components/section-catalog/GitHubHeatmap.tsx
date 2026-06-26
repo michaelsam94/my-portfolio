@@ -68,14 +68,21 @@ async function fetchSnapshot(url: string, source: string) {
   return normalizeSnapshot((await response.json()) as ContributionSnapshot, source);
 }
 
-async function loadContributionSnapshot() {
+async function fetchLiveSnapshot() {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 4500);
+
   try {
-    return await fetchSnapshot(
-      `/github-contributions?username=${encodeURIComponent(GITHUB_USERNAME)}`,
-      "live GitHub contribution calendar",
-    );
-  } catch {
-    return fetchSnapshot("/contributions.json", "static fallback snapshot");
+    const response = await fetch(`/github-contributions?username=${encodeURIComponent(GITHUB_USERNAME)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) throw new Error(`Failed to load live contributions: ${response.status}`);
+
+    return normalizeSnapshot((await response.json()) as ContributionSnapshot, "live GitHub contribution calendar");
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -92,7 +99,7 @@ export default function GitHubHeatmap() {
 
     async function loadContributions() {
       try {
-        const data = await loadContributionSnapshot();
+        const data = await fetchSnapshot("/contributions.json", "static snapshot, live refresh pending");
         if (!cancelled) {
           const latest = data.contributionDays?.at(-1) ?? null;
           setSnapshot(data);
@@ -101,6 +108,19 @@ export default function GitHubHeatmap() {
         }
       } catch {
         if (!cancelled) setLoadError(true);
+        return;
+      }
+
+      try {
+        const liveData = await fetchLiveSnapshot();
+        if (!cancelled) {
+          const latest = liveData.contributionDays?.at(-1) ?? null;
+          setSnapshot(liveData);
+          setSelectedDay(latest);
+          setActiveDay(latest);
+        }
+      } catch {
+        // Keep the static snapshot visible when a host has no function or the live refresh is slow.
       }
     }
 
