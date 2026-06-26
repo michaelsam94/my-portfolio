@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+const GITHUB_USERNAME = "michaelsam94";
+
 type ContributionDay = {
   date: string;
   count: number;
@@ -29,6 +31,54 @@ function commitLabel(day: ContributionDay) {
   return `${day.date}: ${day.count} commit${day.count === 1 ? "" : "s"}`;
 }
 
+function todayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addUtcDay(date: Date) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+}
+
+function normalizeSnapshot(snapshot: ContributionSnapshot, source: string): ContributionSnapshot {
+  const days = [...(snapshot.contributionDays ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  const last = days.at(-1)?.date;
+  const today = todayUtc();
+
+  if (last && last < today) {
+    let cursor = addUtcDay(new Date(`${last}T00:00:00Z`));
+    while (cursor.toISOString().slice(0, 10) <= today) {
+      days.push({ date: cursor.toISOString().slice(0, 10), count: 0 });
+      cursor = addUtcDay(cursor);
+    }
+  }
+
+  return {
+    ...snapshot,
+    contributionDays: days,
+    source,
+    totalContributions: snapshot.totalContributions ?? days.reduce((total, day) => total + day.count, 0),
+  };
+}
+
+async function fetchSnapshot(url: string, source: string) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Failed to load contributions: ${response.status}`);
+  return normalizeSnapshot((await response.json()) as ContributionSnapshot, source);
+}
+
+async function loadContributionSnapshot() {
+  try {
+    return await fetchSnapshot(
+      `/github-contributions?username=${encodeURIComponent(GITHUB_USERNAME)}`,
+      "live GitHub contribution calendar",
+    );
+  } catch {
+    return fetchSnapshot("/contributions.json", "static fallback snapshot");
+  }
+}
+
 export default function GitHubHeatmap() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [snapshot, setSnapshot] = useState<ContributionSnapshot | null>(null);
@@ -42,10 +92,13 @@ export default function GitHubHeatmap() {
 
     async function loadContributions() {
       try {
-        const response = await fetch("/contributions.json");
-        if (!response.ok) throw new Error(`Failed to load contributions: ${response.status}`);
-        const data = (await response.json()) as ContributionSnapshot;
-        if (!cancelled) setSnapshot(data);
+        const data = await loadContributionSnapshot();
+        if (!cancelled) {
+          const latest = data.contributionDays?.at(-1) ?? null;
+          setSnapshot(data);
+          setSelectedDay(latest);
+          setActiveDay(latest);
+        }
       } catch {
         if (!cancelled) setLoadError(true);
       }
@@ -57,12 +110,6 @@ export default function GitHubHeatmap() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    const latest = days.at(-1) ?? null;
-    setSelectedDay(latest);
-    setActiveDay(latest);
-  }, [days]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -85,11 +132,11 @@ export default function GitHubHeatmap() {
   }, [days]);
 
   if (loadError) {
-    return <p className="activity-note">GitHub contribution snapshot could not be loaded.</p>;
+    return <p className="activity-note">GitHub contribution activity could not be loaded.</p>;
   }
 
   if (!snapshot) {
-    return <p className="activity-note">Loading GitHub contribution activity...</p>;
+    return <p className="activity-note">Loading live GitHub contribution activity...</p>;
   }
 
   return (
@@ -156,9 +203,8 @@ export default function GitHubHeatmap() {
         </div>
       </div>
       <p className="activity-note">
-        Full lifetime snapshot from {days[0]?.date ?? "account creation"} to {days.at(-1)?.date ?? "latest capture"}.
-        Source: committed GitHub contribution snapshot
-        {snapshot.generatedAt ? ` generated ${snapshot.generatedAt.slice(0, 10)}` : ""}.
+        Full lifetime graph from {days[0]?.date ?? "account creation"} to {days.at(-1)?.date ?? "today"}. Source:{" "}
+        {snapshot.source ?? "live GitHub contribution calendar"}.
       </p>
     </>
   );

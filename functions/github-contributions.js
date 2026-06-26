@@ -4,6 +4,7 @@ const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type",
   "Content-Type": "application/json",
+  "Cache-Control": "no-store",
 };
 
 const USER_QUERY = `
@@ -48,7 +49,6 @@ async function githubGraphql(token, query, variables) {
     },
     body: JSON.stringify({ query, variables }),
   });
-
   const payload = await response.json();
 
   if (!response.ok || payload.errors) {
@@ -66,6 +66,10 @@ function addOneYear(date) {
   return next;
 }
 
+function dateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
@@ -81,40 +85,38 @@ async function fetchJson(url) {
   return response.json();
 }
 
-function dateOnly(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function buildContributionDays(fromDate, toDate, contributionDays) {
-  const days = [];
-  const cursor = new Date(dateOnly(fromDate));
-  const end = new Date(dateOnly(toDate));
-
-  while (cursor <= end) {
-    const date = dateOnly(cursor);
-    days.push({ date, count: contributionDays.get(date) ?? 0 });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return days;
-}
-
 function parsePublicContributionCalendar(html) {
   const days = [];
-  const dayPattern = /<td[^>]*data-date="(\d{4}-\d{2}-\d{2})"[^>]*id="([^"]+)"[^>]*>/g;
+  const regex = /<td[^>]*data-date="(\d{4}-\d{2}-\d{2})"[^>]*id="([^"]+)"[^>]*>/g;
   let match;
 
-  while ((match = dayPattern.exec(html))) {
+  while ((match = regex.exec(html))) {
     const [, date, id] = match;
     const tooltipPattern = new RegExp(
       `<tool-tip[^>]*(?:for|data-for)="${id}"[^>]*>([\\s\\S]*?)<\\/tool-tip>`,
     );
     const tooltip = html.match(tooltipPattern)?.[1] ?? "";
     const text = tooltip.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    const countMatch = text.match(/([\d,]+) contributions?/i);
-    const count = countMatch ? Number(countMatch[1].replace(/,/g, "")) : 0;
+    const countMatch = text.match(/([\d,]+)\s+contributions?/i);
 
-    days.push({ date, count });
+    days.push({
+      date,
+      count: countMatch ? Number(countMatch[1].replace(/,/g, "")) : 0,
+    });
+  }
+
+  return days;
+}
+
+function buildContributionDays(startDate, endDate, contributionMap) {
+  const days = [];
+  const cursor = new Date(`${dateOnly(startDate)}T00:00:00Z`);
+  const end = new Date(`${dateOnly(endDate)}T00:00:00Z`);
+
+  while (cursor <= end) {
+    const date = dateOnly(cursor);
+    days.push({ date, count: contributionMap.get(date) ?? 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return days;
@@ -158,105 +160,88 @@ async function loadPublicContributionHistory(username) {
   };
 }
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers };
+async function loadTokenContributionHistory(username, token) {
+  const userData = await githubGraphql(token, USER_QUERY, { login: username });
+  const createdAt = userData.user?.createdAt;
+
+  if (!createdAt) {
+    throw Object.assign(new Error("GitHub user not found"), { status: 404 });
   }
 
-  const token = process.env.GITHUB_TOKEN;
-  const username = event.queryStringParameters?.username || "michaelsam94";
+  const now = new Date();
+  let from = new Date(createdAt);
+  let commits = 0;
+  let pullRequests = 0;
+  let issues = 0;
+  const repositories = new Set();
+  const contributionDays = new Map();
 
-  if (!token) {
-    try {
-      const publicHistory = await loadPublicContributionHistory(username);
+  while (from < now) {
+    const nextYear = addOneYear(from);
+    const to = nextYear < now ? nextYear : now;
+    const data = await githubGraphql(token, CONTRIBUTIONS_QUERY, {
+      login: username,
+      from: from.toISOString(),
+      to: to.toISOString(),
+    });
+    const collection = data.user.contributionsCollection;
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          ...publicHistory,
-          source: "github-public-history",
-        }),
-      };
-    } catch (error) {
-      return {
-        statusCode: error.status ?? 500,
-        headers,
-        body: JSON.stringify({ error: "Unable to load public GitHub contribution history" }),
-      };
+    commits += collection.totalCommitContributions || 0;
+    pullRequests += collection.totalPullRequestContributions || 0;
+    issues += collection.totalIssueContributions || 0;
+
+    for (const repo of collection.commitContributionsByRepository ?? []) {
+      if (repo.repository?.nameWithOwner) repositories.add(repo.repository.nameWithOwner);
     }
+
+    for (const week of collection.contributionCalendar.weeks ?? []) {
+      for (const day of week.contributionDays ?? []) {
+        contributionDays.set(day.date, day.contributionCount);
+      }
+    }
+
+    from = to;
   }
+
+  const days = buildContributionDays(new Date(createdAt), now, contributionDays);
+
+  return {
+    accountCreatedAt: createdAt,
+    totalContributions: commits + pullRequests + issues,
+    totalCommitContributions: commits,
+    totalPullRequestContributions: pullRequests,
+    totalIssueContributions: issues,
+    repositories: repositories.size,
+    contributionDays: days,
+  };
+}
+
+export async function onRequest(context) {
+  if (context.request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+
+  const url = new URL(context.request.url);
+  const username = url.searchParams.get("username") || "michaelsam94";
+  const token = context.env.GITHUB_TOKEN;
 
   try {
-    const userData = await githubGraphql(token, USER_QUERY, { login: username });
-    const createdAt = userData.user?.createdAt;
+    const history = token
+      ? await loadTokenContributionHistory(username, token)
+      : await loadPublicContributionHistory(username);
 
-    if (!createdAt) {
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({ error: "GitHub user not found" }),
-      };
-    }
-
-    const now = new Date();
-    let from = new Date(createdAt);
-    let commits = 0;
-    let pullRequests = 0;
-    let issues = 0;
-    const repositories = new Set();
-    const contributionDays = new Map();
-
-    while (from < now) {
-      const nextYear = addOneYear(from);
-      const to = nextYear < now ? nextYear : now;
-      const data = await githubGraphql(token, CONTRIBUTIONS_QUERY, {
-        login: username,
-        from: from.toISOString(),
-        to: to.toISOString(),
-      });
-
-      const collection = data.user?.contributionsCollection;
-
-      commits += collection?.totalCommitContributions ?? 0;
-      pullRequests += collection?.totalPullRequestContributions ?? 0;
-      issues += collection?.totalIssueContributions ?? 0;
-
-      for (const repo of collection?.commitContributionsByRepository ?? []) {
-        if (repo.repository?.nameWithOwner) {
-          repositories.add(repo.repository.nameWithOwner);
-        }
-      }
-
-      for (const week of collection?.contributionCalendar?.weeks ?? []) {
-        for (const day of week.contributionDays ?? []) {
-          contributionDays.set(day.date, day.contributionCount);
-        }
-      }
-
-      from = to;
-    }
-
-    const days = buildContributionDays(new Date(createdAt), now, contributionDays);
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        accountCreatedAt: createdAt,
-        totalContributions: days.reduce((total, day) => total + day.count, 0),
-        commits,
-        pullRequests,
-        issues,
-        contributedRepos: repositories.size,
-        contributionDays: days,
+    return new Response(
+      JSON.stringify({
+        ...history,
+        source: token ? "github-graphql-live" : "github-public-history-live",
+        generatedAt: new Date().toISOString(),
       }),
-    };
+      { status: 200, headers },
+    );
   } catch (error) {
-    return {
-      statusCode: error.status ?? 500,
+    return new Response(JSON.stringify({ error: "Unable to load GitHub contributions" }), {
+      status: error.status ?? 500,
       headers,
-      body: JSON.stringify({ error: "Unable to load GitHub contributions" }),
-    };
+    });
   }
-};
+}

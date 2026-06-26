@@ -19,11 +19,11 @@
   from = "http://michaelsam94.com/*"
   to = "https://michaelsam94.com/:splat"
   status = 301
-  force = true
+force = true
 
 # Hashed assets can be cached forever
 [[headers]]
-  for = "/assets/*"
+for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

@@ -199,7 +199,7 @@ async function githubFetch<T>(url: string): Promise<T> {
 }
 
 async function fetchContributionDetails(username: string) {
-  const response = await fetch(`/.netlify/functions/github-contributions?username=${username}`);
+  const response = await fetch(`/github-contributions?username=${username}`);
 
   if (!response.ok) {
     throw new Error("Contribution function unavailable");
