@@ -1,91 +1,11 @@
-# Netlify build output (Next static export)
+# Netlify redirect-only deployment.
 
 [build]
 command = "npm run build"
 publish = "out"
 
 [[redirects]]
-from = "https://michaelsam00.netlify.app/*"
+from = "/*"
 to = "https://michaelsam94.com/:splat"
 status = 301
 force = true
-
-[[redirects]]
-from = "http://michaelsam00.netlify.app/*"
-to = "https://michaelsam94.com/:splat"
-status = 301
-force = true
-
-[[redirects]]
-from = "https://www.michaelsam94.com/*"
-to = "https://michaelsam94.com/:splat"
-status = 301
-force = true
-
-[[redirects]]
-from = "http://www.michaelsam94.com/*"
-to = "https://michaelsam94.com/:splat"
-status = 301
-force = true
-
-[[redirects]]
-from = "http://michaelsam94.com/*"
-to = "https://michaelsam94.com/:splat"
-status = 301
-force = true
-
-[[redirects]]
-from = "/github-contributions"
-to = "/.netlify/functions/github-contributions"
-status = 200
-force = true
-
-[[headers]]
-for = "/.netlify/functions/github-contributions"
-
-[headers.values]
-Cache-Control = "no-store"
-
-# Hashed assets can be cached forever.
-[[headers]]
-for = "/assets/*"
-
-[headers.values]
-Cache-Control = "public, max-age=31536000, immutable"
-
-# Static root files (images, PDF, favicons).
-[[headers]]
-for = "/*.jpg"
-
-[headers.values]
-Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-
-[[headers]]
-for = "/*.webp"
-
-[headers.values]
-Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-
-[[headers]]
-for = "/*.png"
-
-[headers.values]
-Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-
-[[headers]]
-for = "/*.svg"
-
-[headers.values]
-Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-
-[[headers]]
-for = "/*.pdf"
-
-[headers.values]
-Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-
-[[headers]]
-for = "/*"
-
-[headers.values]
-X-Content-Type-Options = "nosniff"
