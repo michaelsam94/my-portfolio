@@ -7,6 +7,8 @@ const headers = {
   "Cache-Control": "no-store",
 };
 
+const CONTRIBUTION_OVERRIDES = new Map([["2026-06-28", 3]]);
+
 const USER_QUERY = `
   query PortfolioUser($login: String!) {
     user(login: $login) {
@@ -122,6 +124,23 @@ function buildContributionDays(startDate, endDate, contributionMap) {
   return days;
 }
 
+function applyContributionOverrides(history) {
+  let totalDelta = 0;
+  const contributionDays = history.contributionDays.map((day) => {
+    const override = CONTRIBUTION_OVERRIDES.get(day.date);
+    if (override === undefined || day.count >= override) return day;
+
+    totalDelta += override - day.count;
+    return { ...day, count: override };
+  });
+
+  return {
+    ...history,
+    totalContributions: (history.totalContributions ?? 0) + totalDelta,
+    contributionDays,
+  };
+}
+
 async function loadPublicContributionHistory(username) {
   const user = await fetchJson(`https://api.github.com/users/${username}`);
   const createdAt = user.created_at;
@@ -226,9 +245,9 @@ export async function onRequest(context) {
   const token = context.env.GITHUB_TOKEN;
 
   try {
-    const history = token
-      ? await loadTokenContributionHistory(username, token)
-      : await loadPublicContributionHistory(username);
+    const history = applyContributionOverrides(
+      token ? await loadTokenContributionHistory(username, token) : await loadPublicContributionHistory(username),
+    );
 
     return new Response(
       JSON.stringify({

@@ -41,12 +41,16 @@ function addUtcDay(date: Date) {
   return next;
 }
 
-function normalizeSnapshot(snapshot: ContributionSnapshot, source: string): ContributionSnapshot {
+function normalizeSnapshot(
+  snapshot: ContributionSnapshot,
+  source: string,
+  fillMissingToToday = false,
+): ContributionSnapshot {
   const days = [...(snapshot.contributionDays ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   const last = days.at(-1)?.date;
   const today = todayUtc();
 
-  if (last && last < today) {
+  if (fillMissingToToday && last && last < today) {
     let cursor = addUtcDay(new Date(`${last}T00:00:00Z`));
     while (cursor.toISOString().slice(0, 10) <= today) {
       days.push({ date: cursor.toISOString().slice(0, 10), count: 0 });
@@ -80,7 +84,11 @@ async function fetchLiveSnapshot() {
 
     if (!response.ok) throw new Error(`Failed to load live contributions: ${response.status}`);
 
-    return normalizeSnapshot((await response.json()) as ContributionSnapshot, "live GitHub contribution calendar");
+    return normalizeSnapshot(
+      (await response.json()) as ContributionSnapshot,
+      "live GitHub contribution calendar",
+      true,
+    );
   } finally {
     window.clearTimeout(timeout);
   }
