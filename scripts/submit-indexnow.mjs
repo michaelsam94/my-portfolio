@@ -1,5 +1,11 @@
 import { readFile } from "node:fs/promises";
 
+// Allow deploys to opt out (e.g. preview/staging) without editing the pipeline.
+if (process.env.SKIP_INDEXNOW === "1" || process.env.SKIP_INDEXNOW === "true") {
+  console.log("SKIP_INDEXNOW set — skipping IndexNow submission.");
+  process.exit(0);
+}
+
 const HOST = "michaelsam94.com";
 const ORIGIN = `https://${HOST}`;
 const KEY = "0eb1eb625c28368318e34f58bec177b0";

@@ -12,7 +12,7 @@ import ProfilePanel from "@/components/section-catalog/ProfilePanel";
 import QuestionGrid from "@/components/section-catalog/QuestionGrid";
 import SkillMatrix from "@/components/section-catalog/SkillMatrix";
 import Timeline from "@/components/work/Timeline";
-import { answerHub, contactLinks, experienceData, heroData, projectsData, workGuide } from "@/data/portfolio";
+import { answerHub, contactLinks, experienceData, heroData, portfolioFaq, projectsData, workGuide } from "@/data/portfolio";
 import { getAppCatalog, getExtensionCatalog } from "@/lib/content";
 
 export default async function Home() {
@@ -56,6 +56,9 @@ export default async function Home() {
       </SectionWrapper>
       <SectionWrapper id="work-together" heading="How We Can Work Together" headingId="work-together-heading">
         <QuestionGrid items={workGuide} />
+      </SectionWrapper>
+      <SectionWrapper id="faq" heading="Frequently Asked Questions" headingId="faq-heading">
+        <QuestionGrid items={portfolioFaq} />
       </SectionWrapper>
       <SectionWrapper id="motion" heading="Optional Side Creative Lab" headingId="motion-heading">
         <MotionGrid />

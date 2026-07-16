@@ -8,6 +8,17 @@ export type AppFaq = {
   answer: string;
 };
 
+export type AppHowToStep = {
+  name: string;
+  text: string;
+};
+
+export type AppHowTo = {
+  name: string;
+  description: string;
+  steps: AppHowToStep[];
+};
+
 export type AppSeoEntry = {
   seoTitle: string;
   seoDescription: string;
@@ -17,6 +28,7 @@ export type AppSeoEntry = {
   applicationCategory: string;
   featureHighlights: string[];
   faqs: AppFaq[];
+  howTo?: AppHowTo;
 };
 
 type AppSeoFile = {
@@ -179,6 +191,25 @@ export function buildAppJsonLd(input: {
           },
         })),
       },
+      ...(seo?.howTo
+        ? [
+            {
+              "@type": "HowTo",
+              "@id": `${pageUrl}#howto`,
+              name: seo.howTo.name,
+              description: seo.howTo.description,
+              image: input.image || undefined,
+              totalTime: "PT2M",
+              step: seo.howTo.steps.map((step, index) => ({
+                "@type": "HowToStep",
+                position: index + 1,
+                name: step.name,
+                text: step.text,
+                url: `${pageUrl}#howto-step-${index + 1}`,
+              })),
+            },
+          ]
+        : []),
       {
         "@type": "BreadcrumbList",
         "@id": `${pageUrl}#breadcrumb`,

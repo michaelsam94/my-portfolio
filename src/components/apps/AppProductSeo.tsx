@@ -43,6 +43,20 @@ export default function AppProductSeo({ title, seo }: AppProductSeoProps) {
         </>
       ) : null}
 
+      {seo?.howTo ? (
+        <>
+          <h3 className="app-product-seo__subheading">{seo.howTo.name}</h3>
+          <p>{seo.howTo.description}</p>
+          <ol className="app-product-seo__howto">
+            {seo.howTo.steps.map((step, index) => (
+              <li key={step.name} id={`howto-step-${index + 1}`}>
+                <strong>{step.name}:</strong> {step.text}
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+
       <h3 className="app-product-seo__subheading" id="app-faq-heading">
         Frequently asked questions
       </h3>

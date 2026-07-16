@@ -152,7 +152,25 @@ function jsonLdForProduct(collection, product) {
     downloadUrl: product.marketplaceUrl || undefined,
   };
 
-  if (!seo?.faqs?.length) {
+  const howToNode = seo?.howTo
+    ? {
+        "@type": "HowTo",
+        "@id": `${product.pageUrl}#howto`,
+        name: seo.howTo.name,
+        description: seo.howTo.description,
+        image: product.image || undefined,
+        totalTime: "PT2M",
+        step: seo.howTo.steps.map((step, index) => ({
+          "@type": "HowToStep",
+          position: index + 1,
+          name: step.name,
+          text: step.text,
+          url: `${product.pageUrl}#howto-step-${index + 1}`,
+        })),
+      }
+    : null;
+
+  if (!seo?.faqs?.length && !howToNode) {
     return { "@context": "https://schema.org", ...software };
   }
 
@@ -160,15 +178,20 @@ function jsonLdForProduct(collection, product) {
     "@context": "https://schema.org",
     "@graph": [
       software,
-      {
-        "@type": "FAQPage",
-        "@id": `${product.pageUrl}#faq`,
-        mainEntity: seo.faqs.map((item) => ({
-          "@type": "Question",
-          name: item.question,
-          acceptedAnswer: { "@type": "Answer", text: item.answer },
-        })),
-      },
+      ...(seo?.faqs?.length
+        ? [
+            {
+              "@type": "FAQPage",
+              "@id": `${product.pageUrl}#faq`,
+              mainEntity: seo.faqs.map((item) => ({
+                "@type": "Question",
+                name: item.question,
+                acceptedAnswer: { "@type": "Answer", text: item.answer },
+              })),
+            },
+          ]
+        : []),
+      ...(howToNode ? [howToNode] : []),
     ],
   };
 }

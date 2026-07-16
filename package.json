@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "rm -rf out && next build && node scripts/build-blog.mjs && node scripts/enhance-product-seo.mjs",
+    "deploy": "npm run build && npm run submit:indexnow",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "preview": "npx serve out",

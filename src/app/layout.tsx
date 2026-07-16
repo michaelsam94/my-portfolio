@@ -23,6 +23,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = defaultMetadata;
 
+// Measurement is opt-in via env vars so nothing is injected (and no fake IDs ship) unless configured.
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+const cloudflareAnalyticsToken = process.env.NEXT_PUBLIC_CLOUDFLARE_ANALYTICS_TOKEN;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -56,6 +60,23 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </div>
           <script type="application/ld+json">{JSON.stringify(structuredData())}</script>
         </ThemeProvider>
+        {gaMeasurementId ? (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaMeasurementId}');`,
+              }}
+            />
+          </>
+        ) : null}
+        {cloudflareAnalyticsToken ? (
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={JSON.stringify({ token: cloudflareAnalyticsToken })}
+          />
+        ) : null}
       </body>
     </html>
   );

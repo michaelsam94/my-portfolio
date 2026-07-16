@@ -46,7 +46,17 @@
           "question": "What PDF tools are included?",
           "answer": "Core tools include merge PDF, split PDF, sign PDF with vector signatures, Markdown to PDF conversion, recent-document search, and local export/share."
         }
-      ]
+      ],
+      "howTo": {
+        "name": "How to merge PDF files on Android without ads",
+        "description": "Combine multiple PDFs into one document entirely offline with the ad-free PDF Toolkit Android app.",
+        "steps": [
+          { "name": "Open Merge", "text": "Launch PDF Toolkit and tap the Merge tool from the home hub." },
+          { "name": "Add PDFs", "text": "Select the PDF files you want to combine from your device storage." },
+          { "name": "Reorder pages", "text": "Drag the files into the order you want them to appear in the merged document." },
+          { "name": "Merge and save", "text": "Tap Merge to combine the files locally, then save or share the finished PDF — no uploads, no ads." }
+        ]
+      }
     },
     "photo-optimizer": {
       "seoTitle": "Photo Optimizer — Ad-Free Batch Photo Compress & EXIF Strip",
@@ -86,7 +96,17 @@
           "question": "Can I compress photos to WebP on Android without ads?",
           "answer": "Yes. Photo Optimizer supports WebP (lossy or lossless), JPEG, and PNG with quality or max-size targets — and the app itself is ad-free."
         }
-      ]
+      ],
+      "howTo": {
+        "name": "How to batch compress photos on Android without ads",
+        "description": "Shrink a batch of photos and strip metadata entirely offline with the ad-free Photo Optimizer Android app.",
+        "steps": [
+          { "name": "Select photos", "text": "Open Photo Optimizer and pick the photos you want to compress from your gallery." },
+          { "name": "Choose format and quality", "text": "Set the output format (WebP, JPEG, or PNG) and a quality or max-size target." },
+          { "name": "Strip metadata", "text": "Enable EXIF and GPS stripping if you want to remove location and camera data." },
+          { "name": "Compress and export", "text": "Run the batch to compress locally, review the before/after preview, then export — no cloud uploads, no ads." }
+        ]
+      }
     },
     "doc-scanner-vectorizer": {
       "seoTitle": "Doc Scanner Vectorizer — Ad-Free Document Scan to SVG",
@@ -125,7 +145,17 @@
           "question": "Does the scanner work offline?",
           "answer": "Core capture, cleanup filters, history, and export are designed for on-device use so you can scan without relying on ads or account-gated cloud features."
         }
-      ]
+      ],
+      "howTo": {
+        "name": "How to scan a document to SVG on Android without ads",
+        "description": "Capture a paper document, clean it up, and export a vector SVG with the ad-free Doc Scanner Vectorizer Android app.",
+        "steps": [
+          { "name": "Capture the page", "text": "Point the camera at the document; live boundary tracking detects the page edges automatically." },
+          { "name": "Correct perspective", "text": "Confirm or adjust the detected corners so the scan is squared and perspective-corrected." },
+          { "name": "Apply cleanup", "text": "Choose a cleanup filter such as grayscale or magic color to sharpen the page." },
+          { "name": "Export as SVG", "text": "Save the scan to history and export it as an SVG vector or share it as PNG — all on-device, ad-free." }
+        ]
+      }
     },
     "bulk-qr-barcode-suite": {
       "seoTitle": "Bulk QR & Barcode Suite — Ad-Free Scanner & QR Generator",
@@ -203,7 +233,17 @@
           "question": "Can I share files to a laptop browser?",
           "answer": "Yes. Web Share hosts files on a built-in local server so nearby devices can download via QR code or browser URL."
         }
-      ]
+      ],
+      "howTo": {
+        "name": "How to transfer files over local Wi-Fi on Android without ads",
+        "description": "Send photos, videos, and folders between devices on the same Wi-Fi network with the ad-free Wi-Fi Drop Android app.",
+        "steps": [
+          { "name": "Connect to Wi-Fi", "text": "Make sure both devices are on the same local Wi-Fi network." },
+          { "name": "Pick files to send", "text": "Open Wi-Fi Drop, choose the files or folders you want to transfer, and start sending." },
+          { "name": "Receive or Web Share", "text": "On the other device, accept the transfer, or open the Web Share QR link in a browser to download." },
+          { "name": "Confirm completion", "text": "Watch live speed and progress; received files land in Downloads/Wifi-Drop with no cloud upload and no ads." }
+        ]
+      }
     },
     "clipvault": {
       "seoTitle": "ClipVault — Ad-Free Encrypted Clipboard Manager Android",
@@ -665,7 +705,17 @@
           "question": "Can StoreClear securely delete sensitive files?",
           "answer": "Yes. The secure shredder overwrites selected files with configurable pass counts before deletion."
         }
-      ]
+      ],
+      "howTo": {
+        "name": "How to free up storage and remove duplicates on Android without ads",
+        "description": "Find hidden space and delete duplicate files locally with the ad-free StoreClear Android app.",
+        "steps": [
+          { "name": "Scan storage", "text": "Open StoreClear and run a storage scan to see space usage broken down by category." },
+          { "name": "Review duplicates", "text": "Open the duplicate finder to list redundant files verified by hash." },
+          { "name": "Clean safely", "text": "Select duplicates, empty folders, or cache to remove, and confirm the cleanup." },
+          { "name": "Shred sensitive files", "text": "For private files, use the secure multi-pass shredder to overwrite before deletion — all local, no ads." }
+        ]
+      }
     },
     "edgeflow": {
       "seoTitle": "EdgeFlow — Ad-Free Edge Gesture Shortcuts for Android",
