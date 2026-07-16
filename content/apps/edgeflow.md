@@ -7,10 +7,16 @@ packageId: "com.michael.edgeflow"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.edgeflow"
 githubUrl: "https://github.com/michaelsam94/EdgeFlow"
 image: "https://play-lh.googleusercontent.com/sr97xuvu3ACSIZ3ZGBy1CH5ozS0TIoZ8x97NWIIzjl8NwE1fxBefCNXuOJHiEitx4beHGioS47oDUNhAFP8G8A"
-description: "Edge gesture and shortcut utility designed for faster mobile navigation."
+description: "Ad-free Android edge gesture helper. Turn left/right screen edges into one-handed shortcut zones for Back, Home, notifications, media, and more — no ads in your gesture flow."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free edge gestures Android"
+keywords: "ad-free edge gestures, no ads navigation gestures Android, one-handed shortcuts Android, edge swipe menu, accessibility gesture helper, circular shortcut menu, quick settings edge actions, gesture control without ads"
 ---
+
+EdgeFlow is an ad-free Android gesture helper that turns the left and right screen edges into configurable one-handed action zones for navigation, notifications, media, and more.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 EdgeFlow is an Android gesture helper that turns the left and right screen edges into configurable
 one-handed action zones. It is designed for Android users who want faster access to navigation,

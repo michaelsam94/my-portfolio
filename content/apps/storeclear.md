@@ -7,10 +7,16 @@ packageId: "com.michael.storeclear"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.storeclear"
 githubUrl: "https://github.com/michaelsam94/StoreClear"
 image: "https://play-lh.googleusercontent.com/Qfy6nCkhx3-hdST19FP7NrSU5VcMXMVR40lFIeJcek2ZOnbQKpumm7txhM-NDhUurBxBesXbuhDAHXaV1CVd"
-description: "Storage cleaning utility for clearing clutter and keeping Android space manageable."
+description: "Ad-free Android storage cleaner. Find hidden space, remove duplicates, visualize large folders, clean empty folders/cache, and securely shred files — no ads, no file uploads."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free storage cleaner Android"
+keywords: "ad-free storage cleaner, no ads duplicate file finder, Android storage analyzer, secure file shredder, empty folder cleaner, cache cleaner privacy, directory heatmap storage, free up space without ads"
 ---
+
+StoreClear is an ad-free, privacy-first Android storage manager for finding hidden space, removing duplicates, visualizing large directories, and securely shredding sensitive files locally.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 StoreClear is a privacy-first Android storage manager for finding hidden space, removing duplicate files, visualizing
 large directories, and securely shredding sensitive files. It runs storage analysis locally on the device and is designed

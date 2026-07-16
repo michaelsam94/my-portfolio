@@ -7,10 +7,16 @@ packageId: "com.michael.aurasound"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.aurasound"
 githubUrl: "https://github.com/michaelsam94/AuraSound"
 image: "https://play-lh.googleusercontent.com/mj1DJLB3vLygQw9rGBatKOSWCUy3XbdxaQM2ZV_F86uAqrVLxtR8v1WrwH0qWB54h4xZT-hilBT2-pmPKTvoAA"
-description: "Audio utility app for focused playback, sound control, and everyday listening workflows."
+description: "Ad-free offline ambient sound mixer for Android. Layer focus, nature, ambient, and sleep loops with volume controls, presets, and a sleep timer — no ads, no streaming account."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free ambient sound mixer Android"
+keywords: "ad-free white noise app, no ads sleep sounds Android, ambient sound mixer, focus sounds offline, meditation soundscape, sleep timer ambient mixer, nature sounds Android ad free, offline brown noise mixer"
 ---
+
+AuraSound is an ad-free offline ambient sound mixer for focus, relaxation, meditation, and sleep — layer local loops, save presets, and use a sleep timer without streaming or ads.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 AuraSound is an offline Android ambient sound mixer for focus, relaxation, meditation, and sleep.
 It lets users layer local sound loops, tune each channel, save favorite mixes, and start a sleep

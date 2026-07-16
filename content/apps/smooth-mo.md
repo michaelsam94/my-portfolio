@@ -7,10 +7,16 @@ packageId: "com.michael.smoothmo"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.smoothmo"
 githubUrl: "https://github.com/michaelsam94/Smooth-Mo"
 image: "https://play-lh.googleusercontent.com/7vwn0tvOllRw2YhmPAccj8VM1nC4wJ7GWfe-hMGciaA6ktaSStobHetrttfNX376pvg3kq5j75o1DCzhBX7AgQ"
-description: "Motion and smoothness utility for tuning or exploring Android device behavior."
+description: "Ad-free on-device slow-motion video app for Android. Import local clips, target 60/120 FPS, track progress, preview, and export — no ads, no footage uploaded to the cloud."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free slow motion video Android"
+keywords: "ad-free slow motion app, no ads video smoother, slow motion 60 FPS 120 FPS, offline video interpolation, export slow-mo MP4 Android, on-device video processing, smooth slow motion creator, privacy video editor Android"
 ---
+
+Smooth-Mo is an ad-free Android app for creating smoother slow-motion video exports on device — pick a local video, choose FPS and slow-mo settings, then preview and export without uploading footage.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Smooth-Mo is an Android app for creating smoother slow-motion video exports on device. It helps mobile creators pick a
 local video, choose an output frame-rate target, monitor background processing, and preview or share the result. The

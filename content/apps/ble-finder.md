@@ -7,10 +7,16 @@ packageId: "com.michael.blefinder"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.blefinder"
 githubUrl: "https://github.com/michaelsam94/BLE-Finder"
 image: "https://play-lh.googleusercontent.com/J7JKnuE6S8AatKuyMXl5O5cCsrY7oU7y2FtUmC-Xv-8bIk54aB3dlX4Fs8O94A_uN7B0poRjcrIQC_TUaxbdgew"
-description: "Bluetooth Low Energy scanner for finding nearby devices and inspecting signals."
+description: "Ad-free BLE scanner for Android. Find nearby Bluetooth Low Energy devices with RSSI radar, hot/cold proximity, and optional audio pings — no ads while you track peripherals."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free BLE scanner Android"
+keywords: "ad-free BLE scanner, no ads Bluetooth finder, Bluetooth Low Energy radar, find earbuds by RSSI, BLE device tracker Android, proximity beep BLE, scan BLE advertisements, locate tracker tags without ads"
 ---
+
+BLE Finder is an ad-free Android app that scans nearby Bluetooth Low Energy devices and turns RSSI changes into a radar-style hot/cold tracking experience with optional audio pings.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 BLE Finder is an Android app for finding nearby Bluetooth Low Energy devices by turning raw RSSI signal changes into a
 radar-style tracking experience. It is built for people trying to locate wearables, earbuds, styluses, trackers, and

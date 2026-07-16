@@ -6,6 +6,10 @@ const DIST = path.join(ROOT, "out");
 const ORIGIN = "https://michaelsam94.com";
 const AUTHOR = "Michael Samuel Naeem";
 const TODAY = new Date().toISOString().slice(0, 10);
+const APP_SEO_PATH = path.join(ROOT, "src", "data", "app-seo.json");
+
+const appSeoCatalog = JSON.parse(await readFile(APP_SEO_PATH, "utf8"));
+const AD_FREE_TAGLINE = appSeoCatalog.adFreeTagline || "Completely ad-free — no ads, no trackers, no sponsored clutter.";
 
 const COLLECTIONS = [
   {
@@ -13,9 +17,9 @@ const COLLECTIONS = [
     contentDir: path.join(ROOT, "content", "apps"),
     distBase: path.join(DIST, "apps"),
     urlBase: "apps",
-    hubTitle: "Android apps by Michael Samuel Naeem",
+    hubTitle: "Ad-free Android apps by Michael Samuel Naeem",
     hubDescription:
-      "Complete index of Michael Samuel Naeem Android apps on Google Play and GitHub, including utility, privacy, productivity, developer, media, finance, and device tools.",
+      "Complete index of completely ad-free Android apps by Michael Samuel Naeem on Google Play and GitHub — utility, privacy, productivity, developer, media, finance, and device tools with no ads.",
     schemaApplicationCategory: "MobileApplication",
     marketplaceLabel: "Google Play",
   },
@@ -101,16 +105,38 @@ async function readProducts(collection) {
 }
 
 function jsonLdForProduct(collection, product) {
-  return {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
+  const seo = collection.type === "apps" ? appSeoCatalog.apps?.[product.slug] : undefined;
+  const isApp = collection.type === "apps";
+  const description =
+    seo?.seoDescription ||
+    (isApp
+      ? `${product.summary} ${AD_FREE_TAGLINE}`
+      : product.summary);
+  const software = {
+    "@type": isApp ? ["SoftwareApplication", "MobileApplication"] : "SoftwareApplication",
     "@id": `${product.pageUrl}#software`,
     name: product.title,
-    alternateName: [product.packageId, `${product.title} ${collection.type === "apps" ? "Android app" : "VS Code extension"}`].filter(Boolean),
-    description: product.summary,
-    applicationCategory: product.category,
-    operatingSystem: collection.type === "apps" ? "Android" : "Windows, macOS, Linux",
+    alternateName: [
+      product.packageId,
+      `${product.title} ${isApp ? "ad-free Android app" : "VS Code extension"}`,
+      isApp ? `${product.title} no ads` : null,
+    ].filter(Boolean),
+    description,
+    applicationCategory: seo?.applicationCategory || product.category,
+    operatingSystem: isApp ? "Android" : "Windows, macOS, Linux",
     url: product.pageUrl,
+    isAccessibleForFree: true,
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      description: isApp
+        ? "Free ad-free Android app — no ads, no in-app advertising."
+        : "Free VS Code extension.",
+    },
+    keywords: seo?.keywords?.join(", "),
+    featureList: seo?.featureHighlights?.join(". "),
     author: {
       "@type": "Person",
       name: AUTHOR,
@@ -123,6 +149,27 @@ function jsonLdForProduct(collection, product) {
     },
     sameAs: [product.marketplaceUrl, product.githubUrl].filter(Boolean),
     image: product.image || undefined,
+    downloadUrl: product.marketplaceUrl || undefined,
+  };
+
+  if (!seo?.faqs?.length) {
+    return { "@context": "https://schema.org", ...software };
+  }
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      software,
+      {
+        "@type": "FAQPage",
+        "@id": `${product.pageUrl}#faq`,
+        mainEntity: seo.faqs.map((item) => ({
+          "@type": "Question",
+          name: item.question,
+          acceptedAnswer: { "@type": "Answer", text: item.answer },
+        })),
+      },
+    ],
   };
 }
 
@@ -162,19 +209,32 @@ function jsonLdForHub(collection, products) {
 }
 
 function discoverySection(collection, products, currentSlug = "") {
-  const label = collection.type === "apps" ? "Android app" : "VS Code extension";
+  const label = collection.type === "apps" ? "ad-free Android app" : "VS Code extension";
   const list = products
     .map((product) => {
       const current = product.slug === currentSlug ? ' aria-current="page"' : "";
-      const meta = [product.category, product.packageId].filter(Boolean).join(" · ");
+      const seo = collection.type === "apps" ? appSeoCatalog.apps?.[product.slug] : undefined;
+      const meta = [
+        collection.type === "apps" ? "ad-free" : null,
+        product.category,
+        product.packageId,
+        seo?.primaryKeyword,
+      ]
+        .filter(Boolean)
+        .join(" · ");
       return `<li><a href="/${collection.urlBase}/${product.slug}/"${current}>${escapeHtml(product.title)}</a>${meta ? ` <span>${escapeHtml(meta)}</span>` : ""}</li>`;
     })
     .join("\n");
 
+  const adFreeNote =
+    collection.type === "apps"
+      ? ` ${escapeHtml(AD_FREE_TAGLINE)} Every listed Android app is published without ads.`
+      : "";
+
   return `<!-- seo-discovery:start -->
 <section class="seo-discovery" aria-labelledby="${collection.type}-seo-discovery-title">
   <h2 id="${collection.type}-seo-discovery-title">All ${escapeHtml(label)} names</h2>
-  <p>${escapeHtml(collection.hubDescription)} Search engines can discover each exact product name, package, marketplace listing, and source page from this index.</p>
+  <p>${escapeHtml(collection.hubDescription)}${adFreeNote} Search engines can discover each exact product name, package, marketplace listing, and source page from this index.</p>
   <ul>
 ${list}
   </ul>

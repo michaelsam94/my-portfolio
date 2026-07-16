@@ -7,10 +7,16 @@ packageId: "com.michael.microbudgeting"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.microbudgeting"
 githubUrl: "https://github.com/michaelsam94/Micro-Budgeting"
 image: "https://play-lh.googleusercontent.com/8LLJaE7oILJduEYlilZmwoINxnrrFyUTITDdRsNk6MspnGcFyJPeM9_zE5hKbuxrMsKF4EbS0suMYs4Yc76V"
-description: "Small-budget planning app for tracking micro expenses and short financial goals."
+description: "Ad-free offline budgeting app for Android. Track expenses, category budgets, charts, and encrypted backups — no ads, no bank login, no internet permission."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free offline budget app Android"
+keywords: "ad-free expense tracker, no ads budgeting app, offline budget planner Android, category spending tracker, encrypted budget backup, privacy finance app, manual expense log, budget app without ads or bank sync"
 ---
+
+Micro Budgeting is an ad-free, offline Android expense tracker for logging everyday spending, setting category budgets, and reviewing monthly charts — without accounts, ads, or bank connections.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Build status and coverage badges are not shown because this repository does not currently include CI or coverage
 configuration.

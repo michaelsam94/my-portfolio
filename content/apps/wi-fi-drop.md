@@ -7,10 +7,16 @@ packageId: "com.michael.wifidrop"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.wifidrop"
 githubUrl: "https://github.com/michaelsam94/Wi-Fi-Drop"
 image: "https://play-lh.googleusercontent.com/WR7vIT2bkXYUVFpWg-ATiFxEsBznNsoBS-qryrs00VG-QQG0lx6_6pnuYkf1kzB-MPAfSf3o_0aYbkukRZBT"
-description: "Wi-Fi sharing and transfer companion designed for fast local connectivity workflows."
+description: "Ad-free Android file transfer over local Wi-Fi. Send photos, videos, documents, and folders nearby with live progress or Web Share via QR — no ads, no cloud account."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free Wi-Fi file transfer Android"
+keywords: "ad-free file transfer Android, no ads Wi-Fi share, local Wi-Fi file sharing, transfer files without cloud, nearby file transfer Android, Web Share QR download, offline file sharing app, send folder over Wi-Fi, ad free AirDrop alternative Android"
 ---
+
+Wi-Fi Drop is a free, ad-free Android app for sharing photos, videos, documents, and folders between devices on the same Wi-Fi network — no cloud upload and no account required.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Share photos, videos, documents, and folders between devices on the same Wi-Fi network—no cloud upload, no account required.
 

@@ -7,10 +7,16 @@ packageId: "com.michael.walkplanner"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.walkplanner"
 githubUrl: "https://github.com/michaelsam94/TrailMate"
 image: "https://play-lh.googleusercontent.com/ANH6OVzyeLAYijwXb8qR92t398xXNzAZDySDRvOCcq5pBuOUr2LvhJpzJs7LrA1JnRk11uBChS4_IrTv55XqlA"
-description: "Walking route and daily movement planner for simple personal activity routines."
+description: "Ad-free Android walk and run route planner. Generate hyper-local loop routes with GPS and OpenStreetMap data, track sessions, and store history offline — no ads on your run."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free walk route planner Android"
+keywords: "ad-free running route planner, no ads walk planner, GPS loop route generator, OpenStreetMap walking routes, offline walk history Android, hyper local run planner, generate walking loop, ad free hiking route app"
 ---
+
+WalkPlanner is an ad-free Android run and walk route planner that uses GPS and OpenStreetMap data to generate loop routes, track active sessions, and store history offline.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Hyper-local run and walk route planner for Android. WalkPlanner uses GPS and OpenStreetMap data to generate loop routes, tracks active sessions, and stores history offline.
 

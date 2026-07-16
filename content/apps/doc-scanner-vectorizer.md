@@ -7,10 +7,16 @@ packageId: "com.michael.docscannervectorizer"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.docscannervectorizer"
 githubUrl: "https://github.com/michaelsam94/Doc-Scanner-Vectorizer"
 image: "https://play-lh.googleusercontent.com/XQI8MGScBd3x0KypFyeilCmgcVZ8u9ikG9xIdxMjmDcyfgobnZPUpUHV8rmk-Jmyw2t33mILKfjokrbsfHb9cA"
-description: "Document scanner and vectorizer for turning paper captures into cleaner digital assets."
+description: "Ad-free Android document scanner with perspective correction, paper cleanup filters, scan history, and SVG vector export — no ads, camera-based, privacy-first."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free document scanner Android"
+keywords: "ad-free document scanner, no ads PDF scanner Android, scan documents to SVG, vectorize document scan, perspective correct scan, paper cleanup filters, offline document scanner, CameraX document scanner, scan to PNG SVG"
 ---
+
+Doc Scanner Vectorizer is an ad-free Android document scanner that captures paper pages, cleans them up, saves scan history, and exports SVG vectors — all without ads or unnecessary cloud dependency for core scanning.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Native Android document scanner that captures paper pages, applies cleanup filters, saves scan history, and exports SVG vectors.
 

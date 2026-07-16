@@ -7,10 +7,16 @@ packageId: "com.michael.sensorscope"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.sensorscope"
 githubUrl: "https://github.com/michaelsam94/SensorScope"
 image: "https://play-lh.googleusercontent.com/4Fo2z_LzWTP-RBNQIx0L_Bu935uyG8IYtA5Z45B0P9QHHvZ72h5OsaOSYmKeAQTO03n6pTvE4Fk44uJPIXjC0Zk"
-description: "Sensor dashboard for exploring live Android device sensor readings and diagnostics."
+description: "Ad-free Android hardware diagnostics. Live sensor plots, battery telemetry, thermal stress tests, calibration baselines, and CSV export — no ads for technicians and developers."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free Android sensor diagnostics"
+keywords: "ad-free sensor tester Android, no ads hardware diagnostics, live accelerometer gyroscope plot, battery telemetry Android, thermal stress test phone, dead pixel checker, sensor calibration baseline, export sensor CSV"
 ---
+
+SensorScope is an ad-free Android hardware diagnostics app for inspecting live sensors, battery telemetry, thermal stress behavior, calibration baselines, and exportable reports.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 SensorScope is an Android hardware diagnostics app for inspecting device sensors, battery telemetry, and thermal stress
 behavior in real time. It is built for technicians, QA teams, Android developers, and power users who need a clear view

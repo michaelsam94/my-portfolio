@@ -7,10 +7,16 @@ packageId: "com.michael.notchcommand"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.notchcommand"
 githubUrl: "https://github.com/michaelsam94/NotchCommand"
 image: "https://play-lh.googleusercontent.com/NZjwlbUzfrTHEsnF9wXme9zJxqzf7T_R0Zsp8RZxfuQ1dw8u8hcXCwMyFASvseG79JxIVMOtsihcDnhafylXrA"
-description: "Device utility that turns screen notch space into a fast command surface."
+description: "Ad-free Android notch utility. Turn the punch-hole camera cutout into gesture shortcuts, battery sweep, and audio visualizer ring — no ads, privacy-first overlay tools."
 source: "listing"
 thin: false
+primaryKeyword: "ad-free notch shortcuts Android"
+keywords: "ad-free notch launcher, no ads punch hole customization, camera cutout shortcuts, battery ring around notch, audio visualizer notch, flashlight notch gesture, Android hole punch utility, notch command without ads"
 ---
+
+NotchCommand is an ad-free Android utility that turns your punch-hole camera cutout into an interactive shortcut launcher, battery status ring, and audio visualizer — without ads or telemetry clutter.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 ## Overview
 NotchCommand turns your device's punch-hole front camera cutout into an interactive shortcut launcher, status visualizer, and neon-glowing utility ring. 

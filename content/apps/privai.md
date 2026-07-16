@@ -7,10 +7,16 @@ packageId: "com.michael.privai"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.privai"
 githubUrl: "https://github.com/michaelsam94/PrivAI"
 image: "https://play-lh.googleusercontent.com/5sn9vK54oe59VJBs6ELVoyo6U7J8K-P3-42f7XmeMMToP6b8dGM-fP0wJaJ26HUb7nB2F8lk-80gYsb_cjTK6-s"
-description: "Privacy-focused AI utility for local-first, safer everyday assistance workflows."
+description: "Ad-free privacy AI workspace for Android. Secure notes, on-device voice transcription, document OCR (ML Kit/Tesseract), and local summaries — no ads, no content cloud uploads."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free on-device AI notes OCR"
+keywords: "ad-free OCR Android, no ads voice transcription, on-device AI notes, offline document OCR, privacy notes app, ML Kit OCR Android, Tesseract OCR Arabic English, local AI summary, secure notes without ads"
 ---
+
+PrivAI is an ad-free Android workspace for secure notes, on-device voice transcription, and offline document OCR — core processing stays local with no content cloud uploads and no ads.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 **Secure notes, voice transcription, and document OCR — 100% on-device.**
 

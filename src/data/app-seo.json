@@ -1,0 +1,936 @@
+{
+  "adFreeTagline": "Completely ad-free — no ads, no trackers, no sponsored clutter.",
+  "apps": {
+    "pdf-toolkit": {
+      "seoTitle": "PDF Toolkit — Ad-Free Android PDF Tools (Merge, Split, Sign)",
+      "seoDescription": "Free ad-free PDF toolkit for Android. Merge PDF, split PDF, sign PDF, and convert Markdown to PDF offline on your device — no ads, no uploads, no account.",
+      "primaryKeyword": "ad-free PDF toolkit Android",
+      "keywords": [
+        "ad-free PDF tools",
+        "no ads PDF app",
+        "merge PDF Android",
+        "split PDF Android",
+        "sign PDF Android",
+        "PDF to Markdown",
+        "Markdown to PDF",
+        "offline PDF editor",
+        "privacy PDF toolkit",
+        "free PDF tools without ads",
+        "combine PDF files",
+        "extract PDF pages",
+        "vector signature PDF"
+      ],
+      "answerFirst": "PDF Toolkit is a free, completely ad-free Android app for everyday PDF work: merge, split, sign, and convert documents offline on your device so files never leave your phone.",
+      "applicationCategory": "BusinessApplication",
+      "featureHighlights": [
+        "Merge multiple PDFs with reorderable queues",
+        "Split PDFs by custom page ranges",
+        "Draw and stamp reusable vector signatures",
+        "Convert Markdown to PDF locally",
+        "100% offline processing with zero ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is PDF Toolkit free of ads?",
+          "answer": "Yes. PDF Toolkit is completely ad-free. There are no banner ads, interstitial ads, video ads, or sponsored clutter — just local PDF tools."
+        },
+        {
+          "question": "Can I merge and split PDFs offline on Android?",
+          "answer": "Yes. PDF Toolkit merges and splits PDFs entirely on device. Your documents are not uploaded to a server."
+        },
+        {
+          "question": "Does PDF Toolkit upload my documents?",
+          "answer": "No. All merge, split, sign, and Markdown-to-PDF processing runs locally. Files stay on your phone or tablet."
+        },
+        {
+          "question": "What PDF tools are included?",
+          "answer": "Core tools include merge PDF, split PDF, sign PDF with vector signatures, Markdown to PDF conversion, recent-document search, and local export/share."
+        }
+      ]
+    },
+    "photo-optimizer": {
+      "seoTitle": "Photo Optimizer — Ad-Free Batch Photo Compress & EXIF Strip",
+      "seoDescription": "Ad-free Android photo compressor. Batch compress to WebP, JPEG, or PNG, strip EXIF/GPS metadata, and find duplicate photos offline — no ads, no cloud uploads.",
+      "primaryKeyword": "ad-free photo compressor Android",
+      "keywords": [
+        "ad-free photo compressor",
+        "no ads image optimizer",
+        "batch photo compression Android",
+        "compress photos WebP",
+        "remove EXIF GPS",
+        "strip photo metadata",
+        "duplicate photo finder",
+        "offline photo optimizer",
+        "reduce image size Android",
+        "privacy photo compression"
+      ],
+      "answerFirst": "Photo Optimizer is a free, ad-free Android app that batch-compresses photos, strips EXIF metadata, and finds duplicates entirely offline so your images never leave the device.",
+      "applicationCategory": "MultimediaApplication",
+      "featureHighlights": [
+        "Batch compress to WebP, JPEG, or PNG",
+        "Before/after split preview",
+        "One-tap EXIF and GPS stripping",
+        "Duplicate finder by size and hash",
+        "No ads and no cloud uploads"
+      ],
+      "faqs": [
+        {
+          "question": "Is Photo Optimizer ad-free?",
+          "answer": "Yes. Photo Optimizer is completely ad-free and does not show banners, pop-ups, or sponsored content."
+        },
+        {
+          "question": "Do my photos get uploaded when I compress them?",
+          "answer": "No. Compression, EXIF removal, and duplicate detection run locally using Android storage APIs. There is no account or cloud sync for your photos."
+        },
+        {
+          "question": "Can I compress photos to WebP on Android without ads?",
+          "answer": "Yes. Photo Optimizer supports WebP (lossy or lossless), JPEG, and PNG with quality or max-size targets — and the app itself is ad-free."
+        }
+      ]
+    },
+    "doc-scanner-vectorizer": {
+      "seoTitle": "Doc Scanner Vectorizer — Ad-Free Document Scan to SVG",
+      "seoDescription": "Ad-free Android document scanner with perspective correction, paper cleanup filters, scan history, and SVG vector export — no ads, camera-based, privacy-first.",
+      "primaryKeyword": "ad-free document scanner Android",
+      "keywords": [
+        "ad-free document scanner",
+        "no ads PDF scanner Android",
+        "scan documents to SVG",
+        "vectorize document scan",
+        "perspective correct scan",
+        "paper cleanup filters",
+        "offline document scanner",
+        "CameraX document scanner",
+        "scan to PNG SVG"
+      ],
+      "answerFirst": "Doc Scanner Vectorizer is an ad-free Android document scanner that captures paper pages, cleans them up, saves scan history, and exports SVG vectors — all without ads or unnecessary cloud dependency for core scanning.",
+      "applicationCategory": "BusinessApplication",
+      "featureHighlights": [
+        "Live document boundary tracking with CameraX",
+        "Perspective-corrected scans",
+        "Cleanup filters including grayscale and magic color",
+        "SVG vector export and PNG sharing",
+        "Ad-free scanning workflow"
+      ],
+      "faqs": [
+        {
+          "question": "Is Doc Scanner Vectorizer free of ads?",
+          "answer": "Yes. The app is completely ad-free — no banners, no interstitials, no sponsored overlays while you scan."
+        },
+        {
+          "question": "Can I export scanned documents as SVG?",
+          "answer": "Yes. Besides PNG sharing, Doc Scanner Vectorizer supports SVG vector export for cleaner digital assets."
+        },
+        {
+          "question": "Does the scanner work offline?",
+          "answer": "Core capture, cleanup filters, history, and export are designed for on-device use so you can scan without relying on ads or account-gated cloud features."
+        }
+      ]
+    },
+    "bulk-qr-barcode-suite": {
+      "seoTitle": "Bulk QR & Barcode Suite — Ad-Free Scanner & QR Generator",
+      "seoDescription": "Ad-free bulk QR and barcode scanner for Android. High-speed batch scanning, CSV/Excel exports, and branded logo QR generation — no ads, offline-first inventory tools.",
+      "primaryKeyword": "ad-free bulk QR barcode scanner",
+      "keywords": [
+        "ad-free QR scanner",
+        "no ads barcode scanner Android",
+        "bulk barcode scanner",
+        "batch QR code scanner",
+        "CSV Excel barcode export",
+        "custom logo QR generator",
+        "inventory barcode app",
+        "offline QR barcode suite",
+        "ad free QR code maker"
+      ],
+      "answerFirst": "Bulk QR & Barcode Suite is an ad-free, offline-first Android toolkit for high-speed barcode scanning, session exports to CSV/Excel, and branded custom QR generation.",
+      "applicationCategory": "BusinessApplication",
+      "featureHighlights": [
+        "High-speed bulk barcode and QR scanning",
+        "CSV and Excel session exports",
+        "Branded logo custom QR generation",
+        "Built for inventory and batch capture",
+        "Completely ad-free scanning experience"
+      ],
+      "faqs": [
+        {
+          "question": "Is the Bulk QR & Barcode Suite ad-free?",
+          "answer": "Yes. It is completely ad-free — built for fast scanning sessions without interruptions from ads."
+        },
+        {
+          "question": "Can I export scan sessions to CSV or Excel?",
+          "answer": "Yes. The suite supports CSV/Excel session exports for inventory and batch workflows."
+        },
+        {
+          "question": "Can I generate QR codes with a logo?",
+          "answer": "Yes. You can create branded custom QR codes with logo support as part of the suite."
+        }
+      ]
+    },
+    "wi-fi-drop": {
+      "seoTitle": "Wi-Fi Drop — Ad-Free Local File Transfer Over Wi-Fi",
+      "seoDescription": "Ad-free Android file transfer over local Wi-Fi. Send photos, videos, documents, and folders nearby with live progress or Web Share via QR — no ads, no cloud account.",
+      "primaryKeyword": "ad-free Wi-Fi file transfer Android",
+      "keywords": [
+        "ad-free file transfer Android",
+        "no ads Wi-Fi share",
+        "local Wi-Fi file sharing",
+        "transfer files without cloud",
+        "nearby file transfer Android",
+        "Web Share QR download",
+        "offline file sharing app",
+        "send folder over Wi-Fi",
+        "ad free AirDrop alternative Android"
+      ],
+      "answerFirst": "Wi-Fi Drop is a free, ad-free Android app for sharing photos, videos, documents, and folders between devices on the same Wi-Fi network — no cloud upload and no account required.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Send files and folder trees with live speed/progress",
+        "Receive to Downloads/Wifi-Drop",
+        "Web Share via local server and QR",
+        "Local transfer history",
+        "No ads and no cloud account"
+      ],
+      "faqs": [
+        {
+          "question": "Is Wi-Fi Drop ad-free?",
+          "answer": "Yes. Wi-Fi Drop is completely ad-free. Transfers are not interrupted by banners or video ads."
+        },
+        {
+          "question": "Do files go through the cloud?",
+          "answer": "No. Transfers happen on your local Wi-Fi network. There is no cloud upload or account required for core sharing."
+        },
+        {
+          "question": "Can I share files to a laptop browser?",
+          "answer": "Yes. Web Share hosts files on a built-in local server so nearby devices can download via QR code or browser URL."
+        }
+      ]
+    },
+    "clipvault": {
+      "seoTitle": "ClipVault — Ad-Free Encrypted Clipboard Manager Android",
+      "seoDescription": "Ad-free privacy clipboard manager for Android. Encrypted local clipboard history, regex triggers, and offline text transforms — no ads, no internet permission, no cloud sync.",
+      "primaryKeyword": "ad-free clipboard manager Android",
+      "keywords": [
+        "ad-free clipboard manager",
+        "no ads clipboard history",
+        "encrypted clipboard Android",
+        "offline clipboard manager",
+        "regex clipboard automation",
+        "secure clipboard vault",
+        "privacy clipboard app",
+        "AES clipboard encryption",
+        "clipboard without ads"
+      ],
+      "answerFirst": "ClipVault is an ad-free, privacy-first Android clipboard history manager that encrypts captures on-device with AES-GCM and never requires internet permission for your clipboard data.",
+      "applicationCategory": "ProductivityApplication",
+      "featureHighlights": [
+        "Hardware-backed AES-GCM clipboard encryption",
+        "Smart regex triggers for IBANs, phones, URLs, emails",
+        "Offline text transform pipeline",
+        "Favorites, tags, and secure wipe",
+        "Zero ads and zero network tracking"
+      ],
+      "faqs": [
+        {
+          "question": "Is ClipVault free of ads?",
+          "answer": "Yes. ClipVault is completely ad-free and does not monetize your clipboard with ads or trackers."
+        },
+        {
+          "question": "Is clipboard history uploaded?",
+          "answer": "No. ClipVault stores encrypted history locally and does not require internet permission for clipboard capture."
+        },
+        {
+          "question": "Can ClipVault automate text with regex?",
+          "answer": "Yes. You can define regex rules to detect patterns and run offline transform actions when matching text is copied."
+        }
+      ]
+    },
+    "todo-app": {
+      "seoTitle": "Todo App — Ad-Free Simple Task Manager for Android",
+      "seoDescription": "Ad-free Android todo list app. Capture, organize, and complete daily tasks with a clean Jetpack Compose UI and local Room storage — no ads, no sign-in required.",
+      "primaryKeyword": "ad-free todo list Android",
+      "keywords": [
+        "ad-free todo app",
+        "no ads task manager Android",
+        "simple todo list",
+        "offline task tracker",
+        "Jetpack Compose todo",
+        "local todo app Room",
+        "daily task checklist without ads",
+        "free ad free to do list"
+      ],
+      "answerFirst": "Todo App is a free, completely ad-free Android task manager for capturing, organizing, and completing daily work with local Room persistence and no account wall.",
+      "applicationCategory": "ProductivityApplication",
+      "featureHighlights": [
+        "Simple task capture and completion",
+        "Local Room database persistence",
+        "Clean Jetpack Compose interface",
+        "No sign-in required",
+        "Completely ad-free experience"
+      ],
+      "faqs": [
+        {
+          "question": "Is this Todo App ad-free?",
+          "answer": "Yes. It is completely ad-free — no banners, no video ads, and no sponsored task clutter."
+        },
+        {
+          "question": "Do I need an account to use the todo list?",
+          "answer": "No. Tasks are stored locally with Room. There is no forced sign-in for core task management."
+        },
+        {
+          "question": "Is the todo list available offline?",
+          "answer": "Yes. The app is designed for local-first task management so you can organize work without ads or cloud dependency."
+        }
+      ]
+    },
+    "folderflow": {
+      "seoTitle": "FolderFlow — Ad-Free App Organizer & Idle App Cleaner",
+      "seoDescription": "Ad-free Android app organizer. Smart folders, custom tags, searchable app index, and idle-app scanner for decluttering your drawer — no ads, local-first organization.",
+      "primaryKeyword": "ad-free app organizer Android",
+      "keywords": [
+        "ad-free app organizer",
+        "no ads app folder manager",
+        "smart app folders Android",
+        "unused app finder",
+        "idle app scanner",
+        "app drawer organizer",
+        "tag apps Android",
+        "declutter installed apps",
+        "app organizer without ads"
+      ],
+      "answerFirst": "FolderFlow is an ad-free Android app organizer that groups installed apps into smart folders, supports custom tags, and highlights idle apps you may no longer need.",
+      "applicationCategory": "ProductivityApplication",
+      "featureHighlights": [
+        "Smart folders by category, tags, recent installs, or unused rules",
+        "Searchable app index",
+        "Color-coded custom tags",
+        "Idle scanner for unused apps",
+        "Local Room storage and no ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is FolderFlow ad-free?",
+          "answer": "Yes. FolderFlow is completely ad-free and focuses on local app organization without ad interruptions."
+        },
+        {
+          "question": "Can FolderFlow find unused apps?",
+          "answer": "Yes. The idle scanner surfaces apps that have not been opened past a selected threshold so you can declutter safely."
+        },
+        {
+          "question": "Are folder rules stored in the cloud?",
+          "answer": "No. Folder rules, category overrides, and tags stay in local Room storage on your device."
+        }
+      ]
+    },
+    "devpocket": {
+      "seoTitle": "DevPocket — Ad-Free Offline Developer Toolkit Android",
+      "seoDescription": "Ad-free offline developer utilities for Android: code workspace, JSON/XML formatters, regex playground, JS sandbox, and reference docs — no ads, no telemetry, on-device.",
+      "primaryKeyword": "ad-free developer toolkit Android",
+      "keywords": [
+        "ad-free developer tools Android",
+        "no ads coding utilities",
+        "offline JSON formatter",
+        "regex playground Android",
+        "JavaScript sandbox mobile",
+        "offline developer reference",
+        "mobile code editor Android",
+        "beautify minify JSON XML",
+        "developer pocket tools without ads"
+      ],
+      "answerFirst": "DevPocket is an ad-free, offline-first Android developer toolkit with a code workspace, formatters, regex playground, JavaScript sandbox, and built-in reference docs — no cloud sync or telemetry.",
+      "applicationCategory": "DeveloperApplication",
+      "featureHighlights": [
+        "Syntax-highlighted code workspace",
+        "Beautify or minify JSON, XML, HTML, CSS, SQL",
+        "Regex playground with saved sessions",
+        "Local JS and math sandbox",
+        "Offline docs vault with zero ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is DevPocket free of ads?",
+          "answer": "Yes. DevPocket is completely ad-free so you can format code and test regex without interruptions."
+        },
+        {
+          "question": "Does DevPocket need internet?",
+          "answer": "No. Core features — workspace, formatters, regex, JS sandbox, and docs — run on-device without cloud sync."
+        },
+        {
+          "question": "What languages does the workspace highlight?",
+          "answer": "The workspace includes syntax highlighting for JavaScript, JSON, CSS, HTML, SQL, and Markdown."
+        }
+      ]
+    },
+    "privai": {
+      "seoTitle": "PrivAI — Ad-Free On-Device Notes, OCR & Voice Transcription",
+      "seoDescription": "Ad-free privacy AI workspace for Android. Secure notes, on-device voice transcription, document OCR (ML Kit/Tesseract), and local summaries — no ads, no content cloud uploads.",
+      "primaryKeyword": "ad-free on-device AI notes OCR",
+      "keywords": [
+        "ad-free OCR Android",
+        "no ads voice transcription",
+        "on-device AI notes",
+        "offline document OCR",
+        "privacy notes app",
+        "ML Kit OCR Android",
+        "Tesseract OCR Arabic English",
+        "local AI summary",
+        "secure notes without ads"
+      ],
+      "answerFirst": "PrivAI is an ad-free Android workspace for secure notes, on-device voice transcription, and offline document OCR — core processing stays local with no content cloud uploads and no ads.",
+      "applicationCategory": "ProductivityApplication",
+      "featureHighlights": [
+        "Local workspace notes with tags and search",
+        "On-device speech transcription",
+        "Photo OCR with ML Kit or Tesseract",
+        "Local bullet summaries and keyword highlights",
+        "Completely ad-free privacy workflow"
+      ],
+      "faqs": [
+        {
+          "question": "Is PrivAI ad-free?",
+          "answer": "Yes. PrivAI is completely ad-free. Your notes and transcripts are not monetized with advertising."
+        },
+        {
+          "question": "Does PrivAI upload my notes or photos?",
+          "answer": "Core notes, transcripts, and OCR extracts are stored locally. OCR images are read when you pick them and are not uploaded as a cloud workflow."
+        },
+        {
+          "question": "Can PrivAI do OCR in Arabic?",
+          "answer": "Yes. English and Arabic tessdata are bundled for high-accuracy Tesseract OCR alongside ML Kit fast mode."
+        }
+      ]
+    },
+    "clearvoice-ai": {
+      "seoTitle": "ClearVoice AI — Ad-Free Offline Speech Enhancer & Noise Remover",
+      "seoDescription": "Ad-free on-device speech enhancer for Android. Isolate vocals, reduce echo and static, batch-process audio, and use live loopback — no ads, no cloud audio uploads.",
+      "primaryKeyword": "ad-free noise reduction Android",
+      "keywords": [
+        "ad-free voice enhancer",
+        "no ads noise remover Android",
+        "offline speech enhancement",
+        "remove background noise audio",
+        "vocal isolation Android",
+        "batch audio cleanup",
+        "real-time mic loopback",
+        "podcast noise reduction offline",
+        "ad free audio cleaner"
+      ],
+      "answerFirst": "ClearVoice AI is an ad-free, fully offline Android speech enhancer that isolates vocals, reduces echo and background static, and can process files in batches without uploading your audio.",
+      "applicationCategory": "MultimediaApplication",
+      "featureHighlights": [
+        "Real-time live loopback under target low latency",
+        "Multiband DSP vocal isolation",
+        "Batch processing for MP3, WAV, M4A, OGG",
+        "On-device high-fidelity PCM processing",
+        "Zero ads and zero cloud uploads"
+      ],
+      "faqs": [
+        {
+          "question": "Is ClearVoice AI free of ads?",
+          "answer": "Yes. ClearVoice AI is completely ad-free so audio cleanup sessions are not interrupted by advertising."
+        },
+        {
+          "question": "Does ClearVoice AI upload my recordings?",
+          "answer": "No. Speech enhancement and noise isolation run locally on your Android device for privacy."
+        },
+        {
+          "question": "Can I process multiple audio files at once?",
+          "answer": "Yes. A batch processing queue supports background multi-threaded cleanup with tap-to-play results."
+        }
+      ]
+    },
+    "aurasound": {
+      "seoTitle": "AuraSound — Ad-Free Ambient Sound Mixer for Focus & Sleep",
+      "seoDescription": "Ad-free offline ambient sound mixer for Android. Layer focus, nature, ambient, and sleep loops with volume controls, presets, and a sleep timer — no ads, no streaming account.",
+      "primaryKeyword": "ad-free ambient sound mixer Android",
+      "keywords": [
+        "ad-free white noise app",
+        "no ads sleep sounds Android",
+        "ambient sound mixer",
+        "focus sounds offline",
+        "meditation soundscape",
+        "sleep timer ambient mixer",
+        "nature sounds Android ad free",
+        "offline brown noise mixer"
+      ],
+      "answerFirst": "AuraSound is an ad-free offline ambient sound mixer for focus, relaxation, meditation, and sleep — layer local loops, save presets, and use a sleep timer without streaming or ads.",
+      "applicationCategory": "MultimediaApplication",
+      "featureHighlights": [
+        "Mix up to four sounds with per-channel volume",
+        "18 bundled offline tracks across Focus, Nature, Ambient, Sleep",
+        "Named local presets",
+        "Sleep timer with fade-out",
+        "No ads and no sign-in"
+      ],
+      "faqs": [
+        {
+          "question": "Is AuraSound ad-free?",
+          "answer": "Yes. AuraSound is completely ad-free — your focus or sleep session will not be interrupted by commercials."
+        },
+        {
+          "question": "Does AuraSound stream audio from the cloud?",
+          "answer": "No. It loops bundled local Ogg assets through Media3 ExoPlayer. No streaming account is required."
+        },
+        {
+          "question": "Can I save custom ambient mixes?",
+          "answer": "Yes. Named presets are saved locally so you can reload favorite combinations anytime."
+        }
+      ]
+    },
+    "smooth-mo": {
+      "seoTitle": "Smooth-Mo — Ad-Free Slow Motion Video on Android",
+      "seoDescription": "Ad-free on-device slow-motion video app for Android. Import local clips, target 60/120 FPS, track progress, preview, and export — no ads, no footage uploaded to the cloud.",
+      "primaryKeyword": "ad-free slow motion video Android",
+      "keywords": [
+        "ad-free slow motion app",
+        "no ads video smoother",
+        "slow motion 60 FPS 120 FPS",
+        "offline video interpolation",
+        "export slow-mo MP4 Android",
+        "on-device video processing",
+        "smooth slow motion creator",
+        "privacy video editor Android"
+      ],
+      "answerFirst": "Smooth-Mo is an ad-free Android app for creating smoother slow-motion video exports on device — pick a local video, choose FPS and slow-mo settings, then preview and export without uploading footage.",
+      "applicationCategory": "MultimediaApplication",
+      "featureHighlights": [
+        "Local video import via system picker",
+        "60 FPS or 120 FPS output targets",
+        "2x–4x slow-motion mode",
+        "Foreground WorkManager progress tracking",
+        "Ad-free on-device processing"
+      ],
+      "faqs": [
+        {
+          "question": "Is Smooth-Mo ad-free?",
+          "answer": "Yes. Smooth-Mo is completely ad-free. Video processing is not interrupted by ads."
+        },
+        {
+          "question": "Does Smooth-Mo upload my videos?",
+          "answer": "No. Processing is designed for local footage. Export completed MP4 files into Movies/SmoothMo on the device."
+        },
+        {
+          "question": "Can I create 120 FPS slow motion on Android?",
+          "answer": "Yes. You can choose 60 FPS or 120 FPS output targets and optionally enable 2x to 4x slow-motion stretching."
+        }
+      ]
+    },
+    "micro-budgeting": {
+      "seoTitle": "Micro Budgeting — Ad-Free Offline Expense Tracker Android",
+      "seoDescription": "Ad-free offline budgeting app for Android. Track expenses, category budgets, charts, and encrypted backups — no ads, no bank login, no internet permission.",
+      "primaryKeyword": "ad-free offline budget app Android",
+      "keywords": [
+        "ad-free expense tracker",
+        "no ads budgeting app",
+        "offline budget planner Android",
+        "category spending tracker",
+        "encrypted budget backup",
+        "privacy finance app",
+        "manual expense log",
+        "budget app without ads or bank sync"
+      ],
+      "answerFirst": "Micro Budgeting is an ad-free, offline Android expense tracker for logging everyday spending, setting category budgets, and reviewing monthly charts — without accounts, ads, or bank connections.",
+      "applicationCategory": "FinanceApplication",
+      "featureHighlights": [
+        "Manual expense logging by category",
+        "Monthly category budgets and charts",
+        "Paste bank-alert text parsing (no SMS inbox access)",
+        "Passphrase-encrypted local backups",
+        "No ads and no internet permission"
+      ],
+      "faqs": [
+        {
+          "question": "Is Micro Budgeting ad-free?",
+          "answer": "Yes. Micro Budgeting is completely ad-free and does not show finance ads or sponsored offers."
+        },
+        {
+          "question": "Does Micro Budgeting connect to my bank?",
+          "answer": "No. It is offline by design with no bank sync. You log expenses manually or paste alert text for review."
+        },
+        {
+          "question": "Can I back up my budget data privately?",
+          "answer": "Yes. Export and import use passphrase-based AES-GCM encryption so backups stay under your control."
+        }
+      ]
+    },
+    "insightlyspend": {
+      "seoTitle": "InsightlySpend — Ad-Free Personal Finance & Spending Insights",
+      "seoDescription": "Ad-free local-first finance app for Android. Track income and expenses, budgets, insights, receipt vault, CSV/PDF export, and biometric lock — no ads cluttering your money data.",
+      "primaryKeyword": "ad-free personal finance Android",
+      "keywords": [
+        "ad-free spending tracker",
+        "no ads personal finance app",
+        "budget insights Android",
+        "expense ledger with receipts",
+        "offline money tracker",
+        "recurring transactions Android",
+        "export budget CSV PDF",
+        "biometric lock finance app",
+        "spending analytics without ads"
+      ],
+      "answerFirst": "InsightlySpend is an ad-free, local-first Android personal finance app for tracking spending, budgets, insights, and receipt photos with Room storage and optional biometric lock.",
+      "applicationCategory": "FinanceApplication",
+      "featureHighlights": [
+        "Home dashboard with balance and daily spend charts",
+        "Searchable ledger with swipe delete/duplicate",
+        "On-device insights and category breakdowns",
+        "Receipt vault and recurring rules",
+        "CSV/PDF export with no ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is InsightlySpend free of ads?",
+          "answer": "Yes. InsightlySpend is completely ad-free so your finance dashboard is not filled with sponsored products."
+        },
+        {
+          "question": "Where is my finance data stored?",
+          "answer": "Transactions, accounts, categories, and recurring rules live in a local Room database on your device."
+        },
+        {
+          "question": "Can I export spending reports?",
+          "answer": "Yes. Settings include CSV and PDF export via the Android share sheet for backups and summaries."
+        }
+      ]
+    },
+    "subtrackr": {
+      "seoTitle": "Subtrackr — Ad-Free Subscription Tracker for Android",
+      "seoDescription": "Ad-free subscription tracker for Android. Monitor recurring payments, renewals, and monthly costs in one dashboard — no ads interrupting your bill overview.",
+      "primaryKeyword": "ad-free subscription tracker Android",
+      "keywords": [
+        "ad-free subscription tracker",
+        "no ads recurring payments app",
+        "track subscriptions Android",
+        "monthly subscription cost",
+        "renewal reminders app",
+        "manage SaaS bills",
+        "cancel subscription helper",
+        "subscription dashboard without ads"
+      ],
+      "answerFirst": "Subtrackr is an ad-free Android subscription tracker that keeps recurring payments, renewals, and monthly costs visible so you can manage bills without ad clutter.",
+      "applicationCategory": "FinanceApplication",
+      "featureHighlights": [
+        "Dashboard of active subscriptions",
+        "Renewals visibility",
+        "Monthly cost overview",
+        "Built for recurring payment clarity",
+        "Completely ad-free experience"
+      ],
+      "faqs": [
+        {
+          "question": "Is Subtrackr ad-free?",
+          "answer": "Yes. Subtrackr is completely ad-free — your subscription list is not interrupted by advertising."
+        },
+        {
+          "question": "What does Subtrackr help me track?",
+          "answer": "It helps monitor recurring payments and keep monthly subscription costs visible so renewals are harder to miss."
+        },
+        {
+          "question": "Why choose an ad-free subscription tracker?",
+          "answer": "Ad-free tracking keeps the focus on your bills and renewals instead of sponsored financial products."
+        }
+      ]
+    },
+    "storeclear": {
+      "seoTitle": "StoreClear — Ad-Free Storage Cleaner & Duplicate Finder",
+      "seoDescription": "Ad-free Android storage cleaner. Find hidden space, remove duplicates, visualize large folders, clean empty folders/cache, and securely shred files — no ads, no file uploads.",
+      "primaryKeyword": "ad-free storage cleaner Android",
+      "keywords": [
+        "ad-free storage cleaner",
+        "no ads duplicate file finder",
+        "Android storage analyzer",
+        "secure file shredder",
+        "empty folder cleaner",
+        "cache cleaner privacy",
+        "directory heatmap storage",
+        "free up space without ads"
+      ],
+      "answerFirst": "StoreClear is an ad-free, privacy-first Android storage manager for finding hidden space, removing duplicates, visualizing large directories, and securely shredding sensitive files locally.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Storage dashboard by category",
+        "Duplicate finder with hash verification",
+        "Directory heatmap drill-down",
+        "Configurable multi-pass secure shredder",
+        "No ads and no analytics uploads"
+      ],
+      "faqs": [
+        {
+          "question": "Is StoreClear ad-free?",
+          "answer": "Yes. StoreClear is completely ad-free and does not push cleaner upsell ads while you free space."
+        },
+        {
+          "question": "Does StoreClear upload my files?",
+          "answer": "No. Storage analysis and shredding run locally. There are no accounts or file uploads for cleanup."
+        },
+        {
+          "question": "Can StoreClear securely delete sensitive files?",
+          "answer": "Yes. The secure shredder overwrites selected files with configurable pass counts before deletion."
+        }
+      ]
+    },
+    "edgeflow": {
+      "seoTitle": "EdgeFlow — Ad-Free Edge Gesture Shortcuts for Android",
+      "seoDescription": "Ad-free Android edge gesture helper. Turn left/right screen edges into one-handed shortcut zones for Back, Home, notifications, media, and more — no ads in your gesture flow.",
+      "primaryKeyword": "ad-free edge gestures Android",
+      "keywords": [
+        "ad-free edge gestures",
+        "no ads navigation gestures Android",
+        "one-handed shortcuts Android",
+        "edge swipe menu",
+        "accessibility gesture helper",
+        "circular shortcut menu",
+        "quick settings edge actions",
+        "gesture control without ads"
+      ],
+      "answerFirst": "EdgeFlow is an ad-free Android gesture helper that turns the left and right screen edges into configurable one-handed action zones for navigation, notifications, media, and more.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Six ergonomic left/right edge zones",
+        "Five-action circular menus per zone",
+        "Accessibility actions for Back, Home, Recents, and more",
+        "Adjustable handles and haptic feedback",
+        "Local settings with zero ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is EdgeFlow free of ads?",
+          "answer": "Yes. EdgeFlow is completely ad-free so edge shortcuts stay fast and uninterrupted."
+        },
+        {
+          "question": "What permissions does EdgeFlow need?",
+          "answer": "It uses display-over-other-apps and an accessibility service to show edge handles and execute system actions you configure."
+        },
+        {
+          "question": "Can I customize edge shortcut menus?",
+          "answer": "Yes. Each of the six zones supports a five-item circular menu, with local Room persistence for your configuration."
+        }
+      ]
+    },
+    "notchcommand": {
+      "seoTitle": "NotchCommand — Ad-Free Punch-Hole Shortcut Ring Android",
+      "seoDescription": "Ad-free Android notch utility. Turn the punch-hole camera cutout into gesture shortcuts, battery sweep, and audio visualizer ring — no ads, privacy-first overlay tools.",
+      "primaryKeyword": "ad-free notch shortcuts Android",
+      "keywords": [
+        "ad-free notch launcher",
+        "no ads punch hole customization",
+        "camera cutout shortcuts",
+        "battery ring around notch",
+        "audio visualizer notch",
+        "flashlight notch gesture",
+        "Android hole punch utility",
+        "notch command without ads"
+      ],
+      "answerFirst": "NotchCommand is an ad-free Android utility that turns your punch-hole camera cutout into an interactive shortcut launcher, battery status ring, and audio visualizer — without ads or telemetry clutter.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Tap, double-tap, and long-press cutout gestures",
+        "Instant actions like flashlight, screenshot, Home, Back",
+        "Battery sweep and charging indicator",
+        "Dynamic audio visualizer and rainbow RGB mode",
+        "Privacy-first and completely ad-free"
+      ],
+      "faqs": [
+        {
+          "question": "Is NotchCommand ad-free?",
+          "answer": "Yes. NotchCommand is completely ad-free and runs without advertising or telemetry monetization."
+        },
+        {
+          "question": "What can I launch from the notch ring?",
+          "answer": "You can map gestures to actions such as toggle flashlight, take screenshot, open settings, go Home, go Back, and launch Camera."
+        },
+        {
+          "question": "Does NotchCommand drain battery with ads or always-on tracking?",
+          "answer": "No ads are shown. The app is built to use passive listeners and halt audio sampling when the screen is off or the device is silent."
+        }
+      ]
+    },
+    "frozendroid": {
+      "seoTitle": "FrozenDroid — Ad-Free No-Root App Freezer for Android",
+      "seoDescription": "Ad-free no-root Android app freezer with Shizuku. Disable bloatware, restore packages, use freeze profiles and wake telemetry — no ads, offline safety guidance.",
+      "primaryKeyword": "ad-free app freezer Android Shizuku",
+      "keywords": [
+        "ad-free app freezer",
+        "no ads disable bloatware Android",
+        "Shizuku package disable",
+        "freeze apps no root",
+        "pm disable-user helper",
+        "bloatware remover Android",
+        "battery wake package control",
+        "app hibernator without ads"
+      ],
+      "answerFirst": "FrozenDroid is an ad-free, no-root Android utility for reviewing, freezing, and restoring packages that waste battery — using Shizuku-assisted controls with offline safety guidance.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Freeze/unfreeze via Shizuku-backed package commands",
+        "Offline bloatware safety catalog",
+        "Protected-package hard blocks",
+        "Reusable freeze profiles",
+        "CPU wake telemetry without ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is FrozenDroid ad-free?",
+          "answer": "Yes. FrozenDroid is completely ad-free so package management is not interrupted by cleaner-style advertising."
+        },
+        {
+          "question": "Does FrozenDroid require root?",
+          "answer": "No. It is designed for no-root control through Shizuku-assisted package manager commands, with ADB fallback modes when configured."
+        },
+        {
+          "question": "Can FrozenDroid freeze dangerous system packages?",
+          "answer": "A hard-coded safety policy blocks dangerous system packages before freeze commands run, and an offline catalog explains bloatware risk levels."
+        }
+      ]
+    },
+    "ble-finder": {
+      "seoTitle": "BLE Finder — Ad-Free Bluetooth Low Energy Device Radar",
+      "seoDescription": "Ad-free BLE scanner for Android. Find nearby Bluetooth Low Energy devices with RSSI radar, hot/cold proximity, and optional audio pings — no ads while you track peripherals.",
+      "primaryKeyword": "ad-free BLE scanner Android",
+      "keywords": [
+        "ad-free BLE scanner",
+        "no ads Bluetooth finder",
+        "Bluetooth Low Energy radar",
+        "find earbuds by RSSI",
+        "BLE device tracker Android",
+        "proximity beep BLE",
+        "scan BLE advertisements",
+        "locate tracker tags without ads"
+      ],
+      "answerFirst": "BLE Finder is an ad-free Android app that scans nearby Bluetooth Low Energy devices and turns RSSI changes into a radar-style hot/cold tracking experience with optional audio pings.",
+      "applicationCategory": "UtilitiesApplication",
+      "featureHighlights": [
+        "Low-latency BLE scanning",
+        "Radar tracking with hot/warm/cold states",
+        "Optional proximity audio pings",
+        "Filter and sort by signal, name, type",
+        "Local scan logs with no ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is BLE Finder ad-free?",
+          "answer": "Yes. BLE Finder is completely ad-free so device hunting is not interrupted by banners or pop-ups."
+        },
+        {
+          "question": "How does BLE Finder estimate proximity?",
+          "answer": "It uses RSSI signal strength with smoothing to show hot, warm, and cold proximity states for a selected device."
+        },
+        {
+          "question": "Are scan logs uploaded?",
+          "answer": "No. Tracked devices and scan history are stored locally in Room, with retention controls you can purge."
+        }
+      ]
+    },
+    "sensorscope": {
+      "seoTitle": "SensorScope — Ad-Free Android Sensor & Battery Diagnostics",
+      "seoDescription": "Ad-free Android hardware diagnostics. Live sensor plots, battery telemetry, thermal stress tests, calibration baselines, and CSV export — no ads for technicians and developers.",
+      "primaryKeyword": "ad-free Android sensor diagnostics",
+      "keywords": [
+        "ad-free sensor tester Android",
+        "no ads hardware diagnostics",
+        "live accelerometer gyroscope plot",
+        "battery telemetry Android",
+        "thermal stress test phone",
+        "dead pixel checker",
+        "sensor calibration baseline",
+        "export sensor CSV"
+      ],
+      "answerFirst": "SensorScope is an ad-free Android hardware diagnostics app for inspecting live sensors, battery telemetry, thermal stress behavior, calibration baselines, and exportable reports.",
+      "applicationCategory": "DeveloperApplication",
+      "featureHighlights": [
+        "Real-time sensor inventory and live plots",
+        "Battery voltage, current, temperature telemetry",
+        "Thermal stress sandbox with logs",
+        "Dead-pixel inspection screen",
+        "CSV snapshot export without ads"
+      ],
+      "faqs": [
+        {
+          "question": "Is SensorScope free of ads?",
+          "answer": "Yes. SensorScope is completely ad-free — diagnostics are not interrupted by advertising."
+        },
+        {
+          "question": "Who is SensorScope for?",
+          "answer": "Technicians, QA teams, Android developers, and power users who need a clear view of hardware signals on a device."
+        },
+        {
+          "question": "Can I export diagnostic data?",
+          "answer": "Yes. You can preview diagnostic reports and export CSV snapshots when you choose to share them."
+        }
+      ]
+    },
+    "walkplanner": {
+      "seoTitle": "WalkPlanner — Ad-Free GPS Walk & Run Route Planner",
+      "seoDescription": "Ad-free Android walk and run route planner. Generate hyper-local loop routes with GPS and OpenStreetMap data, track sessions, and store history offline — no ads on your run.",
+      "primaryKeyword": "ad-free walk route planner Android",
+      "keywords": [
+        "ad-free running route planner",
+        "no ads walk planner",
+        "GPS loop route generator",
+        "OpenStreetMap walking routes",
+        "offline walk history Android",
+        "hyper local run planner",
+        "generate walking loop",
+        "ad free hiking route app"
+      ],
+      "answerFirst": "WalkPlanner is an ad-free Android run and walk route planner that uses GPS and OpenStreetMap data to generate loop routes, track active sessions, and store history offline.",
+      "applicationCategory": "HealthApplication",
+      "featureHighlights": [
+        "Hyper-local loop route generation",
+        "OSMDroid maps with local tile cache",
+        "Active run foreground tracking",
+        "Offline session history",
+        "Completely ad-free outdoor planning"
+      ],
+      "faqs": [
+        {
+          "question": "Is WalkPlanner ad-free?",
+          "answer": "Yes. WalkPlanner is completely ad-free so route planning and active tracking are not interrupted by ads."
+        },
+        {
+          "question": "How are walking routes generated?",
+          "answer": "Routes use Overpass/OpenStreetMap graph data with bidirectional A* routing on a local street graph, plus GPS for planning and live tracking."
+        },
+        {
+          "question": "Is walk history stored offline?",
+          "answer": "Yes. Completed sessions can be persisted locally, and map tiles can be cached on device."
+        }
+      ]
+    },
+    "tic-tac-toe": {
+      "seoTitle": "Tic Tac Toe — Ad-Free Classic 2-Player Game Android",
+      "seoDescription": "Ad-free classic Tic Tac Toe for Android. Two players on one device, instant win/draw detection, one-tap new game — no ads, no sign-in, play fully offline.",
+      "primaryKeyword": "ad-free tic tac toe Android",
+      "keywords": [
+        "ad-free tic tac toe",
+        "no ads tic tac toe Android",
+        "classic XO game offline",
+        "two player tic tac toe one device",
+        "simple tic tac toe no ads",
+        "kids tic tac toe without ads",
+        "free ad free noughts and crosses"
+      ],
+      "answerFirst": "Tic Tac Toe is a free, completely ad-free classic game for Android — two players on one device, clear win/draw detection, and offline play with no sign-in.",
+      "applicationCategory": "GameApplication",
+      "featureHighlights": [
+        "Two players on one device (X and O)",
+        "Instant win and draw detection",
+        "One-tap new game",
+        "Light, friendly design",
+        "No ads and no internet required"
+      ],
+      "faqs": [
+        {
+          "question": "Is this Tic Tac Toe game ad-free?",
+          "answer": "Yes. It is completely ad-free — no banners, no rewarded video ads, and no pop-ups between rounds."
+        },
+        {
+          "question": "Can I play Tic Tac Toe offline?",
+          "answer": "Yes. Download once and play offline anytime. No account or internet is required."
+        },
+        {
+          "question": "Is it two-player on one phone?",
+          "answer": "Yes. Pass-and-play on a single device with turns as X and O."
+        }
+      ]
+    }
+  }
+}

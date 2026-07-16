@@ -7,10 +7,16 @@ packageId: "com.michael.frozendroid"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.frozendroid"
 githubUrl: "https://github.com/michaelsam94/FrozenDroid"
 image: "https://play-lh.googleusercontent.com/IoCfKm-tSHOo1qxbrLrZV_TVsMXVxu2i97ZZae48XN1rO7Ea6BVtqhVaEQR_BYhrkEnNG_7JK7WAd9pY6sfWFw"
-description: "Android utility focused on app/device control and cleaner performance routines."
+description: "Ad-free no-root Android app freezer with Shizuku. Disable bloatware, restore packages, use freeze profiles and wake telemetry — no ads, offline safety guidance."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free app freezer Android Shizuku"
+keywords: "ad-free app freezer, no ads disable bloatware Android, Shizuku package disable, freeze apps no root, pm disable-user helper, bloatware remover Android, battery wake package control, app hibernator without ads"
 ---
+
+FrozenDroid is an ad-free, no-root Android utility for reviewing, freezing, and restoring packages that waste battery — using Shizuku-assisted controls with offline safety guidance.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 FrozenDroid is a no-root Android utility for reviewing, freezing, and restoring installed packages that waste battery or run unwanted background services. It is built for Android power users who want Shizuku-assisted package control, offline safety guidance, reusable freeze profiles, and CPU wake telemetry without sending app data to a backend.
 

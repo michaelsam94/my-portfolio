@@ -7,10 +7,16 @@ packageId: "com.michael.devpocket"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.devpocket"
 githubUrl: "https://github.com/michaelsam94/DevPocket"
 image: "https://play-lh.googleusercontent.com/lcTbR-DGu6SblFhlF55jL_Edw99GKjx5cfcpCmmq0FyR8yYsD71zIYeTNFo-BbkV8LhbumbapwyNOeig83VIdjo"
-description: "Pocket developer toolkit with small utilities for mobile engineering workflows."
+description: "Ad-free offline developer utilities for Android: code workspace, JSON/XML formatters, regex playground, JS sandbox, and reference docs — no ads, no telemetry, on-device."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free developer toolkit Android"
+keywords: "ad-free developer tools Android, no ads coding utilities, offline JSON formatter, regex playground Android, JavaScript sandbox mobile, offline developer reference, mobile code editor Android, beautify minify JSON XML, developer pocket tools without ads"
 ---
+
+DevPocket is an ad-free, offline-first Android developer toolkit with a code workspace, formatters, regex playground, JavaScript sandbox, and built-in reference docs — no cloud sync or telemetry.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Offline-first developer utility for Android: code workspace, formatters, regex playground, JavaScript sandbox, and built-in reference docs. Everything runs on-device with no cloud sync or telemetry.
 

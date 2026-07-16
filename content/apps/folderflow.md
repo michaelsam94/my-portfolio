@@ -7,10 +7,16 @@ packageId: "com.michael.folderflow"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.folderflow"
 githubUrl: "https://github.com/michaelsam94/FolderFlow"
 image: "https://play-lh.googleusercontent.com/dT3tvyTsYiDNXI-GYMHkesFaRz_5jHQ5soHsyv62EntTYbJLk49OMEjGdcDiAmBOS8noea9SiffYSe97Bl9OLA"
-description: "File and folder organization utility for tidier local storage workflows."
+description: "Ad-free Android app organizer. Smart folders, custom tags, searchable app index, and idle-app scanner for decluttering your drawer — no ads, local-first organization."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free app organizer Android"
+keywords: "ad-free app organizer, no ads app folder manager, smart app folders Android, unused app finder, idle app scanner, app drawer organizer, tag apps Android, declutter installed apps, app organizer without ads"
 ---
+
+FolderFlow is an ad-free Android app organizer that groups installed apps into smart folders, supports custom tags, and highlights idle apps you may no longer need.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 ## Project Overview
 

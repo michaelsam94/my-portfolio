@@ -7,10 +7,16 @@ packageId: "com.michael.pdftoolkit"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.pdftoolkit"
 githubUrl: "https://github.com/michaelsam94/PDF-Toolkit"
 image: "https://play-lh.googleusercontent.com/ooKhHiR-q_fS7luJcQXETk-tr0HlHSm5x-IsuXu65CvaE8my1FbIEbmX0UCNYduWB0y4kleaqo2PcTV-MEyrgA"
-description: "Portable PDF tools for common document actions and lightweight file workflows."
+description: "Free ad-free PDF toolkit for Android. Merge PDF, split PDF, sign PDF, and convert Markdown to PDF offline on your device — no ads, no uploads, no account."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free PDF toolkit Android"
+keywords: "ad-free PDF tools, no ads PDF app, merge PDF Android, split PDF Android, sign PDF Android, PDF to Markdown, Markdown to PDF, offline PDF editor, privacy PDF toolkit, free PDF tools without ads"
 ---
+
+PDF Toolkit is a free, completely ad-free Android app for everyday PDF work: merge, split, sign, and convert documents offline on your device so files never leave your phone.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 Privacy-first Android app for everyday PDF tasks. Merge, split, sign, and convert documents entirely on device — your files never leave your phone or tablet.
 

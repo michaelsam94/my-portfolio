@@ -2,9 +2,11 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import ProductCatalog from "@/components/section-catalog/ProductCatalog";
 import CatalogArtwork from "@/components/section-catalog/CatalogArtwork";
+import AppProductSeo from "@/components/apps/AppProductSeo";
 import SectionWrapper from "@/components/SectionWrapper";
 import { getAppBySlug, getAppCatalog } from "@/lib/content";
 import { renderMarkdown } from "@/lib/markdown";
+import { buildAppJsonLd, buildAppMetadata, getAppSeo } from "@/data/app-seo";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -19,10 +21,12 @@ export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
   const app = await getAppBySlug(slug);
   if (!app) return {};
-  return {
+  return buildAppMetadata({
+    slug: app.slug,
     title: app.title,
     description: app.description,
-  };
+    image: app.image,
+  });
 }
 
 export default async function AppDetailPage({ params }: PageProps) {
@@ -30,23 +34,67 @@ export default async function AppDetailPage({ params }: PageProps) {
   const [app, apps] = await Promise.all([getAppBySlug(slug), getAppCatalog()]);
   if (!app) notFound();
 
+  const seo = getAppSeo(app.slug);
+  const jsonLd = buildAppJsonLd({
+    slug: app.slug,
+    title: app.title,
+    description: app.description,
+    category: app.category,
+    packageId: app.packageId,
+    playStoreUrl: app.playStoreUrl,
+    githubUrl: app.githubUrl,
+    image: app.image,
+  });
+
   return (
     <main id="main-content" className="page-main">
-        <article className="detail-article">
-        <Link className="text-link" href="/#apps">Back to portfolio</Link>
-        <p className="hero-kicker">{app.category} / {app.packageId}</p>
+      <article className="detail-article" itemScope itemType="https://schema.org/SoftwareApplication">
+        <nav aria-label="Breadcrumb" className="app-breadcrumb">
+          <Link className="text-link" href="/">
+            Home
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <Link className="text-link" href="/apps/">
+            Android Apps
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <span aria-current="page">{app.title}</span>
+        </nav>
+        <Link className="text-link" href="/#apps">
+          Back to portfolio
+        </Link>
+        <p className="hero-kicker">
+          Ad-free Android · {app.category} · {app.packageId}
+        </p>
         <CatalogArtwork title={app.title} image={app.image} kind="apps" variant="detail" />
-        <h1 className="detail-title">{app.title}</h1>
-        <p className="hero-headline">{app.description}</p>
+        <h1 className="detail-title" itemProp="name">
+          {app.title}
+        </h1>
+        <p className="hero-headline" itemProp="description">
+          {seo?.seoDescription ?? app.description}
+        </p>
+        <p className="app-adfree-badge">
+          Completely ad-free — no ads, no trackers, no sponsored clutter.
+        </p>
         <div className="card-links">
-          {app.playStoreUrl ? <a className="text-link" href={app.playStoreUrl} target="_blank" rel="noopener noreferrer">Google Play</a> : null}
-          {app.githubUrl ? <a className="text-link" href={app.githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a> : null}
+          {app.playStoreUrl ? (
+            <a className="text-link" href={app.playStoreUrl} target="_blank" rel="noopener noreferrer">
+              Google Play
+            </a>
+          ) : null}
+          {app.githubUrl ? (
+            <a className="text-link" href={app.githubUrl} target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          ) : null}
         </div>
+        <AppProductSeo title={app.title} seo={seo} />
         <div className="markdown-body">{renderMarkdown(app.body)}</div>
       </article>
-      <SectionWrapper id="more-apps" heading="More Android Apps" headingId="more-apps-heading">
+      <SectionWrapper id="more-apps" heading="More Ad-Free Android Apps" headingId="more-apps-heading">
         <ProductCatalog items={apps.filter((item) => item.slug !== app.slug).slice(0, 8)} kind="apps" />
       </SectionWrapper>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </main>
   );
 }

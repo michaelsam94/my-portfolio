@@ -21,7 +21,7 @@ Michael works with remote product and engineering teams in the United States, Eu
 - 20% faster API responses on commerce systems.
 - 50k+ app users reached.
 - Production mobile, commerce, infrastructure, and EV charging work.
-- Published Android apps on Google Play under MichaelSam94.
+- Published Android apps on Google Play under MichaelSam94 — every listed portfolio app is completely ad-free (no ads, no sponsored clutter). Catalog: https://michaelsam94.com/apps/
 - Published VS Code extensions on the Visual Studio Marketplace and Open VSX.
 - Public GitHub profile at https://github.com/michaelsam94 .
 - LinkedIn profile at https://www.linkedin.com/in/michaelsam00/ .
@@ -48,7 +48,7 @@ A: Yes. I am based in Cairo, Egypt, and I work with remote teams across the Unit
 
 - Portfolio: https://michaelsam94.com/
 - Blog: https://michaelsam94.com/blog/
-- Apps: https://michaelsam94.com/apps/
+- Ad-free Android apps: https://michaelsam94.com/apps/
 - VS Code extensions: https://michaelsam94.com/vscode/
 - Wikipedia readiness dossier: https://michaelsam94.com/wikipedia/
 - CV: https://michaelsam94.com/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf

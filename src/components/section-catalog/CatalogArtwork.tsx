@@ -18,7 +18,7 @@ export default function CatalogArtwork({ title, image, kind, variant = "card" }:
       <img
         className={isDetail ? "detail-art-icon" : "catalog-icon"}
         src={image}
-        alt={`${title} app icon`}
+        alt={`${title} ad-free Android app icon`}
         loading={isDetail ? "eager" : "lazy"}
         onError={() => setFailed(true)}
       />

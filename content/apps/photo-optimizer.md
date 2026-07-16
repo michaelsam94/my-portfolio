@@ -7,10 +7,16 @@ packageId: "com.michael.photo.optimizer"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.photo.optimizer"
 githubUrl: "https://github.com/michaelsam94/Photo-Optimizer"
 image: "https://play-lh.googleusercontent.com/X8prc76-bR0nI8-pxxinWNqE_hW9YLJZjuFbE_gxn5PPdczgrVs7x0VfN0kCiJyXmFJfb7UocXRFPlRq19oYIw"
-description: "Photo compression and optimization tool for reducing image size while preserving quality."
+description: "Ad-free Android photo compressor. Batch compress to WebP, JPEG, or PNG, strip EXIF/GPS metadata, and find duplicate photos offline — no ads, no cloud uploads."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free photo compressor Android"
+keywords: "ad-free photo compressor, no ads image optimizer, batch photo compression Android, compress photos WebP, remove EXIF GPS, strip photo metadata, duplicate photo finder, offline photo optimizer, reduce image size Android, privacy photo compression"
 ---
+
+Photo Optimizer is a free, ad-free Android app that batch-compresses photos, strips EXIF metadata, and finds duplicates entirely offline so your images never leave the device.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 An offline, privacy-first Android app for batch photo compression, EXIF metadata removal, and duplicate detection. Your photos never leave your device.
 

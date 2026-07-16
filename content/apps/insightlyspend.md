@@ -7,10 +7,16 @@ packageId: "com.michael.insightlyspend"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.insightlyspend"
 githubUrl: "https://github.com/michaelsam94/InsightlySpend"
 image: "https://play-lh.googleusercontent.com/rV8uofctlrtogubdeGCxkAaSb9zFRT8Sh61ihe5qtvC0Kmledu9xhlnFdZAev3DTVQ8PEqni0aTU5nAM_ST-"
-description: "Personal finance and spending insight tool for tracking money habits with clarity."
+description: "Ad-free local-first finance app for Android. Track income and expenses, budgets, insights, receipt vault, CSV/PDF export, and biometric lock — no ads cluttering your money data."
 source: "readme"
 thin: false
+primaryKeyword: "ad-free personal finance Android"
+keywords: "ad-free spending tracker, no ads personal finance app, budget insights Android, expense ledger with receipts, offline money tracker, recurring transactions Android, export budget CSV PDF, biometric lock finance app, spending analytics without ads"
 ---
+
+InsightlySpend is an ad-free, local-first Android personal finance app for tracking spending, budgets, insights, and receipt photos with Room storage and optional biometric lock.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 A local-first personal finance app for Android. Data is stored in **Room**; lists and summaries use **observed queries** so changes propagate across tabs when you add, remove, or duplicate transactions.
 

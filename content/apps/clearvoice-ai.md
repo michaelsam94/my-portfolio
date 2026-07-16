@@ -7,10 +7,16 @@ packageId: "com.michael.clearvoiceai"
 playStoreUrl: "https://play.google.com/store/apps/details?id=com.michael.clearvoiceai"
 githubUrl: "https://github.com/michaelsam94/ClearVoice-AI"
 image: "https://play-lh.googleusercontent.com/UKTM7YeY9UEuDe4xFL1bcmK3bikq42_VuD6vzggsy4lRBz0GddVWdtwryHCiUyg2LQGkKHthvu5i7B5kdnxPGA"
-description: "AI voice cleanup tool for clearer recordings and improved spoken audio."
+description: "Ad-free on-device speech enhancer for Android. Isolate vocals, reduce echo and static, batch-process audio, and use live loopback — no ads, no cloud audio uploads."
 source: "listing"
 thin: false
+primaryKeyword: "ad-free noise reduction Android"
+keywords: "ad-free voice enhancer, no ads noise remover Android, offline speech enhancement, remove background noise audio, vocal isolation Android, batch audio cleanup, real-time mic loopback, podcast noise reduction offline, ad free audio cleaner"
 ---
+
+ClearVoice AI is an ad-free, fully offline Android speech enhancer that isolates vocals, reduces echo and background static, and can process files in batches without uploading your audio.
+
+**Ad-free:** Completely ad-free — no ads, no trackers, no sponsored clutter.
 
 ## Overview
 ClearVoice AI is a high-fidelity, studio-quality speech enhancer and noise isolation tool that runs entirely on-device and offline.

@@ -426,6 +426,11 @@ export const portfolioFaq = [
       "His production work spans humanoid robotics, EV charging IoT, real-time live auctions, fintech wallets, e-commerce, Android TV, and developer tools.",
   },
   {
+    question: "Are the Android apps on this portfolio ad-free?",
+    answer:
+      "Yes. Every Android app listed under MichaelSam94 on this portfolio is completely ad-free — no banner ads, interstitial ads, video ads, or sponsored clutter.",
+  },
+  {
     question: "How can recruiters contact him?",
     answer: `Email ${profile.email}, use LinkedIn, or download the CV linked from the portfolio.`,
   },

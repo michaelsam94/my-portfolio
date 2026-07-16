@@ -1,0 +1,104 @@
+.app-product-seo {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 1.5rem;
+}
+
+.app-product-seo__eyebrow {
+  color: var(--section-highlight, var(--accent));
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.app-product-seo h2 {
+  color: var(--text-h);
+  font-size: clamp(1.45rem, 2.5vw, 1.9rem);
+  line-height: 1.15;
+  margin: 0;
+}
+
+.app-seo-answer {
+  color: var(--text-muted, var(--fg-muted));
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 70ch;
+}
+
+.app-product-seo__adfree {
+  background: color-mix(in srgb, var(--section-card, var(--bg)) 88%, var(--section-highlight, #16a34a) 12%);
+  border: 1px solid var(--section-surface-border, var(--border));
+  border-radius: var(--radius-sm);
+  color: var(--text-muted, var(--fg-muted));
+  line-height: 1.65;
+  margin: 0;
+  padding: 0.95rem 1rem;
+}
+
+.app-product-seo__adfree strong {
+  color: var(--text-h);
+}
+
+.app-product-seo__subheading {
+  color: var(--text-h);
+  font-size: 1.15rem;
+  margin: 0.5rem 0 0;
+}
+
+.app-product-seo__features {
+  color: var(--text-muted, var(--fg-muted));
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.app-product-seo__keywords {
+  color: var(--text-muted, var(--fg-muted));
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.app-product-seo__faq {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.app-product-seo__faq-item {
+  border: 1px solid var(--section-surface-border, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--section-card, var(--bg));
+  padding: 1rem 1.1rem;
+}
+
+.app-product-seo__faq-item h4 {
+  color: var(--text-h);
+  font-size: 1rem;
+  line-height: 1.35;
+  margin: 0 0 0.5rem;
+}
+
+.app-product-seo__faq-item p {
+  color: var(--text-muted, var(--fg-muted));
+  line-height: 1.65;
+  margin: 0;
+}
+
+.visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
