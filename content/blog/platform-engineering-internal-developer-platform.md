@@ -88,6 +88,8 @@ Do not boil the ocean. Find the single most painful, most repeated workflow — 
 
 Platform engineering done well is invisible: developers just notice that shipping got easy and that everything runs the same way. Done poorly, it is a monument to good intentions. The dividing line is treating the platform as a product with real customers — your own engineers. Want help scoping a first golden path? [Get in touch](/#contact).
 
+Measure developer NPS quarterly on platform products — ticket volume down while NPS flat means teams stopped asking because they gave up.
+
 ## Resources
 
 - [Backstage developer portal](https://backstage.io/)

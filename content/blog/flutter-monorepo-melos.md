@@ -127,6 +127,17 @@ Pair that with build caching and you keep PR feedback fast even as the repo grow
 
 A Flutter monorepo with Melos and workspaces gives you the thing that actually scales a codebase: boundaries the tooling enforces and a build that only does the work a change requires. Set it up early, keep the package graph honest, and it stays an asset instead of becoming the thing everyone complains about. Want a review of your package boundaries? [Reach out](/#contact).
 
+## Common production mistakes
+
+Teams get monorepo melos wrong in predictable ways:
+
+- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
+- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
+- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
+- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+
+Flutter teams implementing monorepo melos often regress performance by rebuilding entire subtrees on every frame, ignoring platform channel latency, or testing only on iOS simulators. Profile on mid-range Android hardware before calling the work done.
+
 ## Resources
 
 - [Melos documentation](https://melos.invertase.dev/)

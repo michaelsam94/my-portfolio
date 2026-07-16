@@ -163,6 +163,13 @@ None of the individual components here are new for 2026 — optical tracking, co
 
 That's the real lesson for anyone building real-time tracking systems outside of sport: the hard part is rarely a single model's accuracy. It's sensor fusion across mismatched clocks and sample rates, designing for graceful human override on the highest-stakes outputs, and architecting the pipeline so its intermediate representations are reusable rather than single-purpose.
 
+## Resources
+
+- [FIFA Football Technology Innovation Centre](https://inside.fifa.com/innovation/technology-innovation)
+- [KINEXON tracking systems](https://kinexon.com/sports/football/)
+- [Hawk-Eye Innovations — Semi-Automated Offside Technology](https://www.hawkeyeinnovations.com/sports/football)
+- [IEEE — Sports tracking and sensor fusion overview](https://ieeexplore.ieee.org/)
+
 ---
 
 *Sources: FIFA Innovation (inside.fifa.com), Al Jazeera, Technology Magazine, Tech Times, KINEXON technical documentation, and ESPN/Telegraph coverage of the original Qatar 2022 SAOT rollout. World Cup 2026 figures reflect the tournament currently in progress (June 11 – July 19, 2026).*

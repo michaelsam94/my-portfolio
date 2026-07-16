@@ -84,6 +84,8 @@ Future<void> openAdmin() async {
 
 Flutter web in 2026 is a mature way to ship *applications* to the browser from the same codebase as your mobile apps. It is not a way to ship *websites*. Keep that line clear and it is a strong, boring, reliable choice for the cases it fits. Blur the line and you will spend months fighting load times and SEO you were never going to win. Want help deciding if your web target fits Flutter? [Get in touch](/#contact).
 
+Measure time-to-interactive on mid-tier Android browsers over 3G — if your Flutter web app targets field workers on budget phones, lab WiFi benchmarks lie about real load experience.
+
 ## Resources
 
 - [Flutter web documentation](https://docs.flutter.dev/platform-integration/web)

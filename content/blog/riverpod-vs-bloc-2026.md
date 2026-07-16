@@ -88,6 +88,17 @@ And stop treating this as religious. On more than one codebase I have used River
 
 Pick one, write down your conventions, and enforce them in review. That single decision matters more than Riverpod vs BLoC ever will. If you want a second opinion on an existing Flutter architecture, [reach out](/#contact).
 
+## Common production mistakes
+
+Teams get riverpod vs bloc 2026 wrong in predictable ways:
+
+- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
+- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
+- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
+- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+
+Production implementations of riverpod vs bloc 2026 fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+
 ## Resources
 
 - [Riverpod official documentation](https://riverpod.dev/)

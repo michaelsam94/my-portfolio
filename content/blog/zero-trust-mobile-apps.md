@@ -77,6 +77,17 @@ Notice how much lives on the server. That's deliberate — every check the clien
 
 The payoff is resilience against the realistic attacks: a repackaged app, a scripted client hitting your API, a stolen token replayed from another device, an intercepting proxy. None of them get far when the server assumes the client is lying and verifies accordingly. Build from that assumption and the rest of your mobile security — [privacy engineering](https://blog.michaelsam94.com/privacy-engineering-mobile-gdpr/), secrets, transport hardening — slots in as reinforcing layers rather than the whole wall.
 
+## Common production mistakes
+
+Teams get zero trust mobile apps wrong in predictable ways:
+
+- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
+- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
+- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
+- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+
+Production implementations of zero trust mobile apps fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+
 ## Resources
 
 - [NIST SP 800-207 — Zero Trust Architecture](https://csrc.nist.gov/pubs/sp/800/207/final)

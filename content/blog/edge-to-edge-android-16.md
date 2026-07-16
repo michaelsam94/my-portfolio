@@ -108,6 +108,8 @@ A tactic that saved me hours: temporarily give inset-padded containers a debug b
 
 Edge-to-edge fits neatly into the broader Android UI modernization story — it pairs with [predictive back gestures](https://blog.michaelsam94.com/predictive-back-gestures-android/) and the Compose migration work I've written about in [ten years of Jetpack Compose lessons](https://blog.michaelsam94.com/jetpack-compose-lessons-10-years-android/). Get the inset model right once, build it into your design-system components, and every new screen inherits correct behavior for free. That's the real win: it stops being a per-screen chore and becomes a property of your scaffolding.
 
+Test edge-to-edge with three-button navigation, gesture nav, and display cutouts — inset handling that works on Pixel breaks on Samsung One UI.
+
 ## Resources
 
 - [Display content edge-to-edge](https://developer.android.com/develop/ui/views/layout/edge-to-edge)

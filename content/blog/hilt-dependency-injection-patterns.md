@@ -124,6 +124,8 @@ For unit tests, don't even involve Hilt — construct the class under test with 
 
 Hilt won't fix a bad architecture, but it will faithfully reflect a good one. When DI starts feeling painful — circular dependencies, giant modules, everything a singleton — it's usually the architecture talking, not the tool. Treat the friction as a signal to look at your boundaries, and the DI setup mostly writes itself.
 
+Use `@ViewModelScoped` for state shared across child fragments — activity-scoped ViewModels leak memory in deep navigation stacks.
+
 ## Resources
 
 - [Hilt dependency injection guide](https://developer.android.com/training/dependency-injection/hilt-android)

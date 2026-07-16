@@ -125,6 +125,8 @@ Document the abort path in the runbook with the exact command or GitOps revert. 
 
 Progressive delivery won't make bad software good. It buys you a smaller blast radius and a faster feedback loop. Automate the analysis, keep humans for the weird cases, and treat a canary abort as a successful safety system — not as a failed release train.
 
+Automate canary rollback on error rate delta, not human judgment at 3 AM — manual promote/rollback decisions fail under alert fatigue.
+
 ## Resources
 
 - [Argo Rollouts documentation](https://argo-rollouts.readthedocs.io/)

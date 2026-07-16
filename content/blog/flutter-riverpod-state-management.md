@@ -124,4 +124,13 @@ This is what let the platform ship with around 70% unit coverage on the state la
 
 Get those right and Riverpod stops being "a state library" and becomes the backbone that keeps a real-time Flutter app fast, testable, and calm under load.
 
+## Resources
+
+- [Riverpod documentation](https://riverpod.dev/)
+- [Flutter state management overview](https://docs.flutter.dev/data-and-backend/state-mgmt/intro)
+- [AsyncValue API reference](https://pub.dev/documentation/riverpod/latest/riverpod/AsyncValue-class.html)
+- [Riverpod code generation](https://riverpod.dev/docs/concepts/about_code_generation)
+- [Testing Riverpod providers](https://riverpod.dev/docs/cookbooks/testing)
+- [Flutter performance profiling](https://docs.flutter.dev/perf/ui-performance)
+
 *Building something real-time in Flutter and want a second pair of eyes on the architecture? [Get in touch](/#contact).*

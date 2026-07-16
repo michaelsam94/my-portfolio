@@ -203,6 +203,17 @@ This testing discipline matters even more in [Kotlin Multiplatform production se
 
 Coroutines scale when scope boundaries are obvious and Flow types match their job. Everything else is syntax.
 
+## Common production mistakes
+
+Teams get coroutines flow patterns wrong in predictable ways:
+
+- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
+- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
+- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
+- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+
+Production implementations of coroutines flow patterns fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+
 ## Resources
 
 - [Coroutines guide](https://kotlinlang.org/docs/coroutines-guide.html)

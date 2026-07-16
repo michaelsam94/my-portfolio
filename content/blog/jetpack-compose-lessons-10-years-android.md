@@ -92,4 +92,12 @@ Across these migrations the wins were measurable: less UI code, dramatically few
 
 Compose rewards you for thinking in state and data flow. Ten years in, the biggest shift isn't the API — it's that the UI layer finally became something you can reason about.
 
+## Resources
+
+- [Jetpack Compose documentation](https://developer.android.com/jetpack/compose)
+- [Compose performance best practices](https://developer.android.com/develop/ui/compose/performance)
+- [Compose compiler stability configuration](https://developer.android.com/develop/ui/compose/performance/stability)
+- [Migrating to Compose](https://developer.android.com/develop/ui/compose/migrate)
+- [Compose side-effects](https://developer.android.com/develop/ui/compose/side-effects)
+
 *Migrating an Android codebase to Compose and want experienced help? [Let's talk](/#contact).*

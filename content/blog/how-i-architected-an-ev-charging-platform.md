@@ -89,4 +89,11 @@ Zero critical post-launch defects wasn't luck; it came from the boundaries:
 
 Real-time hardware platforms reward boring, strict boundaries. The interesting behavior — instant local control, clean reconnection, accurate billing — falls out of getting the unglamorous parts right.
 
+## Resources
+
+- [OCPP 1.6 specification](https://www.openchargealliance.org/protocols/ocpp-16/)
+- [OCPP 2.0.1 specification](https://www.openchargealliance.org/protocols/ocpp-201/)
+- [ISO 15118 — Vehicle-to-grid communication](https://www.iso.org/standard/69146.html)
+- [WebSocket RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455)
+
 *Working on OCPP, EV charging, IoT, or real-time mobile infrastructure? [I'd love to help](/#contact) as an OCPP developer or OCPP consultant.*

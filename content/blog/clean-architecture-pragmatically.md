@@ -98,6 +98,8 @@ The dependency rule is not a standalone religion; it is the connective tissue. I
 
 Clean Architecture, done pragmatically, is not about drawing the perfect circles. It is about asking one question at every boundary: *does my business logic depend on this detail, or does this detail depend on my business logic?* Keep the arrow pointing inward for the code that matters, skip the ceremony for the code that does not, and you get durable, testable systems without burying your team in boilerplate. Want a review of where to draw those lines in your codebase? [Get in touch](/#contact).
 
+Stop adding layers when a feature fits in one module — architecture exists to manage change cost, not to win diagram aesthetics.
+
 ## Resources
 
 - [The Clean Architecture (Robert C. Martin)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)

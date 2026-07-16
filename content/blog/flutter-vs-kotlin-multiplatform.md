@@ -77,6 +77,30 @@ For a new consumer app with a small team and a strong brand identity, I reach fo
 
 There is no universally correct pick. There is only the pick that matches your team's skills, your UI bar, and whether you are starting fresh or evolving something that already ships. Get that framing right and the "debate" mostly answers itself. If you want help mapping your situation to a stack, [get in touch](/#contact).
 
+## Common production mistakes
+
+Teams get vs kotlin multiplatform wrong in predictable ways:
+
+- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
+- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
+- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
+- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+
+Flutter teams implementing vs kotlin multiplatform often regress performance by rebuilding entire subtrees on every frame, ignoring platform channel latency, or testing only on iOS simulators. Profile on mid-range Android hardware before calling the work done.
+
+## Debugging and triage workflow
+
+When vs kotlin multiplatform misbehaves in production, work top-down instead of guessing:
+
+1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
+2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
+3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
+4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
+5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
+6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+
+Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
 ## Resources
 
 - [Kotlin Multiplatform documentation](https://kotlinlang.org/docs/multiplatform.html)
