@@ -48,6 +48,93 @@ export function getAllAppSeoSlugs(): string[] {
   return Object.keys(catalog.apps);
 }
 
+const ANDROID_APP_CATEGORY_FALLBACK: Record<string, string> = {
+  AI: "UtilitiesApplication",
+  Audio: "MultimediaApplication",
+  Developer: "DeveloperApplication",
+  Document: "UtilitiesApplication",
+  Finance: "FinanceApplication",
+  Game: "GameApplication",
+  Health: "HealthApplication",
+  Media: "MultimediaApplication",
+  Productivity: "ProductivityApplication",
+  Scanner: "UtilitiesApplication",
+  Utility: "UtilitiesApplication",
+};
+
+export function resolveApplicationCategory(slug: string, fallbackCategory?: string): string {
+  const seo = getAppSeo(slug);
+  if (seo?.applicationCategory) return seo.applicationCategory;
+  if (fallbackCategory && ANDROID_APP_CATEGORY_FALLBACK[fallbackCategory]) {
+    return ANDROID_APP_CATEGORY_FALLBACK[fallbackCategory];
+  }
+  return "UtilitiesApplication";
+}
+
+export function buildAndroidAppOffer(pageUrl: string) {
+  return {
+    "@type": "Offer" as const,
+    price: 0,
+    priceCurrency: "USD",
+    url: pageUrl,
+    availability: "https://schema.org/InStock",
+    description: "Free ad-free Android app — no ads, no in-app advertising.",
+  };
+}
+
+type AndroidSoftwareApplicationInput = {
+  slug: string;
+  title: string;
+  description: string;
+  category: string;
+  pageUrl: string;
+  packageId?: string;
+  playStoreUrl?: string;
+  githubUrl?: string;
+  image?: string;
+};
+
+export function buildAndroidSoftwareApplicationNode(input: AndroidSoftwareApplicationInput) {
+  const seo = getAppSeo(input.slug);
+  const description =
+    seo?.seoDescription ??
+    `${input.description} Completely ad-free Android app — no ads.`;
+
+  return {
+    "@type": "SoftwareApplication" as const,
+    additionalType: "https://schema.org/MobileApplication",
+    "@id": `${input.pageUrl}#software`,
+    name: input.title,
+    alternateName: [
+      input.packageId,
+      `${input.title} ad-free Android app`,
+      `${input.title} no ads`,
+    ].filter(Boolean),
+    description,
+    applicationCategory: resolveApplicationCategory(input.slug, input.category),
+    operatingSystem: "Android",
+    url: input.pageUrl,
+    image: input.image || undefined,
+    isAccessibleForFree: true,
+    offers: buildAndroidAppOffer(input.pageUrl),
+    featureList: seo?.featureHighlights?.join(". "),
+    keywords: seo?.keywords?.join(", "),
+    author: {
+      "@type": "Person" as const,
+      name: site.name,
+      url: site.origin,
+    },
+    publisher: {
+      "@type": "Person" as const,
+      name: site.name,
+      url: site.origin,
+    },
+    sameAs: [input.playStoreUrl, input.githubUrl].filter(Boolean),
+    downloadUrl: input.playStoreUrl || undefined,
+    installUrl: input.playStoreUrl || undefined,
+  };
+}
+
 export function buildAppMetadata(input: {
   slug: string;
   title: string;
@@ -127,44 +214,17 @@ export function buildAppJsonLd(input: {
   return {
     "@context": "https://schema.org",
     "@graph": [
-      {
-        "@type": ["SoftwareApplication", "MobileApplication"],
-        "@id": `${pageUrl}#software`,
-        name: input.title,
-        alternateName: [
-          input.packageId,
-          `${input.title} ad-free Android app`,
-          `${input.title} no ads`,
-        ].filter(Boolean),
-        description,
-        applicationCategory: seo?.applicationCategory ?? input.category,
-        operatingSystem: "Android",
-        url: pageUrl,
-        image: input.image || undefined,
-        isAccessibleForFree: true,
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "USD",
-          availability: "https://schema.org/InStock",
-          description: "Free ad-free Android app — no ads, no in-app advertising.",
-        },
-        featureList: seo?.featureHighlights?.join(". "),
-        keywords: seo?.keywords?.join(", "),
-        author: {
-          "@type": "Person",
-          name: site.name,
-          url: site.origin,
-        },
-        publisher: {
-          "@type": "Person",
-          name: site.name,
-          url: site.origin,
-        },
-        sameAs: [input.playStoreUrl, input.githubUrl].filter(Boolean),
-        downloadUrl: input.playStoreUrl || undefined,
-        installUrl: input.playStoreUrl || undefined,
-      },
+      buildAndroidSoftwareApplicationNode({
+        slug: input.slug,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        pageUrl,
+        packageId: input.packageId,
+        playStoreUrl: input.playStoreUrl,
+        githubUrl: input.githubUrl,
+        image: input.image,
+      }),
       {
         "@type": "WebPage",
         "@id": `${pageUrl}#webpage`,

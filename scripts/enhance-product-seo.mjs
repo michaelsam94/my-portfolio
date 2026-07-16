@@ -36,6 +36,40 @@ const COLLECTIONS = [
   },
 ];
 
+const ANDROID_APP_CATEGORY_FALLBACK = {
+  AI: "UtilitiesApplication",
+  Audio: "MultimediaApplication",
+  Developer: "DeveloperApplication",
+  Document: "UtilitiesApplication",
+  Finance: "FinanceApplication",
+  Game: "GameApplication",
+  Health: "HealthApplication",
+  Media: "MultimediaApplication",
+  Productivity: "ProductivityApplication",
+  Scanner: "UtilitiesApplication",
+  Utility: "UtilitiesApplication",
+};
+
+function resolveApplicationCategory(slug, fallbackCategory) {
+  const seo = appSeoCatalog.apps?.[slug];
+  if (seo?.applicationCategory) return seo.applicationCategory;
+  if (fallbackCategory && ANDROID_APP_CATEGORY_FALLBACK[fallbackCategory]) {
+    return ANDROID_APP_CATEGORY_FALLBACK[fallbackCategory];
+  }
+  return "UtilitiesApplication";
+}
+
+function buildAndroidAppOffer(pageUrl) {
+  return {
+    "@type": "Offer",
+    price: 0,
+    priceCurrency: "USD",
+    url: pageUrl,
+    availability: "https://schema.org/InStock",
+    description: "Free ad-free Android app — no ads, no in-app advertising.",
+  };
+}
+
 const escapeHtml = (value = "") =>
   String(value)
     .replace(/&/g, "&amp;")
@@ -113,7 +147,8 @@ function jsonLdForProduct(collection, product) {
       ? `${product.summary} ${AD_FREE_TAGLINE}`
       : product.summary);
   const software = {
-    "@type": isApp ? ["SoftwareApplication", "MobileApplication"] : "SoftwareApplication",
+    "@type": "SoftwareApplication",
+    ...(isApp ? { additionalType: "https://schema.org/MobileApplication" } : {}),
     "@id": `${product.pageUrl}#software`,
     name: product.title,
     alternateName: [
@@ -122,19 +157,22 @@ function jsonLdForProduct(collection, product) {
       isApp ? `${product.title} no ads` : null,
     ].filter(Boolean),
     description,
-    applicationCategory: seo?.applicationCategory || product.category,
+    applicationCategory: isApp
+      ? resolveApplicationCategory(product.slug, product.category)
+      : "DeveloperApplication",
     operatingSystem: isApp ? "Android" : "Windows, macOS, Linux",
     url: product.pageUrl,
     isAccessibleForFree: true,
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      description: isApp
-        ? "Free ad-free Android app — no ads, no in-app advertising."
-        : "Free VS Code extension.",
-    },
+    offers: isApp
+      ? buildAndroidAppOffer(product.pageUrl)
+      : {
+          "@type": "Offer",
+          price: 0,
+          priceCurrency: "USD",
+          url: product.pageUrl,
+          availability: "https://schema.org/InStock",
+          description: "Free VS Code extension.",
+        },
     keywords: seo?.keywords?.join(", "),
     featureList: seo?.featureHighlights?.join(". "),
     author: {

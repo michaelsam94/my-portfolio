@@ -48,7 +48,7 @@ export default async function AppDetailPage({ params }: PageProps) {
 
   return (
     <main id="main-content" className="page-main">
-      <article className="detail-article" itemScope itemType="https://schema.org/SoftwareApplication">
+      <article className="detail-article">
         <nav aria-label="Breadcrumb" className="app-breadcrumb">
           <Link className="text-link" href="/">
             Home
@@ -67,10 +67,10 @@ export default async function AppDetailPage({ params }: PageProps) {
           Ad-free Android · {app.category} · {app.packageId}
         </p>
         <CatalogArtwork title={app.title} image={app.image} kind="apps" variant="detail" />
-        <h1 className="detail-title" itemProp="name">
+        <h1 className="detail-title">
           {app.title}
         </h1>
-        <p className="hero-headline" itemProp="description">
+        <p className="hero-headline">
           {seo?.seoDescription ?? app.description}
         </p>
         <p className="app-adfree-badge">
