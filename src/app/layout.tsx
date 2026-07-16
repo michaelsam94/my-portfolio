@@ -36,8 +36,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <SkipLink />
             <header className="site-header">
               <div className="header-inner">
-                <Link className="brand-mark" href="/" aria-label="Michael Sam home">
-                  Michael Sam
+                <Link className="brand-mark" href="/" aria-label="Michael Samuel Naeem home">
+                  Michael Samuel
                 </Link>
                 <div className="header-actions">
                   <a className="header-link" href="#projects">

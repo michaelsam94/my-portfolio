@@ -45,7 +45,7 @@ export const site = {
   name: "Michael Samuel Naeem",
   shortName: "Michael Sam",
   description:
-    "Senior Android engineer and mobile architect building production Kotlin, Jetpack Compose, Flutter, robotics, EV infrastructure, and developer tooling.",
+    "Michael Samuel Naeem is a senior Android engineer and mobile architect building production Kotlin, Jetpack Compose, Flutter, robotics, EV infrastructure, and developer tooling.",
 };
 
 export const profile = {
@@ -70,7 +70,7 @@ export const profile = {
 };
 
 export const heroData: HeroData = {
-  name: "Michael Sam",
+  name: "Michael Samuel",
   title: "Senior Android Engineer & Mobile Architect",
   status: "Available for remote senior roles",
   statusAvailable: true,
@@ -410,6 +410,11 @@ export const contactLinks = [
 ] as const;
 
 export const portfolioFaq = [
+  {
+    question: "Who is Michael Samuel Naeem?",
+    answer:
+      "Michael Samuel Naeem — also searched as Michael Samuel or Michael Sam — is a senior Android engineer, Flutter developer, and mobile architect based in Cairo, Egypt, with 10+ years of production experience.",
+  },
   {
     question: "What roles does Michael Samuel Naeem focus on?",
     answer:

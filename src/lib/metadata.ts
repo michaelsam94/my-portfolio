@@ -33,9 +33,14 @@ export const serviceKeywords = [
 /** Full keyword set for the home `<meta name="keywords">` (person + service + product intent). */
 const homeKeywords = [
   "Michael Samuel Naeem",
+  "Michael Samuel",
+  "michael samuel",
   "Michael Sam",
   "michaelsam94",
   "michaelsam00",
+  "Michael Samuel developer",
+  "Michael Samuel Android",
+  "Michael Samuel portfolio",
   ...serviceKeywords,
   "OCPP integrator",
   "OCPP mobile developer",
@@ -73,8 +78,8 @@ function buildVerification(): Metadata["verification"] | undefined {
 export const defaultMetadata: Metadata = {
   metadataBase: new URL(site.origin),
   title: {
-    default: "Michael Sam - Senior Android Engineer",
-    template: "%s | Michael Sam",
+    default: "Michael Samuel Naeem - Senior Android Engineer",
+    template: "%s | Michael Samuel",
   },
   description: site.description,
   keywords: homeKeywords,
@@ -98,11 +103,11 @@ export const defaultMetadata: Metadata = {
   },
   manifest: "/site.webmanifest",
   openGraph: {
-    title: "Michael Sam - Senior Android Engineer",
+    title: "Michael Samuel Naeem - Senior Android Engineer",
     description: site.description,
     url: site.origin,
-    siteName: "Michael Sam",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Michael Sam - Senior Android Engineer" }],
+    siteName: "Michael Samuel Naeem",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Michael Samuel Naeem - Senior Android Engineer" }],
     locale: "en_US",
     type: "website",
   },
@@ -134,7 +139,7 @@ export function structuredData() {
         name: profile.name,
         givenName: "Michael Samuel",
         familyName: "Naeem",
-        alternateName: ["Michael Sam", "michaelsam94", "michaelsam00", "MichaelSam94"],
+        alternateName: ["Michael Samuel", "Michael Sam", "michaelsam94", "michaelsam00", "MichaelSam94"],
         description:
           "Senior Android engineer, Flutter developer, mobile engineer, software engineer, technical lead, and mobile architect with 10+ years of experience. Based in Cairo, Egypt; open to remote roles in Europe, the United States, and worldwide.",
         url: site.origin,
@@ -182,7 +187,8 @@ export function structuredData() {
       {
         "@type": "WebSite",
         "@id": WEBSITE_ID,
-        name: "Michael Sam Portfolio",
+        name: "Michael Samuel Naeem Portfolio",
+        alternateName: ["Michael Samuel Portfolio", "Michael Sam Portfolio"],
         url: site.origin,
         inLanguage: "en",
         publisher: { "@id": PERSON_ID },
