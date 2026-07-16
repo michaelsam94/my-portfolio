@@ -23,7 +23,7 @@ Use this checklist after deploying `https://michaelsam94.com`.
    - `https://michaelsam94.com/`
    - `https://michaelsam94.com/apps/`
    - `https://michaelsam94.com/vscode/`
-   - `https://michaelsam94.com/blog/`
+   - `https://blog.michaelsam94.com/`
 6. Keep Bing IndexNow active too. Claude may use Brave, but other AI search
    products and fallbacks can still use Bing or mixed indexes.
 

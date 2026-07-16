@@ -1,11 +1,56 @@
+const APEX_HOST = "michaelsam94.com";
+const BLOG_HOST = "blog.michaelsam94.com";
+
+function blogCleanPath(pathname) {
+  const clean = pathname.replace(/^\/blog/, "") || "/";
+  return clean.startsWith("/") ? clean : `/${clean}`;
+}
+
+function isBlogPath(pathname) {
+  return pathname === "/blog" || pathname.startsWith("/blog/");
+}
+
+/** Root assets shared with the apex deploy; serve as-is on the blog host. */
+function isRootPassthrough(pathname) {
+  return (
+    pathname.startsWith("/favicon") ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/site.webmanifest" ||
+    pathname.startsWith("/og-image") ||
+    pathname.startsWith("/profile-photo") ||
+    pathname === "/robots.txt" ||
+    // IndexNow key file lives at site root and must resolve on the blog host too.
+    /^\/[a-f0-9]{32}\.txt$/.test(pathname)
+  );
+}
+
 export async function onRequest(context) {
   const url = new URL(context.request.url);
+  const { hostname, pathname, search } = url;
 
-  if (url.hostname === "www.michaelsam94.com") {
-    url.hostname = "michaelsam94.com";
+  if (hostname === `www.${APEX_HOST}`) {
+    if (isBlogPath(pathname)) {
+      return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+    }
+    url.hostname = APEX_HOST;
     url.protocol = "https:";
-
     return Response.redirect(url.toString(), 301);
+  }
+
+  if (hostname === APEX_HOST && isBlogPath(pathname)) {
+    return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+  }
+
+  if (hostname === BLOG_HOST) {
+    if (isBlogPath(pathname)) {
+      return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+    }
+
+    if (!isRootPassthrough(pathname)) {
+      const assetUrl = new URL(context.request.url);
+      assetUrl.pathname = pathname === "/" ? "/blog/" : `/blog${pathname}`;
+      return context.env.ASSETS.fetch(assetUrl);
+    }
   }
 
   return context.next();

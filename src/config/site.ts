@@ -4,9 +4,16 @@
  * In Cloudflare Pages, set this domain as primary and redirect alternate hostnames so search engines consolidate on one URL.
  */
 export const SITE_ORIGIN = "https://michaelsam94.com" as const;
+export const BLOG_ORIGIN = "https://blog.michaelsam94.com" as const;
 
 export function absoluteUrl(path = "/"): string {
   if (path === "/" || path === "") return SITE_ORIGIN;
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${SITE_ORIGIN}${p}`;
+}
+
+export function blogUrl(path = "/"): string {
+  if (path === "/" || path === "") return `${BLOG_ORIGIN}/`;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${BLOG_ORIGIN}${p}`;
 }

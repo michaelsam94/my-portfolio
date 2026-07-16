@@ -50,7 +50,7 @@ I split the system into four layers, each with one job, so failures stay contain
 
 **The Node.js middleware.** Apps must not talk OCPP, and they must not hold a socket open to every charger. The middleware is the gateway: it authenticates app clients, translates charger-state events into a clean app-facing schema, and fans a single charger update out to every subscribed app. It also enforces authorization — *this* user may start *that* charger — so the protocol layer stays purely about the protocol.
 
-**The Flutter app.** One codebase served both drivers and site operators, with [Riverpod state and real-time WebSocket sync](/blog/flutter-riverpod-state-management). The app treats the backend as the source of truth and itself as a renderer of pushed state — which is what kept the UI honest when networks misbehaved.
+**The Flutter app.** One codebase served both drivers and site operators, with [Riverpod state and real-time WebSocket sync](https://blog.michaelsam94.com/flutter-riverpod-state-management/). The app treats the backend as the source of truth and itself as a renderer of pushed state — which is what kept the UI honest when networks misbehaved.
 
 ## Idempotency: the rule that prevented disasters
 

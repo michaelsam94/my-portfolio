@@ -57,7 +57,7 @@ export const profile = {
   phone: "+20 109 800 2198",
   linkedin: "https://www.linkedin.com/in/michaelsam00/",
   github: "https://github.com/michaelsam94",
-  techBlog: "/blog/",
+  techBlog: "https://blog.michaelsam94.com/",
   vscodeMarketplace: "https://marketplace.visualstudio.com/publishers/MichaelSam94",
   openVsx: "https://open-vsx.org/namespace/michaelsam94",
   playStoreDeveloper: "https://play.google.com/store/apps/developer?id=MichaelSam94",

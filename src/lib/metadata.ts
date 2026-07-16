@@ -85,7 +85,7 @@ export const defaultMetadata: Metadata = {
   alternates: {
     canonical: site.origin,
     types: {
-      "application/rss+xml": "/blog/feed.xml",
+      "application/rss+xml": "https://blog.michaelsam94.com/feed.xml",
     },
   },
   icons: {

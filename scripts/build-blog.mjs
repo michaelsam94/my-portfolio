@@ -2,8 +2,9 @@
  * Static blog generator — runs AFTER `next build`.
  *
  * Reads Markdown posts from `content/blog/*.md`, renders each to a fully static,
- * schema-rich HTML page at `out/blog/<slug>/index.html`, builds the `/blog` hub
- * page, copies the standalone stylesheet, and regenerates `out/sitemap.xml`.
+ * schema-rich HTML page at `out/blog/<slug>/index.html`, builds the blog hub
+ * page (served at blog.michaelsam94.com via Pages middleware), copies the
+ * standalone stylesheet, and regenerates `out/sitemap.xml`.
  *
  * Why static (not a client route): the site is a client-rendered Next static export, so a
  * React-only route would be an empty shell to crawlers. These pages ship as real
@@ -25,9 +26,23 @@ const DIST = path.join(ROOT, "out");
 const BLOG_DIST = path.join(DIST, "blog");
 
 const SITE_ORIGIN = "https://michaelsam94.com";
+const BLOG_ORIGIN = "https://blog.michaelsam94.com";
 const AUTHOR = "Michael Samuel Naeem";
 const PERSON_ID = `${SITE_ORIGIN}/#person`;
 const DEFAULT_OG = `${SITE_ORIGIN}/og-image.png`;
+
+/** Canonical blog URL. Paths are root-relative on the blog host (e.g. `/slug/`). */
+const blogUrl = (path = "/") => {
+  if (path === "/" || path === "") return `${BLOG_ORIGIN}/`;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${BLOG_ORIGIN}${p}`;
+};
+
+/** Rewrite legacy `/blog/...` hrefs in markdown HTML to the blog subdomain. */
+const rewriteBlogLinks = (html = "") =>
+  String(html)
+    .replace(/href="\/blog\/([^"]*)"/g, (_m, rest) => `href="${blogUrl(`/${rest}`)}"`)
+    .replace(/href="\/blog\/?"/g, `href="${blogUrl("/")}"`);
 
 const escapeHtml = (s = "") =>
   String(s)
@@ -93,7 +108,7 @@ const themeToggleButton = `<button type="button" class="theme-toggle" data-theme
   <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
 </button>`;
 
-const themeBodyScript = `<script src="/blog/assets/theme.js" defer></script>`;
+const themeBodyScript = `<script src="${BLOG_ORIGIN}/assets/theme.js" defer></script>`;
 
 /** Shared <head> markup for every generated page. */
 function head({ title, description, canonical, ogImage, jsonLd, ogType = "article" }) {
@@ -108,10 +123,10 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
   <meta name="author" content="${AUTHOR}" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <link rel="canonical" href="${canonical}" />
-  <link rel="alternate" type="application/rss+xml" title="Michael Samuel Naeem — Engineering Blog" href="${SITE_ORIGIN}/blog/feed.xml" />
-  <link rel="manifest" href="/site.webmanifest" />
-  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="alternate" type="application/rss+xml" title="Michael Samuel Naeem — Engineering Blog" href="${BLOG_ORIGIN}/feed.xml" />
+  <link rel="manifest" href="${SITE_ORIGIN}/site.webmanifest" />
+  <link rel="icon" type="image/png" sizes="48x48" href="${SITE_ORIGIN}/favicon-48.png" />
+  <link rel="icon" type="image/svg+xml" href="${SITE_ORIGIN}/favicon.svg" />
   <meta name="theme-color" content="#0c0b0f" />
   <meta name="color-scheme" content="light dark" />
   <meta name="geo.region" content="EG-C" />
@@ -129,19 +144,19 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/blog/assets/blog.css" />
+  <link rel="stylesheet" href="${BLOG_ORIGIN}/assets/blog.css" />
   <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 </head>`;
 }
 
 const siteNav = `<header class="site-nav">
   <div class="nav-inner">
-    <a class="brand" href="/">Michael Samuel Naeem</a>
+    <a class="brand" href="${SITE_ORIGIN}/">Michael Samuel Naeem</a>
     <div class="nav-right">
       <nav aria-label="Primary">
-        <a href="/blog/">Blog</a>
-        <a href="/#projects">Projects</a>
-        <a href="/#contact">Contact</a>
+        <a href="${BLOG_ORIGIN}/">Blog</a>
+        <a href="${SITE_ORIGIN}/#projects">Projects</a>
+        <a href="${SITE_ORIGIN}/#contact">Contact</a>
       </nav>
       ${themeToggleButton}
     </div>
@@ -150,19 +165,19 @@ const siteNav = `<header class="site-nav">
 
 const siteFooter = `<footer class="site-footer">
   <div class="wrap">
-    <p>Written by <a href="/">${AUTHOR}</a> — senior Android &amp; Flutter developer, mobile architect, based in Cairo, Egypt. Open to remote roles in Europe and the US.</p>
-    <p><a href="/">← Back to portfolio</a> · <a href="/blog/">All articles</a> · <a href="/apps/">Android apps</a> · <a href="/vscode/">VS Code extensions</a> · <a href="/wikipedia/">Wikipedia notability dossier</a></p>
+    <p>Written by <a href="${SITE_ORIGIN}/">${AUTHOR}</a> — senior Android &amp; Flutter developer, mobile architect, based in Cairo, Egypt. Open to remote roles in Europe and the US.</p>
+    <p><a href="${SITE_ORIGIN}/">← Back to portfolio</a> · <a href="${BLOG_ORIGIN}/">All articles</a> · <a href="${SITE_ORIGIN}/apps/">Android apps</a> · <a href="${SITE_ORIGIN}/vscode/">VS Code extensions</a> · <a href="${SITE_ORIGIN}/wikipedia/">Wikipedia notability dossier</a></p>
   </div>
 </footer>`;
 
 const postCta = `<div class="post-cta">
   <h3>Hiring a senior Android / Flutter engineer?</h3>
   <p>I architect and ship production mobile software — Kotlin, Jetpack Compose, Flutter — for robotics, EV infrastructure, fintech, and real-time systems. Open to remote roles in Europe and the US.</p>
-  <a class="btn" href="/#contact">Get in touch →</a>
+  <a class="btn" href="${SITE_ORIGIN}/#contact">Get in touch →</a>
 </div>`;
 
 function postJsonLd(p) {
-  const url = `${SITE_ORIGIN}/blog/${p.slug}/`;
+  const url = blogUrl(`/${p.slug}/`);
   return {
     "@context": "https://schema.org",
     "@graph": [
@@ -186,7 +201,7 @@ function postJsonLd(p) {
         "@type": "BreadcrumbList",
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_ORIGIN}/` },
-          { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE_ORIGIN}/blog/` },
+          { "@type": "ListItem", position: 2, name: "Blog", item: blogUrl("/") },
           { "@type": "ListItem", position: 3, name: p.title, item: url },
         ],
       },
@@ -196,10 +211,10 @@ function postJsonLd(p) {
 }
 
 function renderPost(p, related) {
-  const url = `${SITE_ORIGIN}/blog/${p.slug}/`;
+  const url = blogUrl(`/${p.slug}/`);
   const relatedBlock = related.length
     ? `<aside class="related"><h3>Related reading</h3><ul>${related
-        .map((r) => `<li><a href="/blog/${r.slug}/">${escapeHtml(r.title)}</a></li>`)
+        .map((r) => `<li><a href="${blogUrl(`/${r.slug}/`)}">${escapeHtml(r.title)}</a></li>`)
         .join("")}</ul></aside>`
     : "";
   const tags = (p.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
@@ -214,7 +229,7 @@ function renderPost(p, related) {
   ${siteNav}
   <div class="wrap">
     <nav class="breadcrumb" aria-label="Breadcrumb">
-      <a href="/">Home</a> / <a href="/blog/">Blog</a> / <span>${escapeHtml(p.title)}</span>
+      <a href="${SITE_ORIGIN}/">Home</a> / <a href="${BLOG_ORIGIN}/">Blog</a> / <span>${escapeHtml(p.title)}</span>
     </nav>
     <article>
       <h1>${escapeHtml(p.title)}</h1>
@@ -235,7 +250,7 @@ function renderPost(p, related) {
 function renderHub(posts) {
   const cards = posts
     .map(
-      (p) => `<a class="post-card" href="/blog/${p.slug}/">
+      (p) => `<a class="post-card" href="${blogUrl(`/${p.slug}/`)}">
         <h2>${escapeHtml(p.title)}</h2>
         <p>${escapeHtml(p.description)}</p>
         <p class="post-meta">${fmtDate(p.datePublished)} · ${readingTime(p.markdown)} min read</p>
@@ -247,28 +262,28 @@ function renderHub(posts) {
     "@graph": [
       {
         "@type": "Blog",
-        "@id": `${SITE_ORIGIN}/blog/#blog`,
+        "@id": `${BLOG_ORIGIN}/#blog`,
         name: "Engineering Insights — Michael Samuel Naeem",
         description:
           "Deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems by senior Android developer Michael Samuel Naeem.",
-        url: `${SITE_ORIGIN}/blog/`,
+        url: blogUrl("/"),
         inLanguage: "en",
         publisher: { "@id": PERSON_ID },
         blogPost: posts.map((p) => ({
           "@type": "BlogPosting",
           headline: p.title,
-          url: `${SITE_ORIGIN}/blog/${p.slug}/`,
+          url: blogUrl(`/${p.slug}/`),
           datePublished: p.datePublished,
         })),
       },
-      faqPageNode(HUB_FAQ.blog, `${SITE_ORIGIN}/blog/#faq`),
+      faqPageNode(HUB_FAQ.blog, `${BLOG_ORIGIN}/#faq`),
     ],
   };
   return `${head({
     title: "Engineering Blog — Android, Kotlin & Flutter | MSN",
     description:
       "Technical deep dives on Android, Kotlin, Jetpack Compose, Flutter, Clean Architecture, and real-time mobile systems by a senior Android developer in Cairo.",
-    canonical: `${SITE_ORIGIN}/blog/`,
+    canonical: blogUrl("/"),
     ogImage: DEFAULT_OG,
     jsonLd,
   })}
@@ -445,7 +460,7 @@ function renderWork(p, posts) {
   const tags = (p.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
   const related = relatedPostFor(p, posts);
   const relatedBlock = related
-    ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="/blog/${related.slug}/">${escapeHtml(related.title)}</a></li></ul></aside>`
+    ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="${blogUrl(`/${related.slug}/`)}">${escapeHtml(related.title)}</a></li></ul></aside>`
     : "";
   const title = fitTitle(
     `${p.name}${p.company ? ` · ${p.company}` : ""} — Case Study | Michael Samuel Naeem`,
@@ -642,7 +657,7 @@ const HUB_FAQ = {
     },
     {
       q: "How can I follow new posts?",
-      a: "New deep dives are published periodically. You can subscribe through the RSS feed at /blog/feed.xml to follow updates.",
+      a: `New deep dives are published periodically. You can subscribe through the RSS feed at ${BLOG_ORIGIN}/feed.xml to follow updates.`,
     },
   ],
 };
@@ -796,7 +811,7 @@ function renderStoreItem(p, posts) {
       : "";
   const related = relatedPostFor({ name: `${p.title} ${p.category || ""}`, tags: [] }, posts);
   const relatedBlock = related
-    ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="/blog/${related.slug}/">${escapeHtml(related.title)}</a></li></ul></aside>`
+    ? `<aside class="related"><h3>Related deep dive</h3><ul><li><a href="${blogUrl(`/${related.slug}/`)}">${escapeHtml(related.title)}</a></li></ul></aside>`
     : "";
   const kindLabel = p.kind === "app" ? `Android app${p.category ? ` · ${p.category}` : ""}` : "VS Code extension";
   const title =
@@ -917,9 +932,9 @@ const urls = [
     { loc: `${SITE_ORIGIN}/llms-full.txt`, lastmod: today, changefreq: "monthly", priority: "0.7" },
     { loc: `${SITE_ORIGIN}/0eb1eb625c28368318e34f58bec177b0.txt`, lastmod: today, changefreq: "yearly", priority: "0.3" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
-    { loc: `${SITE_ORIGIN}/blog/`, lastmod: today, changefreq: "weekly", priority: "0.8" },
+    { loc: blogUrl("/"), lastmod: today, changefreq: "weekly", priority: "0.8" },
     ...posts.map((p) => ({
-      loc: `${SITE_ORIGIN}/blog/${p.slug}/`,
+      loc: blogUrl(`/${p.slug}/`),
       lastmod: (p.dateModified || p.datePublished).slice(0, 10),
       changefreq: "monthly",
       priority: "0.7",
@@ -979,7 +994,7 @@ function buildFeed(posts) {
   const now = new Date().toUTCString();
   const items = posts
     .map((p) => {
-      const url = `${SITE_ORIGIN}/blog/${p.slug}/`;
+      const url = blogUrl(`/${p.slug}/`);
       const pub = new Date(p.datePublished).toUTCString();
       const cats = (p.tags || [])
         .map((t) => `      <category>${escapeHtml(t)}</category>`)
@@ -997,8 +1012,8 @@ function buildFeed(posts) {
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Michael Samuel Naeem — Engineering Blog</title>
-    <link>${SITE_ORIGIN}/blog/</link>
-    <atom:link href="${SITE_ORIGIN}/blog/feed.xml" rel="self" type="application/rss+xml" />
+    <link>${blogUrl("/")}</link>
+    <atom:link href="${BLOG_ORIGIN}/feed.xml" rel="self" type="application/rss+xml" />
     <description>Deep dives on Android, Kotlin, Jetpack Compose, Flutter, and mobile architecture by Michael Samuel Naeem.</description>
     <language>en</language>
     <managingEditor>michaelsam00@yahoo.com (Michael Samuel Naeem)</managingEditor>
@@ -1033,7 +1048,7 @@ Michael is open to remote senior Android developer, staff Android engineer, Flut
 ## Experience Signals
 
 - NEOM City humanoid robotics: Android apps for CRUZR and Pepper robots, robot SDK integrations, GPT-4 intent recognition, speech-to-text, text-to-speech, touchscreen workflows, 35% fewer human escalations, and 99%+ uptime.
-- EV Charging Management Platform: OCPP developer and EV charging engineer work spanning a Python OCPP 1.6 charging management system, Node.js OCPP WebSocket middleware, a Flutter mobile app, P2P LAN remote control, sub-100ms synchronization, and zero critical post-launch defects. See the [OCPP architecture case study](${SITE_ORIGIN}/blog/how-i-architected-an-ev-charging-platform/) for the full breakdown of the OCPP charging station protocol layers.
+- EV Charging Management Platform: OCPP developer and EV charging engineer work spanning a Python OCPP 1.6 charging management system, Node.js OCPP WebSocket middleware, a Flutter mobile app, P2P LAN remote control, sub-100ms synchronization, and zero critical post-launch defects. See the [OCPP architecture case study](${blogUrl("/how-i-architected-an-ev-charging-platform/")}) for the full breakdown of the OCPP charging station protocol layers.
 - Mazaady and Doworkss: Jetpack Compose, MVVM, Clean Architecture, ExoPlayer, WebRTC, live auctions, 120k+ monthly active users, 20% engagement increase, ANR below 0.1%, and 100K+ install Play Store listings.
 - Rowaad: led Android engineers, migrated 15+ modules to MVVM and Clean Architecture, achieved 99.9% crash-free production builds, and supported about 70% unit test coverage.
 - Independent Play Store apps: InsightlySpend, SubTrackr, PrivAI, DevPocket, WalkPlanner, Tic Tac Toe, PDF Toolkit, and other Android products published under MichaelSam94.
@@ -1056,7 +1071,7 @@ function llmsIndexSections({ posts, apps, extensions, work }) {
       "## Blog posts\n\n" +
         posts
           .map((p) =>
-            line(p.title, `${SITE_ORIGIN}/blog/${p.slug}/`, p.description),
+            line(p.title, blogUrl(`/${p.slug}/`), p.description),
           )
           .join("\n"),
     );
@@ -1107,7 +1122,7 @@ function buildLlmsFull(data) {
     .join("\n\n");
   const articles = posts
     .map((p) => {
-      const url = `${SITE_ORIGIN}/blog/${p.slug}/`;
+      const url = blogUrl(`/${p.slug}/`);
       const date = (p.datePublished || "").slice(0, 10);
       return `### ${p.title}\n\nURL: ${url}\nPublished: ${date}\n\n${p.markdown.trim()}`;
     })
@@ -1158,7 +1173,7 @@ async function main() {
       ...data,
       slug: data.slug || file.replace(/\.md$/, ""),
       markdown: content,
-      html: marked.parse(content),
+      html: rewriteBlogLinks(marked.parse(content)),
     });
   }
 
