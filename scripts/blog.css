@@ -381,6 +381,7 @@ article { padding: 8px 0 40px; }
   font-variant-numeric: tabular-nums;
 }
 .tag-chip.is-active .tag-count { color: var(--text-h); opacity: 0.75; }
+.tag-chip[hidden] { display: none; }
 .tag-chip-more {
   color: var(--accent);
   background: transparent;
