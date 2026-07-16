@@ -11,12 +11,14 @@
  * HTML so Google indexes the full content. Each post links back to the home
  * Person entity (`#person`) so blog authority supports the main entity.
  */
-import { readdir, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, copyFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
 import { marked } from "marked";
 import { loadPortfolioData } from "./load-portfolio-data.mjs";
+import { generateOgImages } from "./blog-og-images.mjs";
+import { writeLinkedInPosts, linkedInShareUrl } from "./blog-linkedin.mjs";
 
 const { projects, workSlug, portfolioFaq } = await loadPortfolioData();
 
@@ -137,10 +139,16 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:url" content="${canonical}" />
   <meta property="og:image" content="${ogImage}" />
+  <meta property="og:image:secure_url" content="${ogImage}" />
+  <meta property="og:image:type" content="${ogImage.endsWith(".png") ? "image/png" : ogImage.endsWith(".svg") ? "image/svg+xml" : "image/png"}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="${escapeHtml(title)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   <meta name="twitter:image" content="${ogImage}" />
+  <meta name="twitter:image:alt" content="${escapeHtml(title)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -218,6 +226,12 @@ function renderPost(p, related) {
         .join("")}</ul></aside>`
     : "";
   const tags = (p.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
+  const linkedInShare = `<div class="post-share">
+    <a class="btn btn-linkedin" href="${linkedInShareUrl(url)}" target="_blank" rel="noopener noreferrer" aria-label="Share this article on LinkedIn">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.062 2.062 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      Share on LinkedIn
+    </a>
+  </div>`;
   return `${head({
     // Keep <title> distinct from the <h1> (bare p.title) so audits don't flag
     // "duplicate content in h1 and title": prefer a branded title, then a
@@ -239,6 +253,7 @@ function renderPost(p, related) {
       <h1>${escapeHtml(p.title)}</h1>
       <p class="post-meta">By ${AUTHOR} · ${fmtDate(p.datePublished)} · ${readingTime(p.markdown)} min read</p>
       <div class="tags">${tags}</div>
+      ${linkedInShare}
       ${p.html}
       ${faqSection(p.faq)}
       ${postCta}
@@ -1239,18 +1254,27 @@ async function main() {
 
   const posts = [];
   for (const file of files) {
-    const raw = await readFile(path.join(CONTENT_DIR, file), "utf8");
+    const filePath = path.join(CONTENT_DIR, file);
+    const raw = await readFile(filePath, "utf8");
     const { data, content } = matter(raw);
     if (data.draft) continue;
+    const sourceMtime = (await stat(filePath)).mtimeMs;
     posts.push({
       ...data,
       slug: data.slug || file.replace(/\.md$/, ""),
       markdown: content,
       html: rewriteBlogLinks(marked.parse(content)),
+      sourceMtime,
     });
   }
 
   posts.sort((a, b) => new Date(b.datePublished) - new Date(a.datePublished));
+
+  const ogDir = path.join(BLOG_DIST, "og");
+  const ogUrls = await generateOgImages(posts, ogDir, BLOG_ORIGIN);
+  for (const p of posts) {
+    p.ogImage = ogUrls.get(p.slug) || DEFAULT_OG;
+  }
 
   await mkdir(path.join(BLOG_DIST, "assets"), { recursive: true });
   await copyFile(path.join(ROOT, "scripts/blog.css"), path.join(BLOG_DIST, "assets/blog.css"));
@@ -1305,6 +1329,9 @@ extSlugs.push(ext.slug);
   // RSS feed for the blog.
   await writeFile(path.join(BLOG_DIST, "feed.xml"), buildFeed(posts));
 
+  // LinkedIn share copy (manual posting — no API).
+  await writeLinkedInPosts(posts, BLOG_DIST, BLOG_ORIGIN);
+
   // llms.txt / llms-full.txt content map (GEO/AEO), always in sync with data.
   const work = flagship.map((p) => ({ name: p.name, slug: workSlug(p.name) }));
   const llmsData = { posts, apps, extensions, work };
@@ -1331,7 +1358,7 @@ extSlugs.push(ext.slug);
   await enrichVscodePages(DIST);
 
 console.log(
-    `[build-blog] Generated ${posts.length} post(s), ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt`,
+    `[build-blog] Generated ${posts.length} post(s), ${ogUrls.size} OG image(s), linkedin-posts.json, ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt`,
   );
 }
 

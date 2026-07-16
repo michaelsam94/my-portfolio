@@ -216,6 +216,22 @@ article { padding: 8px 0 40px; }
   border-radius: var(--radius);
 }
 .post-cta h3 { margin-top: 0; }
+
+.post-share {
+  margin: 20px 0 28px;
+}
+.btn-linkedin {
+  text-decoration: none;
+  color: var(--text-h);
+  background: rgba(10, 102, 194, 0.12);
+  border-color: rgba(10, 102, 194, 0.35);
+}
+.btn-linkedin:hover {
+  background: rgba(10, 102, 194, 0.22);
+  color: var(--text-h);
+}
+.btn-linkedin svg { flex-shrink: 0; }
+
 .btn {
   display: inline-flex;
   align-items: center;
