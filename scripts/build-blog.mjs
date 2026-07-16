@@ -258,13 +258,12 @@ function renderHub(posts) {
   for (const p of posts) {
     for (const t of p.tags || []) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
   }
-  // Only tags shared by 2+ articles become filter chips — single-use tags add
-  // noise as filters, and they remain reachable through free-text search (which
-  // matches tag text too). Everything past the first row is collapsed behind a
-  // "Show all tags" toggle so the header stays clean on mobile.
-  const VISIBLE_TAGS = 18;
+  // Only tags shared by 3+ articles become filter chips — rarer tags stay
+  // reachable via free-text search. Keep the first row short so the hub doesn't
+  // open as a wall of pills; the rest collapse behind "more".
+  const VISIBLE_TAGS = 8;
   const filterTags = [...tagCounts.entries()]
-    .filter(([, c]) => c >= 2)
+    .filter(([, c]) => c >= 3)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const tagChips = filterTags
@@ -281,14 +280,20 @@ function renderHub(posts) {
   const filterBar = `<div class="blog-filters" data-blog-filters>
       <div class="blog-search">
         <svg class="blog-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="search" class="blog-search-input" data-blog-search placeholder="Search articles…" aria-label="Search articles by title, topic, or keyword" autocomplete="off" />
+        <input type="search" class="blog-search-input" data-blog-search placeholder="Search by title, topic, or keyword…" aria-label="Search articles by title, topic, or keyword" autocomplete="off" />
+        <button type="button" class="blog-search-clear" data-blog-clear hidden aria-label="Clear search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <div class="tag-filter" role="group" aria-label="Filter articles by tag">
+      <div class="blog-filter-meta">
+        <p class="blog-filter-label">Topics</p>
+        <p class="blog-result-count" data-result-count aria-live="polite"></p>
+      </div>
+      <div class="tag-filter" role="group" aria-label="Filter articles by topic">
         <button type="button" class="tag-chip is-active" data-tag="" data-tag-all>All</button>
         ${tagChips}
         ${moreToggle}
       </div>
-      <p class="blog-result-count" data-result-count aria-live="polite"></p>
     </div>`;
 
   const cards = posts
@@ -351,7 +356,11 @@ function renderHub(posts) {
     <main class="post-grid" data-post-grid>
       ${cards}
     </main>
-    <p class="blog-empty" data-blog-empty hidden>No articles match your search. <button type="button" class="blog-empty-reset" data-blog-reset>Clear filters</button></p>
+    <div class="blog-empty" data-blog-empty hidden>
+      <p class="blog-empty-title">No matching articles</p>
+      <p>Try a different keyword or clear the topic filter.</p>
+      <button type="button" class="blog-empty-reset" data-blog-reset>Clear filters</button>
+    </div>
     ${faqSection(HUB_FAQ.blog)}
   </div>
   ${siteFooter}

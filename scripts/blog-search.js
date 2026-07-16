@@ -15,6 +15,7 @@
   if (!root || !grid) return;
 
   var input = root.querySelector("[data-blog-search]");
+  var clearBtn = root.querySelector("[data-blog-clear]");
   var tagWrap = root.querySelector(".tag-filter");
   var countEl = root.querySelector("[data-result-count]");
   var moreBtn = root.querySelector("[data-tag-more]");
@@ -98,6 +99,7 @@
     }
 
     if (emptyEl) emptyEl.hidden = visible !== 0;
+    if (clearBtn) clearBtn.hidden = !query;
     if (countEl) {
       if (!query && !activeTags.length) {
         countEl.textContent = index.length + " articles";
@@ -106,6 +108,14 @@
           visible + (visible === 1 ? " article" : " articles") + " found";
       }
     }
+  }
+
+  function clearSearch() {
+    query = "";
+    if (input) input.value = "";
+    apply();
+    syncUrl();
+    if (input) input.focus();
   }
 
   function updateChipState() {
@@ -148,12 +158,13 @@
     // Escape clears the search box quickly.
     input.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && input.value) {
-        input.value = "";
-        query = "";
-        apply();
-        syncUrl();
+        clearSearch();
       }
     });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", clearSearch);
   }
 
   allChip.addEventListener("click", function () {
@@ -191,6 +202,7 @@
       updateChipState();
       apply();
       syncUrl();
+      if (input) input.focus();
     });
   }
 
