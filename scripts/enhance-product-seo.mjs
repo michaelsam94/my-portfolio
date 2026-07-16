@@ -291,11 +291,20 @@ async function fileExists(file) {
 }
 
 async function enhanceHtml(collection, products) {
+  // The Next.js /apps hub and /apps/<slug> pages already emit richer JSON-LD
+  // (SoftwareApplication, WebPage, FAQPage, HowTo, BreadcrumbList) during
+  // `next build`. Re-injecting it here produced duplicate @id nodes on every
+  // app page, which audit tools flag as structured-data markup errors. VS Code
+  // pages get no JSON-LD from Next, so this script remains their only source.
+  const injectSchema = collection.type !== "apps";
+
   const hubPath = path.join(collection.distBase, "index.html");
   if (await fileExists(hubPath)) {
     let html = await readFile(hubPath, "utf8");
     html = replaceMarkedBlock(html, "seo-discovery", discoverySection(collection, products));
-    html = injectJsonLd(html, `${collection.type}-hub`, jsonLdForHub(collection, products));
+    if (injectSchema) {
+      html = injectJsonLd(html, `${collection.type}-hub`, jsonLdForHub(collection, products));
+    }
     await writeFile(hubPath, html);
   }
 
@@ -304,7 +313,9 @@ async function enhanceHtml(collection, products) {
     if (!(await fileExists(file))) continue;
     let html = await readFile(file, "utf8");
     html = replaceMarkedBlock(html, "seo-discovery", discoverySection(collection, products, product.slug));
-    html = injectJsonLd(html, `${collection.type}-${product.slug}`, jsonLdForProduct(collection, product));
+    if (injectSchema) {
+      html = injectJsonLd(html, `${collection.type}-${product.slug}`, jsonLdForProduct(collection, product));
+    }
     await writeFile(file, html);
   }
 }

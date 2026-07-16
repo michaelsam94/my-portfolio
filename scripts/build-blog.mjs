@@ -219,7 +219,11 @@ function renderPost(p, related) {
     : "";
   const tags = (p.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
   return `${head({
-    title: fitTitle(`${p.title} — Michael Samuel Naeem`, p.seoTitle, p.title),
+    // Keep <title> distinct from the <h1> (bare p.title) so audits don't flag
+    // "duplicate content in h1 and title": prefer a branded title, then a
+    // per-post seoTitle, then a short " · Blog" suffix before ever falling back
+    // to the raw title.
+    title: fitTitle(`${p.title} — Michael Samuel Naeem`, p.seoTitle, `${p.title} · Blog`, p.title),
     description: p.description,
     canonical: url,
     ogImage: p.ogImage || DEFAULT_OG,
@@ -424,7 +428,7 @@ function workJsonLd(p, url) {
         "@type": "BreadcrumbList",
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_ORIGIN}/` },
-          { "@type": "ListItem", position: 2, name: "Work", item: `${SITE_ORIGIN}/work/` },
+          { "@type": "ListItem", position: 2, name: "Work", item: `${SITE_ORIGIN}/#projects` },
           { "@type": "ListItem", position: 3, name: p.name, item: url },
         ],
       },
@@ -927,10 +931,11 @@ function renderStoreHub(items, kind) {
 function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
 const urls = [
+    // Only canonical, indexable HTML pages belong in the sitemap. Non-HTML
+    // resources (llms.txt, the IndexNow key file, the CV PDF) are still served
+    // and linked in-page / via robots.txt, but listing them here trips audit
+    // tools' "incorrect pages in sitemap" checks, so keep them out.
     { loc: `${SITE_ORIGIN}/wikipedia/`, lastmod: today, changefreq: "monthly", priority: "0.6" },
-    { loc: `${SITE_ORIGIN}/llms.txt`, lastmod: today, changefreq: "monthly", priority: "0.7" },
-    { loc: `${SITE_ORIGIN}/llms-full.txt`, lastmod: today, changefreq: "monthly", priority: "0.7" },
-    { loc: `${SITE_ORIGIN}/0eb1eb625c28368318e34f58bec177b0.txt`, lastmod: today, changefreq: "yearly", priority: "0.3" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
     { loc: blogUrl("/"), lastmod: today, changefreq: "weekly", priority: "0.8" },
     ...posts.map((p) => ({
@@ -963,12 +968,6 @@ const urls = [
       changefreq: "monthly",
       priority: "0.6",
     })),
-    {
-      loc: `${SITE_ORIGIN}/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf`,
-      lastmod: today,
-      changefreq: "monthly",
-      priority: "0.6",
-    },
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
