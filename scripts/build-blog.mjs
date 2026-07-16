@@ -252,14 +252,63 @@ function renderPost(p, related) {
 }
 
 function renderHub(posts) {
-  const cards = posts
+  // Tag frequency across all posts. Chips are ordered by how many articles use
+  // each tag (then alphabetically) so the most useful filters surface first.
+  const tagCounts = new Map();
+  for (const p of posts) {
+    for (const t of p.tags || []) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+  }
+  // Only tags shared by 2+ articles become filter chips — single-use tags add
+  // noise as filters, and they remain reachable through free-text search (which
+  // matches tag text too). Everything past the first row is collapsed behind a
+  // "Show all tags" toggle so the header stays clean on mobile.
+  const VISIBLE_TAGS = 18;
+  const filterTags = [...tagCounts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  const tagChips = filterTags
     .map(
-      (p) => `<a class="post-card" href="${blogUrl(`/${p.slug}/`)}">
+      ([tag, count], i) =>
+        `<button type="button" class="tag-chip${i >= VISIBLE_TAGS ? " is-overflow" : ""}" data-tag="${escapeHtml(tag)}"${i >= VISIBLE_TAGS ? " hidden" : ""}>${escapeHtml(tag)} <span class="tag-count">${count}</span></button>`,
+    )
+    .join("\n      ");
+  const overflowCount = Math.max(0, filterTags.length - VISIBLE_TAGS);
+  const moreToggle = overflowCount
+    ? `<button type="button" class="tag-chip tag-chip-more" data-tag-more aria-expanded="false">+${overflowCount} more</button>`
+    : "";
+
+  const filterBar = `<div class="blog-filters" data-blog-filters>
+      <div class="blog-search">
+        <svg class="blog-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" class="blog-search-input" data-blog-search placeholder="Search articles…" aria-label="Search articles by title, topic, or keyword" autocomplete="off" />
+      </div>
+      <div class="tag-filter" role="group" aria-label="Filter articles by tag">
+        <button type="button" class="tag-chip is-active" data-tag="" data-tag-all>All</button>
+        ${tagChips}
+        ${moreToggle}
+      </div>
+      <p class="blog-result-count" data-result-count aria-live="polite"></p>
+    </div>`;
+
+  const cards = posts
+    .map((p) => {
+      const tags = p.tags || [];
+      // Lowercased haystack for free-text search: title + description + keywords + tags.
+      const haystack = [p.title, p.description, p.keywords || "", tags.join(" ")]
+        .join(" ")
+        .toLowerCase();
+      const cardTags = tags
+        .slice(0, 3)
+        .map((t) => `<span class="card-tag">${escapeHtml(t)}</span>`)
+        .join("");
+      return `<a class="post-card" href="${blogUrl(`/${p.slug}/`)}" data-post data-search="${escapeHtml(haystack)}" data-tags="${escapeHtml(tags.join("|"))}">
         <h2>${escapeHtml(p.title)}</h2>
         <p>${escapeHtml(p.description)}</p>
+        ${cardTags ? `<div class="card-tags">${cardTags}</div>` : ""}
         <p class="post-meta">${fmtDate(p.datePublished)} · ${readingTime(p.markdown)} min read</p>
-      </a>`,
-    )
+      </a>`;
+    })
     .join("\n");
   const jsonLd = {
     "@context": "https://schema.org",
@@ -298,13 +347,16 @@ function renderHub(posts) {
       <h1>Engineering Insights</h1>
       <p class="lede">Deep dives on Android, Kotlin, Jetpack Compose, Flutter, and the real-time mobile systems I build — robotics, EV infrastructure, and streaming at scale.</p>
     </header>
-    <main class="post-grid">
+    ${filterBar}
+    <main class="post-grid" data-post-grid>
       ${cards}
     </main>
+    <p class="blog-empty" data-blog-empty hidden>No articles match your search. <button type="button" class="blog-empty-reset" data-blog-reset>Clear filters</button></p>
     ${faqSection(HUB_FAQ.blog)}
   </div>
   ${siteFooter}
   ${themeBodyScript}
+  <script src="${BLOG_ORIGIN}/assets/blog-search.js" defer></script>
 </body>
 </html>`;
 }
@@ -1194,6 +1246,7 @@ async function main() {
   await mkdir(path.join(BLOG_DIST, "assets"), { recursive: true });
   await copyFile(path.join(ROOT, "scripts/blog.css"), path.join(BLOG_DIST, "assets/blog.css"));
   await copyFile(path.join(ROOT, "scripts/static-theme.js"), path.join(BLOG_DIST, "assets/theme.js"));
+  await copyFile(path.join(ROOT, "scripts/blog-search.js"), path.join(BLOG_DIST, "assets/blog-search.js"));
   // Google Search Console HTML verification for blog.michaelsam94.com (same file as apex public/).
   await copyFile(
     path.join(ROOT, "public/google42b4c336817b4c5e.html"),
