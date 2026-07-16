@@ -1,3 +1,11 @@
+# Blog assets (blog.css, blog-search.js, theme.js) are referenced by stable,
+# un-hashed URLs and are shared across every blog page. Cloudflare Pages would
+# otherwise cache them for 4h without revalidating, so a fix to the search/filter
+# script or styles can stay broken in a returning visitor's cache long after a
+# redeploy. Force a revalidation on every load (cheap 304s) so fixes ship instantly.
+/assets/*
+  Cache-Control: public, max-age=0, must-revalidate
+
 /*
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Frame-Options: DENY
