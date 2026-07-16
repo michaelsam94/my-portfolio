@@ -22,6 +22,11 @@ const answers = [
       "I can help with Android, Kotlin, React, TypeScript, OCPP, EV charging software, AI automation, migrations, and production rescue work.",
   },
   {
+    question: "Are you an OCPP developer or OCPP expert for EV charging?",
+    answer:
+      "Yes. I architected an OCPP 1.6 charging platform over WebSocket, so I can help as an OCPP developer, OCPP consultant, or OCPP integrator.",
+  },
+  {
     question: "What proof do you have?",
     answer:
       "My work includes 120k+ commerce users, 240+ merchants, 99.9% uptime, 50k+ app users, and 70% faster store operations.",

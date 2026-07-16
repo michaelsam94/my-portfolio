@@ -158,7 +158,7 @@ export const skillGroups = [
   { title: "Mobile", items: ["Android", "Kotlin", "Java", "Flutter", "Dart", "Jetpack Compose", "Android TV"] },
   { title: "Architecture", items: ["Clean Architecture", "MVVM", "MVI", "Modularization", "ADRs", "Repository patterns"] },
   { title: "Async & DI", items: ["Coroutines", "Flow", "RxJava", "Hilt", "Dagger 2", "Koin"] },
-  { title: "Networking", items: ["REST", "GraphQL", "WebSocket", "OCPP 1.6", "Retrofit", "OkHttp", "Ktor"] },
+  { title: "Networking", items: ["REST", "GraphQL", "WebSocket", "OCPP 1.6", "OCPP WebSocket", "Retrofit", "OkHttp", "Ktor"] },
   { title: "Media & IoT", items: ["WebRTC", "ExoPlayer", "Robot SDKs", "BLE", "CameraX", "ML Kit", "DSP"] },
   { title: "Data", items: ["Room", "SQLite", "DataStore", "Firebase", "Supabase", "Offline-first sync"] },
   { title: "AI & Tools", items: ["OpenAI", "On-device AI", "OCR", "VS Code Extension API", "TypeScript", "Node.js"] },
@@ -433,6 +433,16 @@ export const portfolioFaq = [
   {
     question: "How can recruiters contact him?",
     answer: `Email ${profile.email}, use LinkedIn, or download the CV linked from the portfolio.`,
+  },
+  {
+    question: "Are you an OCPP expert for EV charging platforms?",
+    answer:
+      "Yes. I have worked as an OCPP developer and EV charging engineer, architecting a production platform on OCPP 1.6 over WebSocket — the protocol state machine, Node.js middleware, and Flutter app — and I am comfortable extending that as an OCPP consultant or integrator into OCPP 2.0.1 work.",
+  },
+  {
+    question: "Can you build the mobile or backend side of an OCPP charging network?",
+    answer:
+      "Yes. I have shipped both sides: the Python OCPP server and Node.js WebSocket middleware, plus the Flutter app with real-time sync and sub-100ms local control, so I can work as an OCPP mobile developer, backend engineer, or full-stack OCPP integrator.",
   },
 ] as const;
 

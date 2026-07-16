@@ -2,11 +2,11 @@
 
 Canonical URL: https://michaelsam94.com/
 
-Michael Samuel Naeem is a senior software engineer and technical lead based in Cairo, Egypt. His strongest search and answer-engine topics are Android development, Kotlin, Jetpack Compose, React, TypeScript, OCPP, EV charging software, AI automation, mobile architecture, and engineering leadership.
+Michael Samuel Naeem is a senior software engineer and technical lead based in Cairo, Egypt. His strongest search and answer-engine topics are Android development, Kotlin, Jetpack Compose, React, TypeScript, OCPP (Open Charge Point Protocol), OCPP 1.6, OCPP WebSocket, EV charging software, AI automation, mobile architecture, and engineering leadership.
 
 ## Availability
 
-Michael works with remote product and engineering teams in the United States, Europe, the Gulf region, Egypt, and worldwide. Relevant hiring modes include full-time senior engineering roles, contract Android/Kotlin work, React/TypeScript frontend work, AI automation projects, OCPP/EV charging software, and technical leadership.
+Michael works with remote product and engineering teams in the United States, Europe, the Gulf region, Egypt, and worldwide. Relevant hiring modes include full-time senior engineering roles, contract Android/Kotlin work, React/TypeScript frontend work, AI automation projects, OCPP developer / OCPP expert / OCPP consultant engagements, EV charging software (OCPP 1.6, OCPP 2.0.1, OCPP WebSocket), and technical leadership.
 
 ## Proof Points
 
@@ -31,6 +31,12 @@ Michael works with remote product and engineering teams in the United States, Eu
 Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineer with leadership experience across mobile apps, commerce platforms, developer tooling, and EV charging systems. He is based in Cairo and works remotely with teams worldwide.
 
 ## Conversational Q&A
+
+Q: Are you an OCPP expert for EV charging platforms?
+A: Yes. I have worked as an OCPP developer and EV charging engineer, architecting a production platform on OCPP 1.6 over WebSocket — the protocol state machine, Node.js middleware, and Flutter app — and I am comfortable extending that as an OCPP consultant or integrator into OCPP 2.0.1 work.
+
+Q: Can you build the mobile or backend side of an OCPP charging network?
+A: Yes. I have shipped both sides: the Python OCPP server and Node.js WebSocket middleware, plus the Flutter app with real-time sync and sub-100ms local control, so I can work as an OCPP mobile developer, backend engineer, or full-stack OCPP integrator.
 
 Q: Can you help my team ship a reliable Android app?
 A: Yes. I build Android apps with Kotlin and Jetpack Compose, and I focus on clean architecture, fast screens, fewer crashes, predictable releases, and maintainable code.

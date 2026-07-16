@@ -6,7 +6,7 @@ description: "A walkthrough of an EV charging platform: OCPP 1.6 over WebSocket,
 datePublished: "2026-06-04"
 dateModified: "2026-06-04"
 tags: ["Flutter", "OCPP", "WebSocket", "Architecture", "IoT"]
-keywords: "EV charging platform architecture, OCPP 1.6, OCPP WebSocket, Flutter IoT app, charging management system, real-time mobile architecture"
+keywords: "EV charging platform architecture, OCPP 1.6, OCPP WebSocket, OCPP developer, OCPP expert, Open Charge Point Protocol, charging station protocol, Flutter IoT app, charging management system, real-time mobile architecture"
 faq:
   - q: "What is OCPP and why does it matter for EV charging?"
     a: "OCPP (Open Charge Point Protocol) is the open standard that lets charging stations and management systems communicate. Running OCPP 1.6 over WebSocket kept the platform vendor-neutral."
@@ -89,4 +89,4 @@ Zero critical post-launch defects wasn't luck; it came from the boundaries:
 
 Real-time hardware platforms reward boring, strict boundaries. The interesting behavior — instant local control, clean reconnection, accurate billing — falls out of getting the unglamorous parts right.
 
-*Working on EV, IoT, or real-time mobile infrastructure? [I'd love to help](/#contact).*
+*Working on OCPP, EV charging, IoT, or real-time mobile infrastructure? [I'd love to help](/#contact) as an OCPP developer or OCPP consultant.*
