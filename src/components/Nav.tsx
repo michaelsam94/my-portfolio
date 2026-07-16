@@ -21,7 +21,15 @@ export default function Nav() {
     <header className="nav">
       <div className="nav-inner">
         <a href="#hero" className="nav-logo">
-          {profile.name.split(" ")[0]}
+          <img
+            src="/logo-mark.png"
+            alt=""
+            width={28}
+            height={28}
+            className="nav-logo-mark"
+            aria-hidden
+          />
+          <span>{profile.name.split(" ")[0]}</span>
         </a>
         <nav className={`nav-links ${open ? "open" : ""}`}>
           {links.map(({ href, label }) => (
