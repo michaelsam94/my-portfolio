@@ -94,7 +94,10 @@
         }
       }
       var show = matchesText && matchesTags;
+      // Class + [hidden]: `.post-card { display: block }` beats the UA [hidden]
+      // rule, so we also toggle `.is-filtered-out` (CSS uses !important).
       item.el.hidden = !show;
+      item.el.classList.toggle("is-filtered-out", !show);
       if (show) visible++;
     }
 
@@ -185,6 +188,7 @@
       var expanded = moreBtn.getAttribute("aria-expanded") === "true";
       tagWrap.querySelectorAll(".tag-chip.is-overflow").forEach(function (chip) {
         chip.hidden = expanded;
+        chip.classList.toggle("is-filtered-out", expanded);
       });
       moreBtn.setAttribute("aria-expanded", String(!expanded));
       moreBtn.textContent = expanded

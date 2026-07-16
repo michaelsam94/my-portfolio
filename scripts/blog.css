@@ -381,7 +381,9 @@ article { padding: 8px 0 40px; }
   font-variant-numeric: tabular-nums;
 }
 .tag-chip.is-active .tag-count { color: var(--text-h); opacity: 0.75; }
-.tag-chip[hidden] { display: none; }
+/* Prefer .is-filtered-out: `.tag-chip { display: inline-flex }` overrides UA [hidden]. */
+.tag-chip[hidden],
+.tag-chip.is-filtered-out { display: none !important; }
 .tag-chip-more {
   color: var(--accent);
   background: transparent;
@@ -464,7 +466,9 @@ article { padding: 8px 0 40px; }
   transition: border-color var(--transition), transform 0.2s;
 }
 .post-card:hover { border-color: var(--card-hover-border); transform: translateY(-2px); }
-.post-card[hidden] { display: none; }
+/* Prefer .is-filtered-out: `.post-card { display: block }` overrides UA [hidden]. */
+.post-card[hidden],
+.post-card.is-filtered-out { display: none !important; }
 .post-card h2 { margin: 0 0 8px; font-size: 1.3rem; }
 .post-card p { margin: 0 0 12px; color: var(--text-muted); }
 

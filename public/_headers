@@ -6,6 +6,11 @@
 /assets/*
   Cache-Control: public, max-age=0, must-revalidate
 
+# Blog host rewrites /assets/* → /blog/assets/* via Pages middleware, so the
+# on-disk path (and CF _headers match) is under /blog/assets/.
+/blog/assets/*
+  Cache-Control: public, max-age=0, must-revalidate
+
 /*
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Frame-Options: DENY
