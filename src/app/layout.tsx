@@ -74,7 +74,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <script
             defer
             src="https://static.cloudflareinsights.com/beacon.min.js"
-            data-cf-beacon={JSON.stringify({ token: cloudflareAnalyticsToken })}
+            data-cf-beacon={JSON.stringify({ token: cloudflareAnalyticsToken, spa: true })}
           />
         ) : null}
       </body>
