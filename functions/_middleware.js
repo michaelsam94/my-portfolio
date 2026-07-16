@@ -20,7 +20,9 @@ function isRootPassthrough(pathname) {
     pathname.startsWith("/profile-photo") ||
     pathname === "/robots.txt" ||
     // IndexNow key file lives at site root and must resolve on the blog host too.
-    /^\/[a-f0-9]{32}\.txt$/.test(pathname)
+    /^\/[a-f0-9]{32}\.txt$/.test(pathname) ||
+    // Google Search Console HTML verification (public/ → out/ root on apex).
+    /^\/google[a-f0-9]+\.html$/.test(pathname)
   );
 }
 

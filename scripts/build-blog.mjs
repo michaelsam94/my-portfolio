@@ -1181,6 +1181,11 @@ async function main() {
   await mkdir(path.join(BLOG_DIST, "assets"), { recursive: true });
   await copyFile(path.join(ROOT, "scripts/blog.css"), path.join(BLOG_DIST, "assets/blog.css"));
   await copyFile(path.join(ROOT, "scripts/static-theme.js"), path.join(BLOG_DIST, "assets/theme.js"));
+  // Google Search Console HTML verification for blog.michaelsam94.com (same file as apex public/).
+  await copyFile(
+    path.join(ROOT, "public/google42b4c336817b4c5e.html"),
+    path.join(BLOG_DIST, "google42b4c336817b4c5e.html"),
+  );
 
   for (const p of posts) {
     const related = posts.filter((r) => r.slug !== p.slug).slice(0, 3);
