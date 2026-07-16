@@ -464,6 +464,7 @@ article { padding: 8px 0 40px; }
   transition: border-color var(--transition), transform 0.2s;
 }
 .post-card:hover { border-color: var(--card-hover-border); transform: translateY(-2px); }
+.post-card[hidden] { display: none; }
 .post-card h2 { margin: 0 0 8px; font-size: 1.3rem; }
 .post-card p { margin: 0 0 12px; color: var(--text-muted); }
 
