@@ -148,7 +148,10 @@ function jsonLdForProduct(collection, product) {
       url: ORIGIN,
     },
     sameAs: [product.marketplaceUrl, product.githubUrl].filter(Boolean),
-    image: product.image || undefined,
+    // `image` is a recommended SoftwareApplication property; audit tools flag its
+    // absence. VS Code extensions have no per-item icon URL, so fall back to the
+    // site's representative OG image rather than omitting the field.
+    image: product.image || `${ORIGIN}/og-image.png`,
     downloadUrl: product.marketplaceUrl || undefined,
   };
 

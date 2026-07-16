@@ -62,3 +62,4 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://michaelsam94.com/sitemap.xml
+Sitemap: https://blog.michaelsam94.com/sitemap.xml

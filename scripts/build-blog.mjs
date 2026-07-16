@@ -402,23 +402,20 @@ function relatedPostFor(project, posts) {
 
 function workJsonLd(p, url) {
   const faq = WORK_FAQ[workSlug(p.name)];
-  const isApp = projectLinks(p).some((l) => l.href.includes("play.google.com"));
-  const node = isApp
-    ? {
-        "@type": "SoftwareApplication",
-        applicationCategory: "MobileApplication",
-        operatingSystem: "Android",
-      }
-    : { "@type": "CreativeWork" };
+  // Work pages are portfolio case studies, not product listings. `CreativeWork`
+  // is complete with the fields below; using `SoftwareApplication` would require
+  // `offers` + a real `aggregateRating`/`review` for rich-result eligibility and
+  // otherwise trips audit tools' "structured data markup errors" check.
   return {
     "@context": "https://schema.org",
     "@graph": [
       {
-        ...node,
+        "@type": "CreativeWork",
         "@id": `${url}#project`,
         name: p.name,
         description: p.description,
         url,
+        image: DEFAULT_OG,
         keywords: (p.tags || []).join(", "),
         ...(p.company ? { creator: { "@type": "Organization", name: p.company } } : {}),
         author: { "@id": PERSON_ID },
@@ -928,22 +925,31 @@ function renderStoreHub(items, kind) {
 </html>`;
 }
 
-function buildSitemap(posts, workSlugs, appSlugs = [], extSlugs = []) {
+function renderUrlset(urls) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls
+  .map((u) => {
+    const lines = [`    <loc>${u.loc}</loc>`];
+    if (u.lastmod) lines.push(`    <lastmod>${u.lastmod}</lastmod>`);
+    if (u.changefreq) lines.push(`    <changefreq>${u.changefreq}</changefreq>`);
+    if (u.priority) lines.push(`    <priority>${u.priority}</priority>`);
+    return `  <url>\n${lines.join("\n")}\n  </url>`;
+  })
+  .join("\n")}
+</urlset>\n`;
+}
+
+// Apex sitemap (michaelsam94.com/sitemap.xml). Only canonical, indexable HTML
+// pages on the APEX host belong here. Non-HTML resources (llms.txt, IndexNow
+// key, CV PDF) and blog-subdomain URLs are deliberately excluded: audit tools
+// flag both non-HTML files and cross-host URLs as "incorrect pages in sitemap"
+// and "orphaned sitemap pages". The blog subdomain gets its own sitemap.
+function buildSitemap(workSlugs, appSlugs = [], extSlugs = []) {
   const today = new Date().toISOString().slice(0, 10);
-const urls = [
-    // Only canonical, indexable HTML pages belong in the sitemap. Non-HTML
-    // resources (llms.txt, the IndexNow key file, the CV PDF) are still served
-    // and linked in-page / via robots.txt, but listing them here trips audit
-    // tools' "incorrect pages in sitemap" checks, so keep them out.
+  const urls = [
     { loc: `${SITE_ORIGIN}/wikipedia/`, lastmod: today, changefreq: "monthly", priority: "0.6" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
-    { loc: blogUrl("/"), lastmod: today, changefreq: "weekly", priority: "0.8" },
-    ...posts.map((p) => ({
-      loc: blogUrl(`/${p.slug}/`),
-      lastmod: (p.dateModified || p.datePublished).slice(0, 10),
-      changefreq: "monthly",
-      priority: "0.7",
-    })),
     ...workSlugs.map((slug) => ({
       loc: `${SITE_ORIGIN}/work/${slug}/`,
       lastmod: today,
@@ -969,18 +975,24 @@ const urls = [
       priority: "0.6",
     })),
   ];
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls
-  .map((u) => {
-    const lines = [`    <loc>${u.loc}</loc>`];
-    if (u.lastmod) lines.push(`    <lastmod>${u.lastmod}</lastmod>`);
-    if (u.changefreq) lines.push(`    <changefreq>${u.changefreq}</changefreq>`);
-    if (u.priority) lines.push(`    <priority>${u.priority}</priority>`);
-    return `  <url>\n${lines.join("\n")}\n  </url>`;
-  })
-  .join("\n")}
-</urlset>\n`;
+  return renderUrlset(urls);
+}
+
+// Blog sitemap, served at blog.michaelsam94.com/sitemap.xml (out/blog/sitemap.xml
+// via Pages middleware). Keeps blog-subdomain URLs on their own host so they are
+// not flagged as cross-host / orphaned entries in the apex sitemap.
+function buildBlogSitemap(posts) {
+  const today = new Date().toISOString().slice(0, 10);
+  const urls = [
+    { loc: blogUrl("/"), lastmod: today, changefreq: "weekly", priority: "0.8" },
+    ...posts.map((p) => ({
+      loc: blogUrl(`/${p.slug}/`),
+      lastmod: (p.dateModified || p.datePublished).slice(0, 10),
+      changefreq: "monthly",
+      priority: "0.7",
+    })),
+  ];
+  return renderUrlset(urls);
 }
 
 // --- RSS 2.0 feed for the engineering blog ---------------------------------
@@ -1220,10 +1232,12 @@ for (const ext of extensions) {
 extSlugs.push(ext.slug);
 }
 
-  const sitemap = buildSitemap(posts, workSlugs, appSlugs, extSlugs);
+  const sitemap = buildSitemap(workSlugs, appSlugs, extSlugs);
   await writeFile(path.join(DIST, "sitemap.xml"), sitemap);
   await writeFile(path.join(DIST, "sitemap-com.xml"), sitemap);
-  await writeFile(path.join(DIST, "sitemap.txt"), buildTextSitemap(posts, workSlugs, appSlugs, extSlugs));
+  await writeFile(path.join(DIST, "sitemap.txt"), buildTextSitemap(workSlugs, appSlugs, extSlugs));
+  // Blog subdomain gets its own same-host sitemap at blog.michaelsam94.com/sitemap.xml.
+  await writeFile(path.join(BLOG_DIST, "sitemap.xml"), buildBlogSitemap(posts));
 
   // RSS feed for the blog.
   await writeFile(path.join(BLOG_DIST, "feed.xml"), buildFeed(posts));

@@ -1,6 +1,17 @@
 const APEX_HOST = "michaelsam94.com";
 const BLOG_HOST = "blog.michaelsam94.com";
 
+// Match the static _headers HSTS policy. `Response.redirect()` produces a
+// response with no custom headers, so 301s (www→apex, apex/blog normalization)
+// would otherwise ship without HSTS and get flagged as "No HSTS support".
+const HSTS = "max-age=63072000; includeSubDomains; preload";
+function redirect(location, status = 301) {
+  return new Response(null, {
+    status,
+    headers: { Location: location, "Strict-Transport-Security": HSTS },
+  });
+}
+
 function blogCleanPath(pathname) {
   const clean = pathname.replace(/^\/blog/, "") || "/";
   return clean.startsWith("/") ? clean : `/${clean}`;
@@ -32,11 +43,11 @@ export async function onRequest(context) {
 
   if (hostname === `www.${APEX_HOST}`) {
     if (isBlogPath(pathname)) {
-      return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+      return redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`);
     }
     url.hostname = APEX_HOST;
     url.protocol = "https:";
-    return Response.redirect(url.toString(), 301);
+    return redirect(url.toString());
   }
 
   if (hostname === APEX_HOST && isBlogPath(pathname)) {
@@ -45,7 +56,7 @@ export async function onRequest(context) {
     if (pathname === "/blog/assets" || pathname.startsWith("/blog/assets/")) {
       return context.next();
     }
-    return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+    return redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`);
   }
 
   if (hostname === BLOG_HOST) {
@@ -56,7 +67,7 @@ export async function onRequest(context) {
     }
 
     if (isBlogPath(pathname)) {
-      return Response.redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`, 301);
+      return redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`);
     }
 
     if (!isRootPassthrough(pathname)) {

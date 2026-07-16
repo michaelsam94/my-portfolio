@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import type { ProjectData } from "@/data/portfolio";
+import { workSlug } from "@/data/portfolio";
 import { easeOut } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import ProjectCardMedia from "./ProjectCardMedia";
@@ -9,6 +10,14 @@ import ProjectCardMedia from "./ProjectCardMedia";
 export default function ProjectCard({ project }: { project: ProjectData }) {
   const reducedMotion = useReducedMotion();
   const primaryLink = project.links[0]?.href;
+  // Flagship projects that are NOT self-published apps get a dedicated
+  // /work/<slug>/ case-study page (see scripts/build-blog.mjs). Linking to it
+  // here gives those pages a real internal link from the home page instead of
+  // being reachable only from a single blog cross-link.
+  const caseStudyHref =
+    project.highlight && !project.company.includes("MichaelSam94")
+      ? `/work/${workSlug(project.title)}/`
+      : null;
 
   const openPrimary = () => {
     if (primaryLink) {
@@ -45,6 +54,11 @@ export default function ProjectCard({ project }: { project: ProjectData }) {
           ))}
         </ul>
         <div className="card-links" aria-label={`${project.title} links`}>
+          {caseStudyHref && (
+            <a className="text-link" href={caseStudyHref}>
+              Read the case study
+            </a>
+          )}
           {project.links.map((link) => (
             <a key={link.href} className="text-link" href={link.href} target="_blank" rel="noopener noreferrer">
               {link.label}
