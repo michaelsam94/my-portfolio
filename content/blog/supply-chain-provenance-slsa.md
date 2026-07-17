@@ -20,7 +20,6 @@ faqAnswers:
     answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
   - question: "How do we roll back supply chain provenance slsa safely?"
     answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
-    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
 After the SolarWinds and Codecov incidents, our security team stopped asking "did we scan for CVEs?" and started asking "can we prove this binary was built from our source code by our CI system?" Vulnerability scanning catches known bad dependencies. Provenance catches the case where someone else's build pipeline — or an attacker who compromised it — produced the artifact you're about to deploy.
 

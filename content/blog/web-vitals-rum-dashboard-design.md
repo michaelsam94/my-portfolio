@@ -20,7 +20,6 @@ faqAnswers:
     answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
   - question: "How do we roll back web vitals rum dashboard design safely?"
     answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
-    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
 Our RUM dashboard averaged LCP globally while India mobile p75 was 4.2s — slicing by country, connection, and route exposed the real regressions.
 

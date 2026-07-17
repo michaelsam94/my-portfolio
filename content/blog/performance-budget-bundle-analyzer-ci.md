@@ -12,7 +12,8 @@ faq:
   - q: "size-limit vs webpack-bundle-analyzer?"
     a: "size-limit enforces numeric gates in CI; webpack-bundle-analyzer visualizes what grew. Use both — analyzer explains failures, size-limit blocks merge."
   - q: "How do PR comments help?"
-    a: "Post a diff table (chunk name, before, after, delta) on every PR touching frontend deps. Reviewers spot accidental lodash full import without opening CI logs."---
+    a: "Post a diff table (chunk name, before, after, delta) on every PR touching frontend deps. Reviewers spot accidental lodash full import without opening CI logs."
+---
 Bundle size regressions do not fail builds — they fail Core Web Vitals weeks later when nobody remembers which PR added 80 KB of chart library. CI gates with size-limit and bundle analyzer reports turn "we should watch bundle size" into a merge-blocking check with actionable diffs.
 ## 
 ## Where budgets live in CI

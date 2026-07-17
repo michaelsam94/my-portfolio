@@ -20,7 +20,6 @@ faqAnswers:
     answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
   - question: "How do we roll back web performance tree shaking side effects safely?"
     answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
-    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
 Our bundle included all of lodash because one file imported the package root — sideEffects: false in package.json and per-module imports dropped 90KB gzip.
 

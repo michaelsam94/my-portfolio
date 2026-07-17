@@ -12,7 +12,8 @@ faq:
   - q: "When should upgraded features unlock?"
     a: "Unlock entitlements immediately after payment succeeds, not at the next billing period. Gate features server-side on subscription status, not client-side UI state, so a refresh mid-flow does not strand users without access they paid for."
   - q: "What causes upgrade abandonment?"
-    a: "Surprise charges without explanation, forcing re-entry of card details when a payment method exists, and downgrading UX that hides the current plan context. A dedicated confirmation step with plain-language math fixes most drop-off."---
+    a: "Surprise charges without explanation, forcing re-entry of card details when a payment method exists, and downgrading UX that hides the current plan context. A dedicated confirmation step with plain-language math fixes most drop-off."
+---
 SaaS upgrades fail in billing UX, not in Stripe integration. Users click "Upgrade to Pro," see a charge they did not expect, and abandon — support gets a ticket, finance gets nothing. The fix is a flow that shows proration math before payment, confirms the plan change explicitly, and unlocks features the moment the invoice settles.
 
 I have shipped upgrade flows where showing invoice preview data cut support tickets by half. The pattern is the same whether you use Stripe Billing, Chargebee, or a homegrown ledger: preview → confirm → charge → entitlements.

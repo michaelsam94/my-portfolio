@@ -20,7 +20,6 @@ faqAnswers:
     answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
   - question: "How do we roll back web performance web workers heavy compute safely?"
     answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
-    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
 Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload.
 

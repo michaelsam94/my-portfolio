@@ -12,7 +12,8 @@ faq:
   - q: "Secure flag requirement?"
     a: "Cookies with Secure send only over HTTPS — required for session cookies."
   - q: "SameSite for auth?"
-    a: "Lax for OAuth return flows; Strict when cross-site POST is never needed."---
+    a: "Lax for OAuth return flows; Strict when cross-site POST is never needed."
+---
 
 An XSS bug in our analytics wrapper read `document.cookie` and exfiltrated session tokens—we had set `Secure` but forgot `HttpOnly`. Three attributes and a prefix fixed a vulnerability class that had lingered through two pentests because "cookies were encrypted in transit."
 

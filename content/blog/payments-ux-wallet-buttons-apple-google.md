@@ -12,7 +12,8 @@ faq:
   - q: "What breaks wallet button display?"
     a: "Missing domain verification (Apple Pay), incorrect merchant ID configuration, serving checkout over HTTP, and CSP blocking payment scripts. Fix verification files and script-src before A/B testing button color."
   - q: "Should wallet buttons appear on mobile only?"
-    a: "No — desktop Safari supports Apple Pay; Chrome supports Google Pay on desktop with saved cards. Hide buttons only when canMakePayments returns false, not based on viewport width alone."---
+    a: "No — desktop Safari supports Apple Pay; Chrome supports Google Pay on desktop with saved cards. Hide buttons only when canMakePayments returns false, not based on viewport width alone."
+---
 Wallet buttons convert when they are visible, verified, and faster than typing a card. I have seen checkout teams spend weeks on form validation while Apple Pay sat below the fold — wallet-ready users typed 16 digits instead. Placement, domain verification, and express-checkout semantics matter more than button styling.
 
 This post covers where wallet buttons belong, how domain verification gates Apple Pay on the web, and how to wire Payment Request API so express checkout actually skips fields.
