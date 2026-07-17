@@ -5,6 +5,7 @@ import "./globals.css";
 import SkipLink from "@/components/SkipLink";
 import ThemeProvider from "@/components/ThemeProvider";
 import ThemeToggle from "@/components/ThemeToggle";
+import { blogUrl } from "@/config/site";
 import { defaultMetadata, structuredData } from "@/lib/metadata";
 
 const geistSans = Geist({
@@ -48,6 +49,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   </a>
                   <a className="header-link" href="#vscode">
                     Extensions
+                  </a>
+                  <a className="header-link" href={blogUrl()}>
+                    Blog
                   </a>
                   <a className="header-link" href="#contact">
                     Contact
