@@ -1,0 +1,2796 @@
+[
+  [
+    "react-compiler-memo-production",
+    "React Compiler Memo in Production",
+    "How to adopt the React Compiler for automatic memoization in production: rollout strategy, profiling before/after, and common pitfalls.",
+    [
+      "React",
+      "Performance",
+      "React Compiler"
+    ],
+    "React Compiler, automatic memoization, useMemo replacement, React 19, production rollout"
+  ],
+  [
+    "nextjs-partial-prerendering-ppr",
+    "Next.js Partial Prerendering in Production",
+    "Partial Prerendering combines static shells with dynamic holes \u2014 how to adopt PPR in Next.js App Router without breaking cache semantics.",
+    [
+      "Next.js",
+      "Performance",
+      "PPR"
+    ],
+    "Next.js PPR, partial prerendering, static shell dynamic holes, App Router caching"
+  ],
+  [
+    "nextjs-turbopack-production-migration",
+    "Migrating to Turbopack in Production",
+    "A practical migration path from Webpack to Turbopack in Next.js: what breaks, what improves, and how to validate before cutover.",
+    [
+      "Next.js",
+      "Build",
+      "Turbopack"
+    ],
+    "Turbopack production, Next.js build migration, Webpack to Turbopack, dev server performance"
+  ],
+  [
+    "react-activity-component-patterns",
+    "React Activity Component Patterns",
+    "React's Activity API hides inactive UI without unmounting \u2014 patterns for tabs, wizards, and multi-step flows that preserve state cheaply.",
+    [
+      "React",
+      "Concurrent",
+      "UX"
+    ],
+    "React Activity, preserve state hidden UI, concurrent React, tab panels"
+  ],
+  [
+    "react-useeffectevent-cleanup",
+    "useEffectEvent and Effect Cleanup Patterns",
+    "useEffectEvent separates reactive logic from event callbacks \u2014 patterns that stop stale closures and unnecessary effect re-runs.",
+    [
+      "React",
+      "Hooks",
+      "Performance"
+    ],
+    "useEffectEvent, React hooks, effect cleanup, stale closure prevention"
+  ],
+  [
+    "react-lazy-suspense-boundary-design",
+    "Designing Suspense Boundaries for Lazy Routes",
+    "Where to place Suspense boundaries around React.lazy routes so loading states feel intentional, not accidental.",
+    [
+      "React",
+      "Suspense",
+      "Code Splitting"
+    ],
+    "React Suspense boundaries, React.lazy, code splitting UX, loading states"
+  ],
+  [
+    "react-context-selector-performance",
+    "Context Selectors Without Re-render Storms",
+    "Context re-render storms kill performance \u2014 selector patterns, split contexts, and external stores that scale.",
+    [
+      "React",
+      "Performance",
+      "Context"
+    ],
+    "React Context performance, context selectors, re-render optimization, useSyncExternalStore"
+  ],
+  [
+    "react-virtual-list-windowing",
+    "Virtual List Windowing at Scale",
+    "Virtualizing lists of 10k+ rows without jank: windowing math, overscan tuning, and accessibility requirements.",
+    [
+      "React",
+      "Performance",
+      "Lists"
+    ],
+    "virtual list React, windowing, react-window, large list performance"
+  ],
+  [
+    "react-deferred-value-search-ui",
+    "useDeferredValue for Search and Filter UI",
+    "useDeferredValue keeps typing responsive while expensive filter renders catch up \u2014 patterns for search-heavy product UI.",
+    [
+      "React",
+      "Concurrent",
+      "UX"
+    ],
+    "useDeferredValue, React concurrent, search UI performance, deferred rendering"
+  ],
+  [
+    "react-transition-pending-states",
+    "useTransition for Pending UI States",
+    "useTransition marks updates as non-urgent \u2014 pending states, optimistic navigation, and avoiding layout thrash.",
+    [
+      "React",
+      "Concurrent",
+      "UX"
+    ],
+    "useTransition, React pending state, non-urgent updates, optimistic UI"
+  ],
+  [
+    "nextjs-streaming-skeleton-architecture",
+    "Streaming Skeleton Architecture in Next.js",
+    "Design skeleton layouts that match streamed content geometry \u2014 reducing CLS and perceived latency in App Router.",
+    [
+      "Next.js",
+      "UX",
+      "Streaming"
+    ],
+    "Next.js streaming skeleton, loading UI, CLS prevention, Suspense streaming"
+  ],
+  [
+    "nextjs-route-segment-config-cache",
+    "Route Segment Config and Cache Control",
+    "export const dynamic, revalidate, and fetchCache \u2014 how route segment config actually controls caching in App Router.",
+    [
+      "Next.js",
+      "Caching",
+      "App Router"
+    ],
+    "Next.js route segment config, revalidate, dynamic rendering, fetch cache"
+  ],
+  [
+    "nextjs-parallel-routes-modal-patterns",
+    "Parallel Routes for Modal and Drawer Patterns",
+    "Parallel routes enable shareable modal URLs \u2014 architecture for intercepting routes, soft navigation, and back-button behavior.",
+    [
+      "Next.js",
+      "Routing",
+      "UX"
+    ],
+    "Next.js parallel routes, modal routing, intercepting routes, shareable URLs"
+  ],
+  [
+    "nextjs-intercepting-routes-patterns",
+    "Intercepting Routes for In-Place Navigation",
+    "Intercepting routes show detail views over list pages \u2014 patterns for photo galleries, product quick views, and deep links.",
+    [
+      "Next.js",
+      "Routing",
+      "UX"
+    ],
+    "Next.js intercepting routes, soft navigation, modal over list, App Router"
+  ],
+  [
+    "nextjs-server-actions-error-handling",
+    "Server Actions Error Handling Patterns",
+    "Server Actions fail silently if you let them \u2014 structured error returns, useActionState, and toast integration patterns.",
+    [
+      "Next.js",
+      "Server Actions",
+      "Error Handling"
+    ],
+    "Next.js server actions error handling, useActionState, form errors, action results"
+  ],
+  [
+    "nextjs-draft-mode-preview-content",
+    "Draft Mode and Preview Content Workflows",
+    "Draft mode lets editors preview unpublished CMS content \u2014 secure token flow, middleware guards, and cache bypass.",
+    [
+      "Next.js",
+      "CMS",
+      "Preview"
+    ],
+    "Next.js draft mode, CMS preview, content preview workflow, preview tokens"
+  ],
+  [
+    "nextjs-instrumentation-observability",
+    "Next.js Instrumentation for Web Observability",
+    "instrumentation.ts hooks into server startup \u2014 OpenTelemetry, custom metrics, and tracing App Router requests.",
+    [
+      "Next.js",
+      "Observability",
+      "OpenTelemetry"
+    ],
+    "Next.js instrumentation, OpenTelemetry web, server tracing, observability"
+  ],
+  [
+    "nextjs-edge-runtime-limitations",
+    "Edge Runtime Limitations and Workarounds",
+    "Edge runtime excludes Node APIs \u2014 when to stay on edge, when to fall back to Node, and hybrid middleware patterns.",
+    [
+      "Next.js",
+      "Edge",
+      "Architecture"
+    ],
+    "Next.js edge runtime limitations, edge vs Node, middleware architecture"
+  ],
+  [
+    "core-web-vitals-inp-optimization",
+    "Optimizing Interaction to Next Paint (INP)",
+    "INP replaced FID \u2014 how to find long interaction delays, fix input handlers, and validate with field data.",
+    [
+      "Core Web Vitals",
+      "Performance",
+      "INP"
+    ],
+    "INP optimization, Interaction to Next Paint, input delay, Core Web Vitals 2024"
+  ],
+  [
+    "core-web-vitals-lcp-image-strategies",
+    "LCP Image Strategies for Product Sites",
+    "LCP is usually a hero image \u2014 priority hints, fetchpriority, responsive sizing, and CDN cache keys.",
+    [
+      "Core Web Vitals",
+      "LCP",
+      "Images"
+    ],
+    "LCP optimization, hero image performance, fetchpriority, largest contentful paint"
+  ],
+  [
+    "core-web-vitals-cls-font-loading",
+    "CLS from Font Loading: Prevention Patterns",
+    "Fonts cause layout shift when metrics differ from fallbacks \u2014 size-adjust, optional display, and metric overrides.",
+    [
+      "Core Web Vitals",
+      "CLS",
+      "Typography"
+    ],
+    "CLS font loading, font-display, size-adjust, cumulative layout shift fonts"
+  ],
+  [
+    "core-web-vitals-ttfb-edge-caching",
+    "TTFB Reduction with Edge Caching",
+    "TTFB reflects server and network latency \u2014 edge caching, stale-while-revalidate, and origin shield patterns.",
+    [
+      "Core Web Vitals",
+      "TTFB",
+      "CDN"
+    ],
+    "TTFB optimization, edge caching, time to first byte, CDN performance"
+  ],
+  [
+    "web-vitals-rum-dashboard-design",
+    "Designing a RUM Dashboard for Web Vitals",
+    "Field data beats lab scores \u2014 percentile breakdowns, segment by device and route, and alert thresholds that matter.",
+    [
+      "Core Web Vitals",
+      "RUM",
+      "Analytics"
+    ],
+    "RUM dashboard, web vitals monitoring, field data analytics, CrUX"
+  ],
+  [
+    "performance-budget-bundle-analyzer-ci",
+    "Bundle Analyzer Gates in CI Pipelines",
+    "Bundle size regressions slip through review \u2014 CI gates with size-limit, webpack-bundle-analyzer, and PR comments.",
+    [
+      "Performance",
+      "CI",
+      "Webpack"
+    ],
+    "bundle analyzer CI, performance budget gate, bundle size regression, size-limit"
+  ],
+  [
+    "critical-css-extraction-strategies",
+    "Critical CSS Extraction Strategies",
+    "Inlining critical CSS improves LCP \u2014 extraction tools, coverage analysis, and avoiding duplication with cached stylesheets.",
+    [
+      "CSS",
+      "Performance",
+      "LCP"
+    ],
+    "critical CSS extraction, inline CSS LCP, above-the-fold CSS, performance"
+  ],
+  [
+    "resource-hints-preconnect-prefetch",
+    "Resource Hints: Preconnect, Prefetch, Preload",
+    "Resource hints shape browser loading priority \u2014 when preconnect beats prefetch and how preload can hurt if misused.",
+    [
+      "Performance",
+      "HTML",
+      "Loading"
+    ],
+    "resource hints, preconnect, prefetch, preload, link rel"
+  ],
+  [
+    "image-srcset-sizes-responsive",
+    "srcset and sizes for Responsive Images",
+    "Correct srcset and sizes attributes serve right-sized images \u2014 math, art direction, and CDN transform integration.",
+    [
+      "Images",
+      "Performance",
+      "Responsive"
+    ],
+    "srcset sizes responsive images, picture element, image optimization"
+  ],
+  [
+    "avif-webp-fallback-picture-element",
+    "AVIF with WebP Fallback via picture",
+    "AVIF cuts bytes but needs fallbacks \u2014 picture element patterns, quality tuning, and cache key strategy.",
+    [
+      "Images",
+      "Performance",
+      "Formats"
+    ],
+    "AVIF WebP fallback, picture element, modern image formats"
+  ],
+  [
+    "lazy-loading-native-intersection",
+    "Native Lazy Loading and Intersection Observer",
+    "loading=lazy plus Intersection Observer for fine control \u2014 LCP exceptions and below-fold thresholds.",
+    [
+      "Images",
+      "Performance",
+      "Lazy Loading"
+    ],
+    "native lazy loading, Intersection Observer, loading lazy attribute"
+  ],
+  [
+    "font-display-swap-optional-strategies",
+    "font-display Strategies for Product Typography",
+    "swap vs optional vs block \u2014 choosing font-display per weight and measuring CLS impact in field data.",
+    [
+      "Typography",
+      "Performance",
+      "CLS"
+    ],
+    "font-display swap optional, web font loading strategy, CLS"
+  ],
+  [
+    "variable-fonts-performance-ux",
+    "Variable Fonts: Performance and UX Trade-offs",
+    "One file vs many weights \u2014 variable font axis tuning, subsetting, and fallback metric matching.",
+    [
+      "Typography",
+      "CSS",
+      "Performance"
+    ],
+    "variable fonts performance, font axis, woff2 subsetting"
+  ],
+  [
+    "wcag-22-new-criteria-implementation",
+    "Implementing WCAG 2.2 New Success Criteria",
+    "WCAG 2.2 adds focus appearance, target size, and dragging alternatives \u2014 implementation checklist for product teams.",
+    [
+      "Accessibility",
+      "WCAG",
+      "Compliance"
+    ],
+    "WCAG 2.2 implementation, focus appearance, target size minimum"
+  ],
+  [
+    "accessibility-autocomplete-attributes",
+    "Autocomplete Attributes for Accessible Forms",
+    "Correct autocomplete tokens speed checkout and meet WCAG identify input purpose \u2014 mapping for common form fields.",
+    [
+      "Accessibility",
+      "Forms",
+      "WCAG"
+    ],
+    "autocomplete attribute, WCAG identify input purpose, form accessibility"
+  ],
+  [
+    "accessibility-target-size-minimum",
+    "Target Size Minimums in Touch Interfaces",
+    "WCAG 2.2 target size AA requires 24px minimum \u2014 spacing patterns for dense dashboards without breaking layout.",
+    [
+      "Accessibility",
+      "WCAG 2.2",
+      "Mobile"
+    ],
+    "target size WCAG 2.2, touch target minimum, mobile accessibility"
+  ],
+  [
+    "accessibility-dragging-alternatives",
+    "Accessible Alternatives to Drag-and-Drop",
+    "WCAG 2.2 requires single-pointer alternatives to dragging \u2014 button-based reorder, keyboard moves, and announcements.",
+    [
+      "Accessibility",
+      "WCAG 2.2",
+      "UX"
+    ],
+    "dragging alternatives WCAG, accessible drag drop, keyboard reorder"
+  ],
+  [
+    "accessibility-reduced-motion-implementation",
+    "Implementing prefers-reduced-motion",
+    "Respect reduced motion preference without stripping all animation \u2014 essential vs decorative motion patterns.",
+    [
+      "Accessibility",
+      "CSS",
+      "Motion"
+    ],
+    "prefers-reduced-motion, accessible animation, motion sensitivity"
+  ],
+  [
+    "accessibility-high-contrast-themes",
+    "High Contrast Themes Without Breaking Design",
+    "Windows high contrast mode and forced-colors \u2014 CSS that survives contrast themes without losing structure.",
+    [
+      "Accessibility",
+      "Design Systems",
+      "Themes"
+    ],
+    "high contrast mode, forced-colors CSS, accessible theming"
+  ],
+  [
+    "accessibility-skip-navigation-patterns",
+    "Skip Navigation Patterns That Actually Work",
+    "Skip links fail when focus styles are removed or targets lack tabindex \u2014 patterns that work across browsers.",
+    [
+      "Accessibility",
+      "Navigation",
+      "WCAG"
+    ],
+    "skip navigation link, skip to content, keyboard navigation"
+  ],
+  [
+    "accessibility-landmark-regions-semantic",
+    "Landmark Regions and Semantic Structure",
+    "main, nav, aside, and search landmarks orient screen reader users \u2014 audit patterns for SPA layouts.",
+    [
+      "Accessibility",
+      "HTML",
+      "Screen Readers"
+    ],
+    "ARIA landmarks, semantic HTML, screen reader navigation"
+  ],
+  [
+    "accessibility-combobox-aria-patterns",
+    "Combobox ARIA Patterns for Autocomplete",
+    "WAI-ARIA combobox is easy to get wrong \u2014 active descendant, listbox coupling, and mobile considerations.",
+    [
+      "Accessibility",
+      "ARIA",
+      "Forms"
+    ],
+    "combobox ARIA pattern, autocomplete accessibility, listbox"
+  ],
+  [
+    "accessibility-data-table-sort-filter",
+    "Accessible Data Tables with Sort and Filter",
+    "Sortable tables need programmatic headers, live sort announcements, and keyboard-operable controls.",
+    [
+      "Accessibility",
+      "Tables",
+      "ARIA"
+    ],
+    "accessible data table, sortable table ARIA, table accessibility"
+  ],
+  [
+    "accessibility-toast-announcement-polite",
+    "Toast Announcements: polite vs assertive",
+    "aria-live politeness controls announcement interruption \u2014 toast queue patterns that do not steal focus.",
+    [
+      "Accessibility",
+      "ARIA Live",
+      "Notifications"
+    ],
+    "aria-live toast, polite assertive, screen reader announcements"
+  ],
+  [
+    "accessibility-infinite-scroll-alternatives",
+    "Infinite Scroll Accessibility Alternatives",
+    "Infinite scroll breaks location and back navigation \u2014 load more buttons, pagination, and focus management.",
+    [
+      "Accessibility",
+      "Pagination",
+      "UX"
+    ],
+    "infinite scroll accessibility, load more button, pagination a11y"
+  ],
+  [
+    "accessibility-form-error-summary",
+    "Form Error Summary Patterns for WCAG",
+    "Error summary links must move focus to invalid fields \u2014 inline errors, aria-describedby, and announcement timing.",
+    [
+      "Accessibility",
+      "Forms",
+      "Validation"
+    ],
+    "form error summary, WCAG error identification, accessible validation"
+  ],
+  [
+    "accessibility-color-not-only-cue",
+    "Color as Not the Only Visual Cue",
+    "Status communicated by color alone fails WCAG \u2014 icons, patterns, and text labels for success and error states.",
+    [
+      "Accessibility",
+      "Design",
+      "WCAG"
+    ],
+    "color not only visual cue, accessible status indicators, WCAG use of color"
+  ],
+  [
+    "axe-core-ci-integration-patterns",
+    "axe-core CI Integration Patterns",
+    "Run axe in CI without flaky failures \u2014 scope rules, known violations allowlists with expiry, and PR gates.",
+    [
+      "Accessibility",
+      "Testing",
+      "CI"
+    ],
+    "axe-core CI, accessibility testing pipeline, jest-axe"
+  ],
+  [
+    "pa11y-automated-accessibility-testing",
+    "Pa11y for Automated Accessibility Testing",
+    "Pa11y crawls routes for WCAG violations \u2014 CI configuration, sitemap-driven audits, and threshold policies.",
+    [
+      "Accessibility",
+      "Testing",
+      "CI"
+    ],
+    "pa11y CI, automated accessibility audit, WCAG testing"
+  ],
+  [
+    "accessibility-manual-testing-checklist",
+    "Manual Accessibility Testing Checklist",
+    "Automated tools miss keyboard traps and illogical focus order \u2014 repeatable manual checklist for releases.",
+    [
+      "Accessibility",
+      "QA",
+      "Testing"
+    ],
+    "manual accessibility testing, a11y QA checklist, screen reader testing"
+  ],
+  [
+    "design-system-component-api-design",
+    "Design System Component API Design",
+    "Prop explosion vs composition \u2014 designing component APIs that scale across teams without breaking consumers.",
+    [
+      "Design Systems",
+      "Components",
+      "API Design"
+    ],
+    "design system component API, prop design, composable components"
+  ],
+  [
+    "design-system-semantic-versioning",
+    "Semantic Versioning for Design Systems",
+    "Breaking visual changes are breaking changes \u2014 semver policy for tokens, components, and migration guides.",
+    [
+      "Design Systems",
+      "Versioning",
+      "DX"
+    ],
+    "design system semver, breaking changes UI library, migration guides"
+  ],
+  [
+    "design-system-figma-code-parity",
+    "Figma-to-Code Parity in Design Systems",
+    "Design tokens drift from code \u2014 Code Connect, token sync pipelines, and review rituals that keep parity.",
+    [
+      "Design Systems",
+      "Figma",
+      "Workflow"
+    ],
+    "Figma code parity, design tokens sync, Code Connect"
+  ],
+  [
+    "design-system-composition-over-configuration",
+    "Composition Over Configuration in UI Libraries",
+    "Configurable mega-components become unmaintainable \u2014 slot and compound patterns for flexible UI.",
+    [
+      "Design Systems",
+      "React",
+      "Patterns"
+    ],
+    "composition over configuration, compound components, design system patterns"
+  ],
+  [
+    "design-system-slot-pattern-polymorphism",
+    "Slot Patterns and Polymorphic Components",
+    "asChild and slot patterns type-safe polymorphism \u2014 Radix-style APIs without runtime prop soup.",
+    [
+      "Design Systems",
+      "React",
+      "Components"
+    ],
+    "polymorphic components, asChild pattern, slot pattern React"
+  ],
+  [
+    "design-system-dark-mode-tokens",
+    "Dark Mode Token Architecture",
+    "Semantic tokens for color scheme \u2014 avoid hardcoded dark overrides, use CSS custom properties and data-theme.",
+    [
+      "Design Systems",
+      "Theming",
+      "Tokens"
+    ],
+    "dark mode design tokens, semantic color tokens, theme switching"
+  ],
+  [
+    "design-system-density-modes",
+    "Density Modes in Enterprise Design Systems",
+    "Compact vs comfortable density for data-heavy UIs \u2014 token scales, component spacing, and user preference persistence.",
+    [
+      "Design Systems",
+      "Theming",
+      "Enterprise"
+    ],
+    "density modes UI, compact comfortable spacing, enterprise design system"
+  ],
+  [
+    "design-system-icon-system-svg-sprite",
+    "Icon System Architecture with SVG Sprites",
+    "Inline SVG vs sprite sheets vs icon fonts \u2014 tree-shaking, caching, and accessibility for icon systems.",
+    [
+      "Design Systems",
+      "Icons",
+      "Performance"
+    ],
+    "SVG icon system, icon sprite, accessible icons"
+  ],
+  [
+    "design-system-typography-scale-fluid",
+    "Fluid Typography Scales in Design Systems",
+    "clamp()-based fluid type scales \u2014 min/max viewport bounds, line-height pairing, and readability testing.",
+    [
+      "Design Systems",
+      "Typography",
+      "CSS"
+    ],
+    "fluid typography, clamp font size, responsive type scale"
+  ],
+  [
+    "design-system-spacing-grid-system",
+    "Spacing Grid Systems That Scale",
+    "4px vs 8px grids, semantic spacing tokens, and when to break the grid for optical alignment.",
+    [
+      "Design Systems",
+      "Layout",
+      "Tokens"
+    ],
+    "spacing grid design system, spacing tokens, layout grid"
+  ],
+  [
+    "storybook-chromatic-visual-testing",
+    "Chromatic Visual Regression in Storybook",
+    "Visual diffs catch unintended UI changes \u2014 Chromatic workflow, baselines, and flaky snapshot management.",
+    [
+      "Design Systems",
+      "Storybook",
+      "Testing"
+    ],
+    "Chromatic visual regression, Storybook visual testing, UI snapshots"
+  ],
+  [
+    "storybook-interaction-testing-patterns",
+    "Storybook Interaction Testing Patterns",
+    "play functions test component behavior in isolation \u2014 interaction tests that complement unit and E2E coverage.",
+    [
+      "Design Systems",
+      "Storybook",
+      "Testing"
+    ],
+    "Storybook interaction tests, play function, component testing"
+  ],
+  [
+    "css-architecture-bem-vs-modules",
+    "CSS Architecture: BEM vs CSS Modules",
+    "Global namespace collisions vs build-time scoping \u2014 choosing CSS architecture for team scale and migration paths.",
+    [
+      "CSS",
+      "Architecture",
+      "Scalability"
+    ],
+    "BEM vs CSS modules, CSS architecture, scalable stylesheets"
+  ],
+  [
+    "css-architecture-utility-first-layers",
+    "Utility-First CSS with Cascade Layers",
+    "@layer orders Tailwind overrides predictably \u2014 architecture for design tokens plus utility escape hatches.",
+    [
+      "CSS",
+      "Tailwind",
+      "Architecture"
+    ],
+    "CSS cascade layers Tailwind, utility-first architecture, @layer"
+  ],
+  [
+    "css-custom-properties-theming",
+    "CSS Custom Properties for Runtime Theming",
+    "Runtime theme switches need custom properties \u2014 SSR hydration, flash prevention, and token inheritance.",
+    [
+      "CSS",
+      "Theming",
+      "Custom Properties"
+    ],
+    "CSS custom properties theming, runtime theme switch, CSS variables"
+  ],
+  [
+    "css-logical-properties-migration",
+    "Migrating to CSS Logical Properties",
+    "margin-inline and inset-inline replace directional properties \u2014 migration checklist for RTL-ready layouts.",
+    [
+      "CSS",
+      "i18n",
+      "RTL"
+    ],
+    "CSS logical properties, margin-inline, RTL layout migration"
+  ],
+  [
+    "css-grid-auto-fit-minmax-patterns",
+    "CSS Grid auto-fit and minmax Patterns",
+    "Responsive grids without media queries \u2014 auto-fit, minmax, and subgrid for card layouts.",
+    [
+      "CSS",
+      "Layout",
+      "Grid"
+    ],
+    "CSS grid auto-fit minmax, responsive grid, subgrid"
+  ],
+  [
+    "css-flexbox-gap-fallbacks",
+    "Flexbox gap() and Fallback Strategies",
+    "gap in flexbox is widely supported \u2014 when you still need margin fallbacks and nested gap collapse fixes.",
+    [
+      "CSS",
+      "Layout",
+      "Flexbox"
+    ],
+    "flexbox gap fallback, CSS gap support, flex layout"
+  ],
+  [
+    "css-sticky-positioning-pitfalls",
+    "position: sticky Pitfalls and Fixes",
+    "Sticky breaks with overflow:hidden ancestors \u2014 stacking context, scroll containers, and table sticky headers.",
+    [
+      "CSS",
+      "Layout",
+      "Scroll"
+    ],
+    "position sticky pitfalls, sticky header CSS, overflow hidden sticky"
+  ],
+  [
+    "css-overflow-anchor-scroll-jank",
+    "overflow-anchor and Scroll Jank Prevention",
+    "Scroll anchoring prevents jumpy layouts when content loads above viewport \u2014 tuning overflow-anchor for feeds.",
+    [
+      "CSS",
+      "Scroll",
+      "Performance"
+    ],
+    "overflow-anchor, scroll anchoring, scroll jank prevention"
+  ],
+  [
+    "css-content-visibility-performance",
+    "content-visibility for Long Page Performance",
+    "Skip rendering off-screen sections \u2014 content-visibility:auto, contain-intrinsic-size, and accessibility caveats.",
+    [
+      "CSS",
+      "Performance",
+      "Rendering"
+    ],
+    "content-visibility CSS, render skipping, long page performance"
+  ],
+  [
+    "css-isolation-stacking-context",
+    "CSS isolation and Stacking Context Control",
+    "z-index wars come from stacking contexts \u2014 isolation:isolate, predictable overlay layering in design systems.",
+    [
+      "CSS",
+      "Layout",
+      "Z-index"
+    ],
+    "CSS isolation, stacking context, z-index management"
+  ],
+  [
+    "css-print-stylesheets-product",
+    "Print Stylesheets for Product Documentation",
+    "Print CSS for invoices, reports, and help docs \u2014 @media print, page breaks, and hiding chrome.",
+    [
+      "CSS",
+      "Print",
+      "UX"
+    ],
+    "print stylesheet CSS, @media print, printable pages"
+  ],
+  [
+    "css-animation-performance-compositor",
+    "Compositor-Only CSS Animation Patterns",
+    "Animate transform and opacity only \u2014 properties that trigger layout/paint vs compositor thread animation.",
+    [
+      "CSS",
+      "Animation",
+      "Performance"
+    ],
+    "compositor animation CSS, transform opacity animation, performance"
+  ],
+  [
+    "i18n-icu-message-format-react",
+    "ICU Message Format in React Applications",
+    "Plural, select, and number formatting in translations \u2014 FormatJS, react-intl, and translator-friendly keys.",
+    [
+      "i18n",
+      "React",
+      "Localization"
+    ],
+    "ICU message format, react-intl, pluralization i18n"
+  ],
+  [
+    "i18n-plural-rules-cldr",
+    "CLDR Plural Rules in Frontend Apps",
+    "Languages have complex plural categories \u2014 CLDR rules, Intl.PluralRules, and avoiding English-centric assumptions.",
+    [
+      "i18n",
+      "Localization",
+      "CLDR"
+    ],
+    "CLDR plural rules, Intl PluralRules, localization pluralization"
+  ],
+  [
+    "i18n-relative-time-formatting",
+    "Relative Time Formatting Across Locales",
+    "2 hours ago differs by locale \u2014 Intl.RelativeTimeFormat, update intervals, and SSR hydration consistency.",
+    [
+      "i18n",
+      "Date",
+      "Localization"
+    ],
+    "relative time formatting, Intl RelativeTimeFormat, locale dates"
+  ],
+  [
+    "i18n-currency-formatting-intl",
+    "Currency Formatting with Intl.NumberFormat",
+    "Currency display conventions vary \u2014 Intl.NumberFormat currency, minor units, and crypto edge cases.",
+    [
+      "i18n",
+      "Payments",
+      "Intl"
+    ],
+    "Intl NumberFormat currency, currency formatting locale, payments i18n"
+  ],
+  [
+    "i18n-locale-detection-strategies",
+    "Locale Detection Strategies for Web Apps",
+    "Accept-Language vs geo vs user preference \u2014 detection order, cookie persistence, and SEO implications.",
+    [
+      "i18n",
+      "Routing",
+      "UX"
+    ],
+    "locale detection web app, Accept-Language, i18n routing"
+  ],
+  [
+    "i18n-hreflang-seo-implementation",
+    "hreflang Implementation for Multilingual SEO",
+    "hreflang prevents duplicate content penalties \u2014 x-default, reciprocal links, and sitemap hreflang entries.",
+    [
+      "i18n",
+      "SEO",
+      "hreflang"
+    ],
+    "hreflang implementation, multilingual SEO, x-default hreflang"
+  ],
+  [
+    "i18n-rtl-layout-mirror-patterns",
+    "RTL Layout Mirror Patterns",
+    "RTL is not just text direction \u2014 mirroring icons, animations, and asymmetric layouts with logical properties.",
+    [
+      "i18n",
+      "RTL",
+      "CSS"
+    ],
+    "RTL layout patterns, logical properties RTL, Arabic Hebrew UI"
+  ],
+  [
+    "i18n-translation-key-namespacing",
+    "Translation Key Namespacing Conventions",
+    "Flat keys become unmaintainable \u2014 namespace conventions, feature ownership, and dead key detection.",
+    [
+      "i18n",
+      "DX",
+      "Architecture"
+    ],
+    "translation key namespacing, i18n key conventions, localization architecture"
+  ],
+  [
+    "i18n-lazy-loading-locale-bundles",
+    "Lazy Loading Locale Bundles",
+    "Ship default locale only \u2014 dynamic import per locale, webpack/vite chunk strategy, and loading UX.",
+    [
+      "i18n",
+      "Performance",
+      "Code Splitting"
+    ],
+    "lazy load translations, locale code splitting, i18n bundle size"
+  ],
+  [
+    "i18n-fallback-locale-chains",
+    "Fallback Locale Chains in Production",
+    "Missing keys in pt-BR should fall back gracefully \u2014 chain configuration, Sentry missing-key alerts, and QA.",
+    [
+      "i18n",
+      "Localization",
+      "Error Handling"
+    ],
+    "fallback locale chain, missing translation handling, i18n production"
+  ],
+  [
+    "i18n-pseudo-localization-qa",
+    "Pseudo-Localization for i18n QA",
+    "Pseudo-loc exposes truncation and hardcoded strings \u2014 tooling, CI integration, and designer review workflow.",
+    [
+      "i18n",
+      "QA",
+      "Testing"
+    ],
+    "pseudo-localization, i18n QA testing, string expansion"
+  ],
+  [
+    "seo-structured-data-json-ld",
+    "Structured Data with JSON-LD for Product Pages",
+    "Product, FAQ, and Organization schema \u2014 JSON-LD placement, validation, and avoiding spam penalties.",
+    [
+      "SEO",
+      "JSON-LD",
+      "Schema.org"
+    ],
+    "JSON-LD structured data, schema.org product, SEO rich results"
+  ],
+  [
+    "seo-canonical-url-strategies",
+    "Canonical URL Strategies for SPAs",
+    "Duplicate URLs dilute ranking signals \u2014 canonical tags, trailing slash policy, and parameterized URL handling.",
+    [
+      "SEO",
+      "Canonical",
+      "Routing"
+    ],
+    "canonical URL SPA, duplicate content SEO, rel canonical"
+  ],
+  [
+    "seo-meta-robots-noindex-patterns",
+    "Meta Robots and noindex Patterns",
+    "noindex for staging, faceted search, and thin pages \u2014 robots meta vs X-Robots-Tag and crawl budget.",
+    [
+      "SEO",
+      "Meta Tags",
+      "Indexing"
+    ],
+    "meta robots noindex, X-Robots-Tag, crawl budget"
+  ],
+  [
+    "seo-open-graph-twitter-cards",
+    "Open Graph and Twitter Card Optimization",
+    "Social previews drive click-through \u2014 og:image dimensions, dynamic OG generation, and cache busting.",
+    [
+      "SEO",
+      "Social",
+      "Meta Tags"
+    ],
+    "Open Graph optimization, Twitter cards, og:image"
+  ],
+  [
+    "seo-sitemap-dynamic-generation",
+    "Dynamic Sitemap Generation for Apps",
+    "Sitemaps for dynamic routes \u2014 Next.js sitemap.ts, lastmod accuracy, and pagination for large catalogs.",
+    [
+      "SEO",
+      "Sitemap",
+      "Next.js"
+    ],
+    "dynamic sitemap generation, Next.js sitemap, XML sitemap"
+  ],
+  [
+    "seo-internal-linking-architecture",
+    "Internal Linking Architecture for Product Sites",
+    "Internal links distribute PageRank and aid discovery \u2014 hub pages, breadcrumbs, and related content modules.",
+    [
+      "SEO",
+      "Content",
+      "Architecture"
+    ],
+    "internal linking SEO, site architecture, hub pages"
+  ],
+  [
+    "aeo-answer-engine-optimization",
+    "Answer Engine Optimization for Product Content",
+    "LLM and AI search surfaces favor structured answers \u2014 content patterns for ChatGPT, Perplexity, and Google AI Overviews.",
+    [
+      "AEO",
+      "SEO",
+      "Content"
+    ],
+    "answer engine optimization, AEO SEO, AI search optimization"
+  ],
+  [
+    "aeo-faq-schema-implementation",
+    "FAQ Schema for Answer Engine Visibility",
+    "FAQ structured data feeds answer engines \u2014 honest FAQ markup, avoid schema spam, and measure visibility.",
+    [
+      "AEO",
+      "Schema.org",
+      "SEO"
+    ],
+    "FAQ schema markup, answer engine FAQ, structured data FAQ"
+  ],
+  [
+    "aeo-featured-snippet-structure",
+    "Content Structure for Featured Snippets",
+    "Paragraph, list, and table snippets \u2014 heading hierarchy, concise definitions, and avoiding fluff paragraphs.",
+    [
+      "AEO",
+      "SEO",
+      "Content"
+    ],
+    "featured snippet optimization, snippet structure SEO, position zero"
+  ],
+  [
+    "seo-core-web-vitals-ranking",
+    "Core Web Vitals and Search Ranking Signals",
+    "Page experience signals include CWV \u2014 correlation not causation, prioritize user impact over gaming metrics.",
+    [
+      "SEO",
+      "Core Web Vitals",
+      "Performance"
+    ],
+    "Core Web Vitals SEO ranking, page experience signals, Google ranking"
+  ],
+  [
+    "seo-javascript-rendering-crawl",
+    "JavaScript Rendering and Crawl Budget",
+    "Google renders JS but crawl budget is finite \u2014 SSR vs CSR for indexable content and rendering diagnostics.",
+    [
+      "SEO",
+      "SSR",
+      "Crawling"
+    ],
+    "JavaScript SEO rendering, crawl budget SPA, Googlebot rendering"
+  ],
+  [
+    "auth-ux-magic-link-flow",
+    "Magic Link Authentication UX Patterns",
+    "Magic links reduce password friction \u2014 expiry UX, cross-device handoff, and phishing-resistant copy.",
+    [
+      "Auth",
+      "UX",
+      "Passwordless"
+    ],
+    "magic link UX, passwordless login UX, email authentication"
+  ],
+  [
+    "auth-ux-social-login-buttons",
+    "Social Login Button Design and Placement",
+    "Social buttons affect conversion and trust \u2014 ordering, branding guidelines, and account linking UX.",
+    [
+      "Auth",
+      "UX",
+      "OAuth"
+    ],
+    "social login UX, OAuth button design, sign in with Google"
+  ],
+  [
+    "auth-ux-session-expiry-handling",
+    "Session Expiry UX Without Surprise Logouts",
+    "Silent refresh vs re-auth modals \u2014 preserving form state, warning before expiry, and background tab behavior.",
+    [
+      "Auth",
+      "UX",
+      "Sessions"
+    ],
+    "session expiry UX, silent refresh, re-authentication modal"
+  ],
+  [
+    "auth-ux-multi-factor-step-up",
+    "Step-Up MFA UX Patterns",
+    "Step-up auth for sensitive actions \u2014 inline MFA prompts, WebAuthn, and minimizing friction for low-risk ops.",
+    [
+      "Auth",
+      "MFA",
+      "UX"
+    ],
+    "step-up authentication UX, MFA prompt design, adaptive auth UX"
+  ],
+  [
+    "auth-ux-account-recovery-flows",
+    "Account Recovery Flows That Reduce Support",
+    "Recovery flows are attack surfaces \u2014 rate limiting UX, clear error messages, and self-service without support tickets.",
+    [
+      "Auth",
+      "UX",
+      "Recovery"
+    ],
+    "account recovery UX, password reset UX, self-service recovery"
+  ],
+  [
+    "auth-ux-progressive-profile-collection",
+    "Progressive Profile Collection After Signup",
+    "Ask for data when you need it \u2014 progressive profiling reduces signup abandonment and improves data quality.",
+    [
+      "Auth",
+      "UX",
+      "Onboarding"
+    ],
+    "progressive profiling UX, signup form optimization, onboarding"
+  ],
+  [
+    "auth-ux-device-trust-prompts",
+    "New Device Trust Prompts and UX",
+    "New device emails and in-app trust prompts \u2014 security without panic, clear device metadata display.",
+    [
+      "Auth",
+      "Security",
+      "UX"
+    ],
+    "new device login UX, device trust prompt, security notification UX"
+  ],
+  [
+    "auth-ux-oauth-consent-screens",
+    "OAuth Consent Screen UX Best Practices",
+    "Consent screens affect authorization rates \u2014 scope minimization, plain language, and brand trust signals.",
+    [
+      "Auth",
+      "OAuth",
+      "UX"
+    ],
+    "OAuth consent screen UX, scope consent, authorization UX"
+  ],
+  [
+    "auth-ux-passkey-enrollment-flow",
+    "Passkey Enrollment Flow UX",
+    "Passkey enrollment after password login \u2014 nudge timing, cross-device QR flow, and recovery key backup UX.",
+    [
+      "Auth",
+      "WebAuthn",
+      "UX"
+    ],
+    "passkey enrollment UX, WebAuthn onboarding, passwordless migration"
+  ],
+  [
+    "csp-nonce-per-request-implementation",
+    "CSP Nonce Per Request Implementation",
+    "Inline scripts need per-request nonces \u2014 middleware generation, SSR propagation, and CDN caching implications.",
+    [
+      "Security",
+      "CSP",
+      "XSS"
+    ],
+    "CSP nonce per request, Content Security Policy nonce, inline script CSP"
+  ],
+  [
+    "csp-report-only-monitoring",
+    "CSP Report-Only Mode for Safe Rollout",
+    "Roll out CSP in report-only first \u2014 report-uri aggregation, violation triage, and promote to enforce.",
+    [
+      "Security",
+      "CSP",
+      "Monitoring"
+    ],
+    "CSP report-only, Content-Security-Policy-Report-Only, CSP monitoring"
+  ],
+  [
+    "csp-strict-dynamic-scripts",
+    "strict-dynamic in Content Security Policy",
+    "strict-dynamic trusts nonce-approved script chains \u2014 third-party loader implications and hash fallbacks.",
+    [
+      "Security",
+      "CSP",
+      "Scripts"
+    ],
+    "CSP strict-dynamic, script-src strict-dynamic, nonce chain"
+  ],
+  [
+    "csp-frame-ancestors-clickjacking",
+    "frame-ancestors for Clickjacking Prevention",
+    "X-Frame-Options is legacy \u2014 frame-ancestors CSP directive for embed policies and partner iframe allowlists.",
+    [
+      "Security",
+      "CSP",
+      "Clickjacking"
+    ],
+    "frame-ancestors CSP, clickjacking prevention, X-Frame-Options"
+  ],
+  [
+    "xss-dom-based-prevention",
+    "DOM-Based XSS Prevention in SPAs",
+    "DOM XSS from innerHTML, location.hash, and postMessage \u2014 sanitization and strict source validation in React.",
+    [
+      "Security",
+      "XSS",
+      "React"
+    ],
+    "DOM XSS prevention, SPA XSS, React XSS security"
+  ],
+  [
+    "xss-sanitize-html-user-content",
+    "Sanitizing HTML User Content Safely",
+    "DOMPurify configuration for rich text \u2014 allowlist tags, hook for links, and SSR sanitization parity.",
+    [
+      "Security",
+      "XSS",
+      "DOMPurify"
+    ],
+    "DOMPurify sanitize HTML, user content XSS, rich text security"
+  ],
+  [
+    "csrf-double-submit-cookie-pattern",
+    "Double Submit Cookie CSRF Pattern",
+    "Double submit cookie pattern for SPA CSRF defense \u2014 cookie attributes, SameSite interaction, and limitations.",
+    [
+      "Security",
+      "CSRF",
+      "Cookies"
+    ],
+    "double submit cookie CSRF, CSRF token cookie, SPA CSRF"
+  ],
+  [
+    "csrf-synchronizer-token-spa",
+    "Synchronizer Token Pattern in SPAs",
+    "CSRF tokens in meta tags and headers \u2014 server action integration, rotation, and BFF token issuance.",
+    [
+      "Security",
+      "CSRF",
+      "SPA"
+    ],
+    "synchronizer token CSRF, CSRF token SPA, anti-CSRF"
+  ],
+  [
+    "security-subresource-integrity-sri",
+    "Subresource Integrity for Third-Party Scripts",
+    "SRI hashes detect CDN tampering \u2014 integrity attribute, fallback when hash rotates, and CSP require-sri-for.",
+    [
+      "Security",
+      "SRI",
+      "CDN"
+    ],
+    "Subresource Integrity SRI, integrity attribute CDN, script integrity"
+  ],
+  [
+    "security-http-only-secure-cookies",
+    "HttpOnly and Secure Cookie Configuration",
+    "Session cookies need HttpOnly, Secure, SameSite \u2014 __Host- prefix rules and subdomain cookie scope.",
+    [
+      "Security",
+      "Cookies",
+      "Auth"
+    ],
+    "HttpOnly Secure cookie, SameSite cookie, session cookie security"
+  ],
+  [
+    "security-permissions-policy-headers",
+    "Permissions-Policy Header Configuration",
+    "Disable unused browser features \u2014 camera, geolocation, payment API restrictions reduce attack surface.",
+    [
+      "Security",
+      "Headers",
+      "Privacy"
+    ],
+    "Permissions-Policy header, Feature-Policy, browser feature restriction"
+  ],
+  [
+    "security-referrer-policy-configuration",
+    "Referrer-Policy Configuration for Privacy",
+    "Referrer leakage in URLs \u2014 strict-origin-when-cross-origin vs no-referrer for sensitive routes.",
+    [
+      "Security",
+      "Headers",
+      "Privacy"
+    ],
+    "Referrer-Policy header, referrer leakage privacy, strict-origin-when-cross-origin"
+  ],
+  [
+    "privacy-cookie-consent-banner-ux",
+    "Cookie Consent Banner UX That Complies",
+    "GDPR consent without dark patterns \u2014 equal reject button, granular categories, and consent persistence.",
+    [
+      "Privacy",
+      "GDPR",
+      "UX"
+    ],
+    "cookie consent banner UX, GDPR consent UI, cookie banner design"
+  ],
+  [
+    "privacy-consent-mode-analytics",
+    "Consent Mode for Analytics Integration",
+    "Google Consent Mode v2 and alternatives \u2014 load analytics only after consent without breaking attribution.",
+    [
+      "Privacy",
+      "GDPR",
+      "Analytics"
+    ],
+    "Consent Mode analytics, GDPR analytics consent, Google Consent Mode v2"
+  ],
+  [
+    "privacy-data-minimization-forms",
+    "Data Minimization in Signup Forms",
+    "Collect only necessary PII \u2014 field justification, optional vs required labeling, and retention disclosure.",
+    [
+      "Privacy",
+      "GDPR",
+      "Forms"
+    ],
+    "data minimization GDPR, signup form privacy, PII collection UX"
+  ],
+  [
+    "privacy-privacy-by-design-frontend",
+    "Privacy by Design in Frontend Architecture",
+    "Privacy by design starts in component architecture \u2014 data flow maps, client-side analytics boundaries, and DPIA inputs.",
+    [
+      "Privacy",
+      "GDPR",
+      "Architecture"
+    ],
+    "privacy by design frontend, GDPR engineering, data flow architecture"
+  ],
+  [
+    "privacy-right-to-erasure-ui",
+    "Right to Erasure UI Flows",
+    "Self-service account deletion UX \u2014 confirmation steps, grace period, and downstream system orchestration visibility.",
+    [
+      "Privacy",
+      "GDPR",
+      "UX"
+    ],
+    "right to erasure UI, account deletion UX, GDPR delete account"
+  ],
+  [
+    "privacy-dpia-frontend-data-flows",
+    "DPIA for Frontend Data Collection Flows",
+    "DPIA inputs from frontend \u2014 what data leaves the browser, third-party processors, and legal basis documentation.",
+    [
+      "Privacy",
+      "GDPR",
+      "Compliance"
+    ],
+    "DPIA frontend, data protection impact assessment web, privacy compliance"
+  ],
+  [
+    "privacy-third-party-script-audit",
+    "Third-Party Script Privacy Audit",
+    "Inventory third-party scripts \u2014 data collected, consent category, and removal candidates ranked by risk.",
+    [
+      "Privacy",
+      "Security",
+      "Audit"
+    ],
+    "third party script audit, tag manager privacy, script inventory"
+  ],
+  [
+    "privacy-local-storage-pii-risks",
+    "localStorage PII Risks and Alternatives",
+    "localStorage is readable by any script \u2014 never store tokens or PII; prefer HttpOnly cookies and memory.",
+    [
+      "Privacy",
+      "Security",
+      "Storage"
+    ],
+    "localStorage security, PII localStorage risk, browser storage security"
+  ],
+  [
+    "payments-ux-card-element-design",
+    "Card Element Design for Conversion",
+    "Stripe Elements styling and error placement \u2014 reducing perceived friction and mobile keyboard optimization.",
+    [
+      "Payments",
+      "UX",
+      "Stripe"
+    ],
+    "card element UX, Stripe Elements design, payment form conversion"
+  ],
+  [
+    "payments-ux-error-message-clarity",
+    "Payment Error Messages Users Understand",
+    "Decline codes translated to actionable copy \u2014 retry guidance, alternative payment methods, and support escalation.",
+    [
+      "Payments",
+      "UX",
+      "Conversion"
+    ],
+    "payment error message UX, decline code copy, checkout error handling"
+  ],
+  [
+    "payments-ux-3ds2-frictionless-flow",
+    "3DS2 Frictionless Flow UX Optimization",
+    "Maximize frictionless 3DS2 \u2014 device data collection, challenge UI minimization, and abandonment tracking.",
+    [
+      "Payments",
+      "UX",
+      "3DS"
+    ],
+    "3DS2 frictionless UX, Strong Customer Authentication UX, payment authentication"
+  ],
+  [
+    "payments-ux-saved-payment-methods",
+    "Saved Payment Methods UX Patterns",
+    "Default payment method selection \u2014 card update flows, expired card prompts, and PCI scope reduction via tokens.",
+    [
+      "Payments",
+      "UX",
+      "Retention"
+    ],
+    "saved payment methods UX, default payment method, wallet UX"
+  ],
+  [
+    "payments-ux-subscription-upgrade-flow",
+    "Subscription Upgrade Flow UX",
+    "Plan upgrade without surprise charges \u2014 proration display, confirmation step, and immediate feature access.",
+    [
+      "Payments",
+      "UX",
+      "SaaS"
+    ],
+    "subscription upgrade UX, plan change UX, SaaS billing UX"
+  ],
+  [
+    "payments-ux-invoice-receipt-display",
+    "Invoice and Receipt Display Patterns",
+    "Post-purchase receipt UX \u2014 PDF download, email resend, tax line items, and accessible invoice tables.",
+    [
+      "Payments",
+      "UX",
+      "Billing"
+    ],
+    "invoice receipt UX, billing history UI, payment confirmation page"
+  ],
+  [
+    "payments-ux-multi-currency-display",
+    "Multi-Currency Display UX",
+    "Show prices in user currency with FX disclaimer \u2014 rounding rules, currency switcher, and checkout consistency.",
+    [
+      "Payments",
+      "UX",
+      "i18n"
+    ],
+    "multi-currency display UX, currency switcher, FX display checkout"
+  ],
+  [
+    "payments-ux-wallet-buttons-apple-google",
+    "Apple Pay and Google Pay Button Placement",
+    "Wallet buttons above manual card entry \u2014 domain verification, express checkout, and mobile prominence.",
+    [
+      "Payments",
+      "UX",
+      "Wallets"
+    ],
+    "Apple Pay button placement, Google Pay checkout UX, wallet payment UX"
+  ],
+  [
+    "experimentation-feature-flag-frontend",
+    "Feature Flags in Frontend Architecture",
+    "Client-side flags without flicker \u2014 bootstrap payload, edge evaluation, and type-safe flag definitions.",
+    [
+      "Experimentation",
+      "Feature Flags",
+      "Architecture"
+    ],
+    "feature flags frontend, flag flicker prevention, LaunchDarkly React"
+  ],
+  [
+    "experimentation-ab-test-assignment",
+    "A/B Test Assignment Without Flicker",
+    "Assignment before render \u2014 server-side bucketing, anti-flicker snippets done right, and holdout integrity.",
+    [
+      "Experimentation",
+      "A/B Testing",
+      "UX"
+    ],
+    "AB test flicker prevention, experiment assignment, anti-flicker snippet"
+  ],
+  [
+    "experimentation-holdout-groups-design",
+    "Holdout Groups in Product Experimentation",
+    "Global holdouts measure long-term lift \u2014 design, size, and ethical considerations for persistent holdouts.",
+    [
+      "Experimentation",
+      "A/B Testing",
+      "Analytics"
+    ],
+    "holdout group experimentation, global holdout AB test, experiment design"
+  ],
+  [
+    "experimentation-guardrail-metrics-frontend",
+    "Guardrail Metrics for Frontend Experiments",
+    "Guardrails catch harm \u2014 error rate, LCP, support tickets as experiment success criteria alongside primary metrics.",
+    [
+      "Experimentation",
+      "Metrics",
+      "Quality"
+    ],
+    "guardrail metrics experimentation, AB test guardrails, experiment quality metrics"
+  ],
+  [
+    "experimentation-sequential-testing-ux",
+    "Sequential Testing for UX Experiments",
+    "Peeking inflates false positives \u2014 sequential testing methods for faster decisions with valid statistics.",
+    [
+      "Experimentation",
+      "Statistics",
+      "A/B Testing"
+    ],
+    "sequential testing AB test, peeking problem experiments, SPRT"
+  ],
+  [
+    "experimentation-multivariate-testing-limits",
+    "Multivariate Testing Limits in Product UI",
+    "Full factorial MVT explodes traffic needs \u2014 fractional factorial and component-level testing alternatives.",
+    [
+      "Experimentation",
+      "Testing",
+      "UX"
+    ],
+    "multivariate testing limits, MVT traffic requirements, component testing"
+  ],
+  [
+    "experimentation-personalization-vs-ab",
+    "Personalization vs A/B Testing Trade-offs",
+    "Personalization optimizes per user; AB tests measure population effects \u2014 when to use which and hybrid approaches.",
+    [
+      "Experimentation",
+      "Personalization",
+      "Strategy"
+    ],
+    "personalization vs AB testing, experimentation strategy, targeting vs testing"
+  ],
+  [
+    "content-system-headless-cms-frontend",
+    "Headless CMS Integration Patterns",
+    "Headless CMS content in Next.js \u2014 preview, webhooks for revalidation, and typed content models.",
+    [
+      "Content",
+      "CMS",
+      "Architecture"
+    ],
+    "headless CMS frontend, Contentful Next.js, CMS integration patterns"
+  ],
+  [
+    "content-system-mdx-component-mapping",
+    "MDX Component Mapping for Content Sites",
+    "MDX shortcodes to design system components \u2014 compile pipeline, security sandboxing, and author DX.",
+    [
+      "Content",
+      "MDX",
+      "Next.js"
+    ],
+    "MDX component mapping, MDX design system, content authoring MDX"
+  ],
+  [
+    "content-system-rich-text-sanitization",
+    "Rich Text Sanitization in CMS Content",
+    "CMS HTML is untrusted \u2014 server-side sanitization, link rel policies, and embed allowlists.",
+    [
+      "Content",
+      "Security",
+      "CMS"
+    ],
+    "rich text sanitization CMS, HTML content security, CMS XSS prevention"
+  ],
+  [
+    "content-system-preview-draft-workflows",
+    "Preview and Draft Workflows for Content",
+    "Editors preview before publish \u2014 secure preview URLs, auth, and visual diff against production.",
+    [
+      "Content",
+      "CMS",
+      "Preview"
+    ],
+    "CMS preview workflow, draft content preview, editorial preview"
+  ],
+  [
+    "content-system-structured-content-modeling",
+    "Structured Content Modeling for Products",
+    "Structured content beats WYSIWYG pages \u2014 content types, references, and frontend query patterns.",
+    [
+      "Content",
+      "CMS",
+      "Architecture"
+    ],
+    "structured content modeling, headless content model, CMS schema design"
+  ],
+  [
+    "content-system-localization-workflows",
+    "Content Localization Workflows",
+    "Translate content not just UI strings \u2014 locale fallbacks, translation status, and launch coordination.",
+    [
+      "Content",
+      "i18n",
+      "CMS"
+    ],
+    "CMS localization workflow, content translation, multilingual CMS"
+  ],
+  [
+    "content-system-asset-optimization-pipeline",
+    "Asset Optimization in Content Pipelines",
+    "CMS uploads need automatic resize, format conversion, and CDN delivery \u2014 pipeline architecture.",
+    [
+      "Content",
+      "Images",
+      "Performance"
+    ],
+    "CMS asset optimization, image pipeline CMS, media CDN"
+  ],
+  [
+    "content-system-versioning-rollback",
+    "Content Versioning and Rollback UX",
+    "Content rollback without code deploy \u2014 version history UI, diff view, and instant revert webhooks.",
+    [
+      "Content",
+      "CMS",
+      "Operations"
+    ],
+    "CMS content versioning, content rollback, editorial version history"
+  ],
+  [
+    "typescript-utility-types-app-patterns",
+    "Utility Types for Application Patterns",
+    "Pick, Omit, Partial, and Record patterns for API layers \u2014 avoiding duplicate type definitions.",
+    [
+      "TypeScript",
+      "Types",
+      "Patterns"
+    ],
+    "TypeScript utility types, Pick Omit Partial, app type patterns"
+  ],
+  [
+    "typescript-zod-runtime-validation",
+    "Zod Runtime Validation in TypeScript Apps",
+    "Zod schemas at boundaries \u2014 infer types from schema, form integration, and API response validation.",
+    [
+      "TypeScript",
+      "Zod",
+      "Validation"
+    ],
+    "Zod TypeScript validation, runtime schema validation, infer zod type"
+  ],
+  [
+    "typescript-result-type-error-handling",
+    "Result Types for Frontend Error Handling",
+    "Result<T, E> replaces throw for expected failures \u2014 railway-oriented error handling in UI code.",
+    [
+      "TypeScript",
+      "Error Handling",
+      "Patterns"
+    ],
+    "Result type TypeScript, railway oriented programming, error handling patterns"
+  ],
+  [
+    "typescript-const-type-parameters",
+    "const Type Parameters in TypeScript 5",
+    "const type parameters preserve literal inference in generics \u2014 tuple and config typing patterns.",
+    [
+      "TypeScript",
+      "Generics",
+      "TypeScript 5"
+    ],
+    "const type parameters TypeScript 5, generic literal inference"
+  ],
+  [
+    "typescript-module-augmentation-globals",
+    "Module Augmentation for Global Types",
+    "Extend Window, Express, and third-party types safely \u2014 augmentation vs declaration merging pitfalls.",
+    [
+      "TypeScript",
+      "Types",
+      "DX"
+    ],
+    "TypeScript module augmentation, global type extension, ambient declarations"
+  ],
+  [
+    "typescript-path-mapping-monorepo",
+    "Path Mapping in Frontend Monorepos",
+    "tsconfig paths across packages \u2014 project references, bundler resolution, and IDE performance.",
+    [
+      "TypeScript",
+      "Monorepo",
+      "DX"
+    ],
+    "TypeScript path mapping monorepo, project references, tsconfig paths"
+  ],
+  [
+    "typescript-strict-null-checks-migration",
+    "Migrating to strictNullChecks Incrementally",
+    "Enable strictNullChecks file by file \u2014 @ts-expect-error budget, undefined guards, and nullable API typing.",
+    [
+      "TypeScript",
+      "Migration",
+      "Type Safety"
+    ],
+    "strictNullChecks migration, incremental TypeScript strict, null safety"
+  ],
+  [
+    "typescript-type-guards-narrowing",
+    "Type Guards and Discriminated Narrowing",
+    "User-defined type guards and discriminated unions \u2014 exhaustive switch with never assignment.",
+    [
+      "TypeScript",
+      "Type Safety",
+      "Patterns"
+    ],
+    "TypeScript type guards, discriminated union narrowing, exhaustive check"
+  ],
+  [
+    "edge-middleware-auth-redirect",
+    "Edge Middleware for Auth Redirects",
+    "Protect routes at the edge before SSR \u2014 JWT verification, session cookie checks, and redirect loops.",
+    [
+      "Edge",
+      "Middleware",
+      "Auth"
+    ],
+    "edge middleware auth, Next.js middleware redirect, JWT edge verification"
+  ],
+  [
+    "edge-middleware-geolocation-routing",
+    "Geolocation Routing at the Edge",
+    "Route users to locale or region at edge \u2014 Vercel/Cloudflare geo headers, compliance routing, and fallbacks.",
+    [
+      "Edge",
+      "Middleware",
+      "i18n"
+    ],
+    "geolocation routing edge, geo middleware, locale routing CDN"
+  ],
+  [
+    "edge-middleware-bot-detection",
+    "Bot Detection in Edge Middleware",
+    "Block scrapers and bad bots at edge \u2014 User-Agent rules, challenge pages, and good bot allowlists.",
+    [
+      "Edge",
+      "Middleware",
+      "Security"
+    ],
+    "bot detection middleware, edge bot blocking, scraper prevention"
+  ],
+  [
+    "edge-middleware-ab-test-routing",
+    "A/B Test Routing at the Edge",
+    "Assign experiment buckets at edge \u2014 cookie stickiness, zero-flicker bucketing, and cache key separation.",
+    [
+      "Edge",
+      "Middleware",
+      "Experimentation"
+    ],
+    "AB test edge routing, experiment middleware, edge bucketing"
+  ],
+  [
+    "edge-middleware-rate-limiting",
+    "Rate Limiting in Edge Middleware",
+    "Rate limit auth and API routes at edge \u2014 token bucket, IP + user keying, and 429 UX.",
+    [
+      "Edge",
+      "Middleware",
+      "Security"
+    ],
+    "edge rate limiting, middleware rate limit, 429 too many requests UX"
+  ],
+  [
+    "edge-middleware-security-headers",
+    "Security Headers at the Edge",
+    "Apply HSTS, CSP, and Permissions-Policy at edge \u2014 header precedence vs origin and CDN overrides.",
+    [
+      "Edge",
+      "Middleware",
+      "Security"
+    ],
+    "security headers edge, HSTS CSP middleware, CDN security headers"
+  ],
+  [
+    "pwa-service-worker-caching-strategies",
+    "Service Worker Caching Strategies",
+    "Cache-first vs network-first decision matrix \u2014 versioning, cache busting, and offline fallbacks.",
+    [
+      "PWA",
+      "Service Worker",
+      "Caching"
+    ],
+    "service worker caching strategies, cache first network first, PWA offline"
+  ],
+  [
+    "pwa-offline-first-ui-patterns",
+    "Offline-First UI Patterns",
+    "Offline UI that sets expectations \u2014 cached content indicators, queue actions, and sync status.",
+    [
+      "PWA",
+      "Offline",
+      "UX"
+    ],
+    "offline first UI, PWA offline UX, network status UI"
+  ],
+  [
+    "pwa-install-prompt-ux",
+    "PWA Install Prompt UX Best Practices",
+    "beforeinstallprompt timing \u2014 do not interrupt checkout, custom install banner, and iOS Add to Home Screen guidance.",
+    [
+      "PWA",
+      "Install",
+      "UX"
+    ],
+    "PWA install prompt UX, beforeinstallprompt, add to home screen"
+  ],
+  [
+    "pwa-background-sync-patterns",
+    "Background Sync Patterns for PWAs",
+    "Queue failed mutations for retry \u2014 Background Sync API, IndexedDB queue, and conflict resolution.",
+    [
+      "PWA",
+      "Service Worker",
+      "Offline"
+    ],
+    "Background Sync API, PWA offline queue, background sync patterns"
+  ],
+  [
+    "pwa-push-notifications-web",
+    "Web Push Notifications Implementation",
+    "Web Push with VAPID keys \u2014 permission UX, notification payloads, and unsubscribe flows.",
+    [
+      "PWA",
+      "Push",
+      "Notifications"
+    ],
+    "web push notifications, VAPID push, notification permission UX"
+  ],
+  [
+    "pwa-app-shell-architecture",
+    "App Shell Architecture for PWAs",
+    "App shell caches layout skeleton \u2014 shell vs content caching, SW precache manifest, and update prompts.",
+    [
+      "PWA",
+      "Architecture",
+      "Performance"
+    ],
+    "app shell architecture PWA, service worker precache, shell caching"
+  ],
+  [
+    "pwa-workbox-recipes-production",
+    "Workbox Recipes for Production PWAs",
+    "Workbox strategies and recipes \u2014 generateSW vs injectManifest, runtime caching rules, and debugging.",
+    [
+      "PWA",
+      "Workbox",
+      "Service Worker"
+    ],
+    "Workbox production PWA, Workbox recipes, service worker Workbox"
+  ],
+  [
+    "react-query-tanstack-cache-invalidation",
+    "TanStack Query Cache Invalidation Patterns",
+    "Query invalidation after mutations \u2014 precise vs broad invalidation, optimistic rollback, and staleTime tuning.",
+    [
+      "React",
+      "TanStack Query",
+      "Data Fetching"
+    ],
+    "TanStack Query invalidation, React Query cache, mutation invalidation"
+  ],
+  [
+    "react-query-optimistic-updates-ux",
+    "Optimistic Updates UX with TanStack Query",
+    "Optimistic UI with onMutate rollback \u2014 perceived speed without inconsistent state on failure.",
+    [
+      "React",
+      "TanStack Query",
+      "UX"
+    ],
+    "optimistic updates TanStack Query, React Query optimistic UI"
+  ],
+  [
+    "react-query-prefetching-navigation",
+    "Prefetching on Navigation with TanStack Query",
+    "Prefetch on hover and route transition \u2014 dedupe queries, staleTime alignment, and bandwidth trade-offs.",
+    [
+      "React",
+      "TanStack Query",
+      "Performance"
+    ],
+    "TanStack Query prefetch, prefetch on hover, React Query navigation"
+  ],
+  [
+    "react-query-ssr-hydration-patterns",
+    "SSR Hydration Patterns with TanStack Query",
+    "dehydrate/hydrate for SSR \u2014 avoid double fetch, streaming queries, and App Router integration.",
+    [
+      "React",
+      "TanStack Query",
+      "SSR"
+    ],
+    "TanStack Query SSR hydration, dehydrate hydrate, React Query Next.js"
+  ],
+  [
+    "react-form-state-uncontrolled-patterns",
+    "Uncontrolled Form Patterns in React",
+    "Uncontrolled inputs with refs reduce re-renders \u2014 when to prefer uncontrolled, FormData, and native validation.",
+    [
+      "React",
+      "Forms",
+      "Performance"
+    ],
+    "uncontrolled form React, FormData React, form performance"
+  ],
+  [
+    "react-controlled-forms-performance",
+    "Controlled Forms Performance Optimization",
+    "Controlled inputs re-render on every keystroke \u2014 debouncing, useDeferredValue, and field-level isolation.",
+    [
+      "React",
+      "Forms",
+      "Performance"
+    ],
+    "controlled form performance React, input re-render optimization"
+  ],
+  [
+    "react-portal-modal-focus-management",
+    "Portal Modals and Focus Management",
+    "React portals for modals \u2014 focus trap, return focus on close, and scroll lock without accessibility bugs.",
+    [
+      "React",
+      "Accessibility",
+      "Modals"
+    ],
+    "React portal modal, focus trap modal, accessible dialog React"
+  ],
+  [
+    "react-compound-components-pattern",
+    "Compound Components Pattern in React",
+    "Compound components share implicit state \u2014 Tabs, Select, and Menu patterns with context and slot APIs.",
+    [
+      "React",
+      "Patterns",
+      "Components"
+    ],
+    "compound components React, component composition pattern, Tabs pattern"
+  ],
+  [
+    "react-render-props-vs-hooks",
+    "Render Props vs Custom Hooks Trade-offs",
+    "Render props expose flexibility; hooks expose ergonomics \u2014 migration path and TypeScript inference comparison.",
+    [
+      "React",
+      "Patterns",
+      "Hooks"
+    ],
+    "render props vs hooks, custom hooks migration, React patterns"
+  ],
+  [
+    "react-key-prop-list-reconciliation",
+    "Key Prop and List Reconciliation Pitfalls",
+    "Index keys cause state bugs \u2014 stable keys, reorder animations, and filtered list key strategies.",
+    [
+      "React",
+      "Performance",
+      "Lists"
+    ],
+    "React key prop, list reconciliation, index as key anti-pattern"
+  ],
+  [
+    "react-strict-mode-double-invoke",
+    "React Strict Mode Double Invoke Effects",
+    "Strict Mode double-invokes effects in dev \u2014 idempotent effects, cleanup correctness, and test adjustments.",
+    [
+      "React",
+      "Development",
+      "Strict Mode"
+    ],
+    "React Strict Mode double invoke, useEffect strict mode, development double render"
+  ],
+  [
+    "react-hydration-mismatch-debugging",
+    "Debugging Hydration Mismatches",
+    "Hydration errors from Date, random IDs, and browser extensions \u2014 suppressHydrationWarning scope and fixes.",
+    [
+      "React",
+      "SSR",
+      "Hydration"
+    ],
+    "hydration mismatch React, suppressHydrationWarning, SSR hydration error"
+  ],
+  [
+    "react-client-only-boundary-patterns",
+    "Client-Only Boundary Patterns",
+    "Dynamic import with ssr:false and useEffect gates \u2014 third-party widgets and browser-only APIs safely.",
+    [
+      "React",
+      "SSR",
+      "Hydration"
+    ],
+    "client only React, ssr false dynamic import, browser only component"
+  ],
+  [
+    "nextjs-loading-ui-error-boundaries",
+    "loading.tsx and Error Boundary Architecture",
+    "Route-level loading and error UI \u2014 error.tsx boundaries, not-found.tsx, and nested segment error isolation.",
+    [
+      "Next.js",
+      "Error Handling",
+      "UX"
+    ],
+    "Next.js loading.tsx, error.tsx App Router, error boundary Next.js"
+  ],
+  [
+    "nextjs-generate-static-params-dynamic",
+    "generateStaticParams for Dynamic Routes",
+    "Prebuild popular dynamic routes \u2014 fallback blocking vs true static, and ISR combination patterns.",
+    [
+      "Next.js",
+      "SSG",
+      "Performance"
+    ],
+    "generateStaticParams Next.js, dynamic route SSG, static generation"
+  ],
+  [
+    "nextjs-fetch-cache-next-revalidate",
+    "fetch Cache and next.revalidate Patterns",
+    "fetch caching semantics in App Router \u2014 cache: force-cache vs no-store, tag revalidation, and deduplication.",
+    [
+      "Next.js",
+      "Caching",
+      "Data Fetching"
+    ],
+    "Next.js fetch cache, next.revalidate, App Router data cache"
+  ],
+  [
+    "nextjs-unstable-cache-server-functions",
+    "unstable_cache for Server Functions",
+    "Cache expensive server computations \u2014 key parts, revalidate tags, and dedupe across requests.",
+    [
+      "Next.js",
+      "Caching",
+      "Server"
+    ],
+    "unstable_cache Next.js, server function cache, React cache"
+  ],
+  [
+    "nextjs-after-api-response-streaming",
+    "after() API for Post-Response Work",
+    "Next.js after() runs work post-response \u2014 logging, analytics, and revalidation without blocking TTFB.",
+    [
+      "Next.js",
+      "Performance",
+      "Server"
+    ],
+    "Next.js after API, post-response work, non-blocking server tasks"
+  ],
+  [
+    "nextjs-auth-js-session-management",
+    "Auth.js Session Management in App Router",
+    "Auth.js v5 in App Router \u2014 session callbacks, middleware protection, and database session strategy.",
+    [
+      "Next.js",
+      "Auth",
+      "Sessions"
+    ],
+    "Auth.js App Router, NextAuth session, auth.js v5 Next.js"
+  ],
+  [
+    "nextjs-csp-headers-middleware",
+    "CSP Headers via Next.js Middleware",
+    "Set Content-Security-Policy in middleware \u2014 nonce threading to RSC, and static vs dynamic routes.",
+    [
+      "Next.js",
+      "Security",
+      "CSP"
+    ],
+    "Next.js CSP middleware, Content Security Policy Next.js, nonce middleware"
+  ],
+  [
+    "nextjs-analytics-web-vitals-reporting",
+    "Web Vitals Reporting in Next.js Apps",
+    "useReportWebVitals and RUM integration \u2014 attribution, route segmentation, and CrUX correlation.",
+    [
+      "Next.js",
+      "Core Web Vitals",
+      "Analytics"
+    ],
+    "Next.js web vitals reporting, useReportWebVitals, RUM Next.js"
+  ],
+  [
+    "nextjs-font-optimization-self-hosted",
+    "Self-Hosted Font Optimization in Next.js",
+    "next/font self-hosting eliminates layout shift \u2014 subsetting, variable fonts, and fallback adjustment.",
+    [
+      "Next.js",
+      "Typography",
+      "Performance"
+    ],
+    "next/font self-hosted, Next.js font optimization, font subsetting"
+  ],
+  [
+    "nextjs-script-component-strategies",
+    "next/script Loading Strategies",
+    "afterInteractive vs lazyOnload \u2014 third-party script placement, Partytown consideration, and INP impact.",
+    [
+      "Next.js",
+      "Performance",
+      "Scripts"
+    ],
+    "next/script strategy, third party script Next.js, script loading optimization"
+  ],
+  [
+    "nextjs-link-prefetch-behavior",
+    "Link Prefetch Behavior and Control",
+    "Next.js Link prefetches by default in viewport \u2014 prefetch={false}, manual router.prefetch, and data costs.",
+    [
+      "Next.js",
+      "Performance",
+      "Navigation"
+    ],
+    "Next.js Link prefetch, router prefetch, App Router prefetch"
+  ],
+  [
+    "nextjs-dynamic-import-ssr-false",
+    "dynamic() with ssr:false Patterns",
+    "next/dynamic ssr false for client-only modules \u2014 loading skeleton, bundle splitting, and hydration boundaries.",
+    [
+      "Next.js",
+      "Code Splitting",
+      "Performance"
+    ],
+    "next/dynamic ssr false, dynamic import Next.js, client only dynamic"
+  ],
+  [
+    "nextjs-route-handlers-api-design",
+    "Route Handlers API Design Patterns",
+    "App Router route.ts design \u2014 REST conventions, error shapes, CORS, and versioning in colocated handlers.",
+    [
+      "Next.js",
+      "API",
+      "Architecture"
+    ],
+    "Next.js route handlers, App Router API design, route.ts patterns"
+  ],
+  [
+    "nextjs-layout-shared-state-patterns",
+    "Shared State Patterns Across Layouts",
+    "Layouts persist across navigation \u2014 where to put providers, URL state vs context, and cache implications.",
+    [
+      "Next.js",
+      "Architecture",
+      "State"
+    ],
+    "Next.js layout state, shared providers App Router, layout persistence"
+  ],
+  [
+    "nextjs-metadata-dynamic-og-images",
+    "Dynamic OG Image Generation",
+    "ImageResponse OG images at the edge \u2014 branding templates, font loading, and social preview testing.",
+    [
+      "Next.js",
+      "SEO",
+      "Open Graph"
+    ],
+    "dynamic OG image Next.js, ImageResponse, open graph generation"
+  ],
+  [
+    "nextjs-internationalization-routing",
+    "Internationalization Routing in App Router",
+    "i18n with [locale] segments \u2014 middleware locale detection, static generation per locale, and hreflang.",
+    [
+      "Next.js",
+      "i18n",
+      "Routing"
+    ],
+    "Next.js i18n routing, App Router locale, internationalized routing"
+  ],
+  [
+    "web-performance-long-tasks-monitoring",
+    "Long Tasks Monitoring in Production",
+    "PerformanceObserver longtask API \u2014 attributing INP regressions to third-party scripts and main thread blocks.",
+    [
+      "Performance",
+      "Monitoring",
+      "INP"
+    ],
+    "long tasks monitoring, PerformanceObserver longtask, INP debugging"
+  ],
+  [
+    "web-performance-main-thread-work",
+    "Reducing Main Thread Work",
+    "Break up long tasks \u2014 scheduler.yield, requestIdleCallback, and moving work to Web Workers.",
+    [
+      "Performance",
+      "JavaScript",
+      "INP"
+    ],
+    "main thread work reduction, long task splitting, INP optimization"
+  ],
+  [
+    "web-performance-passive-event-listeners",
+    "Passive Event Listeners for Scroll Performance",
+    "Passive touch and wheel listeners prevent scroll blocking \u2014 { passive: true } defaults and preventDefault caveats.",
+    [
+      "Performance",
+      "Events",
+      "Scroll"
+    ],
+    "passive event listeners, scroll performance touch, wheel listener passive"
+  ],
+  [
+    "web-performance-requestidlecallback-patterns",
+    "requestIdleCallback for Non-Critical Work",
+    "Schedule low-priority work in idle periods \u2014 analytics batching, prefetch, and timeout fallback for Safari.",
+    [
+      "Performance",
+      "Browser APIs",
+      "Scheduling"
+    ],
+    "requestIdleCallback patterns, idle scheduling browser, low priority work"
+  ],
+  [
+    "web-performance-web-workers-heavy-compute",
+    "Web Workers for Heavy Client Compute",
+    "Offload parsing, filtering, and crypto to workers \u2014 Comlink ergonomics and transferable buffers.",
+    [
+      "Performance",
+      "Web Workers",
+      "JavaScript"
+    ],
+    "Web Workers performance, off main thread, Comlink worker"
+  ],
+  [
+    "web-performance-memory-leak-detection",
+    "Memory Leak Detection in SPAs",
+    "Detached DOM nodes and uncleared listeners \u2014 Chrome Memory profiler workflow for SPA leak hunts.",
+    [
+      "Performance",
+      "Memory",
+      "Debugging"
+    ],
+    "SPA memory leak detection, Chrome heap snapshot, JavaScript memory leak"
+  ],
+  [
+    "web-performance-third-party-script-impact",
+    "Third-Party Script Performance Impact",
+    "Tag managers load dozens of scripts \u2014 audit, defer, facade pattern, and Partytown isolation.",
+    [
+      "Performance",
+      "Third Party",
+      "INP"
+    ],
+    "third party script performance, tag manager impact, script facade pattern"
+  ],
+  [
+    "web-performance-intersection-observer-debounce",
+    "Intersection Observer for Lazy Features",
+    "Lazy-init heavy widgets when visible \u2014 rootMargin prefetch distance and disconnect after first intersection.",
+    [
+      "Performance",
+      "Browser APIs",
+      "Lazy Loading"
+    ],
+    "Intersection Observer lazy load, lazy init widgets, rootMargin prefetch"
+  ],
+  [
+    "web-performance-resize-observer-layout",
+    "ResizeObserver Without Layout Thrashing",
+    "Batch resize callbacks with requestAnimationFrame \u2014 container queries alternative for JS-driven layouts.",
+    [
+      "Performance",
+      "Browser APIs",
+      "Layout"
+    ],
+    "ResizeObserver performance, layout thrashing prevention, rAF batching"
+  ],
+  [
+    "web-performance-speculative-prerendering",
+    "Speculation Rules API for Prerendering",
+    "Speculation Rules prerender on hover \u2014 eagerness tuning, privacy implications, and Next.js integration.",
+    [
+      "Performance",
+      "Navigation",
+      "Prefetch"
+    ],
+    "Speculation Rules API, prerender on hover, document prerender"
+  ],
+  [
+    "web-performance-navigation-timing-api",
+    "Navigation Timing API for RUM",
+    "Navigation Timing Level 2 metrics \u2014 DNS, TTFB, domInteractive breakdown in custom RUM beacons.",
+    [
+      "Performance",
+      "RUM",
+      "Monitoring"
+    ],
+    "Navigation Timing API, RUM performance metrics, TTFB measurement"
+  ],
+  [
+    "web-performance-element-timing-lcp",
+    "Element Timing API for LCP Debugging",
+    "elementtiming attribute identifies LCP candidates in RUM \u2014 correlate with hero image and text nodes.",
+    [
+      "Performance",
+      "LCP",
+      "Debugging"
+    ],
+    "Element Timing API, LCP element identification, performance element timing"
+  ],
+  [
+    "web-performance-layout-shift-debugging",
+    "Debugging Layout Shifts in Production",
+    "Layout Shift API attribution \u2014 identify shifting elements, web fonts, and dynamic ad slots in field data.",
+    [
+      "Performance",
+      "CLS",
+      "Debugging"
+    ],
+    "Layout Shift API debugging, CLS attribution, layout instability"
+  ],
+  [
+    "web-performance-composite-layers-gpu",
+    "Composite Layers and GPU Acceleration",
+    "will-change and transform promote layers \u2014 memory cost of over-promotion and DevTools layer visualization.",
+    [
+      "Performance",
+      "CSS",
+      "Rendering"
+    ],
+    "composite layers CSS, GPU acceleration web, layer promotion"
+  ],
+  [
+    "web-performance-will-change-sparingly",
+    "will-change: Use Sparingly",
+    "will-change reserves GPU memory \u2014 apply before animation, remove after, and prefer transform over will-change permanence.",
+    [
+      "Performance",
+      "CSS",
+      "Rendering"
+    ],
+    "will-change CSS performance, GPU memory will-change, animation optimization"
+  ],
+  [
+    "web-performance-debounce-throttle-input",
+    "Debounce vs Throttle for Input Handlers",
+    "Debounce for search submit, throttle for scroll \u2014 leading vs trailing edge and request cancellation.",
+    [
+      "Performance",
+      "JavaScript",
+      "UX"
+    ],
+    "debounce vs throttle, input handler optimization, search debounce"
+  ],
+  [
+    "web-performance-code-splitting-granularity",
+    "Code Splitting Granularity Trade-offs",
+    "Too many chunks increase HTTP overhead \u2014 route vs component splitting heuristics and bundle analysis.",
+    [
+      "Performance",
+      "Bundling",
+      "Architecture"
+    ],
+    "code splitting granularity, chunk strategy webpack, route based splitting"
+  ],
+  [
+    "web-performance-tree-shaking-side-effects",
+    "Tree Shaking and Side Effects Configuration",
+    "sideEffects:false in package.json \u2014 barrel file import pitfalls and verifying dead code elimination.",
+    [
+      "Performance",
+      "Bundling",
+      "Build"
+    ],
+    "tree shaking sideEffects, barrel file tree shaking, dead code elimination"
+  ],
+  [
+    "web-performance-prefetch-on-hover-intent",
+    "Prefetch on Hover Intent Patterns",
+    "Hover intent prefetch reduces wasted bandwidth \u2014 delay threshold, touch device exclusion, and data saver respect.",
+    [
+      "Performance",
+      "Navigation",
+      "Prefetch"
+    ],
+    "prefetch hover intent, navigation prefetch UX, data saver prefetch"
+  ],
+  [
+    "web-performance-http2-multiplexing-assets",
+    "HTTP/2 Asset Loading Strategies",
+    "HTTP/2 changes bundling calculus \u2014 multiplexing, server push deprecation, and critical asset prioritization.",
+    [
+      "Performance",
+      "Network",
+      "Loading"
+    ],
+    "HTTP/2 multiplexing, asset loading HTTP2, bundling HTTP2"
+  ],
+  [
+    "web-performance-http3-quic-benefits",
+    "HTTP/3 QUIC Benefits for Web Apps",
+    "QUIC reduces head-of-line blocking \u2014 when HTTP/3 helps mobile networks and CDN enablement checklist.",
+    [
+      "Performance",
+      "Network",
+      "HTTP/3"
+    ],
+    "HTTP/3 QUIC benefits, web performance HTTP3, QUIC mobile"
+  ],
+  [
+    "web-performance-brotli-gzip-compression",
+    "Brotli vs Gzip Compression Strategy",
+    "Brotli at level 4-6 for text assets \u2014 precompressed static files, CDN negotiation, and CPU trade-offs.",
+    [
+      "Performance",
+      "Network",
+      "Compression"
+    ],
+    "Brotli vs gzip, compression web assets, CDN compression"
+  ],
+  [
+    "web-performance-early-hints-103",
+    "103 Early Hints for Faster Loads",
+    "103 Early Hints preload critical assets \u2014 CDN support, Link header coordination, and measured TTFB impact.",
+    [
+      "Performance",
+      "Network",
+      "TTFB"
+    ],
+    "103 Early Hints, HTTP Early Hints preload, TTFB optimization"
+  ],
+  [
+    "web-performance-service-worker-stale-while-revalidate",
+    "Stale-While-Revalidate in Service Workers",
+    "SWR serves cached instantly then updates \u2014 stale-while-revalidate header and SW strategy alignment.",
+    [
+      "Performance",
+      "PWA",
+      "Caching"
+    ],
+    "stale while revalidate service worker, SWR caching, Cache-Control stale-while-revalidate"
+  ],
+  [
+    "web-performance-back-forward-cache",
+    "Back/Forward Cache Optimization",
+    "bfcache evictions from unload listeners and BroadcastChannel \u2014 audit with Chrome bfcache reasons API.",
+    [
+      "Performance",
+      "Navigation",
+      "bfcache"
+    ],
+    "back forward cache optimization, bfcache eviction, PageLifecycle bfcache"
+  ],
+  [
+    "web-performance-document-visibility-api",
+    "Page Visibility API for Resource Savings",
+    "Pause polling and animations when document.hidden \u2014 battery savings and unnecessary network reduction.",
+    [
+      "Performance",
+      "Browser APIs",
+      "Battery"
+    ],
+    "Page Visibility API, document.hidden polling, background tab optimization"
+  ],
+  [
+    "web-performance-scheduler-yield-api",
+    "scheduler.yield for Cooperative Scheduling",
+    "scheduler.yield breaks long tasks for input processing \u2014 INP improvement pattern for heavy JS loops.",
+    [
+      "Performance",
+      "Browser APIs",
+      "INP"
+    ],
+    "scheduler.yield API, cooperative scheduling JavaScript, INP long task"
+  ],
+  [
+    "web-performance-attribution-reporting-api",
+    "Attribution Reporting API for Marketing",
+    "Privacy-preserving conversion measurement \u2014 Attribution Reporting API integration with consent mode.",
+    [
+      "Privacy",
+      "Analytics",
+      "Web Platform"
+    ],
+    "Attribution Reporting API, privacy sandbox conversions, marketing measurement"
+  ],
+  [
+    "web-performance-priority-hints-fetch",
+    "Priority Hints for fetch Priority",
+    "fetchPriority high/low on images and scripts \u2014 resource priority tuning without preload abuse.",
+    [
+      "Performance",
+      "Network",
+      "Loading"
+    ],
+    "fetchPriority hint, priority hints web, resource loading priority"
+  ],
+  [
+    "web-performance-module-preload-import",
+    "modulepreload for ES Module Chains",
+    "modulepreload critical module graph entries \u2014 dependency chain warming vs over-preloading bandwidth.",
+    [
+      "Performance",
+      "ES Modules",
+      "Loading"
+    ],
+    "modulepreload link, ES module preload, critical module chain"
+  ],
+  [
+    "web-performance-import-maps-cdn",
+    "Import Maps for CDN Module Loading",
+    "Import maps resolve bare specifiers in browser \u2014 CDN import maps, integrity, and fallback strategy.",
+    [
+      "Performance",
+      "ES Modules",
+      "Architecture"
+    ],
+    "import maps CDN, browser import maps, ES modules CDN"
+  ],
+  [
+    "web-performance-islands-architecture",
+    "Islands Architecture for Performance",
+    "Ship minimal JS with interactive islands \u2014 Astro-style partial hydration concepts applicable in any framework.",
+    [
+      "Performance",
+      "Architecture",
+      "Hydration"
+    ],
+    "islands architecture, partial hydration, minimal JavaScript framework"
+  ],
+  [
+    "web-performance-resumability-qwik",
+    "Resumability Concepts from Qwik",
+    "Resumability vs hydration \u2014 serializable state, lazy component execution, and lessons for React architects.",
+    [
+      "Performance",
+      "Architecture",
+      "Hydration"
+    ],
+    "Qwik resumability, hydration free architecture, resumable frameworks"
+  ],
+  [
+    "web-performance-selective-hydration",
+    "Selective Hydration Strategies",
+    "Hydrate visible and interactive components first \u2014 priority hydration patterns in streaming SSR.",
+    [
+      "Performance",
+      "Hydration",
+      "Architecture"
+    ],
+    "selective hydration, priority hydration SSR, streaming hydration"
+  ],
+  [
+    "web-performance-progressive-enhancement-modern",
+    "Progressive Enhancement in Modern SPAs",
+    "Progressive enhancement is not dead \u2014 HTML-first forms, enhanced client routing, and no-JS fallbacks for critical paths.",
+    [
+      "Performance",
+      "Architecture",
+      "UX"
+    ],
+    "progressive enhancement SPA, HTML first forms, no JavaScript fallback"
+  ],
+  [
+    "web-performance-skeleton-screen-design",
+    "Skeleton Screen Design for Perceived Performance",
+    "Skeleton geometry must match content \u2014 shimmer ethics, reduced motion, and when spinners beat skeletons.",
+    [
+      "UX",
+      "Performance",
+      "Loading"
+    ],
+    "skeleton screen design, loading skeleton UX, perceived performance"
+  ],
+  [
+    "web-performance-optimistic-navigation-ui",
+    "Optimistic Navigation UI Patterns",
+    "Show next page before navigation completes \u2014 router events, stale content display, and error rollback UX.",
+    [
+      "UX",
+      "Performance",
+      "Navigation"
+    ],
+    "optimistic navigation UI, instant navigation UX, pending navigation state"
+  ],
+  [
+    "web-performance-stale-ui-patterns",
+    "Stale-While-Revalidate UI Patterns",
+    "Show stale data with subtle freshness indicator \u2014 SWR library patterns and manual cache timestamp UX.",
+    [
+      "UX",
+      "Performance",
+      "Data Fetching"
+    ],
+    "stale while revalidate UI, stale data indicator, cache freshness UX"
+  ],
+  [
+    "web-performance-error-recovery-retry-ui",
+    "Error Recovery and Retry UI Patterns",
+    "Retry buttons need exponential backoff feedback \u2014 partial failure states, error boundaries with recovery actions.",
+    [
+      "UX",
+      "Error Handling",
+      "Resilience"
+    ],
+    "error recovery UI, retry button UX, partial failure states"
+  ],
+  [
+    "web-performance-network-status-indicator",
+    "Network Status Indicator UX",
+    "Offline/slow network banner \u2014 navigator.onLine limitations, Network Information API, and non-alarming copy.",
+    [
+      "UX",
+      "Offline",
+      "PWA"
+    ],
+    "network status indicator UX, offline banner UI, slow connection UX"
+  ],
+  [
+    "web-performance-loading-state-hierarchy",
+    "Loading State Hierarchy Design",
+    "Page > section > component loading hierarchy \u2014 avoid nested spinners and global loading lockout.",
+    [
+      "UX",
+      "Performance",
+      "States"
+    ],
+    "loading state hierarchy, nested loading UX, skeleton vs spinner"
+  ],
+  [
+    "web-performance-empty-state-design",
+    "Empty State Design for Data-Driven UI",
+    "Empty states guide next action \u2014 illustration vs functional, first-run vs filtered-empty differentiation.",
+    [
+      "UX",
+      "Design",
+      "Components"
+    ],
+    "empty state design, zero data UI, empty state UX patterns"
+  ],
+  [
+    "web-performance-toast-queue-management",
+    "Toast Queue Management UX",
+    "Toast stacking limits and pause-on-hover \u2014 screen reader announcement order and dismiss persistence.",
+    [
+      "UX",
+      "Notifications",
+      "Components"
+    ],
+    "toast queue UX, notification stacking, toast accessibility"
+  ],
+  [
+    "web-performance-command-palette-keyboard",
+    "Command Palette Keyboard UX",
+    "Cmd+K palettes need fuzzy search, keyboard nav, and aria-activedescendant \u2014 performance with large command lists.",
+    [
+      "UX",
+      "Accessibility",
+      "Keyboard"
+    ],
+    "command palette UX, cmd k keyboard, fuzzy command search"
+  ],
+  [
+    "web-performance-breadcrumb-navigation-seo",
+    "Breadcrumb Navigation for SEO and UX",
+    "BreadcrumbList schema plus accessible nav \u2014 dynamic breadcrumbs in SPAs and mobile truncation.",
+    [
+      "UX",
+      "SEO",
+      "Navigation"
+    ],
+    "breadcrumb navigation SEO, BreadcrumbList schema, accessible breadcrumbs"
+  ],
+  [
+    "web-performance-tab-navigation-aria",
+    "Tab Navigation ARIA Patterns",
+    "Tabs pattern with roving tabindex \u2014 manual vs automatic activation and keyboard arrow navigation.",
+    [
+      "UX",
+      "Accessibility",
+      "Navigation"
+    ],
+    "tabs ARIA pattern, roving tabindex tabs, accessible tab navigation"
+  ],
+  [
+    "web-performance-sidebar-collapse-responsive",
+    "Responsive Sidebar Collapse Patterns",
+    "Collapsible sidebar with persisted preference \u2014 overlay vs push, focus management on mobile open.",
+    [
+      "UX",
+      "Layout",
+      "Responsive"
+    ],
+    "responsive sidebar collapse, mobile sidebar UX, drawer navigation"
+  ],
+  [
+    "web-performance-data-table-virtualization",
+    "Data Table Virtualization UX",
+    "Virtualized tables with sticky headers and column resize \u2014 screen reader row count announcements.",
+    [
+      "UX",
+      "Performance",
+      "Tables"
+    ],
+    "virtualized data table UX, table virtualization accessibility, sticky header table"
+  ],
+  [
+    "web-performance-filter-chip-interfaces",
+    "Filter Chip Interface Patterns",
+    "Removable filter chips with clear all \u2014 URL sync, aria labels, and mobile horizontal scroll.",
+    [
+      "UX",
+      "Components",
+      "Search"
+    ],
+    "filter chip UI, removable filters UX, faceted filter chips"
+  ],
+  [
+    "web-performance-search-autocomplete-debounce",
+    "Search Autocomplete Debounce UX",
+    "Autocomplete latency budget \u2014 debounce vs cache, highlighting matches, and no results state design.",
+    [
+      "UX",
+      "Search",
+      "Performance"
+    ],
+    "search autocomplete UX, debounce autocomplete, typeahead design"
+  ],
+  [
+    "web-performance-multi-step-form-wizard",
+    "Multi-Step Form Wizard UX",
+    "Wizard progress persistence and back navigation \u2014 validate per step, save draft, and mobile step indicator.",
+    [
+      "UX",
+      "Forms",
+      "Conversion"
+    ],
+    "multi-step form wizard UX, form wizard progress, step form validation"
+  ],
+  [
+    "web-performance-inline-validation-timing",
+    "Inline Validation Timing UX",
+    "Validate on blur not keystroke for most fields \u2014 async validation spinners and error clear on fix.",
+    [
+      "UX",
+      "Forms",
+      "Validation"
+    ],
+    "inline validation timing, form validation UX blur, async validation UI"
+  ],
+  [
+    "web-performance-password-strength-meter",
+    "Password Strength Meter UX",
+    "zxcvbn over naive rules \u2014 real-time feedback without discouraging passphrases, and screen reader updates.",
+    [
+      "UX",
+      "Forms",
+      "Security"
+    ],
+    "password strength meter UX, zxcvbn UI, password feedback accessible"
+  ],
+  [
+    "web-performance-captcha-alternatives-ux",
+    "CAPTCHA Alternatives for Better UX",
+    "Invisible bot detection over puzzle CAPTCHAs \u2014 Turnstile, rate limiting, and accessibility-friendly bot defense.",
+    [
+      "UX",
+      "Security",
+      "Bot Prevention"
+    ],
+    "CAPTCHA alternatives UX, Cloudflare Turnstile, accessible bot detection"
+  ],
+  [
+    "web-performance-rate-limit-user-feedback",
+    "Rate Limit User Feedback UX",
+    "429 responses with Retry-After \u2014 human-readable cooldown, not raw error codes, and progress indication.",
+    [
+      "UX",
+      "Security",
+      "Error Handling"
+    ],
+    "rate limit UX, 429 user feedback, Retry-After UI"
+  ],
+  [
+    "web-performance-maintenance-mode-page",
+    "Maintenance Mode Page UX",
+    "Maintenance page with ETA and status link \u2014 bypass for admins, retry auto-refresh, and brand continuity.",
+    [
+      "UX",
+      "Operations",
+      "Status"
+    ],
+    "maintenance mode page UX, downtime page design, status page link"
+  ],
+  [
+    "web-performance-404-page-product-sites",
+    "404 Page Design for Product Sites",
+    "404 pages recover lost users \u2014 search, popular links, report broken link, and correct HTTP status.",
+    [
+      "UX",
+      "SEO",
+      "Error Pages"
+    ],
+    "404 page design product, helpful 404 UX, broken link recovery"
+  ],
+  [
+    "web-performance-status-page-integration",
+    "Status Page Integration UX",
+    "Embed status page incidents in-app \u2014 degraded mode banners linked to public status, subscription to updates.",
+    [
+      "UX",
+      "Operations",
+      "Reliability"
+    ],
+    "status page integration UX, incident banner UI, service status widget"
+  ]
+]

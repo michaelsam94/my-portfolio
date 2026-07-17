@@ -1,0 +1,782 @@
+[
+  {
+    "slug": "kotlin-context-receivers-practical",
+    "title": "Kotlin Context Receivers in Practice",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-value-class-serialization",
+    "title": "Serializing Kotlin Value Classes",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-flow-buffer-overflow",
+    "title": "Kotlin Flow Buffer and Overflow Strategies",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-channel-select-multiplex",
+    "title": "Multiplexing with Kotlin Channel select",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-coroutine-test-advance",
+    "title": "Testing Coroutines with runTest and advanceUntilIdle",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-navigation",
+    "title": "Navigation Patterns in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-room-database",
+    "title": "Room Database in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-datastore",
+    "title": "DataStore in Kotlin Multiplatform Apps",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-analytics",
+    "title": "Analytics Abstraction in KMP",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-push-notifications",
+    "title": "Push Notifications in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-deep-linking",
+    "title": "Deep Linking Across KMP Targets",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-file-io",
+    "title": "File I/O Abstractions in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-crypto-common",
+    "title": "Cryptography in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-logging",
+    "title": "Structured Logging in KMP Projects",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-testing-shared",
+    "title": "Shared Test Logic in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-mock-engine",
+    "title": "Mock Engines for KMP Network Tests",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-build-cache",
+    "title": "Build Cache Optimization for KMP",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-cocoapods",
+    "title": "CocoaPods Integration in KMP iOS Targets",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-spm",
+    "title": "Swift Package Manager with Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-compose-multiplatform-desktop",
+    "title": "Compose Multiplatform Desktop Apps",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-compose-multiplatform-web",
+    "title": "Compose Multiplatform for Web (Wasm)",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-wasm-js-interop",
+    "title": "Kotlin Wasm and JavaScript Interop",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-scripting-gradle-plugins",
+    "title": "Kotlin Scripting for Custom Gradle Plugins",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-dsl-gradle-conventions",
+    "title": "Gradle Convention Plugins with Kotlin DSL",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-gradle-version-catalogs",
+    "title": "Gradle Version Catalogs in Kotlin Projects",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-build-reports-performance",
+    "title": "Analyzing Kotlin Build Performance Reports",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-incremental-compilation",
+    "title": "Incremental Compilation in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-metadata-jvm-annotations",
+    "title": "Kotlin Metadata and JVM Annotations",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-java-interop-nullability",
+    "title": "Nullability Interop Between Kotlin and Java",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-sam-conversions-lambdas",
+    "title": "SAM Conversions and Functional Interfaces",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-sealed-when-exhaustive",
+    "title": "Exhaustive when with Sealed Classes",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-destructuring-data-classes",
+    "title": "Destructuring Declarations in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-scope-functions-let-apply",
+    "title": "Kotlin Scope Functions: let, apply, run, also, with",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-lateinit-vs-lazy",
+    "title": "lateinit vs lazy: Initialization Patterns",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-delegated-properties-observable",
+    "title": "Observable Properties with Delegates",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-operator-overloading-guidelines",
+    "title": "Operator Overloading Guidelines in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-infix-functions-readability",
+    "title": "Infix Functions for Readable APIs",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-typealiases-domain-language",
+    "title": "Type Aliases for Domain-Specific Language",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "compose-material3-expressive-design",
+    "title": "Material 3 Expressive Design in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-adaptive-layout-canonical",
+    "title": "Canonical Adaptive Layouts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-navigation3-type-safe",
+    "title": "Type-Safe Navigation 3 in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-lifecycle-viewmodel-scoping",
+    "title": "ViewModel Scoping in Compose Navigation",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-hilt-navigation-compose",
+    "title": "Hilt and Navigation Compose Integration",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-koin-compose-scoping",
+    "title": "Koin Scoping in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-retained-state-savable",
+    "title": "Retained State with rememberSaveable",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-derived-state-optimization",
+    "title": "derivedStateOf for Compose Performance",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-stability-strong-skipping",
+    "title": "Strong Skipping Mode in Compose Compiler",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-recomposition-count-debug",
+    "title": "Debugging Recomposition Counts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-layout-inspector-tools",
+    "title": "Layout Inspector for Compose Debugging",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-ui-test-semantics",
+    "title": "Semantics and Accessibility Testing in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-screenshot-testing-paparazzi",
+    "title": "Screenshot Testing with Paparazzi",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-preview-parameter-providers",
+    "title": "Preview Parameter Providers in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-interactive-previews",
+    "title": "Interactive Previews in Android Studio",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-animation-shared-element",
+    "title": "Shared Element Transitions in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-animation-animated-content",
+    "title": "AnimatedContent for State Transitions",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-lottie-compose-integration",
+    "title": "Lottie Animations in Jetpack Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-rive-vector-animations",
+    "title": "Rive Vector Animations in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-canvas-custom-drawing",
+    "title": "Custom Drawing with Compose Canvas",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-graphics-layer-effects",
+    "title": "GraphicsLayer Effects in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-blur-modifier-effects",
+    "title": "Blur and Visual Effects in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-webview-accompanist",
+    "title": "Embedding WebViews in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-map-compose-integration",
+    "title": "Google Maps Compose Integration",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-camera-camerax-compose",
+    "title": "CameraX with Jetpack Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-barcode-scanner-compose",
+    "title": "Barcode Scanning in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-biometric-prompt-compose",
+    "title": "Biometric Prompt in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-permissions-accompanist",
+    "title": "Runtime Permissions in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-location-permissions-flow",
+    "title": "Location Permission Flows in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-notification-permission-android13",
+    "title": "Notification Permission UX in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-in-app-update-compose",
+    "title": "In-App Updates UI with Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-review-manager-compose",
+    "title": "In-App Review Prompts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-play-integrity-check",
+    "title": "Play Integrity Checks in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-feature-delivery-ui",
+    "title": "Feature Delivery UI Patterns in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-app-shortcuts-compose",
+    "title": "App Shortcuts with Compose Deep Links",
+    "category": "Compose"
+  },
+  {
+    "slug": "android-16-edge-to-edge-enforcement",
+    "title": "Android 16 Edge-to-Edge Enforcement",
+    "category": "Android"
+  },
+  {
+    "slug": "android-predictive-back-gesture",
+    "title": "Predictive Back Gesture Implementation",
+    "category": "Android"
+  },
+  {
+    "slug": "android-permission-photopicker-only",
+    "title": "Photo Picker Only: Dropping Storage Permissions",
+    "category": "Android"
+  },
+  {
+    "slug": "android-foreground-service-restrictions",
+    "title": "Foreground Service Restrictions on Android 15+",
+    "category": "Android"
+  },
+  {
+    "slug": "android-broadcast-receiver-exported",
+    "title": "Exported vs Non-Exported Broadcast Receivers",
+    "category": "Android"
+  },
+  {
+    "slug": "android-safer-intents-validation",
+    "title": "Safer Intents and PendingIntent Flags",
+    "category": "Android"
+  },
+  {
+    "slug": "android-splashscreen-api-migration",
+    "title": "SplashScreen API Migration Guide",
+    "category": "Android"
+  },
+  {
+    "slug": "android-window-insets-handling",
+    "title": "Window Insets Handling on Modern Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-display-cutout-notches",
+    "title": "Display Cutout and Notch Handling",
+    "category": "Android"
+  },
+  {
+    "slug": "android-foldable-state-posture",
+    "title": "Foldable Posture and State Detection",
+    "category": "Android"
+  },
+  {
+    "slug": "android-large-screen-optimization",
+    "title": "Large Screen Optimization for Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-desktop-mode-support",
+    "title": "Desktop Mode Support on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-chromeos-app-optimization",
+    "title": "ChromeOS Android App Optimization",
+    "category": "Android"
+  },
+  {
+    "slug": "android-automotive-app-design",
+    "title": "Designing Apps for Android Automotive",
+    "category": "Android"
+  },
+  {
+    "slug": "android-wear-os-compose-tiles",
+    "title": "Wear OS Compose and Tiles",
+    "category": "Android"
+  },
+  {
+    "slug": "android-xr-headset-development",
+    "title": "Android XR Headset Development Basics",
+    "category": "Android"
+  },
+  {
+    "slug": "android-health-connect-permissions",
+    "title": "Health Connect Permissions and Data Types",
+    "category": "Android"
+  },
+  {
+    "slug": "android-fitness-api-integration",
+    "title": "Fitness API Integration on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-sensor-batch-processing",
+    "title": "Batch Processing Android Sensor Data",
+    "category": "Android"
+  },
+  {
+    "slug": "android-activity-recognition-api",
+    "title": "Activity Recognition API on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-geofencing-battery-efficient",
+    "title": "Battery-Efficient Geofencing on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-fused-location-provider",
+    "title": "Fused Location Provider Best Practices",
+    "category": "Android"
+  },
+  {
+    "slug": "android-background-location-policy",
+    "title": "Background Location Policy Compliance",
+    "category": "Android"
+  },
+  {
+    "slug": "android-wifi-scanning-privacy",
+    "title": "Wi-Fi Scanning and Privacy on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-bluetooth-le-scanning",
+    "title": "BLE Scanning Patterns on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-nfc-hce-payment",
+    "title": "NFC Host Card Emulation for Payments",
+    "category": "Android"
+  },
+  {
+    "slug": "android-uwb-ranging-api",
+    "title": "UWB Ranging API on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-thread-border-router",
+    "title": "Thread Border Router on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-matter-commissioning",
+    "title": "Matter Device Commissioning on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-usb-accessory-mode",
+    "title": "USB Accessory Mode on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-serial-port-communication",
+    "title": "Serial Port Communication on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-hid-device-profile",
+    "title": "HID Device Profile on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-print-framework-integration",
+    "title": "Android Print Framework Integration",
+    "category": "Android"
+  },
+  {
+    "slug": "android-document-provider-files",
+    "title": "Document Provider for File Sharing",
+    "category": "Android"
+  },
+  {
+    "slug": "android-storage-access-framework",
+    "title": "Storage Access Framework Patterns",
+    "category": "Android"
+  },
+  {
+    "slug": "android-media-store-scoped",
+    "title": "Scoped Storage and MediaStore Queries",
+    "category": "Android"
+  },
+  {
+    "slug": "android-download-manager-resume",
+    "title": "DownloadManager with Resume Support",
+    "category": "Android"
+  },
+  {
+    "slug": "android-share-sheet-direct-share",
+    "title": "Direct Share Targets on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-shortcuts-static-dynamic",
+    "title": "Static and Dynamic App Shortcuts",
+    "category": "Android"
+  },
+  {
+    "slug": "android-widgets-glance-complications",
+    "title": "Glance Widgets and Complications",
+    "category": "Android"
+  },
+  {
+    "slug": "android-live-wallpaper-compose",
+    "title": "Live Wallpaper with Compose Rendering",
+    "category": "Android"
+  },
+  {
+    "slug": "android-dream-service-screensaver",
+    "title": "Dream Service Screensaver Apps",
+    "category": "Android"
+  },
+  {
+    "slug": "android-voice-interaction-service",
+    "title": "Voice Interaction Service on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-assist-structure-extraction",
+    "title": "Assist Structure for Context Extraction",
+    "category": "Android"
+  },
+  {
+    "slug": "flutter-impeller-rendering-engine",
+    "title": "Impeller Rendering Engine in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-web-wasm-compilation",
+    "title": "Flutter Web Wasm Compilation",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-desktop-multi-window",
+    "title": "Multi-Window Support in Flutter Desktop",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-platform-views-hybrid",
+    "title": "Hybrid Composition Platform Views",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-texture-layer-hybrid",
+    "title": "Texture Layer Hybrid Composition",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-isolate-compute-heavy",
+    "title": "Isolates for Compute-Heavy Flutter Work",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-ffi-native-interop",
+    "title": "FFI Native Interop in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-pigeon-code-generation",
+    "title": "Pigeon for Type-Safe Platform Channels",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-method-channel-patterns",
+    "title": "Method Channel Patterns in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-event-channel-streams",
+    "title": "Event Channels for Native Streams",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-basic-message-channels",
+    "title": "Basic Message Channels in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-plugin-platform-interface",
+    "title": "Platform Interface Pattern for Plugins",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-integration-test-patrol",
+    "title": "Integration Testing with Patrol",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-golden-test-comparison",
+    "title": "Golden File Testing in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-widget-test-finders",
+    "title": "Widget Test Finders and Matchers",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-mockito-riverpod-test",
+    "title": "Mockito with Riverpod Testing",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-bloc-test-patterns",
+    "title": "bloc_test Patterns for Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-flutter-driver-e2e",
+    "title": "Flutter Driver E2E Testing",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-app-check",
+    "title": "Firebase App Check in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-crashlytics-setup",
+    "title": "Crashlytics Setup in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-analytics-events",
+    "title": "Firebase Analytics Events in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-remote-config-ab",
+    "title": "Remote Config A/B Tests in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-messaging-topics",
+    "title": "FCM Topic Messaging in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-supabase-auth-realtime",
+    "title": "Supabase Auth and Realtime in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-appwrite-backend",
+    "title": "Appwrite Backend Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-pocketbase-integration",
+    "title": "PocketBase Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-strapi-headless-cms",
+    "title": "Strapi Headless CMS with Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-sanity-cms-content",
+    "title": "Sanity CMS Content in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-contentful-delivery-api",
+    "title": "Contentful Delivery API in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-algolia-search-integration",
+    "title": "Algolia Search in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-typesense-search",
+    "title": "Typesense Search Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-meilisearch-integration",
+    "title": "Meilisearch in Flutter Applications",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-elasticsearch-dart-client",
+    "title": "Elasticsearch Dart Client in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-mapbox-maps-flutter",
+    "title": "Mapbox Maps SDK for Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-google-maps-clustering",
+    "title": "Google Maps Marker Clustering in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-geolocator-permissions",
+    "title": "Geolocator Permissions in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-background-geolocation",
+    "title": "Background Geolocation in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-local-notifications-scheduling",
+    "title": "Local Notifications Scheduling in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-awesome-notifications",
+    "title": "Awesome Notifications Plugin Patterns",
+    "category": "Flutter"
+  }
+]

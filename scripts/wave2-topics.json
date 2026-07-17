@@ -1,0 +1,4947 @@
+[
+  {
+    "slug": "kotlin-context-receivers-practical",
+    "title": "Kotlin Context Receivers in Practice",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-value-class-serialization",
+    "title": "Serializing Kotlin Value Classes",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-flow-buffer-overflow",
+    "title": "Kotlin Flow Buffer and Overflow Strategies",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-channel-select-multiplex",
+    "title": "Multiplexing with Kotlin Channel select",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-coroutine-test-advance",
+    "title": "Testing Coroutines with runTest and advanceUntilIdle",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-navigation",
+    "title": "Navigation Patterns in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-room-database",
+    "title": "Room Database in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-datastore",
+    "title": "DataStore in Kotlin Multiplatform Apps",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-analytics",
+    "title": "Analytics Abstraction in KMP",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-push-notifications",
+    "title": "Push Notifications in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-deep-linking",
+    "title": "Deep Linking Across KMP Targets",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-file-io",
+    "title": "File I/O Abstractions in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-crypto-common",
+    "title": "Cryptography in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-logging",
+    "title": "Structured Logging in KMP Projects",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-testing-shared",
+    "title": "Shared Test Logic in Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-mock-engine",
+    "title": "Mock Engines for KMP Network Tests",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-build-cache",
+    "title": "Build Cache Optimization for KMP",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-cocoapods",
+    "title": "CocoaPods Integration in KMP iOS Targets",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-multiplatform-spm",
+    "title": "Swift Package Manager with Kotlin Multiplatform",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-compose-multiplatform-desktop",
+    "title": "Compose Multiplatform Desktop Apps",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-compose-multiplatform-web",
+    "title": "Compose Multiplatform for Web (Wasm)",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-wasm-js-interop",
+    "title": "Kotlin Wasm and JavaScript Interop",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-scripting-gradle-plugins",
+    "title": "Kotlin Scripting for Custom Gradle Plugins",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-dsl-gradle-conventions",
+    "title": "Gradle Convention Plugins with Kotlin DSL",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-gradle-version-catalogs",
+    "title": "Gradle Version Catalogs in Kotlin Projects",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-build-reports-performance",
+    "title": "Analyzing Kotlin Build Performance Reports",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-incremental-compilation",
+    "title": "Incremental Compilation in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-metadata-jvm-annotations",
+    "title": "Kotlin Metadata and JVM Annotations",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-java-interop-nullability",
+    "title": "Nullability Interop Between Kotlin and Java",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-sam-conversions-lambdas",
+    "title": "SAM Conversions and Functional Interfaces",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-sealed-when-exhaustive",
+    "title": "Exhaustive when with Sealed Classes",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-destructuring-data-classes",
+    "title": "Destructuring Declarations in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-scope-functions-let-apply",
+    "title": "Kotlin Scope Functions: let, apply, run, also, with",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-lateinit-vs-lazy",
+    "title": "lateinit vs lazy: Initialization Patterns",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-delegated-properties-observable",
+    "title": "Observable Properties with Delegates",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-operator-overloading-guidelines",
+    "title": "Operator Overloading Guidelines in Kotlin",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-infix-functions-readability",
+    "title": "Infix Functions for Readable APIs",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "kotlin-typealiases-domain-language",
+    "title": "Type Aliases for Domain-Specific Language",
+    "category": "Kotlin"
+  },
+  {
+    "slug": "compose-material3-expressive-design",
+    "title": "Material 3 Expressive Design in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-adaptive-layout-canonical",
+    "title": "Canonical Adaptive Layouts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-navigation3-type-safe",
+    "title": "Type-Safe Navigation 3 in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-lifecycle-viewmodel-scoping",
+    "title": "ViewModel Scoping in Compose Navigation",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-hilt-navigation-compose",
+    "title": "Hilt and Navigation Compose Integration",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-koin-compose-scoping",
+    "title": "Koin Scoping in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-retained-state-savable",
+    "title": "Retained State with rememberSaveable",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-derived-state-optimization",
+    "title": "derivedStateOf for Compose Performance",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-stability-strong-skipping",
+    "title": "Strong Skipping Mode in Compose Compiler",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-recomposition-count-debug",
+    "title": "Debugging Recomposition Counts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-layout-inspector-tools",
+    "title": "Layout Inspector for Compose Debugging",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-ui-test-semantics",
+    "title": "Semantics and Accessibility Testing in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-screenshot-testing-paparazzi",
+    "title": "Screenshot Testing with Paparazzi",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-preview-parameter-providers",
+    "title": "Preview Parameter Providers in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-interactive-previews",
+    "title": "Interactive Previews in Android Studio",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-animation-shared-element",
+    "title": "Shared Element Transitions in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-animation-animated-content",
+    "title": "AnimatedContent for State Transitions",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-lottie-compose-integration",
+    "title": "Lottie Animations in Jetpack Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-rive-vector-animations",
+    "title": "Rive Vector Animations in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-canvas-custom-drawing",
+    "title": "Custom Drawing with Compose Canvas",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-graphics-layer-effects",
+    "title": "GraphicsLayer Effects in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-blur-modifier-effects",
+    "title": "Blur and Visual Effects in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-webview-accompanist",
+    "title": "Embedding WebViews in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-map-compose-integration",
+    "title": "Google Maps Compose Integration",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-camera-camerax-compose",
+    "title": "CameraX with Jetpack Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-barcode-scanner-compose",
+    "title": "Barcode Scanning in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-biometric-prompt-compose",
+    "title": "Biometric Prompt in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-permissions-accompanist",
+    "title": "Runtime Permissions in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-location-permissions-flow",
+    "title": "Location Permission Flows in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-notification-permission-android13",
+    "title": "Notification Permission UX in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-in-app-update-compose",
+    "title": "In-App Updates UI with Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-review-manager-compose",
+    "title": "In-App Review Prompts in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-play-integrity-check",
+    "title": "Play Integrity Checks in Compose Apps",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-feature-delivery-ui",
+    "title": "Feature Delivery UI Patterns in Compose",
+    "category": "Compose"
+  },
+  {
+    "slug": "compose-app-shortcuts-compose",
+    "title": "App Shortcuts with Compose Deep Links",
+    "category": "Compose"
+  },
+  {
+    "slug": "android-16-edge-to-edge-enforcement",
+    "title": "Android 16 Edge-to-Edge Enforcement",
+    "category": "Android"
+  },
+  {
+    "slug": "android-predictive-back-gesture",
+    "title": "Predictive Back Gesture Implementation",
+    "category": "Android"
+  },
+  {
+    "slug": "android-permission-photopicker-only",
+    "title": "Photo Picker Only: Dropping Storage Permissions",
+    "category": "Android"
+  },
+  {
+    "slug": "android-foreground-service-restrictions",
+    "title": "Foreground Service Restrictions on Android 15+",
+    "category": "Android"
+  },
+  {
+    "slug": "android-broadcast-receiver-exported",
+    "title": "Exported vs Non-Exported Broadcast Receivers",
+    "category": "Android"
+  },
+  {
+    "slug": "android-safer-intents-validation",
+    "title": "Safer Intents and PendingIntent Flags",
+    "category": "Android"
+  },
+  {
+    "slug": "android-splashscreen-api-migration",
+    "title": "SplashScreen API Migration Guide",
+    "category": "Android"
+  },
+  {
+    "slug": "android-window-insets-handling",
+    "title": "Window Insets Handling on Modern Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-display-cutout-notches",
+    "title": "Display Cutout and Notch Handling",
+    "category": "Android"
+  },
+  {
+    "slug": "android-foldable-state-posture",
+    "title": "Foldable Posture and State Detection",
+    "category": "Android"
+  },
+  {
+    "slug": "android-large-screen-optimization",
+    "title": "Large Screen Optimization for Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-desktop-mode-support",
+    "title": "Desktop Mode Support on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-chromeos-app-optimization",
+    "title": "ChromeOS Android App Optimization",
+    "category": "Android"
+  },
+  {
+    "slug": "android-automotive-app-design",
+    "title": "Designing Apps for Android Automotive",
+    "category": "Android"
+  },
+  {
+    "slug": "android-wear-os-compose-tiles",
+    "title": "Wear OS Compose and Tiles",
+    "category": "Android"
+  },
+  {
+    "slug": "android-xr-headset-development",
+    "title": "Android XR Headset Development Basics",
+    "category": "Android"
+  },
+  {
+    "slug": "android-health-connect-permissions",
+    "title": "Health Connect Permissions and Data Types",
+    "category": "Android"
+  },
+  {
+    "slug": "android-fitness-api-integration",
+    "title": "Fitness API Integration on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-sensor-batch-processing",
+    "title": "Batch Processing Android Sensor Data",
+    "category": "Android"
+  },
+  {
+    "slug": "android-activity-recognition-api",
+    "title": "Activity Recognition API on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-geofencing-battery-efficient",
+    "title": "Battery-Efficient Geofencing on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-fused-location-provider",
+    "title": "Fused Location Provider Best Practices",
+    "category": "Android"
+  },
+  {
+    "slug": "android-background-location-policy",
+    "title": "Background Location Policy Compliance",
+    "category": "Android"
+  },
+  {
+    "slug": "android-wifi-scanning-privacy",
+    "title": "Wi-Fi Scanning and Privacy on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-bluetooth-le-scanning",
+    "title": "BLE Scanning Patterns on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-nfc-hce-payment",
+    "title": "NFC Host Card Emulation for Payments",
+    "category": "Android"
+  },
+  {
+    "slug": "android-uwb-ranging-api",
+    "title": "UWB Ranging API on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-thread-border-router",
+    "title": "Thread Border Router on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-matter-commissioning",
+    "title": "Matter Device Commissioning on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-usb-accessory-mode",
+    "title": "USB Accessory Mode on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-serial-port-communication",
+    "title": "Serial Port Communication on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-hid-device-profile",
+    "title": "HID Device Profile on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-print-framework-integration",
+    "title": "Android Print Framework Integration",
+    "category": "Android"
+  },
+  {
+    "slug": "android-document-provider-files",
+    "title": "Document Provider for File Sharing",
+    "category": "Android"
+  },
+  {
+    "slug": "android-storage-access-framework",
+    "title": "Storage Access Framework Patterns",
+    "category": "Android"
+  },
+  {
+    "slug": "android-media-store-scoped",
+    "title": "Scoped Storage and MediaStore Queries",
+    "category": "Android"
+  },
+  {
+    "slug": "android-download-manager-resume",
+    "title": "DownloadManager with Resume Support",
+    "category": "Android"
+  },
+  {
+    "slug": "android-share-sheet-direct-share",
+    "title": "Direct Share Targets on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-shortcuts-static-dynamic",
+    "title": "Static and Dynamic App Shortcuts",
+    "category": "Android"
+  },
+  {
+    "slug": "android-widgets-glance-complications",
+    "title": "Glance Widgets and Complications",
+    "category": "Android"
+  },
+  {
+    "slug": "android-live-wallpaper-compose",
+    "title": "Live Wallpaper with Compose Rendering",
+    "category": "Android"
+  },
+  {
+    "slug": "android-dream-service-screensaver",
+    "title": "Dream Service Screensaver Apps",
+    "category": "Android"
+  },
+  {
+    "slug": "android-voice-interaction-service",
+    "title": "Voice Interaction Service on Android",
+    "category": "Android"
+  },
+  {
+    "slug": "android-assist-structure-extraction",
+    "title": "Assist Structure for Context Extraction",
+    "category": "Android"
+  },
+  {
+    "slug": "flutter-impeller-rendering-engine",
+    "title": "Impeller Rendering Engine in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-web-wasm-compilation",
+    "title": "Flutter Web Wasm Compilation",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-desktop-multi-window",
+    "title": "Multi-Window Support in Flutter Desktop",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-platform-views-hybrid",
+    "title": "Hybrid Composition Platform Views",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-texture-layer-hybrid",
+    "title": "Texture Layer Hybrid Composition",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-isolate-compute-heavy",
+    "title": "Isolates for Compute-Heavy Flutter Work",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-ffi-native-interop",
+    "title": "FFI Native Interop in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-pigeon-code-generation",
+    "title": "Pigeon for Type-Safe Platform Channels",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-method-channel-patterns",
+    "title": "Method Channel Patterns in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-event-channel-streams",
+    "title": "Event Channels for Native Streams",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-basic-message-channels",
+    "title": "Basic Message Channels in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-plugin-platform-interface",
+    "title": "Platform Interface Pattern for Plugins",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-integration-test-patrol",
+    "title": "Integration Testing with Patrol",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-golden-test-comparison",
+    "title": "Golden File Testing in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-widget-test-finders",
+    "title": "Widget Test Finders and Matchers",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-mockito-riverpod-test",
+    "title": "Mockito with Riverpod Testing",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-bloc-test-patterns",
+    "title": "bloc_test Patterns for Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-flutter-driver-e2e",
+    "title": "Flutter Driver E2E Testing",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-app-check",
+    "title": "Firebase App Check in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-crashlytics-setup",
+    "title": "Crashlytics Setup in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-analytics-events",
+    "title": "Firebase Analytics Events in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-remote-config-ab",
+    "title": "Remote Config A/B Tests in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-firebase-messaging-topics",
+    "title": "FCM Topic Messaging in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-supabase-auth-realtime",
+    "title": "Supabase Auth and Realtime in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-appwrite-backend",
+    "title": "Appwrite Backend Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-pocketbase-integration",
+    "title": "PocketBase Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-strapi-headless-cms",
+    "title": "Strapi Headless CMS with Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-sanity-cms-content",
+    "title": "Sanity CMS Content in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-contentful-delivery-api",
+    "title": "Contentful Delivery API in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-algolia-search-integration",
+    "title": "Algolia Search in Flutter Apps",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-typesense-search",
+    "title": "Typesense Search Integration in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-meilisearch-integration",
+    "title": "Meilisearch in Flutter Applications",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-elasticsearch-dart-client",
+    "title": "Elasticsearch Dart Client in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-mapbox-maps-flutter",
+    "title": "Mapbox Maps SDK for Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-google-maps-clustering",
+    "title": "Google Maps Marker Clustering in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-geolocator-permissions",
+    "title": "Geolocator Permissions in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-background-geolocation",
+    "title": "Background Geolocation in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-local-notifications-scheduling",
+    "title": "Local Notifications Scheduling in Flutter",
+    "category": "Flutter"
+  },
+  {
+    "slug": "flutter-awesome-notifications",
+    "title": "Awesome Notifications Plugin Patterns",
+    "category": "Flutter"
+  },
+  {
+    "slug": "llm-idempotency-keys-retry-safety",
+    "title": "Idempotency Keys Retry Safety",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-idempotency-keys-retry-safety",
+    "title": "RAG: Idempotency Keys Retry Safety",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-idempotency-keys-retry-safety",
+    "title": "AI Agents: Idempotency Keys Retry Safety",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-circuit-breaker-bulkhead-patterns",
+    "title": "Circuit Breaker Bulkhead Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-circuit-breaker-bulkhead-patterns",
+    "title": "RAG: Circuit Breaker Bulkhead Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-circuit-breaker-bulkhead-patterns",
+    "title": "AI Agents: Circuit Breaker Bulkhead Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-saga-orchestration-choreography",
+    "title": "Saga Orchestration Choreography",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-saga-orchestration-choreography",
+    "title": "RAG: Saga Orchestration Choreography",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-saga-orchestration-choreography",
+    "title": "AI Agents: Saga Orchestration Choreography",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-event-sourcing-cqrs-basics",
+    "title": "Event Sourcing Cqrs Basics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-event-sourcing-cqrs-basics",
+    "title": "RAG: Event Sourcing Cqrs Basics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-event-sourcing-cqrs-basics",
+    "title": "AI Agents: Event Sourcing Cqrs Basics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-outbox-pattern-reliable-events",
+    "title": "Outbox Pattern Reliable Events",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-outbox-pattern-reliable-events",
+    "title": "RAG: Outbox Pattern Reliable Events",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-outbox-pattern-reliable-events",
+    "title": "AI Agents: Outbox Pattern Reliable Events",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-inbox-pattern-dedup",
+    "title": "Inbox Pattern Dedup",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-inbox-pattern-dedup",
+    "title": "RAG: Inbox Pattern Dedup",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-inbox-pattern-dedup",
+    "title": "AI Agents: Inbox Pattern Dedup",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-dead-letter-queue-handling",
+    "title": "Dead Letter Queue Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-dead-letter-queue-handling",
+    "title": "RAG: Dead Letter Queue Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-dead-letter-queue-handling",
+    "title": "AI Agents: Dead Letter Queue Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-poison-message-detection",
+    "title": "Poison Message Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-poison-message-detection",
+    "title": "RAG: Poison Message Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-poison-message-detection",
+    "title": "AI Agents: Poison Message Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-message-ordering-guarantees",
+    "title": "Message Ordering Guarantees",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-message-ordering-guarantees",
+    "title": "RAG: Message Ordering Guarantees",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-message-ordering-guarantees",
+    "title": "AI Agents: Message Ordering Guarantees",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-exactly-once-delivery-claims",
+    "title": "Exactly Once Delivery Claims",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-exactly-once-delivery-claims",
+    "title": "RAG: Exactly Once Delivery Claims",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-exactly-once-delivery-claims",
+    "title": "AI Agents: Exactly Once Delivery Claims",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-at-least-once-idempotent-consumers",
+    "title": "At Least Once Idempotent Consumers",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-at-least-once-idempotent-consumers",
+    "title": "RAG: At Least Once Idempotent Consumers",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-at-least-once-idempotent-consumers",
+    "title": "AI Agents: At Least Once Idempotent Consumers",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-backpressure-flow-control",
+    "title": "Backpressure Flow Control",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-backpressure-flow-control",
+    "title": "RAG: Backpressure Flow Control",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-backpressure-flow-control",
+    "title": "AI Agents: Backpressure Flow Control",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-connection-pooling-tuning",
+    "title": "Connection Pooling Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-connection-pooling-tuning",
+    "title": "RAG: Connection Pooling Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-connection-pooling-tuning",
+    "title": "AI Agents: Connection Pooling Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-query-plan-analysis",
+    "title": "Query Plan Analysis",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-query-plan-analysis",
+    "title": "RAG: Query Plan Analysis",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-query-plan-analysis",
+    "title": "AI Agents: Query Plan Analysis",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-index-only-scans",
+    "title": "Index Only Scans",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-index-only-scans",
+    "title": "RAG: Index Only Scans",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-index-only-scans",
+    "title": "AI Agents: Index Only Scans",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-partial-indexes-filtered",
+    "title": "Partial Indexes Filtered",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-partial-indexes-filtered",
+    "title": "RAG: Partial Indexes Filtered",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-partial-indexes-filtered",
+    "title": "AI Agents: Partial Indexes Filtered",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-materialized-view-refresh",
+    "title": "Materialized View Refresh",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-materialized-view-refresh",
+    "title": "RAG: Materialized View Refresh",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-materialized-view-refresh",
+    "title": "AI Agents: Materialized View Refresh",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-partition-pruning-strategies",
+    "title": "Partition Pruning Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-partition-pruning-strategies",
+    "title": "RAG: Partition Pruning Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-partition-pruning-strategies",
+    "title": "AI Agents: Partition Pruning Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-table-bloat-vacuum-tuning",
+    "title": "Table Bloat Vacuum Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-table-bloat-vacuum-tuning",
+    "title": "RAG: Table Bloat Vacuum Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-table-bloat-vacuum-tuning",
+    "title": "AI Agents: Table Bloat Vacuum Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-replication-lag-monitoring",
+    "title": "Replication Lag Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-replication-lag-monitoring",
+    "title": "RAG: Replication Lag Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-replication-lag-monitoring",
+    "title": "AI Agents: Replication Lag Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-failover-automation-patroni",
+    "title": "Failover Automation Patroni",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-failover-automation-patroni",
+    "title": "RAG: Failover Automation Patroni",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-failover-automation-patroni",
+    "title": "AI Agents: Failover Automation Patroni",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-logical-replication-conflicts",
+    "title": "Logical Replication Conflicts",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-logical-replication-conflicts",
+    "title": "RAG: Logical Replication Conflicts",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-logical-replication-conflicts",
+    "title": "AI Agents: Logical Replication Conflicts",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-read-replica-routing",
+    "title": "Read Replica Routing",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-read-replica-routing",
+    "title": "RAG: Read Replica Routing",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-read-replica-routing",
+    "title": "AI Agents: Read Replica Routing",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-connection-proxy-pgbouncer",
+    "title": "Connection Proxy Pgbouncer",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-connection-proxy-pgbouncer",
+    "title": "RAG: Connection Proxy Pgbouncer",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-connection-proxy-pgbouncer",
+    "title": "AI Agents: Connection Proxy Pgbouncer",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-schema-migration-zero-downtime",
+    "title": "Schema Migration Zero Downtime",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-schema-migration-zero-downtime",
+    "title": "RAG: Schema Migration Zero Downtime",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-schema-migration-zero-downtime",
+    "title": "AI Agents: Schema Migration Zero Downtime",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-blue-green-database-migration",
+    "title": "Blue Green Database Migration",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-blue-green-database-migration",
+    "title": "RAG: Blue Green Database Migration",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-blue-green-database-migration",
+    "title": "AI Agents: Blue Green Database Migration",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-expand-contract-migrations",
+    "title": "Expand Contract Migrations",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-expand-contract-migrations",
+    "title": "RAG: Expand Contract Migrations",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-expand-contract-migrations",
+    "title": "AI Agents: Expand Contract Migrations",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-feature-flag-database-changes",
+    "title": "Feature Flag Database Changes",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-feature-flag-database-changes",
+    "title": "RAG: Feature Flag Database Changes",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-feature-flag-database-changes",
+    "title": "AI Agents: Feature Flag Database Changes",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-audit-log-immutable-trail",
+    "title": "Audit Log Immutable Trail",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-audit-log-immutable-trail",
+    "title": "RAG: Audit Log Immutable Trail",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-audit-log-immutable-trail",
+    "title": "AI Agents: Audit Log Immutable Trail",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-row-level-security-policies",
+    "title": "Row Level Security Policies",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-row-level-security-policies",
+    "title": "RAG: Row Level Security Policies",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-row-level-security-policies",
+    "title": "AI Agents: Row Level Security Policies",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-column-encryption-pgcrypto",
+    "title": "Column Encryption Pgcrypto",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-column-encryption-pgcrypto",
+    "title": "RAG: Column Encryption Pgcrypto",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-column-encryption-pgcrypto",
+    "title": "AI Agents: Column Encryption Pgcrypto",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-data-masking-anonymization",
+    "title": "Data Masking Anonymization",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-data-masking-anonymization",
+    "title": "RAG: Data Masking Anonymization",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-data-masking-anonymization",
+    "title": "AI Agents: Data Masking Anonymization",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pii-tokenization-vault",
+    "title": "Pii Tokenization Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pii-tokenization-vault",
+    "title": "RAG: Pii Tokenization Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pii-tokenization-vault",
+    "title": "AI Agents: Pii Tokenization Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-consent-management-records",
+    "title": "Consent Management Records",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-consent-management-records",
+    "title": "RAG: Consent Management Records",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-consent-management-records",
+    "title": "AI Agents: Consent Management Records",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-gdpr-right-to-erasure",
+    "title": "Gdpr Right To Erasure",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-gdpr-right-to-erasure",
+    "title": "RAG: Gdpr Right To Erasure",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-gdpr-right-to-erasure",
+    "title": "AI Agents: Gdpr Right To Erasure",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-data-retention-automation",
+    "title": "Data Retention Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-data-retention-automation",
+    "title": "RAG: Data Retention Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-data-retention-automation",
+    "title": "AI Agents: Data Retention Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cold-storage-tiering",
+    "title": "Cold Storage Tiering",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cold-storage-tiering",
+    "title": "RAG: Cold Storage Tiering",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cold-storage-tiering",
+    "title": "AI Agents: Cold Storage Tiering",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-compaction-schedule-tuning",
+    "title": "Compaction Schedule Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-compaction-schedule-tuning",
+    "title": "RAG: Compaction Schedule Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-compaction-schedule-tuning",
+    "title": "AI Agents: Compaction Schedule Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-stream-processing-windowing",
+    "title": "Stream Processing Windowing",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-stream-processing-windowing",
+    "title": "RAG: Stream Processing Windowing",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-stream-processing-windowing",
+    "title": "AI Agents: Stream Processing Windowing",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-watermark-late-data",
+    "title": "Watermark Late Data",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-watermark-late-data",
+    "title": "RAG: Watermark Late Data",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-watermark-late-data",
+    "title": "AI Agents: Watermark Late Data",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-state-store-rocksdb",
+    "title": "State Store Rocksdb",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-state-store-rocksdb",
+    "title": "RAG: State Store Rocksdb",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-state-store-rocksdb",
+    "title": "AI Agents: State Store Rocksdb",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-changelog-compacted-topics",
+    "title": "Changelog Compacted Topics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-changelog-compacted-topics",
+    "title": "RAG: Changelog Compacted Topics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-changelog-compacted-topics",
+    "title": "AI Agents: Changelog Compacted Topics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-consumer-group-rebalance",
+    "title": "Consumer Group Rebalance",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-consumer-group-rebalance",
+    "title": "RAG: Consumer Group Rebalance",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-consumer-group-rebalance",
+    "title": "AI Agents: Consumer Group Rebalance",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-partition-assignment-sticky",
+    "title": "Partition Assignment Sticky",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-partition-assignment-sticky",
+    "title": "RAG: Partition Assignment Sticky",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-partition-assignment-sticky",
+    "title": "AI Agents: Partition Assignment Sticky",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-producer-acknowledgment-tradeoffs",
+    "title": "Producer Acknowledgment Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-producer-acknowledgment-tradeoffs",
+    "title": "RAG: Producer Acknowledgment Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-producer-acknowledgment-tradeoffs",
+    "title": "AI Agents: Producer Acknowledgment Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-compression-lz4-zstd",
+    "title": "Compression Lz4 Zstd",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-compression-lz4-zstd",
+    "title": "RAG: Compression Lz4 Zstd",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-compression-lz4-zstd",
+    "title": "AI Agents: Compression Lz4 Zstd",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-schema-registry-avro",
+    "title": "Schema Registry Avro",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-schema-registry-avro",
+    "title": "RAG: Schema Registry Avro",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-schema-registry-avro",
+    "title": "AI Agents: Schema Registry Avro",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-protobuf-evolution-compatibility",
+    "title": "Protobuf Evolution Compatibility",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-protobuf-evolution-compatibility",
+    "title": "RAG: Protobuf Evolution Compatibility",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-protobuf-evolution-compatibility",
+    "title": "AI Agents: Protobuf Evolution Compatibility",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-json-schema-validation-pipeline",
+    "title": "Json Schema Validation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-json-schema-validation-pipeline",
+    "title": "RAG: Json Schema Validation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-json-schema-validation-pipeline",
+    "title": "AI Agents: Json Schema Validation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cdc-debezium-postgres",
+    "title": "Cdc Debezium Postgres",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cdc-debezium-postgres",
+    "title": "RAG: Cdc Debezium Postgres",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cdc-debezium-postgres",
+    "title": "AI Agents: Cdc Debezium Postgres",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-incremental-sync-cursors",
+    "title": "Incremental Sync Cursors",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-incremental-sync-cursors",
+    "title": "RAG: Incremental Sync Cursors",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-incremental-sync-cursors",
+    "title": "AI Agents: Incremental Sync Cursors",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-full-refresh-vs-incremental",
+    "title": "Full Refresh Vs Incremental",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-full-refresh-vs-incremental",
+    "title": "RAG: Full Refresh Vs Incremental",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-full-refresh-vs-incremental",
+    "title": "AI Agents: Full Refresh Vs Incremental",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-slowly-changing-dimensions",
+    "title": "Slowly Changing Dimensions",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-slowly-changing-dimensions",
+    "title": "RAG: Slowly Changing Dimensions",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-slowly-changing-dimensions",
+    "title": "AI Agents: Slowly Changing Dimensions",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-fact-table-grain-design",
+    "title": "Fact Table Grain Design",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-fact-table-grain-design",
+    "title": "RAG: Fact Table Grain Design",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-fact-table-grain-design",
+    "title": "AI Agents: Fact Table Grain Design",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-star-schema-normalization",
+    "title": "Star Schema Normalization",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-star-schema-normalization",
+    "title": "RAG: Star Schema Normalization",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-star-schema-normalization",
+    "title": "AI Agents: Star Schema Normalization",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-data-quality-expectations",
+    "title": "Data Quality Expectations",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-data-quality-expectations",
+    "title": "RAG: Data Quality Expectations",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-data-quality-expectations",
+    "title": "AI Agents: Data Quality Expectations",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-anomaly-detection-metrics",
+    "title": "Anomaly Detection Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-anomaly-detection-metrics",
+    "title": "RAG: Anomaly Detection Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-anomaly-detection-metrics",
+    "title": "AI Agents: Anomaly Detection Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-lineage-openlineage-marquez",
+    "title": "Lineage Openlineage Marquez",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-lineage-openlineage-marquez",
+    "title": "RAG: Lineage Openlineage Marquez",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-lineage-openlineage-marquez",
+    "title": "AI Agents: Lineage Openlineage Marquez",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-catalog-datahub-amundsen",
+    "title": "Catalog Datahub Amundsen",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-catalog-datahub-amundsen",
+    "title": "RAG: Catalog Datahub Amundsen",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-catalog-datahub-amundsen",
+    "title": "AI Agents: Catalog Datahub Amundsen",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-metric-store-definition",
+    "title": "Metric Store Definition",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-metric-store-definition",
+    "title": "RAG: Metric Store Definition",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-metric-store-definition",
+    "title": "AI Agents: Metric Store Definition",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-semantic-layer-metrics",
+    "title": "Semantic Layer Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-semantic-layer-metrics",
+    "title": "RAG: Semantic Layer Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-semantic-layer-metrics",
+    "title": "AI Agents: Semantic Layer Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-reverse-etl-activation",
+    "title": "Reverse Etl Activation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-reverse-etl-activation",
+    "title": "RAG: Reverse Etl Activation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-reverse-etl-activation",
+    "title": "AI Agents: Reverse Etl Activation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-operational-analytics-sync",
+    "title": "Operational Analytics Sync",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-operational-analytics-sync",
+    "title": "RAG: Operational Analytics Sync",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-operational-analytics-sync",
+    "title": "AI Agents: Operational Analytics Sync",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-embedded-analytics-sdk",
+    "title": "Embedded Analytics Sdk",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-embedded-analytics-sdk",
+    "title": "RAG: Embedded Analytics Sdk",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-embedded-analytics-sdk",
+    "title": "AI Agents: Embedded Analytics Sdk",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-realtime-dashboard-websocket",
+    "title": "Realtime Dashboard Websocket",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-realtime-dashboard-websocket",
+    "title": "RAG: Realtime Dashboard Websocket",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-realtime-dashboard-websocket",
+    "title": "AI Agents: Realtime Dashboard Websocket",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-timeseries-anomaly-alerting",
+    "title": "Timeseries Anomaly Alerting",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-timeseries-anomaly-alerting",
+    "title": "RAG: Timeseries Anomaly Alerting",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-timeseries-anomaly-alerting",
+    "title": "AI Agents: Timeseries Anomaly Alerting",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-forecasting-prophet-arima",
+    "title": "Forecasting Prophet Arima",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-forecasting-prophet-arima",
+    "title": "RAG: Forecasting Prophet Arima",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-forecasting-prophet-arima",
+    "title": "AI Agents: Forecasting Prophet Arima",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-ab-test-statistical-power",
+    "title": "Ab Test Statistical Power",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-ab-test-statistical-power",
+    "title": "RAG: Ab Test Statistical Power",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-ab-test-statistical-power",
+    "title": "AI Agents: Ab Test Statistical Power",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-experiment-sequential-testing",
+    "title": "Experiment Sequential Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-experiment-sequential-testing",
+    "title": "RAG: Experiment Sequential Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-experiment-sequential-testing",
+    "title": "AI Agents: Experiment Sequential Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-guardrail-metrics-experiments",
+    "title": "Guardrail Metrics Experiments",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-guardrail-metrics-experiments",
+    "title": "RAG: Guardrail Metrics Experiments",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-guardrail-metrics-experiments",
+    "title": "AI Agents: Guardrail Metrics Experiments",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-feature-store-online-offline",
+    "title": "Feature Store Online Offline",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-feature-store-online-offline",
+    "title": "RAG: Feature Store Online Offline",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-feature-store-online-offline",
+    "title": "AI Agents: Feature Store Online Offline",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-embedding-store-versioning",
+    "title": "Embedding Store Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-embedding-store-versioning",
+    "title": "RAG: Embedding Store Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-embedding-store-versioning",
+    "title": "AI Agents: Embedding Store Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-vector-index-rebuild",
+    "title": "Vector Index Rebuild",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-vector-index-rebuild",
+    "title": "RAG: Vector Index Rebuild",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-vector-index-rebuild",
+    "title": "AI Agents: Vector Index Rebuild",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-hybrid-search-weight-tuning",
+    "title": "Hybrid Search Weight Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-hybrid-search-weight-tuning",
+    "title": "RAG: Hybrid Search Weight Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-hybrid-search-weight-tuning",
+    "title": "AI Agents: Hybrid Search Weight Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-reranker-latency-budget",
+    "title": "Reranker Latency Budget",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-reranker-latency-budget",
+    "title": "RAG: Reranker Latency Budget",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-reranker-latency-budget",
+    "title": "AI Agents: Reranker Latency Budget",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-query-understanding-nlu",
+    "title": "Query Understanding Nlu",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-query-understanding-nlu",
+    "title": "RAG: Query Understanding Nlu",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-query-understanding-nlu",
+    "title": "AI Agents: Query Understanding Nlu",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-intent-classification-production",
+    "title": "Intent Classification Production",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-intent-classification-production",
+    "title": "RAG: Intent Classification Production",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-intent-classification-production",
+    "title": "AI Agents: Intent Classification Production",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-slot-filling-dialogue",
+    "title": "Slot Filling Dialogue",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-slot-filling-dialogue",
+    "title": "RAG: Slot Filling Dialogue",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-slot-filling-dialogue",
+    "title": "AI Agents: Slot Filling Dialogue",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-conversation-state-machine",
+    "title": "Conversation State Machine",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-conversation-state-machine",
+    "title": "RAG: Conversation State Machine",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-conversation-state-machine",
+    "title": "AI Agents: Conversation State Machine",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-handoff-human-agent-queue",
+    "title": "Handoff Human Agent Queue",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-handoff-human-agent-queue",
+    "title": "RAG: Handoff Human Agent Queue",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-handoff-human-agent-queue",
+    "title": "AI Agents: Handoff Human Agent Queue",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-csat-feedback-loop",
+    "title": "Csat Feedback Loop",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-csat-feedback-loop",
+    "title": "RAG: Csat Feedback Loop",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-csat-feedback-loop",
+    "title": "AI Agents: Csat Feedback Loop",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-knowledge-base-curation",
+    "title": "Knowledge Base Curation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-knowledge-base-curation",
+    "title": "RAG: Knowledge Base Curation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-knowledge-base-curation",
+    "title": "AI Agents: Knowledge Base Curation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-article-suggestion-confidence",
+    "title": "Article Suggestion Confidence",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-article-suggestion-confidence",
+    "title": "RAG: Article Suggestion Confidence",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-article-suggestion-confidence",
+    "title": "AI Agents: Article Suggestion Confidence",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-auto-tagging-taxonomy",
+    "title": "Auto Tagging Taxonomy",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-auto-tagging-taxonomy",
+    "title": "RAG: Auto Tagging Taxonomy",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-auto-tagging-taxonomy",
+    "title": "AI Agents: Auto Tagging Taxonomy",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-content-moderation-pipeline",
+    "title": "Content Moderation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-content-moderation-pipeline",
+    "title": "RAG: Content Moderation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-content-moderation-pipeline",
+    "title": "AI Agents: Content Moderation Pipeline",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-toxicity-classifier-threshold",
+    "title": "Toxicity Classifier Threshold",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-toxicity-classifier-threshold",
+    "title": "RAG: Toxicity Classifier Threshold",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-toxicity-classifier-threshold",
+    "title": "AI Agents: Toxicity Classifier Threshold",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-bias-detection-evaluation",
+    "title": "Bias Detection Evaluation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-bias-detection-evaluation",
+    "title": "RAG: Bias Detection Evaluation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-bias-detection-evaluation",
+    "title": "AI Agents: Bias Detection Evaluation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-fairness-metrics-ml",
+    "title": "Fairness Metrics Ml",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-fairness-metrics-ml",
+    "title": "RAG: Fairness Metrics Ml",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-fairness-metrics-ml",
+    "title": "AI Agents: Fairness Metrics Ml",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-model-card-documentation",
+    "title": "Model Card Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-model-card-documentation",
+    "title": "RAG: Model Card Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-model-card-documentation",
+    "title": "AI Agents: Model Card Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-datasheet-datasets",
+    "title": "Datasheet Datasets",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-datasheet-datasets",
+    "title": "RAG: Datasheet Datasets",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-datasheet-datasets",
+    "title": "AI Agents: Datasheet Datasets",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-responsible-ai-review",
+    "title": "Responsible Ai Review",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-responsible-ai-review",
+    "title": "RAG: Responsible Ai Review",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-responsible-ai-review",
+    "title": "AI Agents: Responsible Ai Review",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-explainability-shap-lime",
+    "title": "Explainability Shap Lime",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-explainability-shap-lime",
+    "title": "RAG: Explainability Shap Lime",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-explainability-shap-lime",
+    "title": "AI Agents: Explainability Shap Lime",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-counterfactual-explanations",
+    "title": "Counterfactual Explanations",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-counterfactual-explanations",
+    "title": "RAG: Counterfactual Explanations",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-counterfactual-explanations",
+    "title": "AI Agents: Counterfactual Explanations",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-adversarial-robustness-testing",
+    "title": "Adversarial Robustness Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-adversarial-robustness-testing",
+    "title": "RAG: Adversarial Robustness Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-adversarial-robustness-testing",
+    "title": "AI Agents: Adversarial Robustness Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-membership-inference-defense",
+    "title": "Membership Inference Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-membership-inference-defense",
+    "title": "RAG: Membership Inference Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-membership-inference-defense",
+    "title": "AI Agents: Membership Inference Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-model-extraction-prevention",
+    "title": "Model Extraction Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-model-extraction-prevention",
+    "title": "RAG: Model Extraction Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-model-extraction-prevention",
+    "title": "AI Agents: Model Extraction Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-watermarking-outputs",
+    "title": "Watermarking Outputs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-watermarking-outputs",
+    "title": "RAG: Watermarking Outputs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-watermarking-outputs",
+    "title": "AI Agents: Watermarking Outputs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-provenance-content-credentials",
+    "title": "Provenance Content Credentials",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-provenance-content-credentials",
+    "title": "RAG: Provenance Content Credentials",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-provenance-content-credentials",
+    "title": "AI Agents: Provenance Content Credentials",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-deepfake-detection-signals",
+    "title": "Deepfake Detection Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-deepfake-detection-signals",
+    "title": "RAG: Deepfake Detection Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-deepfake-detection-signals",
+    "title": "AI Agents: Deepfake Detection Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-synthetic-media-labeling",
+    "title": "Synthetic Media Labeling",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-synthetic-media-labeling",
+    "title": "RAG: Synthetic Media Labeling",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-synthetic-media-labeling",
+    "title": "AI Agents: Synthetic Media Labeling",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-token-budget-compression",
+    "title": "Token Budget Compression",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-token-budget-compression",
+    "title": "RAG: Token Budget Compression",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-token-budget-compression",
+    "title": "AI Agents: Token Budget Compression",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-context-pruning-heuristics",
+    "title": "Context Pruning Heuristics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-context-pruning-heuristics",
+    "title": "RAG: Context Pruning Heuristics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-context-pruning-heuristics",
+    "title": "AI Agents: Context Pruning Heuristics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-summarization-map-reduce",
+    "title": "Summarization Map Reduce",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-summarization-map-reduce",
+    "title": "RAG: Summarization Map Reduce",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-summarization-map-reduce",
+    "title": "AI Agents: Summarization Map Reduce",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-hierarchical-indexing-rag",
+    "title": "Hierarchical Indexing Rag",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-hierarchical-indexing-rag",
+    "title": "RAG: Hierarchical Indexing Rag",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-hierarchical-indexing-rag",
+    "title": "AI Agents: Hierarchical Indexing Rag",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-parent-child-chunk-linking",
+    "title": "Parent Child Chunk Linking",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-parent-child-chunk-linking",
+    "title": "RAG: Parent Child Chunk Linking",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-parent-child-chunk-linking",
+    "title": "AI Agents: Parent Child Chunk Linking",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-metadata-boost-retrieval",
+    "title": "Metadata Boost Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-metadata-boost-retrieval",
+    "title": "RAG: Metadata Boost Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-metadata-boost-retrieval",
+    "title": "AI Agents: Metadata Boost Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cross-encoder-reranking",
+    "title": "Cross Encoder Reranking",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cross-encoder-reranking",
+    "title": "RAG: Cross Encoder Reranking",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cross-encoder-reranking",
+    "title": "AI Agents: Cross Encoder Reranking",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-colbert-late-interaction",
+    "title": "Colbert Late Interaction",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-colbert-late-interaction",
+    "title": "RAG: Colbert Late Interaction",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-colbert-late-interaction",
+    "title": "AI Agents: Colbert Late Interaction",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-sparse-dense-hybrid",
+    "title": "Sparse Dense Hybrid",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-sparse-dense-hybrid",
+    "title": "RAG: Sparse Dense Hybrid",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-sparse-dense-hybrid",
+    "title": "AI Agents: Sparse Dense Hybrid",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-bm25-elasticsearch-tuning",
+    "title": "Bm25 Elasticsearch Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-bm25-elasticsearch-tuning",
+    "title": "RAG: Bm25 Elasticsearch Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-bm25-elasticsearch-tuning",
+    "title": "AI Agents: Bm25 Elasticsearch Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-inverted-index-analyzers",
+    "title": "Inverted Index Analyzers",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-inverted-index-analyzers",
+    "title": "RAG: Inverted Index Analyzers",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-inverted-index-analyzers",
+    "title": "AI Agents: Inverted Index Analyzers",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-synonym-graph-expansion",
+    "title": "Synonym Graph Expansion",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-synonym-graph-expansion",
+    "title": "RAG: Synonym Graph Expansion",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-synonym-graph-expansion",
+    "title": "AI Agents: Synonym Graph Expansion",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-faceted-navigation-filters",
+    "title": "Faceted Navigation Filters",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-faceted-navigation-filters",
+    "title": "RAG: Faceted Navigation Filters",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-faceted-navigation-filters",
+    "title": "AI Agents: Faceted Navigation Filters",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-personalization-signals-ranking",
+    "title": "Personalization Signals Ranking",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-personalization-signals-ranking",
+    "title": "RAG: Personalization Signals Ranking",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-personalization-signals-ranking",
+    "title": "AI Agents: Personalization Signals Ranking",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cold-start-recommendations",
+    "title": "Cold Start Recommendations",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cold-start-recommendations",
+    "title": "RAG: Cold Start Recommendations",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cold-start-recommendations",
+    "title": "AI Agents: Cold Start Recommendations",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-collaborative-filtering-embeddings",
+    "title": "Collaborative Filtering Embeddings",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-collaborative-filtering-embeddings",
+    "title": "RAG: Collaborative Filtering Embeddings",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-collaborative-filtering-embeddings",
+    "title": "AI Agents: Collaborative Filtering Embeddings",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-two-tower-retrieval",
+    "title": "Two Tower Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-two-tower-retrieval",
+    "title": "RAG: Two Tower Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-two-tower-retrieval",
+    "title": "AI Agents: Two Tower Retrieval",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-session-based-recsys",
+    "title": "Session Based Recsys",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-session-based-recsys",
+    "title": "RAG: Session Based Recsys",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-session-based-recsys",
+    "title": "AI Agents: Session Based Recsys",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-bandit-exploration-exploitation",
+    "title": "Bandit Exploration Exploitation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-bandit-exploration-exploitation",
+    "title": "RAG: Bandit Exploration Exploitation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-bandit-exploration-exploitation",
+    "title": "AI Agents: Bandit Exploration Exploitation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-multi-armed-thompson-sampling",
+    "title": "Multi Armed Thompson Sampling",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-multi-armed-thompson-sampling",
+    "title": "RAG: Multi Armed Thompson Sampling",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-multi-armed-thompson-sampling",
+    "title": "AI Agents: Multi Armed Thompson Sampling",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-contextual-bandits-features",
+    "title": "Contextual Bandits Features",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-contextual-bandits-features",
+    "title": "RAG: Contextual Bandits Features",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-contextual-bandits-features",
+    "title": "AI Agents: Contextual Bandits Features",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pricing-optimization-dynamic",
+    "title": "Pricing Optimization Dynamic",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pricing-optimization-dynamic",
+    "title": "RAG: Pricing Optimization Dynamic",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pricing-optimization-dynamic",
+    "title": "AI Agents: Pricing Optimization Dynamic",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-inventory-forecasting-models",
+    "title": "Inventory Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-inventory-forecasting-models",
+    "title": "RAG: Inventory Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-inventory-forecasting-models",
+    "title": "AI Agents: Inventory Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-demand-sensing-realtime",
+    "title": "Demand Sensing Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-demand-sensing-realtime",
+    "title": "RAG: Demand Sensing Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-demand-sensing-realtime",
+    "title": "AI Agents: Demand Sensing Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-fraud-scoring-realtime",
+    "title": "Fraud Scoring Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-fraud-scoring-realtime",
+    "title": "RAG: Fraud Scoring Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-fraud-scoring-realtime",
+    "title": "AI Agents: Fraud Scoring Realtime",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-chargeback-dispute-automation",
+    "title": "Chargeback Dispute Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-chargeback-dispute-automation",
+    "title": "RAG: Chargeback Dispute Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-chargeback-dispute-automation",
+    "title": "AI Agents: Chargeback Dispute Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-kyc-document-verification",
+    "title": "Kyc Document Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-kyc-document-verification",
+    "title": "RAG: Kyc Document Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-kyc-document-verification",
+    "title": "AI Agents: Kyc Document Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-aml-transaction-monitoring",
+    "title": "Aml Transaction Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-aml-transaction-monitoring",
+    "title": "RAG: Aml Transaction Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-aml-transaction-monitoring",
+    "title": "AI Agents: Aml Transaction Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-sanctions-screening-api",
+    "title": "Sanctions Screening Api",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-sanctions-screening-api",
+    "title": "RAG: Sanctions Screening Api",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-sanctions-screening-api",
+    "title": "AI Agents: Sanctions Screening Api",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pci-dss-scope-reduction",
+    "title": "Pci Dss Scope Reduction",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pci-dss-scope-reduction",
+    "title": "RAG: Pci Dss Scope Reduction",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pci-dss-scope-reduction",
+    "title": "AI Agents: Pci Dss Scope Reduction",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-tokenization-payment-vault",
+    "title": "Tokenization Payment Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-tokenization-payment-vault",
+    "title": "RAG: Tokenization Payment Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-tokenization-payment-vault",
+    "title": "AI Agents: Tokenization Payment Vault",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-3ds2-frictionless-flow",
+    "title": "3Ds2 Frictionless Flow",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-3ds2-frictionless-flow",
+    "title": "RAG: 3Ds2 Frictionless Flow",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-3ds2-frictionless-flow",
+    "title": "AI Agents: 3Ds2 Frictionless Flow",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-wallet-pass-provisioning",
+    "title": "Wallet Pass Provisioning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-wallet-pass-provisioning",
+    "title": "RAG: Wallet Pass Provisioning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-wallet-pass-provisioning",
+    "title": "AI Agents: Wallet Pass Provisioning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-subscription-billing-dunning",
+    "title": "Subscription Billing Dunning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-subscription-billing-dunning",
+    "title": "RAG: Subscription Billing Dunning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-subscription-billing-dunning",
+    "title": "AI Agents: Subscription Billing Dunning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-usage-metering-aggregation",
+    "title": "Usage Metering Aggregation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-usage-metering-aggregation",
+    "title": "RAG: Usage Metering Aggregation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-usage-metering-aggregation",
+    "title": "AI Agents: Usage Metering Aggregation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-invoice-generation-pdf",
+    "title": "Invoice Generation Pdf",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-invoice-generation-pdf",
+    "title": "RAG: Invoice Generation Pdf",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-invoice-generation-pdf",
+    "title": "AI Agents: Invoice Generation Pdf",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-tax-calculation-vat-gst",
+    "title": "Tax Calculation Vat Gst",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-tax-calculation-vat-gst",
+    "title": "RAG: Tax Calculation Vat Gst",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-tax-calculation-vat-gst",
+    "title": "AI Agents: Tax Calculation Vat Gst",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-multi-currency-settlement",
+    "title": "Multi Currency Settlement",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-multi-currency-settlement",
+    "title": "RAG: Multi Currency Settlement",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-multi-currency-settlement",
+    "title": "AI Agents: Multi Currency Settlement",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-fx-rate-caching",
+    "title": "Fx Rate Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-fx-rate-caching",
+    "title": "RAG: Fx Rate Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-fx-rate-caching",
+    "title": "AI Agents: Fx Rate Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-ledger-double-entry-events",
+    "title": "Ledger Double Entry Events",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-ledger-double-entry-events",
+    "title": "RAG: Ledger Double Entry Events",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-ledger-double-entry-events",
+    "title": "AI Agents: Ledger Double Entry Events",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-reconciliation-batch-jobs",
+    "title": "Reconciliation Batch Jobs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-reconciliation-batch-jobs",
+    "title": "RAG: Reconciliation Batch Jobs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-reconciliation-batch-jobs",
+    "title": "AI Agents: Reconciliation Batch Jobs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-settlement-cutoff-windows",
+    "title": "Settlement Cutoff Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-settlement-cutoff-windows",
+    "title": "RAG: Settlement Cutoff Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-settlement-cutoff-windows",
+    "title": "AI Agents: Settlement Cutoff Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-webhook-signature-verification",
+    "title": "Webhook Signature Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-webhook-signature-verification",
+    "title": "RAG: Webhook Signature Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-webhook-signature-verification",
+    "title": "AI Agents: Webhook Signature Verification",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-replay-attack-prevention",
+    "title": "Replay Attack Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-replay-attack-prevention",
+    "title": "RAG: Replay Attack Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-replay-attack-prevention",
+    "title": "AI Agents: Replay Attack Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-nonce-expiry-validation",
+    "title": "Nonce Expiry Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-nonce-expiry-validation",
+    "title": "RAG: Nonce Expiry Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-nonce-expiry-validation",
+    "title": "AI Agents: Nonce Expiry Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-jwt-rotation-key-management",
+    "title": "Jwt Rotation Key Management",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-jwt-rotation-key-management",
+    "title": "RAG: Jwt Rotation Key Management",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-jwt-rotation-key-management",
+    "title": "AI Agents: Jwt Rotation Key Management",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-opaque-token-introspection",
+    "title": "Opaque Token Introspection",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-opaque-token-introspection",
+    "title": "RAG: Opaque Token Introspection",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-opaque-token-introspection",
+    "title": "AI Agents: Opaque Token Introspection",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-session-fixation-prevention",
+    "title": "Session Fixation Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-session-fixation-prevention",
+    "title": "RAG: Session Fixation Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-session-fixation-prevention",
+    "title": "AI Agents: Session Fixation Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-csrf-double-submit-cookie",
+    "title": "Csrf Double Submit Cookie",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-csrf-double-submit-cookie",
+    "title": "RAG: Csrf Double Submit Cookie",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-csrf-double-submit-cookie",
+    "title": "AI Agents: Csrf Double Submit Cookie",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-same-site-cookie-policy",
+    "title": "Same Site Cookie Policy",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-same-site-cookie-policy",
+    "title": "RAG: Same Site Cookie Policy",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-same-site-cookie-policy",
+    "title": "AI Agents: Same Site Cookie Policy",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cors-preflight-caching",
+    "title": "Cors Preflight Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cors-preflight-caching",
+    "title": "RAG: Cors Preflight Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cors-preflight-caching",
+    "title": "AI Agents: Cors Preflight Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-content-security-policy-nonce",
+    "title": "Content Security Policy Nonce",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-content-security-policy-nonce",
+    "title": "RAG: Content Security Policy Nonce",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-content-security-policy-nonce",
+    "title": "AI Agents: Content Security Policy Nonce",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-subresource-integrity-hashes",
+    "title": "Subresource Integrity Hashes",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-subresource-integrity-hashes",
+    "title": "RAG: Subresource Integrity Hashes",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-subresource-integrity-hashes",
+    "title": "AI Agents: Subresource Integrity Hashes",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-http-security-headers-audit",
+    "title": "Http Security Headers Audit",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-http-security-headers-audit",
+    "title": "RAG: Http Security Headers Audit",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-http-security-headers-audit",
+    "title": "AI Agents: Http Security Headers Audit",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-tls-certificate-pinning-mobile",
+    "title": "Tls Certificate Pinning Mobile",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-tls-certificate-pinning-mobile",
+    "title": "RAG: Tls Certificate Pinning Mobile",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-tls-certificate-pinning-mobile",
+    "title": "AI Agents: Tls Certificate Pinning Mobile",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-certificate-transparency-monitoring",
+    "title": "Certificate Transparency Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-certificate-transparency-monitoring",
+    "title": "RAG: Certificate Transparency Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-certificate-transparency-monitoring",
+    "title": "AI Agents: Certificate Transparency Monitoring",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-spiffe-spire-identity",
+    "title": "Spiffe Spire Identity",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-spiffe-spire-identity",
+    "title": "RAG: Spiffe Spire Identity",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-spiffe-spire-identity",
+    "title": "AI Agents: Spiffe Spire Identity",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-workload-identity-federation",
+    "title": "Workload Identity Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-workload-identity-federation",
+    "title": "RAG: Workload Identity Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-workload-identity-federation",
+    "title": "AI Agents: Workload Identity Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-short-lived-credentials-rotation",
+    "title": "Short Lived Credentials Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-short-lived-credentials-rotation",
+    "title": "RAG: Short Lived Credentials Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-short-lived-credentials-rotation",
+    "title": "AI Agents: Short Lived Credentials Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-secrets-scanning-precommit",
+    "title": "Secrets Scanning Precommit",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-secrets-scanning-precommit",
+    "title": "RAG: Secrets Scanning Precommit",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-secrets-scanning-precommit",
+    "title": "AI Agents: Secrets Scanning Precommit",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-git-leaks-prevention",
+    "title": "Git Leaks Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-git-leaks-prevention",
+    "title": "RAG: Git Leaks Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-git-leaks-prevention",
+    "title": "AI Agents: Git Leaks Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-env-var-validation-schema",
+    "title": "Env Var Validation Schema",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-env-var-validation-schema",
+    "title": "RAG: Env Var Validation Schema",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-env-var-validation-schema",
+    "title": "AI Agents: Env Var Validation Schema",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-dependency-confusion-defense",
+    "title": "Dependency Confusion Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-dependency-confusion-defense",
+    "title": "RAG: Dependency Confusion Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-dependency-confusion-defense",
+    "title": "AI Agents: Dependency Confusion Defense",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-package-lock-integrity",
+    "title": "Package Lock Integrity",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-package-lock-integrity",
+    "title": "RAG: Package Lock Integrity",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-package-lock-integrity",
+    "title": "AI Agents: Package Lock Integrity",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-sbom-generation-ci",
+    "title": "Sbom Generation Ci",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-sbom-generation-ci",
+    "title": "RAG: Sbom Generation Ci",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-sbom-generation-ci",
+    "title": "AI Agents: Sbom Generation Ci",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-vulnerability-triage-sla",
+    "title": "Vulnerability Triage Sla",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-vulnerability-triage-sla",
+    "title": "RAG: Vulnerability Triage Sla",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-vulnerability-triage-sla",
+    "title": "AI Agents: Vulnerability Triage Sla",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-patch-management-windows",
+    "title": "Patch Management Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-patch-management-windows",
+    "title": "RAG: Patch Management Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-patch-management-windows",
+    "title": "AI Agents: Patch Management Windows",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-container-image-scanning-gate",
+    "title": "Container Image Scanning Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-container-image-scanning-gate",
+    "title": "RAG: Container Image Scanning Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-container-image-scanning-gate",
+    "title": "AI Agents: Container Image Scanning Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-runtime-security-falco",
+    "title": "Runtime Security Falco",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-runtime-security-falco",
+    "title": "RAG: Runtime Security Falco",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-runtime-security-falco",
+    "title": "AI Agents: Runtime Security Falco",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-ebpf-security-observability",
+    "title": "Ebpf Security Observability",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-ebpf-security-observability",
+    "title": "RAG: Ebpf Security Observability",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-ebpf-security-observability",
+    "title": "AI Agents: Ebpf Security Observability",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-honeypot-deception-tech",
+    "title": "Honeypot Deception Tech",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-honeypot-deception-tech",
+    "title": "RAG: Honeypot Deception Tech",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-honeypot-deception-tech",
+    "title": "AI Agents: Honeypot Deception Tech",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-canary-token-alerts",
+    "title": "Canary Token Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-canary-token-alerts",
+    "title": "RAG: Canary Token Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-canary-token-alerts",
+    "title": "AI Agents: Canary Token Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-breach-notification-playbook",
+    "title": "Breach Notification Playbook",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-breach-notification-playbook",
+    "title": "RAG: Breach Notification Playbook",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-breach-notification-playbook",
+    "title": "AI Agents: Breach Notification Playbook",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-forensics-log-preservation",
+    "title": "Forensics Log Preservation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-forensics-log-preservation",
+    "title": "RAG: Forensics Log Preservation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-forensics-log-preservation",
+    "title": "AI Agents: Forensics Log Preservation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-waf-bot-management",
+    "title": "Waf Bot Management",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-waf-bot-management",
+    "title": "RAG: Waf Bot Management",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-waf-bot-management",
+    "title": "AI Agents: Waf Bot Management",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-rate-limit-token-bucket",
+    "title": "Rate Limit Token Bucket",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-rate-limit-token-bucket",
+    "title": "RAG: Rate Limit Token Bucket",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-rate-limit-token-bucket",
+    "title": "AI Agents: Rate Limit Token Bucket",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-adaptive-throttling-load",
+    "title": "Adaptive Throttling Load",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-adaptive-throttling-load",
+    "title": "RAG: Adaptive Throttling Load",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-adaptive-throttling-load",
+    "title": "AI Agents: Adaptive Throttling Load",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-geo-blocking-compliance",
+    "title": "Geo Blocking Compliance",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-geo-blocking-compliance",
+    "title": "RAG: Geo Blocking Compliance",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-geo-blocking-compliance",
+    "title": "AI Agents: Geo Blocking Compliance",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-ip-reputation-scoring",
+    "title": "Ip Reputation Scoring",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-ip-reputation-scoring",
+    "title": "RAG: Ip Reputation Scoring",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-ip-reputation-scoring",
+    "title": "AI Agents: Ip Reputation Scoring",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-device-fingerprinting-signals",
+    "title": "Device Fingerprinting Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-device-fingerprinting-signals",
+    "title": "RAG: Device Fingerprinting Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-device-fingerprinting-signals",
+    "title": "AI Agents: Device Fingerprinting Signals",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-behavioral-anomaly-login",
+    "title": "Behavioral Anomaly Login",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-behavioral-anomaly-login",
+    "title": "RAG: Behavioral Anomaly Login",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-behavioral-anomaly-login",
+    "title": "AI Agents: Behavioral Anomaly Login",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-step-up-authentication-risk",
+    "title": "Step Up Authentication Risk",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-step-up-authentication-risk",
+    "title": "RAG: Step Up Authentication Risk",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-step-up-authentication-risk",
+    "title": "AI Agents: Step Up Authentication Risk",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-passkeys-webauthn-deployment",
+    "title": "Passkeys Webauthn Deployment",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-passkeys-webauthn-deployment",
+    "title": "RAG: Passkeys Webauthn Deployment",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-passkeys-webauthn-deployment",
+    "title": "AI Agents: Passkeys Webauthn Deployment",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-fido2-enterprise-rollout",
+    "title": "Fido2 Enterprise Rollout",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-fido2-enterprise-rollout",
+    "title": "RAG: Fido2 Enterprise Rollout",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-fido2-enterprise-rollout",
+    "title": "AI Agents: Fido2 Enterprise Rollout",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-magic-link-security-tradeoffs",
+    "title": "Magic Link Security Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-magic-link-security-tradeoffs",
+    "title": "RAG: Magic Link Security Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-magic-link-security-tradeoffs",
+    "title": "AI Agents: Magic Link Security Tradeoffs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-otp-brute-force-protection",
+    "title": "Otp Brute Force Protection",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-otp-brute-force-protection",
+    "title": "RAG: Otp Brute Force Protection",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-otp-brute-force-protection",
+    "title": "AI Agents: Otp Brute Force Protection",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-account-enumeration-prevention",
+    "title": "Account Enumeration Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-account-enumeration-prevention",
+    "title": "RAG: Account Enumeration Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-account-enumeration-prevention",
+    "title": "AI Agents: Account Enumeration Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-passwordless-migration-path",
+    "title": "Passwordless Migration Path",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-passwordless-migration-path",
+    "title": "RAG: Passwordless Migration Path",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-passwordless-migration-path",
+    "title": "AI Agents: Passwordless Migration Path",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-sso-saml-metadata-rotation",
+    "title": "Sso Saml Metadata Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-sso-saml-metadata-rotation",
+    "title": "RAG: Sso Saml Metadata Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-sso-saml-metadata-rotation",
+    "title": "AI Agents: Sso Saml Metadata Rotation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-oidc-discovery-caching",
+    "title": "Oidc Discovery Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-oidc-discovery-caching",
+    "title": "RAG: Oidc Discovery Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-oidc-discovery-caching",
+    "title": "AI Agents: Oidc Discovery Caching",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pkce-public-clients",
+    "title": "Pkce Public Clients",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pkce-public-clients",
+    "title": "RAG: Pkce Public Clients",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pkce-public-clients",
+    "title": "AI Agents: Pkce Public Clients",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-refresh-token-rotation-detect",
+    "title": "Refresh Token Rotation Detect",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-refresh-token-rotation-detect",
+    "title": "RAG: Refresh Token Rotation Detect",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-refresh-token-rotation-detect",
+    "title": "AI Agents: Refresh Token Rotation Detect",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-consent-screen-ux-patterns",
+    "title": "Consent Screen Ux Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-consent-screen-ux-patterns",
+    "title": "RAG: Consent Screen Ux Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-consent-screen-ux-patterns",
+    "title": "AI Agents: Consent Screen Ux Patterns",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-scope-minimization-principle",
+    "title": "Scope Minimization Principle",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-scope-minimization-principle",
+    "title": "RAG: Scope Minimization Principle",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-scope-minimization-principle",
+    "title": "AI Agents: Scope Minimization Principle",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-api-key-scoping-tenants",
+    "title": "Api Key Scoping Tenants",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-api-key-scoping-tenants",
+    "title": "RAG: Api Key Scoping Tenants",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-api-key-scoping-tenants",
+    "title": "AI Agents: Api Key Scoping Tenants",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-service-account-least-privilege",
+    "title": "Service Account Least Privilege",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-service-account-least-privilege",
+    "title": "RAG: Service Account Least Privilege",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-service-account-least-privilege",
+    "title": "AI Agents: Service Account Least Privilege",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-iam-policy-simulator",
+    "title": "Iam Policy Simulator",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-iam-policy-simulator",
+    "title": "RAG: Iam Policy Simulator",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-iam-policy-simulator",
+    "title": "AI Agents: Iam Policy Simulator",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cloud-trail-anomaly-alerts",
+    "title": "Cloud Trail Anomaly Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cloud-trail-anomaly-alerts",
+    "title": "RAG: Cloud Trail Anomaly Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cloud-trail-anomaly-alerts",
+    "title": "AI Agents: Cloud Trail Anomaly Alerts",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-infrastructure-drift-detection",
+    "title": "Infrastructure Drift Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-infrastructure-drift-detection",
+    "title": "RAG: Infrastructure Drift Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-infrastructure-drift-detection",
+    "title": "AI Agents: Infrastructure Drift Detection",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-policy-as-code-opa",
+    "title": "Policy As Code Opa",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-policy-as-code-opa",
+    "title": "RAG: Policy As Code Opa",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-policy-as-code-opa",
+    "title": "AI Agents: Policy As Code Opa",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-conftest-manifest-validation",
+    "title": "Conftest Manifest Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-conftest-manifest-validation",
+    "title": "RAG: Conftest Manifest Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-conftest-manifest-validation",
+    "title": "AI Agents: Conftest Manifest Validation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-helm-chart-security-scan",
+    "title": "Helm Chart Security Scan",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-helm-chart-security-scan",
+    "title": "RAG: Helm Chart Security Scan",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-helm-chart-security-scan",
+    "title": "AI Agents: Helm Chart Security Scan",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-kubernetes-admission-webhooks",
+    "title": "Kubernetes Admission Webhooks",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-kubernetes-admission-webhooks",
+    "title": "RAG: Kubernetes Admission Webhooks",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-kubernetes-admission-webhooks",
+    "title": "AI Agents: Kubernetes Admission Webhooks",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pod-security-standards",
+    "title": "Pod Security Standards",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pod-security-standards",
+    "title": "RAG: Pod Security Standards",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pod-security-standards",
+    "title": "AI Agents: Pod Security Standards",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-network-policy-default-deny",
+    "title": "Network Policy Default Deny",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-network-policy-default-deny",
+    "title": "RAG: Network Policy Default Deny",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-network-policy-default-deny",
+    "title": "AI Agents: Network Policy Default Deny",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-egress-filtering-dns",
+    "title": "Egress Filtering Dns",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-egress-filtering-dns",
+    "title": "RAG: Egress Filtering Dns",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-egress-filtering-dns",
+    "title": "AI Agents: Egress Filtering Dns",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-service-mesh-mtls-strict",
+    "title": "Service Mesh Mtls Strict",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-service-mesh-mtls-strict",
+    "title": "RAG: Service Mesh Mtls Strict",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-service-mesh-mtls-strict",
+    "title": "AI Agents: Service Mesh Mtls Strict",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-sidecar-resource-overhead",
+    "title": "Sidecar Resource Overhead",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-sidecar-resource-overhead",
+    "title": "RAG: Sidecar Resource Overhead",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-sidecar-resource-overhead",
+    "title": "AI Agents: Sidecar Resource Overhead",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-ambient-mesh-ebpf",
+    "title": "Ambient Mesh Ebpf",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-ambient-mesh-ebpf",
+    "title": "RAG: Ambient Mesh Ebpf",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-ambient-mesh-ebpf",
+    "title": "AI Agents: Ambient Mesh Ebpf",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-gateway-api-ingress-evolution",
+    "title": "Gateway Api Ingress Evolution",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-gateway-api-ingress-evolution",
+    "title": "RAG: Gateway Api Ingress Evolution",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-gateway-api-ingress-evolution",
+    "title": "AI Agents: Gateway Api Ingress Evolution",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-external-dns-automation",
+    "title": "External Dns Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-external-dns-automation",
+    "title": "RAG: External Dns Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-external-dns-automation",
+    "title": "AI Agents: External Dns Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cert-manager-dns01",
+    "title": "Cert Manager Dns01",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cert-manager-dns01",
+    "title": "RAG: Cert Manager Dns01",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cert-manager-dns01",
+    "title": "AI Agents: Cert Manager Dns01",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cluster-autoscaler-node-pools",
+    "title": "Cluster Autoscaler Node Pools",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cluster-autoscaler-node-pools",
+    "title": "RAG: Cluster Autoscaler Node Pools",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cluster-autoscaler-node-pools",
+    "title": "AI Agents: Cluster Autoscaler Node Pools",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-karpenter-provisioner-tuning",
+    "title": "Karpenter Provisioner Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-karpenter-provisioner-tuning",
+    "title": "RAG: Karpenter Provisioner Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-karpenter-provisioner-tuning",
+    "title": "AI Agents: Karpenter Provisioner Tuning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-spot-instance-interruption-handling",
+    "title": "Spot Instance Interruption Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-spot-instance-interruption-handling",
+    "title": "RAG: Spot Instance Interruption Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-spot-instance-interruption-handling",
+    "title": "AI Agents: Spot Instance Interruption Handling",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-preemptible-workload-checkpoint",
+    "title": "Preemptible Workload Checkpoint",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-preemptible-workload-checkpoint",
+    "title": "RAG: Preemptible Workload Checkpoint",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-preemptible-workload-checkpoint",
+    "title": "AI Agents: Preemptible Workload Checkpoint",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-multi-cluster-federation",
+    "title": "Multi Cluster Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-multi-cluster-federation",
+    "title": "RAG: Multi Cluster Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-multi-cluster-federation",
+    "title": "AI Agents: Multi Cluster Federation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-gitops-promotion-environments",
+    "title": "Gitops Promotion Environments",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-gitops-promotion-environments",
+    "title": "RAG: Gitops Promotion Environments",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-gitops-promotion-environments",
+    "title": "AI Agents: Gitops Promotion Environments",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-canary-analysis-flagger",
+    "title": "Canary Analysis Flagger",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-canary-analysis-flagger",
+    "title": "RAG: Canary Analysis Flagger",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-canary-analysis-flagger",
+    "title": "AI Agents: Canary Analysis Flagger",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-progressive-delivery-metrics",
+    "title": "Progressive Delivery Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-progressive-delivery-metrics",
+    "title": "RAG: Progressive Delivery Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-progressive-delivery-metrics",
+    "title": "AI Agents: Progressive Delivery Metrics",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-feature-flag-targeting-rules",
+    "title": "Feature Flag Targeting Rules",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-feature-flag-targeting-rules",
+    "title": "RAG: Feature Flag Targeting Rules",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-feature-flag-targeting-rules",
+    "title": "AI Agents: Feature Flag Targeting Rules",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-kill-switch-incident-response",
+    "title": "Kill Switch Incident Response",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-kill-switch-incident-response",
+    "title": "RAG: Kill Switch Incident Response",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-kill-switch-incident-response",
+    "title": "AI Agents: Kill Switch Incident Response",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-status-page-communication",
+    "title": "Status Page Communication",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-status-page-communication",
+    "title": "RAG: Status Page Communication",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-status-page-communication",
+    "title": "AI Agents: Status Page Communication",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-error-budget-policy-enforcement",
+    "title": "Error Budget Policy Enforcement",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-error-budget-policy-enforcement",
+    "title": "RAG: Error Budget Policy Enforcement",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-error-budget-policy-enforcement",
+    "title": "AI Agents: Error Budget Policy Enforcement",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-toil-reduction-automation",
+    "title": "Toil Reduction Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-toil-reduction-automation",
+    "title": "RAG: Toil Reduction Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-toil-reduction-automation",
+    "title": "AI Agents: Toil Reduction Automation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-runbook-as-code",
+    "title": "Runbook As Code",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-runbook-as-code",
+    "title": "RAG: Runbook As Code",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-runbook-as-code",
+    "title": "AI Agents: Runbook As Code",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-chatops-incident-bots",
+    "title": "Chatops Incident Bots",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-chatops-incident-bots",
+    "title": "RAG: Chatops Incident Bots",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-chatops-incident-bots",
+    "title": "AI Agents: Chatops Incident Bots",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-postmortem-blameless-culture",
+    "title": "Postmortem Blameless Culture",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-postmortem-blameless-culture",
+    "title": "RAG: Postmortem Blameless Culture",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-postmortem-blameless-culture",
+    "title": "AI Agents: Postmortem Blameless Culture",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-capacity-forecasting-models",
+    "title": "Capacity Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-capacity-forecasting-models",
+    "title": "RAG: Capacity Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-capacity-forecasting-models",
+    "title": "AI Agents: Capacity Forecasting Models",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-load-test-production-shadow",
+    "title": "Load Test Production Shadow",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-load-test-production-shadow",
+    "title": "RAG: Load Test Production Shadow",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-load-test-production-shadow",
+    "title": "AI Agents: Load Test Production Shadow",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-chaos-monkey-game-days",
+    "title": "Chaos Monkey Game Days",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-chaos-monkey-game-days",
+    "title": "RAG: Chaos Monkey Game Days",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-chaos-monkey-game-days",
+    "title": "AI Agents: Chaos Monkey Game Days",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-backup-restore-drills",
+    "title": "Backup Restore Drills",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-backup-restore-drills",
+    "title": "RAG: Backup Restore Drills",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-backup-restore-drills",
+    "title": "AI Agents: Backup Restore Drills",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-global-load-balancer-health",
+    "title": "Global Load Balancer Health",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-global-load-balancer-health",
+    "title": "RAG: Global Load Balancer Health",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-global-load-balancer-health",
+    "title": "AI Agents: Global Load Balancer Health",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-anycast-dns-failover",
+    "title": "Anycast Dns Failover",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-anycast-dns-failover",
+    "title": "RAG: Anycast Dns Failover",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-anycast-dns-failover",
+    "title": "AI Agents: Anycast Dns Failover",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cdn-cache-purge-strategies",
+    "title": "Cdn Cache Purge Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cdn-cache-purge-strategies",
+    "title": "RAG: Cdn Cache Purge Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cdn-cache-purge-strategies",
+    "title": "AI Agents: Cdn Cache Purge Strategies",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-edge-compute-workers-kv",
+    "title": "Edge Compute Workers Kv",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-edge-compute-workers-kv",
+    "title": "RAG: Edge Compute Workers Kv",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-edge-compute-workers-kv",
+    "title": "AI Agents: Edge Compute Workers Kv",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-serverless-cold-start-mitigation",
+    "title": "Serverless Cold Start Mitigation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-serverless-cold-start-mitigation",
+    "title": "RAG: Serverless Cold Start Mitigation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-serverless-cold-start-mitigation",
+    "title": "AI Agents: Serverless Cold Start Mitigation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-function-concurrency-limits",
+    "title": "Function Concurrency Limits",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-function-concurrency-limits",
+    "title": "RAG: Function Concurrency Limits",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-function-concurrency-limits",
+    "title": "AI Agents: Function Concurrency Limits",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-step-functions-saga-retries",
+    "title": "Step Functions Saga Retries",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-step-functions-saga-retries",
+    "title": "RAG: Step Functions Saga Retries",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-step-functions-saga-retries",
+    "title": "AI Agents: Step Functions Saga Retries",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-workflow-idempotency-keys",
+    "title": "Workflow Idempotency Keys",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-workflow-idempotency-keys",
+    "title": "RAG: Workflow Idempotency Keys",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-workflow-idempotency-keys",
+    "title": "AI Agents: Workflow Idempotency Keys",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-scheduled-job-leader-election",
+    "title": "Scheduled Job Leader Election",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-scheduled-job-leader-election",
+    "title": "RAG: Scheduled Job Leader Election",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-scheduled-job-leader-election",
+    "title": "AI Agents: Scheduled Job Leader Election",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cron-timezone-dst-bugs",
+    "title": "Cron Timezone Dst Bugs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cron-timezone-dst-bugs",
+    "title": "RAG: Cron Timezone Dst Bugs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cron-timezone-dst-bugs",
+    "title": "AI Agents: Cron Timezone Dst Bugs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-distributed-lock-redis-etcd",
+    "title": "Distributed Lock Redis Etcd",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-distributed-lock-redis-etcd",
+    "title": "RAG: Distributed Lock Redis Etcd",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-distributed-lock-redis-etcd",
+    "title": "AI Agents: Distributed Lock Redis Etcd",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-lease-renewal-fencing-tokens",
+    "title": "Lease Renewal Fencing Tokens",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-lease-renewal-fencing-tokens",
+    "title": "RAG: Lease Renewal Fencing Tokens",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-lease-renewal-fencing-tokens",
+    "title": "AI Agents: Lease Renewal Fencing Tokens",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cache-stampede-prevention",
+    "title": "Cache Stampede Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cache-stampede-prevention",
+    "title": "RAG: Cache Stampede Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cache-stampede-prevention",
+    "title": "AI Agents: Cache Stampede Prevention",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-probabilistic-early-expiration",
+    "title": "Probabilistic Early Expiration",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-probabilistic-early-expiration",
+    "title": "RAG: Probabilistic Early Expiration",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-probabilistic-early-expiration",
+    "title": "AI Agents: Probabilistic Early Expiration",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cache-aside-vs-read-through",
+    "title": "Cache Aside Vs Read Through",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cache-aside-vs-read-through",
+    "title": "RAG: Cache Aside Vs Read Through",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cache-aside-vs-read-through",
+    "title": "AI Agents: Cache Aside Vs Read Through",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-write-through-cache-consistency",
+    "title": "Write Through Cache Consistency",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-write-through-cache-consistency",
+    "title": "RAG: Write Through Cache Consistency",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-write-through-cache-consistency",
+    "title": "AI Agents: Write Through Cache Consistency",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-cdn-stale-while-revalidate",
+    "title": "Cdn Stale While Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-cdn-stale-while-revalidate",
+    "title": "RAG: Cdn Stale While Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-cdn-stale-while-revalidate",
+    "title": "AI Agents: Cdn Stale While Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-html-edge-side-includes",
+    "title": "Html Edge Side Includes",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-html-edge-side-includes",
+    "title": "RAG: Html Edge Side Includes",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-html-edge-side-includes",
+    "title": "AI Agents: Html Edge Side Includes",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-partial-hydration-islands",
+    "title": "Partial Hydration Islands",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-partial-hydration-islands",
+    "title": "RAG: Partial Hydration Islands",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-partial-hydration-islands",
+    "title": "AI Agents: Partial Hydration Islands",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-server-components-cache-revalidate",
+    "title": "Server Components Cache Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-server-components-cache-revalidate",
+    "title": "RAG: Server Components Cache Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-server-components-cache-revalidate",
+    "title": "AI Agents: Server Components Cache Revalidate",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-isr-on-demand-revalidation",
+    "title": "Isr On Demand Revalidation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-isr-on-demand-revalidation",
+    "title": "RAG: Isr On Demand Revalidation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-isr-on-demand-revalidation",
+    "title": "AI Agents: Isr On Demand Revalidation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-edge-middleware-geolocation",
+    "title": "Edge Middleware Geolocation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-edge-middleware-geolocation",
+    "title": "RAG: Edge Middleware Geolocation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-edge-middleware-geolocation",
+    "title": "AI Agents: Edge Middleware Geolocation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-bfcache-navigation-restore",
+    "title": "Bfcache Navigation Restore",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-bfcache-navigation-restore",
+    "title": "RAG: Bfcache Navigation Restore",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-bfcache-navigation-restore",
+    "title": "AI Agents: Bfcache Navigation Restore",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-speculation-rules-prerender",
+    "title": "Speculation Rules Prerender",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-speculation-rules-prerender",
+    "title": "RAG: Speculation Rules Prerender",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-speculation-rules-prerender",
+    "title": "AI Agents: Speculation Rules Prerender",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-view-transitions-spa-mp",
+    "title": "View Transitions Spa Mp",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-view-transitions-spa-mp",
+    "title": "RAG: View Transitions Spa Mp",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-view-transitions-spa-mp",
+    "title": "AI Agents: View Transitions Spa Mp",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-scroll-driven-animations-css",
+    "title": "Scroll Driven Animations Css",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-scroll-driven-animations-css",
+    "title": "RAG: Scroll Driven Animations Css",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-scroll-driven-animations-css",
+    "title": "AI Agents: Scroll Driven Animations Css",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-container-queries-responsive",
+    "title": "Container Queries Responsive",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-container-queries-responsive",
+    "title": "RAG: Container Queries Responsive",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-container-queries-responsive",
+    "title": "AI Agents: Container Queries Responsive",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-css-cascade-layers-order",
+    "title": "Css Cascade Layers Order",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-css-cascade-layers-order",
+    "title": "RAG: Css Cascade Layers Order",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-css-cascade-layers-order",
+    "title": "AI Agents: Css Cascade Layers Order",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-design-tokens-style-dictionary",
+    "title": "Design Tokens Style Dictionary",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-design-tokens-style-dictionary",
+    "title": "RAG: Design Tokens Style Dictionary",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-design-tokens-style-dictionary",
+    "title": "AI Agents: Design Tokens Style Dictionary",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-component-library-documentation",
+    "title": "Component Library Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-component-library-documentation",
+    "title": "RAG: Component Library Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-component-library-documentation",
+    "title": "AI Agents: Component Library Documentation",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-storybook-visual-regression",
+    "title": "Storybook Visual Regression",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-storybook-visual-regression",
+    "title": "RAG: Storybook Visual Regression",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-storybook-visual-regression",
+    "title": "AI Agents: Storybook Visual Regression",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-design-system-versioning",
+    "title": "Design System Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-design-system-versioning",
+    "title": "RAG: Design System Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-design-system-versioning",
+    "title": "AI Agents: Design System Versioning",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-accessibility-automated-axe",
+    "title": "Accessibility Automated Axe",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-accessibility-automated-axe",
+    "title": "RAG: Accessibility Automated Axe",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-accessibility-automated-axe",
+    "title": "AI Agents: Accessibility Automated Axe",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-screen-reader-live-regions",
+    "title": "Screen Reader Live Regions",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-screen-reader-live-regions",
+    "title": "RAG: Screen Reader Live Regions",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-screen-reader-live-regions",
+    "title": "AI Agents: Screen Reader Live Regions",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-focus-trap-modal-dialogs",
+    "title": "Focus Trap Modal Dialogs",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-focus-trap-modal-dialogs",
+    "title": "RAG: Focus Trap Modal Dialogs",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-focus-trap-modal-dialogs",
+    "title": "AI Agents: Focus Trap Modal Dialogs",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-keyboard-shortcuts-wcag",
+    "title": "Keyboard Shortcuts Wcag",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-keyboard-shortcuts-wcag",
+    "title": "RAG: Keyboard Shortcuts Wcag",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-keyboard-shortcuts-wcag",
+    "title": "AI Agents: Keyboard Shortcuts Wcag",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-color-contrast-apca",
+    "title": "Color Contrast Apca",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-color-contrast-apca",
+    "title": "RAG: Color Contrast Apca",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-color-contrast-apca",
+    "title": "AI Agents: Color Contrast Apca",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-motion-reduced-preferences",
+    "title": "Motion Reduced Preferences",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-motion-reduced-preferences",
+    "title": "RAG: Motion Reduced Preferences",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-motion-reduced-preferences",
+    "title": "AI Agents: Motion Reduced Preferences",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-internationalization-rtl-logical",
+    "title": "Internationalization Rtl Logical",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-internationalization-rtl-logical",
+    "title": "RAG: Internationalization Rtl Logical",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-internationalization-rtl-logical",
+    "title": "AI Agents: Internationalization Rtl Logical",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-locale-number-date-format",
+    "title": "Locale Number Date Format",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-locale-number-date-format",
+    "title": "RAG: Locale Number Date Format",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-locale-number-date-format",
+    "title": "AI Agents: Locale Number Date Format",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-translation-memory-cat-tools",
+    "title": "Translation Memory Cat Tools",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-translation-memory-cat-tools",
+    "title": "RAG: Translation Memory Cat Tools",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-translation-memory-cat-tools",
+    "title": "AI Agents: Translation Memory Cat Tools",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-pseudo-localization-testing",
+    "title": "Pseudo Localization Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-pseudo-localization-testing",
+    "title": "RAG: Pseudo Localization Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-pseudo-localization-testing",
+    "title": "AI Agents: Pseudo Localization Testing",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-performance-budget-ci-gate",
+    "title": "Performance Budget Ci Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-performance-budget-ci-gate",
+    "title": "RAG: Performance Budget Ci Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-performance-budget-ci-gate",
+    "title": "AI Agents: Performance Budget Ci Gate",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-lighthouse-ci-github-action",
+    "title": "Lighthouse Ci Github Action",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-lighthouse-ci-github-action",
+    "title": "RAG: Lighthouse Ci Github Action",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-lighthouse-ci-github-action",
+    "title": "AI Agents: Lighthouse Ci Github Action",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-core-web-vitals-field-data",
+    "title": "Core Web Vitals Field Data",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-core-web-vitals-field-data",
+    "title": "RAG: Core Web Vitals Field Data",
+    "category": "AI"
+  },
+  {
+    "slug": "agent-core-web-vitals-field-data",
+    "title": "AI Agents: Core Web Vitals Field Data",
+    "category": "AI"
+  },
+  {
+    "slug": "llm-inp-interaction-optimization",
+    "title": "Inp Interaction Optimization",
+    "category": "AI"
+  },
+  {
+    "slug": "rag-inp-interaction-optimization",
+    "title": "RAG: Inp Interaction Optimization",
+    "category": "AI"
+  }
+]
