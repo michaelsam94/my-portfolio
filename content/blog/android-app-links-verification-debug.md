@@ -126,6 +126,19 @@ Deep links are also a security surface: an over-broad intent filter or a link ha
 
 App Links verification failures are boring and systematic, so debug them systematically. Read the real state with `adb shell pm get-app-links` instead of guessing, and reset stale state so you're not fighting a cached failure. Fetch `assetlinks.json` with curl to confirm it returns a clean 200 with valid JSON and no redirect, covering every host you declare. Above all, match the SHA-256 fingerprint to the key that actually signs the *installed* build — for Play apps that's the Play App Signing key — and include every relevant signing key. Get the file reachable and the fingerprints right, and verification stops being mysterious.
 
+## adb verification state machine
+
+```bash
+adb shell pm get-app-links com.example.app
+adb shell pm verify-app-links --re-verify com.example.app
+```
+
+`legacy_failure` often means wrong SHA256 in assetlinks.json vs Play signing key — use Play App Signing certificate fingerprint, not upload key.
+
+## Subdomain delegation
+
+Each host needs own assetlinks or `delegate_permission/common.handle_all_urls` — marketing `www` vs `app` subdomain mismatch breaks auto-verify silently.
+
 ## Resources
 
 - [Verify Android App Links (Android developers)](https://developer.android.com/training/app-links/verify-android-applinks)

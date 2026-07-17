@@ -3,7 +3,7 @@ title: "Tactical DDD Patterns"
 slug: "software-domain-driven-design-tactical"
 description: "Implement tactical DDD patterns: entities, value objects, aggregates, domain events, repositories, and invariants that hold under concurrency."
 datePublished: "2025-08-19"
-dateModified: "2025-08-19"
+dateModified: "2026-07-17"
 tags: ["DDD", "Domain Modeling", "Architecture", "Backend"]
 keywords: "tactical DDD patterns, aggregate root, value object, domain entity, domain events, repository pattern, invariant enforcement"
 faq:
@@ -13,10 +13,15 @@ faq:
     a: "Value objects are defined by attributes and immutable—Money, EmailAddress, DateRange. Replace rather than mutate. Entities have identity persisting across attribute changes—Order, Customer. When in doubt, prefer value objects; they simplify reasoning and thread safety."
   - q: "Should repositories return domain objects or DTOs?"
     a: "Repositories in domain layer return aggregates or None—not ORM rows exposed upward. Mapping happens inside infrastructure implementation. Application services load aggregate, call domain methods, save via repository. Query-heavy screens may bypass repository with read models (CQRS) without polluting write aggregates."
+faqAnswers:
+  - question: "When is software domain driven design tactical the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for software domain driven design tactical?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back software domain driven design tactical safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 `order.status = "SHIPPED"` in a controller bypassed the rule that cancelled orders cannot ship—because nothing enforced invariants at the domain layer. Tactical DDD patterns put business rules where they survive framework churn: aggregates guard consistency boundaries, value objects encode validated concepts, domain events announce facts other contexts react to. This is not ceremony for CRUD; it is structure for behavior-rich domains where bugs cost money.
-
 
 ## Value objects
 
@@ -33,8 +38,6 @@ value class Email private constructor(val value: String) {
 ```
 
 Invalid emails cannot exist—constructor guarantees.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
 
 ## Entity and aggregate root
 
@@ -54,8 +57,6 @@ class Order private constructor(
 
 Factory methods control creation; private setters block casual mutation.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## Domain events
 
 ```kotlin
@@ -63,8 +64,6 @@ data class OrderShipped(val orderId: OrderId, val at: Instant) : DomainEvent
 ```
 
 Raised in aggregate, collected by application service, persisted to outbox for reliable publish. Handlers live outside aggregate in application or other contexts.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
 
 ## Repository interface
 
@@ -76,8 +75,6 @@ interface OrderRepository {
 ```
 
 Implementation uses JPA, JDBC, or event store—domain never imports.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
 
 ## Application service orchestration
 
@@ -97,8 +94,6 @@ class ShipOrderHandler(
 
 Thin orchestration; no business if-statements here.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## Concurrency
 
 Optimistic locking on aggregate version column:
@@ -110,9 +105,6 @@ WHERE id = ? AND version = ?
 
 Retry on conflict for idempotent commands.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-
 If entities are data bags with all logic in services, you have structs—not necessarily wrong for simple domains, but tactical patterns earn their keep when rules multiply.
 
 Optimistic locking on aggregate version—retry idempotent commands on conflict. Factory methods and private constructors block invalid entity states.
@@ -121,16 +113,39 @@ Anemic entities with all logic in services suits simple CRUD; tactical patterns 
 
 Domain events via outbox for reliable publish—handlers outside aggregate.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Aggregate invariants under concurrency
 
-Document the decision, owner, and rollback path in your team wiki the same week you ship. Future you will not remember which environment variable toggled the behavior unless it is written next to the runbook entry and linked from the alert. That habit costs ten minutes per change and saves hours when pagination or auth misbehaves under a single large tenant.
+Two requests adding items to the same `Order` aggregate need optimistic locking on version or serializable isolation — otherwise duplicate line items slip through. Domain services coordinate cross-aggregate rules (transfer between accounts) inside one transaction boundary; do not scatter invariants across application layer if they belong to the model.
 
+## Domain events versus integration events
 
+`OrderPlaced` inside the bounded context carries rich domain objects. `order.placed.v1` on the bus carries IDs and primitives only. Map at the boundary — publishing domain entities couples integrators to your refactorings.
 
-Run the change through your standard PR checklist: tests, observability, and a two-minute rollback drill in staging. Small operational habits accumulate into systems that survive on-call nights without heroics.
+## Ubiquitous language in code review
 
+Reject PRs introducing UserDTO in domain layer when glossary says Member. Rename refactors are cheaper than translating between DTO and domain forever. Link glossary page in PR template for bounded context.
 
-Share a short write-up in your engineering channel after rollout: what shipped, what metric you watch, and who owns follow-up. That closes the loop for teammates who were not in the PR and surfaces gaps in docs before the next person repeats the same investigation.
+## Factory methods on aggregates
+
+Order.create() factory validates invariants before construction — public constructor allows invalid aggregate existence. Repositories reconstitute via factory reading persisted state, not raw constructor.
+
+## Integration testing notes
+
+Exercise the happy path plus three failure modes specific to software domain driven design tactical: dependency timeout, duplicate delivery, and partial deploy during rolling update. Automated tests should assert idempotent behavior and user-visible error messages—not only HTTP 200 from mocks.
+
+## Documentation and on-call
+
+Link runbook steps from the service catalog entry for software domain driven design tactical. On-call engineers should find rollback command, dashboard URL, and known false-positive alerts without searching Slack history. Update the entry when behavior or metrics change.
+
+## Rollout checklist
+
+Ship behind a feature flag when behavior is user-visible. Compare error rate and p95 latency for seven days against baseline captured before merge. Document rollback in the pull request so on-call can revert without author contact.
+
+## Quick reference
+
+Instrument software domain driven design tactical before optimizing. Keep a dashboard per critical user journey and review weekly during the first month after launch.
+
+Review metrics quarterly; traffic mix shifts can invert prior wins without code changes.
 
 ## Resources
 
@@ -139,3 +154,56 @@ Share a short write-up in your engineering channel after rollout: what shipped, 
 - [Aggregate (Martin Fowler)](https://martinfowler.com/bliki/Aggregate.html)
 - [Value Object (Martin Fowler)](https://martinfowler.com/bliki/ValueObject.html)
 - [Domain Events (Martin Fowler)](https://martinfowler.com/eaaDev/DomainEvent.html)
+
+## Money and specifications
+
+Model money as immutable value object with currency — never Double. Extract complex rules into Specification objects tested without loading full object graphs.
+
+## CQRS projections
+
+Feed read models from domain events; keep write aggregates small. Reporting bypasses repository when projections suffice.
+
+## Saga coordination
+
+Cross-aggregate rules use domain service in one transaction or saga across services — reference other aggregates by ID only.
+
+## An operator's checklist for software domain driven design tactical
+
+Architecture work around software domain driven design tactical is mostly about boundaries and change cost. Draw the context map before naming folders. If two teams deploy on different cadences, a shared mutable model will become the incident factory.
+
+Practical rules for software domain driven design tactical:
+- Prefer modular monolith seams you can extract later over premature microservices
+- Encode ubiquitous language in types and test names, not slide decks
+- Event contracts versioned; consumers tolerate additive changes only
+- Feature toggles have owners and burn-down dates — permanent toggles are config debt
+
+Workshop output should include a decision record: context, options, chosen path, and the metric that would force a revisit.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Crawl / index ratio | Team-defined SLO | Page on burn rate |
+| Rich result valid % | Baseline − noise | Ticket if sustained |
+| Organic landing LCP | Budget cap | Weekly review |
+
+## Ownership and on-call for software domain driven design tactical
+
+Reviewers should challenge assumptions encoded in software domain driven design tactical: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario B for software domain driven design tactical: bad config shipped — prove rollback within the declared RTO without data corruption.
+2. Scenario C for software domain driven design tactical: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+3. Scenario A for software domain driven design tactical: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+
+## Post-incident changes after software domain driven design tactical failures
+
+Roll out software domain driven design tactical behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Developer experience when changing software domain driven design tactical
+
+Detail 1 (585): for software domain driven design tactical, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing software domain driven design tactical becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break software domain driven design tactical, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about software domain driven design tactical: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

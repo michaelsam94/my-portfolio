@@ -107,6 +107,28 @@ Note one API subtlety: you cannot combine `BIOMETRIC_STRONG or DEVICE_CREDENTIAL
 
 A correct biometric implementation: checks `canAuthenticate` and routes each state, requires `BIOMETRIC_STRONG` whenever a secret is involved, binds the prompt to a Keystore key with `setUserAuthenticationRequired` and enrollment invalidation, distinguishes transient failures from lockout errors, and *always* offers a credential fallback. Get those five things right and you have authentication whose security is enforced by hardware and whose UX doesn't strand users when a fingerprint won't read. Skip the crypto binding and you've built a pretty dialog that protects nothing.
 
+## Class 3 vs Class 2 gating
+
+Payment flows require BIOMETRIC_STRONG (Class 3). Face unlock on some devices is Class 2 — `BiometricManager.canAuthenticate(BIOMETRIC_STRONG)` fails. Fallback to device credential (PIN/pattern) with clear UX copy, not a dead-end error.
+
+## CryptoObject invalidation on enroll
+
+New fingerprint enrollment invalidates keys bound via CryptoObject. Listen for `BiometricManager.Authenticators` changes and re-prompt enrollment before next sensitive transaction — silent failure on stale key looks like app bug.
+
+## Biometric Authentication Supplement 0 on Samsung and Pixel divergence
+
+Exercise biometric authentication supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching biometric; regressions above 8% block release for `android-biometric-authentication-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Biometric Authentication Supplement 0" should map to a single runbook section with known workarounds.
+
+## Supplement regression gates for Play Vitals
+
+Before promoting `android-biometric-authentication-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing biometric with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing biometric authentication supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [BiometricPrompt and the Biometric library (Android)](https://developer.android.com/identity/sign-in/biometric-auth)

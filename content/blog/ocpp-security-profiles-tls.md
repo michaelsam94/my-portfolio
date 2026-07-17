@@ -3,7 +3,7 @@ title: "OCPP Security Profiles and TLS"
 slug: "ocpp-security-profiles-tls"
 description: "Configure OCPP security profiles and TLS: certificate-based authentication, Security Profiles 1-3, WebSocket over WSS, and production hardening."
 datePublished: "2025-11-08"
-dateModified: "2025-11-08"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Security"]
 keywords: "OCPP security profiles, OCPP TLS, WSS OCPP, charging station security, OCPP certificate authentication, Security Profile 3 OCPP"
 faq:
@@ -223,6 +223,37 @@ Verify with packet capture that no OCPP traffic flows over unencrypted WS in pro
 - TLS 1.2+ only; TLS 1.0/1.1 disabled
 - WSS verified with packet capture (no cleartext WS)
 - Certificate revocation process documented and tested
+
+## Certificate revocation in the field
+
+Profile 3 without revocation is Profile 2 with extra steps. Maintain a CRL or OCSP responder for your charging CA. CSMS must reject chargers whose client certs are revoked — nginx `ssl_crl` or application-level checks against a revocation store updated hourly.
+
+When a charger is decommissioned or stolen, revoke its cert within minutes. Shared factory certs make revocation impossible — another reason per-device certificates matter.
+
+## Debugging TLS handshake failures remotely
+
+Chargers in the field fail TLS for predictable reasons:
+
+| Symptom | Likely cause |
+|---------|--------------|
+| Handshake timeout | Firewall blocking 443 outbound |
+| `certificate verify failed` | Wrong CA in charger trust store |
+| `bad certificate` | Expired client cert |
+| Connection reset after handshake | CSMS not extracting client CN |
+
+Enable structured TLS error logging on CSMS edge — correlate with `BootNotification` attempts. Some vendors expose `SecurityEventNotification` with `type: InvalidTLSVersion` or `InvalidTLSCipherSuite` — subscribe in your monitoring stack.
+
+## HSM and key storage on charger
+
+Private keys generated on charger should live in secure element or TPM — software-only keys exportable via serial debug port fail penetration tests. Procurement spec: FIPS 140-2 or Common Criteria EAL4+ for high-risk public sites.
+
+## Mixed-profile fleets during migration
+
+Run Profile 2 on legacy while onboarding Profile 3 new stock — CSMS nginx may need `ssl_verify_client optional` during transition with application-level enforcement per station record. Close migration window; optional client cert is not a resting state.
+
+## Penetration test scope for OCPP
+
+Include WebSocket upgrade path, client cert bypass attempts, and downgrade to `ws://` in annual pen test. Finding Profile 1 enabled on single production charger is Sev-High — fleet-wide credential exposure.
 
 ## Resources
 

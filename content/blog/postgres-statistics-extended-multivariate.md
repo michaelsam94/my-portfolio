@@ -1,129 +1,249 @@
 ---
-title: "Postgres Extended Statistics for Correlated Columns"
+title: "Postgres Extended Statistics and Multivariate Correlation"
 slug: "postgres-statistics-extended-multivariate"
-description: "Create extended statistics on correlated columns so the planner stops underestimating join cardinality."
+description: "Use CREATE STATISTICS with dependencies and ndistinct to fix bad cardinality estimates on correlated columns and JOIN planning."
 datePublished: "2026-03-04"
-dateModified: "2026-03-04"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres statistics extended multivariate, production, backend"
+keywords: "extended statistics, multivariate ndistinct, functional dependencies, postgres planner, CREATE STATISTICS"
 faq:
-  - q: "What problem does Postgres Extended Statistics solve?"
-    a: "It addresses production gaps teams hit when scaling postgres statistics extended multivariate: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres statistics extended multivariate appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What problem do extended statistics solve that ANALYZE alone cannot?"
+    a: "Standard statistics store per-column histograms and ndistinct. The planner assumes column values are independent unless told otherwise. Correlated columns—city/state, brand/product_line—produce wrong row estimates when combined in WHERE clauses. Extended statistics capture dependencies and multivariate ndistinct."
+  - q: "When should I create extended statistics?"
+    a: "When EXPLAIN shows orders-of-magnitude misestimates on queries filtering multiple correlated columns, or JOIN sizes wildly off. Confirm with EXPLAIN ANALYZE comparing estimated vs actual rows. Avoid creating stats on every column pair."
+  - q: "What is the difference between dependencies and ndistinct extended stats?"
+    a: "Functional dependencies record that knowing one column value determines another with degree n. ndistinct stats track distinct counts of column combinations, improving estimates for AND conditions and GROUP BY on multiple columns."
+  - q: "Do extended statistics require manual ANALYZE after creation?"
+    a: "Yes. CREATE STATISTICS defines what to collect; ANALYZE populates pg_statistic_ext_data. After bulk loads, run ANALYZE explicitly. Use stats_target option for finer granularity on critical stat objects."
 ---
 
-## Production context
+The planner is only as smart as its cardinality estimates. **`EXPLAIN`** predicts 50 rows, **`EXPLAIN ANALYZE`** returns 50,000—nested loop disaster, wrong parallel worker count. Single-column histograms assume **`country = 'DE' AND language = 'de'`** independence when every German row speaks German.
 
-A billing service lost duplicate events because postgres statistics extended multivariate was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+**Extended statistics** let you declare **functional dependencies** and **multivariate ndistinct** so the optimizer models correlation.
 
-Senior backend work on postgres extended statistics for correlated columns is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## Baseline: what ANALYZE stores
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+Combined selectivity for **`WHERE a = 1 AND b = 2`** defaults to **`sel(a) * sel(b)`**—wrong when **`b`** determined by **`a`**.
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM customers
+WHERE country_code = 'DE' AND default_locale = 'de-DE';
 ```
 
-## Implementation checklist
+## CREATE STATISTICS overview
 
-Validate inputs at the trust boundary with schema versioning.
+```sql
+CREATE STATISTICS stat_customer_locale (dependencies, ndistinct)
+ON country_code, default_locale
+FROM customers;
 
-Use timeouts and cancellation on every outbound call; propagate context.
+ANALYZE customers;
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+### Functional dependencies
 
-Run migrations with lock_timeout and statement_timeout set.
+**`dependencies`** detects **`b`** functionally dependent on **`a`**. Example: **`zip_code → city`**.
 
-Load test at 2× expected peak with production-like payload sizes.
+```sql
+CREATE STATISTICS stat_zip_city (dependencies)
+ON zip_code, city FROM addresses;
+ANALYZE addresses;
+```
 
-## Observability
+### Multivariate ndistinct
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+**`ndistinct`** tracks distinct count of **(a,b)** together.
 
-Dashboards for postgres statistics extended multivariate should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+```sql
+CREATE STATISTICS stat_brand_line (ndistinct)
+ON brand_id, product_line FROM products;
+```
 
-## Security notes
+### Combined with mcv (PG 14+)
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+```sql
+CREATE STATISTICS stat_orders_filter (dependencies, ndistinct, mcv)
+ON tenant_id, status, created_date FROM orders;
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## stats_target and sample size
 
-## Common production mistakes
+```sql
+CREATE STATISTICS stat_orders_filter (mcv)
+ON tenant_id, status FROM orders
+WITH (stats_target = 1000);
+ANALYZE orders;
+```
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Higher target increases ANALYZE time—use on proven problem queries only.
 
-## Debugging and triage workflow
+## Expressions and generated columns
 
-When production misbehaves, work top-down:
+Extended stats require plain column references. For **`date_trunc('day', created_at)`**, use generated column:
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+```sql
+ALTER TABLE events ADD created_day date
+  GENERATED ALWAYS AS ((created_at AT TIME ZONE 'UTC')::date) STORED;
+CREATE STATISTICS stat_events (ndistinct)
+ON tenant_id, created_day FROM events;
+```
 
-## Operational checklist
+## Worked example: join misestimate
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+**`orders JOIN customers`** with **`country = 'FR' AND tier = 'enterprise'`**—planner expects 100 rows, gets 80k.
 
-## Performance tuning notes
+```sql
+CREATE STATISTICS stat_customer_tier (dependencies, ndistinct)
+ON country, tier, account_type FROM customers;
+ANALYZE customers;
+```
 
-Measure before optimizing postgres statistics extended multivariate. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Re-explain—hash join may appear with realistic memory grant. Stats fix cardinality; indexes still required for IO.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+## Workflow for fixing a bad plan
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+1. Capture misestimate ≥ 10×
+2. Identify correlated columns in WHERE, JOIN, GROUP BY
+3. CREATE STATISTICS
+4. ANALYZE
+5. Re-run EXPLAIN ANALYZE
 
-## Rollout and migration
+## Limits and planner behavior
 
-Ship postgres statistics extended multivariate changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+- Stats apply when listed columns appear in relevant clauses
+- Cross-table correlation not covered—fix joins separately
+- Partitioned tables: verify behavior on your Postgres version
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## Maintenance burden
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Audit quarterly; drop unused stats:
 
-## Testing recommendations
+```sql
+DROP STATISTICS stat_legacy_pair;
+```
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Comparison with other fixes
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+| Approach | Fixes correlation |
+| --- | --- |
+| Extended statistics | Yes, same table |
+| Partial indexes | Query path only |
+| Denormalize flag | Application change |
+| pg_hint_plan | Per query hack |
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Version upgrade regression testing
 
-## Incident patterns we see
+Capture EXPLAIN golden files pre-upgrade; compare estimates post-upgrade. Drop stats objects that no longer help.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## When extended stats cannot help
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Highly volatile columns (random UUID per row) have no stable correlation. Cross-table join errors need FK ANALYZE on both sides.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Sampling and ANALYZE frequency
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+After bulk UPDATE overnight, run manual ANALYZE before peak—autovacuum analyze delay may leave stale dependencies.
+
+Prefer extended stats when correlation is structural (geography, product taxonomy, status enums), not accidental stale stats.
+
+
+
+## Correlated join keys across tables
+
+Extended stats do not fix **`orders.customer_id JOIN customers.id`** when **`orders.status`** correlates with **`customers.tier`** on different tables—planner multiplies selectivities across tables independently. Mitigations: denormalize **`customer_tier`** onto **`orders`**, use **`CREATE STATISTICS`** on denormalized column pair, or increase statistics targets on join keys. Multivariate stats are not a universal cardinality panacea.
+
+## Automatic extended stats future
+
+Postgres research continues on auto-detecting dependencies during **`ANALYZE`**—today manual **`CREATE STATISTICS`** remains explicit. Review release notes on major upgrades for **`default_statistics_target`** or auto dependency features before re-creating dozens of stat objects manually.
+
+## EXPLAIN interpretation exercise
+
+When **`rows=1`** estimate on nested loop inner side explodes to millions, check whether inner filter combines two correlated columns on same table—classic extended stats candidate. When misestimate on **`OR`** predicates, stats may need **`mcv`** list capturing frequent combined tuples absent from univariate MCV.
+
+## Storage overhead
+
+**`pg_statistic_ext_data`** grows with **`stats_target`** and column count in stat object—monitor catalog bloat on instances with hundreds of custom stat objects. Drop stats tied to dropped query patterns after schema simplification.
+
+
+
+
+## Functional dependency degree interpretation
+
+**`stxdependencies`** JSON shows degree close to 1.0 when **`city`** almost determined by **`zip`**. Degree 0.3 means weak dependency—planner adjustment subtle. Re-analyze after postal code boundary changes (rare real-world event) that break dependency.
+
+## Extended stats on partitioned tables
+
+Create matching **`CREATE STATISTICS`** on parent partitioned table where supported—verify **`ANALYZE`** propagates to partitions on your version. Misaligned stats on default partition only skew plans for rows landing in default.
+
+## Manual row estimates last resort
+
+**`ALTER TABLE ... ALTER COLUMN ... SET (n_distinct = ...)`** per column hacky compared to extended stats—use only when stats cannot capture skew (e.g., pending partition empty). Extended stats preferred when correlation is root cause.
+
+
+
+
+## Teaching the planner: workshop exercise
+
+Pick one slow report query, capture misestimate ratio, add extended stats, re-measure—team learning beats silent stat object proliferation. Document stat object purpose in migration message **`-- stats: fix join orders/customers underestimate after tier filter`**.
+
+## pg_stat_statements pairing
+
+Find queries with highest total time where plan shows nested loop and bad row estimate—prioritize extended stats candidacy. Queries already using hash join with good timing need stats work elsewhere.
+
+
+
+
+## Anti-pattern: stats without ANALYZE job
+
+Creating stats during migration Friday without **`ANALYZE`** before Monday traffic leaves planner blind until autovacuum catches up—schedule **`ANALYZE`** in same migration transaction or immediately after commit. CI migration tests should assert **`pg_statistic_ext_data`** non-empty for new stats objects.
+
+
+
+
+## Column group cardinality sanity check
+
+Before **`CREATE STATISTICS`**, run **`SELECT count(distinct (a,b)) FROM t`** on sample or full table offline—if combined ndistinct equals product of individual ndistinct estimates, extended stats may add little value. When combined ndistinct far below product, dependencies or ndistinct stats likely help.
+
+## Histogram bounds and correlated range queries
+
+Range queries **`WHERE salary BETWEEN ... AND department = 'Sales'`** may misestimate when salary correlates with department—**`mcv`** extended stats help skewed department/salary pairs. Pure dependencies insufficient when correlation is statistical not functional.
+
+
+
+## Planner regression after stats deployment
+
+Deploy stats in canary: create on staging clone with production stats snapshot, compare top 20 query plans, then production create+analyze during low traffic. Rollback plan DROP STATISTICS if p95 latency regresses on unrelated queries—extended stats occasionally help one query hurt another via global plan changes.
+
+## Combining with partial indexes
+
+Partial index on hot subset plus extended stats on full table—planner must estimate index predicate selectivity and remaining filters; ensure partial index predicate columns included in stats object when correlated with filtered columns.
+
+
+## Catalog hygiene
+
+Quarterly review pg_statistic_ext entries against pg_stat_statements—drop stats unused by any top query plan. Stale stats objects consume ANALYZE time without benefit.
+
+
+
+
+## Stats on expression indexes
+
+If query filters indexed expression, stats on base column alone insufficient—extend generated column approach or use expression index matching exact predicate. Extended stats cannot reference arbitrary expressions directly.
+
+## auto_explain pairing
+
+Enable auto_explain for plans where estimated rows off by 100x; correlate with missing extended stats on filter columns. Close loop: stat object ticket links to auto_explain log hash.
+
+## Column order in CREATE STATISTICS
+
+Column order in CREATE STATISTICS does not affect dependency detection but documents intent—list driving column first in migration comments for future DBAs.
+
+Name extended statistics after the query family they fix so future engineers do not drop them as unused catalog clutter during spring cleaning.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- [CREATE STATISTICS](https://www.postgresql.org/docs/current/sql-createstatistics.html)
+- [Planner statistics](https://www.postgresql.org/docs/current/planner-stats-details.html)

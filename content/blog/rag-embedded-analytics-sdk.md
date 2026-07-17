@@ -1,111 +1,192 @@
 ---
 title: "RAG: Embedded Analytics Sdk"
 slug: "rag-embedded-analytics-sdk"
-description: "Embedded Analytics Sdk: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Embedded analytics SDKs for product teams — iframe vs JS SDK, row-level security, theming, and measuring RAG feature adoption in customer dashboards."
 datePublished: "2025-03-19"
-dateModified: "2025-03-19"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Embedded"]
 keywords: "rag, embedded, analytics, sdk, ai, production, engineering, architecture"
 faq:
-  - q: "What is Embedded Analytics Sdk?"
-    a: "Embedded Analytics Sdk covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Embedded Analytics Sdk?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Embedded Analytics Sdk?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Embedded Analytics Sdk fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Embedded Analytics Sdk should be observable in production and safe to change in small diffs."
+  - q: "When should a RAG product expose analytics via embedded SDK versus building dashboards in-app?"
+    a: "Embed when customers want RAG usage metrics inside their existing BI workflows—query volume, citation rates, thumbs feedback, cost per tenant—without you rebuilding charting for every CRM. Build in-app when analytics are tightly coupled to product actions (reindex triggers, eval failures) requiring write-back beyond read-only embed."
+  - q: "How do embedded analytics SDKs enforce multi-tenant row-level security?"
+    a: "Generate short-lived signed tokens (JWT or vendor embed secret) mapping embed session to tenant_id filter injected server-side in the BI layer. Never trust client-supplied tenant IDs. RLS policies in Looker, Metabase, or Cube.js filter every query regardless of chart configuration."
+  - q: "What RAG metrics belong in customer-facing embedded dashboards?"
+    a: "Queries per day, retrieval latency p95, answer feedback ratio, top unanswered question clusters, corpus coverage by locale, and token cost attribution—aggregated and anonymized per tenant policy. Avoid exposing raw prompts if contracts prohibit; offer aggregated topic buckets instead."
 ---
-Embedded Analytics Sdk is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Customers asked where to see "how our team uses the AI search we pay for"—and the account team exported CSVs from internal Grafana weekly. Product had rich RAG telemetry internally but no **embedded analytics** path. Competitors shipped Looker embeds in settings pages; your dashboard remained a Zendesk article linking to a PDF metrics definition. Adoption conversations stalled because buyers could not self-serve proof of value.
 
-When embedded analytics sdk is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+**Embedded analytics SDKs** (Looker Embed SDK, Metabase static embedding, ThoughtSpot Everywhere, Cube.js client, Superset embedded) let SaaS products render governed dashboards inside their UI—iframes or JS components authenticated via signed tokens. For RAG platforms, embedding turns usage, quality, and cost data into a retention feature instead of an ops secret.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Embed models: iframe vs JS SDK
 
-Solid AI engineering turns embedded analytics sdk from a recurring argument into a documented pattern with tests and an owner.
+| Approach | Pros | Cons |
+|----------|------|------|
+| Signed iframe URL | Simple, strong sandbox | Limited UX integration, cookie/third-party issues |
+| JS Embed SDK | Theming, events, navigation hooks | More integration work, CSP configuration |
+| React component wrappers | Native feel | Vendor lock-in, version coupling |
 
-## Design principles that survive production
+RAG settings pages often use **JS SDK** for seamless sidebar navigation; executive summary emails link **static iframe** snapshots.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag embedded analytics sdk bugs hide.
+Looker pattern:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for embedded analytics sdk, you do not yet understand the behavior you shipped.
+```javascript
+import { LookerEmbedSDK } from "@looker/embed-sdk";
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+LookerEmbedSDK.init("https://analytics.yourcompany.com", { url: "/api/embed/auth" });
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag embedded analytics sdk flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for embedded analytics sdk in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag embedded analytics sdk changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Embedded Analytics Sdk: typed boundary + structured errors
-export async function handleEmbeddedAnalyticsSdk(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-embedded-analytics-sdk");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+const dashboard = LookerEmbedSDK.createDashboardWithId("rag-tenant-overview");
+dashboard
+  .appendTo("#analytics-root")
+  .withParams({ tenant_id: session.tenantId }) // server validates, not client-only
+  .build()
+  .connect();
 ```
 
+Server `/api/embed/auth` exchanges session cookie for signed embed URL—client never sees long-lived secrets.
 
-## Operational concerns
+## Row-level security for multi-tenant RAG
 
-Game-day exercises for embedded analytics sdk beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Every RAG metric table carries `tenant_id`. BI layer enforces:
 
-Production rag embedded analytics sdk work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```sql
+-- Looker access filter example concept
+-- sql_always_where: ${rag_events.tenant_id} = {% parameter embed_tenant_id %}
+```
 
-Rollouts for embedded analytics sdk benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Token generation server-side:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```python
+def embed_token(user, tenant):
+    assert user.tenant_id == tenant.id or user.is_admin
+    return jwt.encode({
+        "tenant_id": tenant.id,
+        "exp": utcnow() + timedelta(minutes= 15),
+        "scopes": ["read:dashboard:rag-overview"],
+    }, EMBED_SECRET, algorithm="HS256")
+```
 
-## Security and compliance angles
+**Never** embed admin dashboards with cross-tenant data using same secret without scoped filters—classic CVE in SaaS analytics.
 
-Even when embedded analytics sdk is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Test RLS: attempt token for tenant A, verify SQL logs show filter on A only.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag embedded analytics sdk so security reviews do not rely on tribal knowledge.
+## Metrics catalog for RAG embeds
 
-## Testing strategy
+Curate dashboards customers actually need:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that embedded analytics sdk depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Usage**
+- Queries/day, unique users, peak hour heatmap
+- Channel split (API vs UI vs Slack bot)
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**Quality**
+- Thumbs up/down rate, override/edited answer rate
+- "No result" rate and top failure queries (clustered, PII-scrubbed)
 
-## Migration and evolution
+**Performance**
+- End-to-end latency p50/p95, retrieval vs generation breakdown
+- Error rate by error class
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag embedded analytics sdk functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Cost**
+- Embedding tokens, generation tokens, $ estimate per tenant tier
+- Cost per successful answer (normalized metric for finance buyers)
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where embedded analytics sdk spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+**Corpus health** (if customer manages corpus)
+- Documents indexed, stale document count, last sync status
 
-## Related concepts
+Avoid 40-chart kitchen sink—three dashboards max at launch.
 
-Embedded Analytics Sdk intersects with broader ai topics — see companion notes on [rag-embedded patterns](https://blog.michaelsam94.com/rag-embedded/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Theming and white-label
 
-## The takeaway
+Embed SDKs accept theme objects matching host app:
 
-Embedded Analytics Sdk rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag embedded analytics sdk becomes a maintainable asset instead of incident fuel.
+```javascript
+dashboard.withTheme({
+  key_color: "#0066CC",
+  background_color: "#FFFFFF",
+  font_family: "Inter, sans-serif",
+});
+```
 
-## Resources
+Host app CSS should not leak into iframe—postMessage height resize handling for responsive layouts.
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+White-label tier: custom logo, hide "Powered by Looker" per vendor contract.
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Event hooks for product integration
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+JS SDKs emit events—use for product analytics:
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+```javascript
+dashboard.on("dashboard:run:complete", (event) => {
+  productAnalytics.track("embedded_dashboard_viewed", {
+    dashboard_id: event.dashboard.id,
+    tenant_id: session.tenantId,
+  });
+});
+```
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Drill-down from chart → in-app corpus manager: listen `drillmenu:click`, navigate host router to `/corpus?filter=...` when customer clicks "stale docs" bar.
+
+## CSP, cookies, and third-party embed pitfalls
+
+**Content-Security-Policy** must allow frame-src to analytics host. **SameSite** cookies break embed auth if misconfigured—use dedicated embed SSO flow (SAML → short-lived embed token).
+
+Safari ITP may block third-party cookies—prefer first-party subdomain `analytics.customerapp.com` CNAME to vendor.
+
+## Performance and load
+
+Embedded dashboards run heavy queries. Mitigate:
+
+- **Aggregate tables** materialized hourly for tenant metrics—not raw event scans
+- **Query cache** in semantic layer (Cube, dbt metrics)
+- **Load dashboard on tab activation**, not page load
+- Set **row limits** and **query timeout** in BI tool
+
+Show skeleton UI while embed connects—Looker cold start can exceed 2s.
+
+## Governance and contractual constraints
+
+Customer contracts may prohibit showing raw user queries in embeds—aggregate to topic clusters via offline NLP labeling. HIPAA tenants may forbid any PHI in BI warehouse feeding embed—separate pipeline with stricter redaction.
+
+Document in DPA what embedded analytics stores, retention, and subprocessors (Looker Cloud hosted where).
+
+## Build vs buy decision tree
+
+**Buy embed** when: standard charts suffice, speed to market matters, ops team small.
+
+**Build in-app charts** when: deep integration with RAG admin actions, custom eval visualizations, or embed licensing cost prohibitive at scale.
+
+Hybrid: embed executive summary; custom React for corpus debug tools.
+
+Embedded analytics SDKs close the "prove ROI" gap for RAG products. Signed tokens, tenant RLS, and a focused metrics catalog let customers see query volume, quality, and cost inside your app—without weekly CSV exports from Grafana and without leaking one tenant's prompts into another's dashboard.
+
+## Embedding in customer-facing SLAs
+
+Contractual uptime for analytics embed may differ from core RAG API—set expectations in SLA annex: embed availability 99.5% if vendor-hosted BI, with status page subscription. When Looker maintenance windows occur, in-app banner explains analytics temporary unavailability—avoid silent blank iframe.
+
+## Custom metrics API vs embed
+
+Enterprise customers sometimes want raw metrics via API instead of iframe. Offer **read-only metrics API** exporting same aggregates as embed with OAuth client credentials—single semantic layer (Cube/dbt) feeds both embed SDK and REST so numbers never diverge. Sales teams pitch embed for quick time-to-value; API for customers with existing Tableau estates.
+
+## Accessibility of embedded dashboards
+
+Iframe embeds must support keyboard navigation and screen reader labels—vendor accessibility VPAT on file. Host app provides skip link bypassing embed for users who cannot interact with third-party chart canvas.
+
+Color contrast in embedded theme must meet WCAG when displayed inside host app background—not only standalone Looker instance. QA checklist includes embed in light and dark host themes.
+
+## Multi-workspace and embedded admin
+
+Enterprise customers with multiple workspaces need embed tokens scoped to **workspace_id**—RLS filter must match JWT claim exactly. Admin users switching workspaces in host app must refresh embed session token—stale token showing wrong tenant data is critical severity bug tested in QA matrix every release.
+
+Embed SDK version pinning: Renovate updates `@looker/embed-sdk` with visual regression on analytics settings page—vendor SDK breaks iframe height contract occasionally; catch in CI not production.
+
+## Wrapping up embedded analytics
+
+Embedded dashboards turn RAG from black-box AI into accountable software customers can measure. Invest in semantic layer correctness once—embed and API share metrics—rather than rebuilding charts per customer request. Track embed adoption rate in product analytics: accounts viewing embedded dashboard weekly correlate with renewal in enterprise segments; prioritize UX polish on empty states and loading skeletons where first impressions determine whether buyers assign analytics to daily workflows.
+
+Customer success should demo embedded analytics in every enterprise kickoff—accounts that never open the dashboard in first 30 days show measurably lower expansion revenue; in-app nudges after tenth successful RAG query increase embed adoption without support tickets.
+
+Semantic layer ownership should sit with data platform, not embedded in each product squad—central ownership keeps embed metrics and API exports consistent while RAG product teams focus on query experience rather than rebuilding SQL for every customer dashboard request.
+
+## Acceptance criteria for embedded analytics sdk
+
+Ship only when staging demonstrates the failure modes you claim to handle. Record the evidence — load test output, chaos result, or screenshot of the alert firing — in the PR. Revisit the settings after the first real incident; production will teach you which timeout or retention value was optimistic. Prefer boring, documented tradeoffs over clever defaults that only exist in one engineer's head.

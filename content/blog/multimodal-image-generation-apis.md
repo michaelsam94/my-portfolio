@@ -3,8 +3,8 @@ title: "Integrating Image Generation APIs"
 slug: "multimodal-image-generation-apis"
 description: "Integrate DALL·E, Stable Diffusion, and Flux image APIs into applications: prompt design, safety filters, storage, caching, and cost control."
 datePublished: "2025-08-10"
-dateModified: "2025-08-10"
-tags: ["AI", "API", "Backend", "Design"]
+dateModified: "2026-07-17"
+tags:
 keywords: "image generation API, DALL-E integration, Stable Diffusion API, AI image generation, prompt engineering images, Flux model API"
 faq:
   - q: "How do I prevent users from generating inappropriate images?"
@@ -14,7 +14,6 @@ faq:
   - q: "What resolution should I request from image APIs?"
     a: "1024×1024 is the sweet spot for most providers—good quality, moderate cost. Generate at target size rather than upscaling when possible. Offer 512×512 previews before full-resolution generation to cut spend."
 ---
-
 Your app lets users generate product mockups from text descriptions. The first integration attempt pipes raw user input to an API and displays whatever returns—including occasional policy violations and $0.08 images that users regenerate five times before accepting one. Production image generation needs prompt templating, safety gates, async job handling, and storage that survives API version changes.
 
 ## Provider comparison
@@ -242,3 +241,17 @@ Required for copyright disputes, content moderation appeals, and reproducing spe
 - [Replicate image models](https://replicate.com/collections/text-to-image) — hosted open-source models
 - [Automatic1111 API wiki](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API) — self-hosted SD WebUI reference
 - [AWS S3 object metadata](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingMetadata.html) — storing generation metadata
+
+## Production notes for LLM stacks
+
+When `multimodal-image-generation-apis` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `integrating image generation apis` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

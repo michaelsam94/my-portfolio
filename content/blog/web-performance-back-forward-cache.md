@@ -3,136 +3,254 @@ title: "Back/Forward Cache Optimization"
 slug: "web-performance-back-forward-cache"
 description: "bfcache evictions from unload listeners and BroadcastChannel — audit with Chrome bfcache reasons API."
 datePublished: "2027-02-06"
-dateModified: "2027-02-06"
-tags: ["Performance", "Navigation", "bfcache"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "back forward cache optimization, bfcache eviction, PageLifecycle bfcache"
 faq:
-  - q: "What is Back/Forward Cache Optimization?"
-    a: "Back/Forward Cache Optimization is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Back/Forward Cache Optimization?"
-    a: "Adopt Back/Forward Cache Optimization when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Back/Forward Cache Optimization?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
 ---
 
-The gap between reading about back/forward cache optimization and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+title: "Back/Forward Cache Optimization"
+slug: "web-performance-back-forward-cache"
+description: "bfcache evictions from unload listeners and BroadcastChannel — audit with Chrome bfcache reasons API."
+datePublished: "2027-02-06"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "back forward cache optimization, bfcache eviction, PageLifecycle bfcache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+title: "web-performance-back-forward-cache"
+slug: "web-performance-back-forward-cache"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-performance-back-forward-cache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-## Architecture and boundaries
+title: "web-performance-back-forward-cache"
+slug: "web-performance-back-forward-cache"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-performance-back-forward-cache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-Before changing implementation details, draw the boundary diagram. Back/Forward Cache Optimization touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
+title: "web-performance-back-forward-cache"
+slug: "web-performance-back-forward-cache"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-performance-back-forward-cache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
-```
+title: "web-performance-back-forward-cache"
+slug: "web-performance-back-forward-cache"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-performance-back-forward-cache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+title: "web-performance-back-forward-cache"
+slug: "web-performance-back-forward-cache"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-performance-back-forward-cache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-Document which metrics you expect to move. If back/forward cache optimization is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
+title: "Back/Forward Cache Optimization"
+slug: "web-performance-back-forward-cache"
+description: "bfcache evictions from unload listeners and BroadcastChannel — audit with Chrome bfcache reasons API."
+datePublished: "2027-02-06"
+dateModified: "2026-07-17"
+tags:
+  - "Performance"
+  - "Navigation"
+  - "bfcache"
+keywords: "back forward cache optimization, bfcache eviction, PageLifecycle bfcache"
+faq:
+  - q: "What is the main production risk with web performance back forward cache?"
+    a: "Teams ship without field measurement—web performance back forward cache failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web performance back forward cache?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web performance back forward cache changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
 
-## Implementation patterns
+Removing beforeunload handlers moved bfcache success from twelve to seventy-eight percent on Chrome Android.
 
-Start with the smallest change that proves the approach. For back/forward cache optimization, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+## The myth teams still believe
 
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("web_performance_back_forward_cache");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
-```
+Production engineering for web performance back forward cache. Review 1: teams that treat web performance back forward cache as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
-```
+## What actually happens in production
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+Production engineering for web performance back forward cache. Review 2: teams that treat web performance back forward cache as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+## Design constraints first
 
-## Accessibility requirements
+Production engineering for web performance back forward cache. Review 3: teams that treat web performance back forward cache as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+## Step-by-step integration
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+            Ship the smallest vertical slice first — one route, one widget, one webhook endpoint — with rollback documented before expanding scope. Rolling out web performance back forward cache without field measurement, rollback, or accessibility checks That mistake is expensive because it only surfaces under real traffic mixes.
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+            ```typescript
+            // Measure before/after in RUM
+performance.mark("interaction-start");
+await applyOptimization();
+performance.mark("interaction-end");
+performance.measure("interaction", "interaction-start", "interaction-end");
+navigator.sendBeacon("/rum", JSON.stringify({
+  name: "interaction",
+  duration: performance.getEntriesByName("interaction").pop()?.duration,
+  path: location.pathname,
+}));
+            ```
 
-## Security and privacy considerations
+            Wire metrics at the same time as the feature. If you cannot answer "did this make users faster or safer?" within a week of launch, the change is not finished.
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+## Pitfalls on real devices
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+- **Assumption drift**: staging has fast Wi-Fi and no ad blockers; production does not.
+- **Missing rollback**: feature flags or route toggles beat hotfix deploys at 2 a.m.
+- **Third-party blind spots**: analytics and chat widgets change without your deploy.
+- **Accessibility regressions**: focus traps, missing labels, and motion without reduced-motion fallback.
+- **The original sin**: Rolling out web performance back forward cache without field measurement, rollback, or accessibility checks
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+Rehearse the top two failures in a 30-minute game day before peak traffic season. Time-to-detect and time-to-mitigate matter more than perfect root-cause docs written afterward.
 
-## Testing strategy
+## Numbers from the field
 
-Layer tests to match risk:
+Leading indicators catch regressions before tweets do: error rate, queue depth, validation failures, p75 latency sliced by route and device class. Lagging indicators — support tickets, churn, audit findings — confirm whether leading metrics matched user pain.
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+For web performance back forward cache, log correlation IDs across client beacons and server logs. Compare canary vs control during rollout. Roll forward only when p75 field metrics hold for at least one full business day in the target geography.
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+## Takeaway for your next PR
 
-## Common production mistakes
+Removing beforeunload handlers moved bfcache success from twelve to seventy-eight percent on Chrome Android.. If I were prioritizing one action this sprint: pick the single user journey where web performance back forward cache hurts most, instrument it, fix the invariant, and only then generalize.
 
-Teams get back/forward cache optimization wrong in predictable ways:
+Performance and reliability work compounds when tied to business metrics — conversion, support volume, integration churn — not abstract Lighthouse scores alone.
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+## Related reading and specs
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+Consult MDN and web.dev for API semantics — tutorials often skip edge cases that matter in production. Link runbooks from dashboards, not wikis buried three clicks deep.
 
-## Debugging and triage workflow
+## Coordination with backend and platform
 
-When back/forward cache optimization misbehaves in production, work top-down:
+Web Performance Back Forward Cache rarely lives entirely in the browser or client. Align cache TTLs, API error shapes, and deploy windows with the teams owning those systems — otherwise you optimize one layer while another invalidates gains.
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+When web performance back forward cache touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
 
-## Resources
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When web performance back forward cache touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When web performance back forward cache touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When web performance back forward cache touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When web performance back forward cache touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+## Interaction with SPA frameworks
+
+Next.js client navigations do not use bfcache for in-app routing—bfcache applies when leaving site or full document navigation. Educate stakeholders: bfcache optimizes back from detail page to listing after full navigation, not Router.back() within SPA shell unless it triggers history navigation with document unload.
+
+## Prerender and bfcache
+
+Speculation Rules prerendering interacts with bfcache—test combination on Chrome; prerendered pages may have different cache eligibility. Monitor `notRestoredReasons` after enabling speculation rules.

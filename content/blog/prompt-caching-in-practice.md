@@ -3,7 +3,7 @@ title: "Prompt Caching in Practice (Anthropic and OpenAI)"
 slug: "prompt-caching-in-practice"
 description: "Prompt caching cuts LLM cost and latency by reusing prefix computation. How Anthropic and OpenAI caching differ, plus cache breakpoints and gotchas."
 datePublished: "2026-05-25"
-dateModified: "2026-05-25"
+dateModified: "2026-07-17"
 tags: ["LLM", "Performance", "Cost"]
 keywords: "prompt caching, Anthropic prompt cache, OpenAI prompt caching, cache breakpoints, LLM cost reduction"
 faq:
@@ -95,6 +95,15 @@ It pairs naturally with the other levers I laid out in [cutting LLM costs with c
 Prompt caching isn't free of sharp edges. Low-traffic endpoints may never build up hits because the cache expires between requests. Writing large prefixes you don't reuse enough can *increase* cost on Anthropic due to the write premium. And you must monitor cache-hit metrics — both providers report cached-token counts in usage, so watch them; a "cached" prompt with a 5% hit rate is a bug in your prompt ordering, not a caching failure.
 
 Turn it on, put your stable content first, watch the hit rate, and prompt caching quietly becomes one of the best cost-per-quality trades available — no model change, no quality loss, just not paying twice for the same computation.
+
+
+## Cache hit dashboards worth building
+
+Export daily ratio `cache_read_input_tokens / (cache_read + cache_creation + uncached_input)` per prompt template version. Sudden drops after deploy usually mean someone added `Date.now()` to the system block — not a model regression. Alert when hit rate falls below baseline minus 15 points for 24 hours.
+
+## Gemini and long-TTL workloads
+
+For batch jobs that reuse the same 50-page policy doc hourly, compare Anthropic ephemeral TTL against Gemini context cache with explicit TTL hours. Include storage-minute charges in total cost models — a cheap read rate with expensive storage still loses on low-frequency jobs.
 
 ## Resources
 

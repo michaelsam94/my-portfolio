@@ -1,129 +1,300 @@
 ---
-title: "Postgres FDW Cross-Database Queries"
+title: "Postgres FDW Cross Database Queries"
 slug: "postgres-fdw-cross-database-queries"
-description: "Query remote Postgres, Redis, or CSV via foreign data wrappers with pushdown, connection limits, and security boundaries."
-datePublished: "2026-02-15"
-dateModified: "2026-02-15"
+description: "Query remote Postgres and other databases with postgres_fdw — setup, pushdown, performance tuning, and security boundaries."
+datePublished: "2026-02-23"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres fdw cross database queries, production, backend"
+keywords: "postgres_fdw, foreign data wrapper, cross database query, remote postgres, sharding"
 faq:
-  - q: "What problem does Postgres FDW Cross-Database Queries solve?"
-    a: "It addresses production gaps teams hit when scaling postgres fdw cross database queries: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres fdw cross database queries appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Does postgres_fdw support writes to remote tables?"
+    a: "Yes. INSERT, UPDATE, DELETE, and COPY work on foreign tables when created without read-only restrictions. Writes execute as single-row operations on the remote server unless batch insert pushdown is available in your PG version. Transaction semantics span both servers only with two-phase commit in supported configurations — default is independent commits per server."
+  - q: "How does query pushdown affect performance?"
+    a: "Postgres pushes WHERE filters, JOIN clauses, and aggregates to the remote server when possible, reducing rows transferred over the network. Without pushdown, postgres_fdw fetches all rows and filters locally — catastrophic on large remote tables. Check EXPLAIN output for 'Remote SQL' to verify pushdown."
+  - q: "Should I use FDW for production cross-database joins or migrate schemas instead?"
+    a: "FDW suits reporting, gradual migration, and occasional cross-database lookups. For high-volume OLTP joins across databases, network latency and lack of true distributed transactions make FDW a poor fit — consolidate schemas, use application-level aggregation, or adopt a purpose-built distributed query engine instead."
 ---
 
-## Production context
+Postgres databases are isolated by design — one cluster, one database, no cross-database queries within a single connection. Yet production systems accumulate separate databases for legacy migrations, multi-tenant isolation, or bounded context boundaries. When a report needs orders from `billing_db` joined with users from `identity_db`, **Foreign Data Wrappers (FDW)** bridge the gap without ETL pipelines or application-level fan-out.
 
-A billing service lost duplicate events because postgres fdw cross database queries was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+**postgres_fdw** is the built-in wrapper for remote Postgres servers. This article covers setup, query pushdown mechanics, performance tuning, and the sharp edges that turn an convenient shortcut into a production bottleneck.
 
-Senior backend work on postgres fdw cross-database queries is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## Basic setup
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+On the local (coordinator) database:
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
+CREATE EXTENSION postgres_fdw;
+
+CREATE SERVER identity_server
+  FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (host 'identity-db.internal', port '5432', dbname 'identity');
+
+CREATE USER MAPPING FOR app_reader
+  SERVER identity_server
+  OPTIONS (user 'fdw_reader', password 'secret');
+
+CREATE FOREIGN TABLE remote_users (
+  id         uuid,
+  email      text,
+  created_at timestamptz
+)
+SERVER identity_server
+OPTIONS (schema_name 'public', table_name 'users');
+
+-- Query as if local
+SELECT * FROM remote_users WHERE email = 'alice@example.com';
+```
+
+postgres_fdw connects to the remote server, executes SQL, and returns rows to the local planner.
+
+## Query pushdown
+
+The local planner decomposes queries into **remote SQL** sent to the foreign server and **local processing** for operations that cannot be pushed.
+
+Pushed operations (when supported):
+
+- `WHERE` clause filters on remote columns
+- `JOIN` between foreign tables on the same server
+- `ORDER BY` on remote columns (with limit pushdown)
+- Aggregate pushdown (PG 10+ for simple cases)
+- `FOR UPDATE` (PG 14+ with limitations)
+
+Check pushdown with EXPLAIN:
+
+```sql
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT email FROM remote_users WHERE created_at > '2026-01-01';
+
+-- Look for:
+-- Foreign Scan on remote_users
+--   Remote SQL: SELECT email, created_at FROM public.users
+--               WHERE (created_at > '2026-01-01'::timestamptz)
+```
+
+Bad — no filter pushdown:
+
+```sql
+EXPLAIN SELECT email FROM remote_users WHERE lower(email) = 'alice@example.com';
+-- Filter applied locally after fetching all rows
+```
+
+Fix: create a functional index on the remote server and match the expression, or add an immutable wrapper function marked for pushdown.
+
+## Joining local and foreign tables
+
+```sql
+SELECT o.id, o.total, u.email
+FROM local_orders o
+JOIN remote_users u ON u.id = o.user_id
+WHERE o.status = 'pending';
+```
+
+The planner may:
+
+1. Fetch all pending orders locally, then nested loop to remote for each user (slow)
+2. Push the join to remote if both tables are on the same foreign server
+3. Hash join locally after fetching both sides (memory-intensive)
+
+Force better plans with statistics:
+
+```sql
+IMPORT FOREIGN SCHEMA public
+  LIMIT TO (users)
+  FROM SERVER identity_server
+  INTO fdw_identity;
+
+ANALYZE fdw_identity.users;  -- PG 14+ auto-analyze foreign tables
+```
+
+Set remote estimate options:
+
+```sql
+ALTER FOREIGN TABLE remote_users
+  OPTIONS (ADD use_remote_estimate 'true');
+```
+
+`use_remote_estimate` asks the remote server for row counts — more accurate plans, extra round trip during planning.
+
+## Performance tuning options
+
+```sql
+ALTER SERVER identity_server OPTIONS (
+  SET fetch_size '10000',        -- rows per fetch (default 100)
+  SET batch_size '1000',         -- INSERT batch size
+  SET application_name 'fdw_coordinator'
+);
+
+ALTER FOREIGN TABLE remote_users OPTIONS (
+  ADD async_capable 'true'       -- PG 14+ async append
 );
 ```
 
-## Implementation checklist
+**fetch_size**: Increase for large scans to reduce round trips. Memory cost scales with row width × fetch_size.
 
-Validate inputs at the trust boundary with schema versioning.
+**Connection pooling**: Each local backend opens a connection to the remote server. With 100 local connections, you get 100 remote connections. Use PgBouncer on the remote side or limit `max_connections` impact.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+**Materialized foreign tables**: For read-heavy reporting, materialize locally:
 
-Store idempotency keys with TTL; return cached responses on replay.
+```sql
+CREATE MATERIALIZED VIEW local_user_cache AS
+SELECT * FROM remote_users;
 
-Run migrations with lock_timeout and statement_timeout set.
+REFRESH MATERIALIZED VIEW CONCURRENTLY local_user_cache;
+```
 
-Load test at 2× expected peak with production-like payload sizes.
+Refresh on schedule via pg_cron instead of live FDW queries.
 
-## Observability
+## Write operations
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Writable foreign tables:
 
-Dashboards for postgres fdw cross database queries should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+```sql
+CREATE FOREIGN TABLE remote_audit_log (...)
+SERVER identity_server
+OPTIONS (schema_name 'public', table_name 'audit_log');
 
-## Security notes
+INSERT INTO remote_audit_log (event, payload) VALUES ('login', '{"user": "alice"}');
+```
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Each INSERT is typically a remote round trip. Bulk insert:
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+```sql
+INSERT INTO remote_audit_log
+SELECT event, payload FROM local_staging_events;
+-- May batch depending on PG version and batch_size setting
+```
 
-## Common production mistakes
+Updates and deletes push WHERE clauses when possible:
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+```sql
+UPDATE remote_users SET email = 'new@example.com' WHERE id = '...';
+-- Remote SQL: UPDATE public.users SET email = $1 WHERE id = $2
+```
 
-## Debugging and triage workflow
+## Transaction behavior
 
-When production misbehaves, work top-down:
+Default: local and remote transactions are **independent**. Local COMMIT succeeds even if remote write fails afterward in multi-statement transactions — unless using prepared transactions with two-phase commit.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+```sql
+BEGIN;
+  INSERT INTO local_orders VALUES (...);
+  INSERT INTO remote_audit_log VALUES (...);
+COMMIT;
+-- Not atomic across servers by default
+```
 
-## Operational checklist
+For cross-server atomicity, configure two-phase commit (complex, rarely used in practice). Application-level outbox or saga patterns handle cross-database consistency more reliably.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+## Security model
 
-## Performance tuning notes
+**User mapping**: Maps local roles to remote credentials. Use least-privilege remote users:
 
-Measure before optimizing postgres fdw cross database queries. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+```sql
+-- On remote server
+CREATE ROLE fdw_reader WITH LOGIN PASSWORD '...';
+GRANT SELECT ON users TO fdw_reader;
+-- Not SUPERUSER, not write access unless needed
+```
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+**Credential storage**: Passwords in user mappings are visible to superusers:
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+```sql
+SELECT * FROM pg_user_mappings;
+```
 
-## Rollout and migration
+Use vault integration or certificate auth for remote connections where supported.
 
-Ship postgres fdw cross database queries changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+**Network**: FDW traffic is standard Postgres protocol — encrypt with `sslmode=require` in server options:
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+```sql
+ALTER SERVER identity_server OPTIONS (ADD sslmode 'require');
+```
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+**Row-level security**: Remote RLS policies apply on the remote server using the mapped remote user — not the local user.
 
-## Testing recommendations
+## Sharding pattern with FDW
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Postgres native sharding (PG 15+ improvements, Citus extension) often uses FDW under the hood. Manual sharding:
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+```sql
+-- Shard by tenant on separate databases
+CREATE FOREIGN TABLE tenant_a_orders (...) SERVER tenant_a_server ...;
+CREATE FOREIGN TABLE tenant_b_orders (...) SERVER tenant_b_server ...;
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+CREATE VIEW all_orders AS
+  SELECT 'a' AS tenant, * FROM tenant_a_orders
+  UNION ALL
+  SELECT 'b' AS tenant, * FROM tenant_b_orders;
+```
 
-## Incident patterns we see
+Query routing in application code beats UNION ALL across many shards for OLTP.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## Alternatives comparison
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+| Approach | Latency | Consistency | Complexity |
+| --- | --- | --- | --- |
+| postgres_fdw | Network per query | Independent TX | Low |
+| Application fan-out | Network per service | Application-managed | Medium |
+| ETL to warehouse | Minutes-hours | Eventual | Medium |
+| Schema consolidation | Local | Full ACID | High (migration) |
+| Citus/distributed PG | Low (co-located) | Distributed TX | High |
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Monitoring
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Track FDW activity:
 
-## Resources
+```sql
+-- Remote query duration in pg_stat_statements on coordinator
+SELECT query, mean_exec_time, calls
+FROM pg_stat_statements
+WHERE query LIKE '%postgres_fdw%' OR query LIKE '%remote_%'
+ORDER BY mean_exec_time DESC;
+```
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+On remote server, monitor connections from FDW coordinator IP — they appear as regular client connections in `pg_stat_activity`.
+
+## Common mistakes
+
+**Selecting * from large foreign table without filter**: Fetches entire remote table across network.
+
+**Ignoring statistics**: Planner assumes 1000 rows default without `use_remote_estimate` — chooses nested loop when hash join is correct.
+
+**Write-heavy FDW for OLTP**: Each row is a network round trip. Use local tables with async replication instead.
+
+**Same server, different database**: FDW works but `dblink` or schema consolidation may be simpler for same-cluster cross-database access.
+
+## Cost-based planner tuning for FDW
+
+Foreign table statistics dramatically affect plan quality. After bulk loads on the remote server, refresh:
+
+```sql
+-- On remote server
+ANALYZE remote_schema.users;
+
+-- On coordinator — import updated stats
+IMPORT FOREIGN SCHEMA remote_schema LIMIT TO (users)
+  FROM SERVER identity_server INTO fdw_identity;
+```
+
+Adjust cost settings when network latency dominates:
+
+```sql
+ALTER SERVER identity_server OPTIONS (
+  SET use_remote_estimate 'true',
+  SET fdw_startup_cost '100',
+  SET fdw_tuple_cost '0.05'
+);
+```
+
+Higher `fdw_startup_cost` discourages the planner from choosing FDW when a local materialized cache would be cheaper. Benchmark with EXPLAIN ANALYZE comparing direct FDW query vs materialized view refresh cycle — the crossover point depends on refresh frequency and data change rate.
+
+## Summary
+
+postgres_fdw makes remote Postgres tables queryable from local SQL with filter and join pushdown reducing network transfer. Configure fetch_size, remote statistics, and materialized caches for reporting workloads. Treat FDW as a migration bridge and analytics tool — not as a distributed OLTP join engine. Secure user mappings with least privilege, encrypt connections, and understand that cross-server transactions are not atomic by default.
+
+
+If EXPLAIN VERBOSE shows a remote SELECT without your WHERE clause, fix pushdown before tuning fetch_size — you are shipping the table across the network.

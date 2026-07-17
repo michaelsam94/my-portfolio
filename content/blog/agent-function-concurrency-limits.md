@@ -1,111 +1,227 @@
 ---
 title: "AI Agents: Function Concurrency Limits"
 slug: "agent-function-concurrency-limits"
-description: "Function Concurrency Limits: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Controlling parallel tool and function execution in agent runtimes — semaphores, per-tenant quotas, Lambda reserved concurrency, bulkhead patterns, and backpressure for LLM orchestrators."
 datePublished: "2026-04-19"
 dateModified: "2026-04-19"
 tags: ["AI", "Agent", "Function"]
-keywords: "agent, function, concurrency, limits, ai, production, engineering, architecture"
+keywords: "function concurrency, agent tool limits, semaphore, bulkhead, Lambda reserved concurrency, rate limiting, backpressure, parallel tool calls"
 faq:
-  - q: "What is Function Concurrency Limits?"
-    a: "Function Concurrency Limits covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Function Concurrency Limits?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Function Concurrency Limits?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Function Concurrency Limits fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Function Concurrency Limits should be observable in production and safe to change in small diffs."
+  - q: "Why do agent platforms need function concurrency limits beyond LLM rate limits?"
+    a: "LLM rate limits cap tokens and requests; they do not cap downstream tool fan-out. A single agent turn can invoke five tools in parallel, each hitting databases, payment APIs, or sandboxed code runners. Without function-level limits, one chat session can exhaust connection pools, trigger partner API bans, or spawn runaway sub-agent trees."
+  - q: "Should concurrency limits apply per user, per tenant, or globally?"
+    a: "All three, layered. Global limits protect shared infrastructure. Per-tenant limits enforce plan tiers and noisy-neighbor isolation. Per-session or per-user limits prevent a single runaway agent loop from monopolizing a tenant's quota. Expose remaining capacity in API responses so clients can backoff gracefully."
+  - q: "How do you handle tools with different latency profiles under one limit?"
+    a: "Use weighted semaphores or separate bulkheads per tool class: fast read tools (search, cache) get higher concurrency; slow or expensive tools (code execution, external API) get lower caps. A single global semaphore unfairly blocks quick lookups when one sandbox compile occupies the slot."
+  - q: "What happens when an agent hits a concurrency limit mid-turn?"
+    a: "Queue with timeout, return a structured 'resource_exhausted' tool result the model can reason about, or degrade to sequential execution for non-critical tools. Never fail silently or hang indefinitely — the LLM will retry aggressively and amplify load."
 ---
-Function Concurrency Limits is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The first production incident I traced to missing function concurrency limits did not involve the LLM at all. A support agent with parallel tool calling enabled fired six database lookups, three HTTP fetches, and a sandboxed Python execution in one turn. Each sub-call was "within limits" individually. Together they saturated the connection pool, tripped a partner API's abuse detector, and left five hundred unrelated sessions timing out on auth checks. Token rate limits on GPT-4 were fine. **Function concurrency** — how many tool invocations run at once, for whom, and with what backpressure — was undefined.
 
-When function concurrency limits is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent runtimes expose tools to the model: search, calculators, CRM writes, code interpreters, sub-agent delegation. Modern models eagerly parallelize independent tool calls. That parallelism is a feature until your infrastructure treats every tool as free. Concurrency limits are the bulkhead between model enthusiasm and platform survival.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The concurrency stack for agent systems
 
-Solid AI engineering turns function concurrency limits from a recurring argument into a documented pattern with tests and an owner.
+Think in layers, each with distinct counters and reset windows:
 
-## Design principles that survive production
+| Layer | What it limits | Example cap |
+|-------|----------------|-------------|
+| Global platform | Total in-flight tool executions | 2,000 |
+| Tenant / plan tier | Concurrent tools per organization | 50 (Pro), 10 (Free) |
+| Session / run | Parallel tools per agent invocation | 5 |
+| Tool class bulkhead | Per-tool-type slots | 20 search, 3 sandbox |
+| Downstream dependency | External API in-flight | 100 req to Stripe |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent function concurrency limits bugs hide.
+Limits compose: a tool call must acquire tenant slot AND tool-class slot AND optional dependency slot before execution. Release in `finally` blocks — crashed tools that leak semaphores are a classic outage source.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for function concurrency limits, you do not yet understand the behavior you shipped.
+## Semaphore implementation at the orchestrator
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent function concurrency limits flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for function concurrency limits in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent function concurrency limits changes safer because business rules stay isolated from transport details.
+The orchestrator sits between the LLM response parser and tool executors. When the model returns multiple `tool_calls`, the orchestrator schedules them — not the model.
 
 ```typescript
-// Function Concurrency Limits: typed boundary + structured errors
-export async function handleFunctionConcurrencyLimits(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-function-concurrency-limits");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+import { Semaphore, withTimeout } from "./concurrency";
+
+interface ToolCall {
+  id: string;
+  name: string;
+  args: unknown;
 }
 
+interface ConcurrencyConfig {
+  sessionMax: number;
+  tenantMax: number;
+  toolBulkheads: Record<string, number>;
+  acquireTimeoutMs: number;
+}
+
+class AgentToolExecutor {
+  private tenantSemaphores = new Map<string, Semaphore>();
+  private toolBulkheads: Record<string, Semaphore>;
+
+  constructor(private config: ConcurrencyConfig) {
+    this.toolBulkheads = Object.fromEntries(
+      Object.entries(config.toolBulkheads).map(([k, n]) => [k, new Semaphore(n)]),
+    );
+  }
+
+  private tenantSem(tenantId: string): Semaphore {
+    if (!this.tenantSemaphores.has(tenantId)) {
+      this.tenantSemaphores.set(tenantId, new Semaphore(this.config.tenantMax));
+    }
+    return this.tenantSemaphores.get(tenantId)!;
+  }
+
+  async executeParallel(
+    tenantId: string,
+    calls: ToolCall[],
+    sessionSem: Semaphore,
+  ): Promise<ToolResult[]> {
+    const capped = calls.slice(0, this.config.sessionMax);
+    return Promise.all(
+      capped.map((call) => this.executeOne(tenantId, call, sessionSem)),
+    );
+  }
+
+  private async executeOne(
+    tenantId: string,
+    call: ToolCall,
+    sessionSem: Semaphore,
+  ): Promise<ToolResult> {
+    const bulkhead = this.toolBulkheads[call.name] ?? this.toolBulkheads.default;
+    const acquired =
+      (await withTimeout(sessionSem.acquire(), this.config.acquireTimeoutMs)) &&
+      (await withTimeout(this.tenantSem(tenantId).acquire(), this.config.acquireTimeoutMs)) &&
+      (await withTimeout(bulkhead.acquire(), this.config.acquireTimeoutMs));
+
+    if (!acquired) {
+      return {
+        toolCallId: call.id,
+        status: "resource_exhausted",
+        error: `Concurrency limit reached for ${call.name}. Retry sequentially or backoff.`,
+      };
+    }
+
+    try {
+      const result = await this.runTool(call);
+      return { toolCallId: call.id, status: "ok", output: result };
+    } finally {
+      bulkhead.release();
+      this.tenantSem(tenantId).release();
+      sessionSem.release();
+    }
+  }
+}
 ```
 
+Structured `resource_exhausted` responses give the model something actionable. Models that see opaque timeouts often re-issue the same parallel batch, making overload worse.
 
-## Operational concerns
+## Serverless and Lambda reserved concurrency
 
-Alert on user-visible symptoms for function concurrency limits — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+For tools implemented as Lambda functions, **reserved concurrency** per function prevents one agent tool from consuming the entire account concurrency pool. Unreserved functions compete for the remainder; a viral sandbox tool can starve login webhooks.
 
-Production agent function concurrency limits work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```yaml
+# serverless.yml excerpt — bulkhead per tool
+functions:
+  agentWebSearch:
+    handler: handlers/search.handler
+    reservedConcurrency: 100
 
-Rollouts for function concurrency limits benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+  agentCodeSandbox:
+    handler: handlers/sandbox.handler
+    reservedConcurrency: 10   # expensive; strict cap
+    timeout: 60
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+  agentCrmWrite:
+    handler: handlers/crm.handler
+    reservedConcurrency: 25
+    events:
+      - sqs:
+          arn: !GetAtt ToolQueue.Arn
+          batchSize: 1            # avoid double parallelism (SQS batch × tool parallel)
+```
 
-## Security and compliance angles
+When Lambda throttles (`TooManyRequestsException`), map it to the same structured exhaustion response. Consider SQS-backed tool queues for burst absorption — concurrency becomes `reserved × pollers` with visible backlog metrics.
 
-Even when function concurrency limits is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Sub-agent delegation multiplies concurrency
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent function concurrency limits so security reviews do not rely on tribal knowledge.
+Agents that spawn sub-agents multiply tool concurrency exponentially. A parent with five parallel tools, each invoking a sub-agent with five tools, creates twenty-five downstream executions without nested limits.
 
-## Testing strategy
+Apply **depth budgets** and **multiplicative caps**:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that function concurrency limits depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```python
+@dataclass
+class RunContext:
+    tenant_id: str
+    depth: int = 0
+    max_depth: int = 3
+    inherited_session_budget: int = 5
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+def remaining_parallel_budget(ctx: RunContext) -> int:
+    # Each depth level splits the session budget
+    return max(1, ctx.inherited_session_budget // (2 ** ctx.depth))
 
-## Migration and evolution
+async def delegate_subagent(ctx: RunContext, task: str) -> str:
+    if ctx.depth >= ctx.max_depth:
+        raise DelegationLimitExceeded(f"max depth {ctx.max_depth}")
+    child = RunContext(
+        tenant_id=ctx.tenant_id,
+        depth=ctx.depth + 1,
+        inherited_session_budget=remaining_parallel_budget(ctx),
+    )
+    return await run_agent(child, task)
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent function concurrency limits functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Log `depth`, `parent_run_id`, and `tool_name` on every span. Flame graphs of agent runs without depth tags are unreadable during incidents.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where function concurrency limits spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Backpressure and queueing strategies
 
-## Related concepts
+When demand exceeds limits, three strategies exist: **reject** (fast fail with retry-after), **queue** ( absorb bursts, risk latency), **shed** (drop low-priority tools). Agent UX generally prefers bounded queues over hard reject for user-initiated turns, but reject is correct for background sync jobs.
 
-Function Concurrency Limits intersects with broader ai topics — see companion notes on [agent-function patterns](https://blog.michaelsam94.com/agent-function/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Queue depth must be bounded. An unbounded queue masks overload until memory explodes. Expose `queue_depth` and `estimated_wait_ms` to observability; page when p95 wait exceeds conversational tolerance (~2–3 seconds for inline tools).
 
-## The takeaway
+For **streaming agent UIs**, emit progress events when tools wait on semaphores: "Waiting for available sandbox slot (2 ahead)." Transparency reduces duplicate user submits.
 
-Function Concurrency Limits rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent function concurrency limits becomes a maintainable asset instead of incident fuel.
+## Fairness across tenants
+
+Noisy-neighbor isolation requires per-tenant semaphores, not just global caps. A enterprise tenant running batch evaluation jobs should not consume all sandbox slots for free-tier interactive users.
+
+**Weighted fair queuing** assigns each tenant a deficit counter — tenants below their fair share get priority when slots free up. Simpler approach: hard tenant caps with overflow to a low-priority queue processed only when global utilization < 70%.
+
+Audit tenant-level concurrency config in plan definitions. Sales promises of "unlimited agents" without engineering caps become platform incidents.
+
+## Security and abuse considerations
+
+Concurrency limits are abuse controls. An attacker triggering parallel code-sandbox tools attempts resource exhaustion or fork bombs. Combine concurrency with:
+
+- Per-user authentication before tool execution
+- CPU and memory limits inside sandboxes (cgroups, Firecracker microVMs)
+- Egress network policies on tool runners
+- Cost attribution per tenant for anomaly detection
+
+A tenant whose tool concurrency constantly pegs at cap may be compromised or misconfigured — alert on sustained 100% utilization, not just errors.
+
+## Testing concurrency behavior
+
+Load tests must include **parallel tool call patterns**, not sequential REST hammering. Simulate a model returning 8 tool calls per turn with 200 concurrent sessions.
+
+Chaos tests: kill tool workers mid-execution and verify semaphores release. Property test: acquired slots never exceed configured maximum under random scheduling.
+
+Integration test case: when sandbox bulkhead is saturated, search tools still succeed — bulkhead isolation verified.
+
+## Observability and SLOs
+
+Metrics to emit: `tool_concurrency_inflight{tool, tenant}`, `tool_acquire_wait_ms`, `tool_resource_exhausted_total`, `semaphore_available{pool}`. Traces should link parent LLM span to child tool spans with concurrency wait events.
+
+SLO example: 99% of read-class tools start execution within 500 ms of schedule time (acquire wait + queue). Sandbox tools may have a looser SLO — document per class.
+
+## Closing
+
+Function concurrency limits are load-bearing infrastructure for any agent that parallelizes tools — which is every modern model default. Layer global, tenant, session, and tool-class bulkheads; return structured exhaustion to the model; cap sub-agent depth; and test with parallel patterns, not sequential load scripts. Token limits protect your OpenAI bill. Concurrency limits protect everything behind the tools.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [AWS Lambda: Reserved Concurrency](https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html)
+- [Microsoft: Bulkhead Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead)
+- [OpenAI: Parallel Function Calling](https://platform.openai.com/docs/guides/function-calling/parallel-function-calling)
+- [Google Cloud: Concurrency Control for Cloud Run](https://cloud.google.com/run/docs/about-concurrency)
+- [Netflix Hystrix (historical bulkhead reference)](https://github.com/Netflix/Hystrix/wiki/How-it-Works#ThreadPool)

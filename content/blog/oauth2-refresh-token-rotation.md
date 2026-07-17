@@ -1,129 +1,117 @@
 ---
 title: "OAuth2 Refresh Token Rotation"
 slug: "oauth2-refresh-token-rotation"
-description: "Rotate refresh tokens on use — detect reuse as breach signal and revoke token family."
+description: "Rotate refresh tokens on every use, bind them to token families, and detect reuse as a breach signal—without breaking mobile clients on flaky networks."
 datePublished: "2026-01-17"
-dateModified: "2026-01-17"
+dateModified: "2026-07-17"
 tags:
-  - "Authentication"
+  - "Security"
   - "OAuth"
+  - "Authentication"
   - "Backend"
-keywords: "oauth2 refresh token rotation, production, backend"
+keywords: "oauth2 refresh token rotation, token family revocation, refresh token reuse detection, RFC 9700, mobile oauth security"
 faq:
-  - q: "What problem does OAuth2 Refresh Token Rotation solve?"
-    a: "It addresses production gaps teams hit when scaling oauth2 refresh token rotation: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when oauth2 refresh token rotation appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Why rotate refresh tokens on every use instead of issuing long-lived static tokens?"
+    a: "A stolen refresh token that never changes gives attackers indefinite access. Rotation issues a new refresh token on each exchange and invalidates the previous one. If the old token appears again, you know a copy leaked—and you revoke the entire token family."
+  - q: "How do you handle duplicate refresh requests from mobile apps on bad networks?"
+    a: "Treat the first successful rotation as authoritative and return the same new token pair for a short grace window (30–120 seconds) when the same old refresh token is presented again. Without grace, flaky Wi‑Fi causes mass logouts."
+  - q: "Should refresh token rotation apply to confidential server-side clients?"
+    a: "RFC 9700 focuses on public clients where refresh tokens are high-value secrets on user devices. Confidential clients may use rotation optionally, but token families still help detect credential theft from compromised backends."
+  - q: "What should happen when reuse is detected?"
+    a: "Revoke the entire token family immediately—all outstanding access and refresh tokens descended from the original grant. Force re-authentication, log a security event, and rate-limit further attempts from that device fingerprint."
 ---
 
-## Production context
+A security review found the same refresh token used from two countries within four minutes. The authorization server had issued a static refresh token with a 90-day TTL and no rotation. Revoking that one row logged out the attacker—and also every legitimate session for 40,000 users who shared the same client implementation. Refresh token rotation fixes the theft-detection story, but only if you design for mobile retries, concurrent tabs, and the moment reuse detection fires.
 
-A billing service lost duplicate events because oauth2 refresh token rotation was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## The threat model refresh rotation addresses
 
-Senior backend work on oauth2 refresh token rotation is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Refresh tokens are bearer credentials. Anyone who possesses one can obtain new access tokens until expiry or revocation. Attack paths include malware reading local storage, XSS exfiltration, leaked mobile backups, and server logs that accidentally capture token response bodies. Static refresh tokens fail silently. Rotation adds a signal: when token R1 is exchanged for R2, only R2 should work next. If R1 appears again, two parties hold copies.
 
-## Architecture pattern
+## Token families, not single rows
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+Model refresh tokens as nodes in a family tree rooted at the initial authorization grant. Store `family_id`, `parent_token_hash`, `issued_at`, `revoked_at`, and `client_id`. Hash tokens at rest—never store plaintext refresh tokens in your database.
 
 ```sql
--- Example: idempotent ingest skeleton for oauth2 workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
+CREATE TABLE refresh_token_family (
+  family_id   uuid PRIMARY KEY,
+  user_id     uuid NOT NULL,
+  client_id   text NOT NULL,
+  revoked_at  timestamptz
+);
+
+CREATE TABLE refresh_token (
+  token_hash    text PRIMARY KEY,
+  family_id     uuid NOT NULL REFERENCES refresh_token_family(family_id),
+  parent_hash   text,
+  expires_at    timestamptz NOT NULL,
+  consumed_at   timestamptz,
+  grace_until   timestamptz
 );
 ```
 
-## Implementation checklist
+On rotation: mark old token consumed, insert new token with same `family_id`, return new pair. On reuse of a consumed token outside grace: set `revoked_at` on the family and reject all descendants.
 
-Validate inputs at the trust boundary with schema versioning.
+## Rotation exchange flow
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Use `SELECT … FOR UPDATE` so two concurrent requests with the same old token cannot both succeed. On consumed token within grace window, return cached new token response (idempotent mobile retry). On reuse outside grace, revoke family and log `refresh_reuse` security event.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Grace period: necessary, bounded
 
-Run migrations with lock_timeout and statement_timeout set.
+Without grace, lost responses on flaky networks cause mass logouts. A 60-second grace window where R1 returns the same R2 response fixes retries without reopening theft windows for hours. Document grace behavior in your mobile SDK.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Public vs confidential clients
 
-## Observability
+Mobile native and SPAs require mandatory rotation (RFC 9700). Pair rotation with sender-constrained access tokens (DPoP or mTLS) where possible—rotation limits refresh theft; sender constraint limits access token replay.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Observability without leaking secrets
 
-Dashboards for oauth2 refresh token rotation should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Metrics: `oauth_refresh_total{result}`, `oauth_refresh_duration_seconds`, `oauth_refresh_family_revocations_total{reason}`. Logs: `family_id`, `client_id`, `result`—never log refresh token values.
 
-## Security notes
+## Common mistakes
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+No transactional rotation; grace without cached response; family revocation that misses access tokens; rotation without client authentication on mobile; 90-day refresh TTL with no rotation policy.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Rollout and testing
 
-## Common production mistakes
+Ship rotation in shadow mode logging would-be reuse; enable for one client_id in beta; monitor `invalid_grant` rate; enforce family revocation for all public clients. Test: single refresh returns new token; duplicate within grace returns identical body; duplicate after grace revokes family; concurrent refresh exactly one succeeds.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Refresh token rotation is a state machine with concurrency, mobile networks, and security incidents baked in—not a checkbox on your IdP admin panel.
 
-## Debugging and triage workflow
+## Authorization server configuration
 
-When production misbehaves, work top-down:
+Enable refresh token rotation in your IdP (Auth0, Okta, Keycloak, Cognito) and verify the behavior in a staging tenant before mobile clients ship. Rotation should issue a **new refresh token** on every refresh response and invalidate the previous token in the same family. Store only hashed refresh token identifiers server-side so database leaks do not grant session persistence.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Document the client behavior matrix: public clients must use PKCE; confidential backends may use client authentication on the token endpoint; never mix refresh token policies across platforms using the same OAuth client ID if redirect and storage models differ.
 
-## Operational checklist
+## Detecting token reuse in production
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+When a refresh token is presented twice outside the grace window, treat it as compromise: revoke the entire token family, force re-authentication for that user session, and emit a security event with device fingerprint and IP. Rate-limit refresh endpoints separately from login to prevent brute force against leaked tokens.
 
-## Performance tuning notes
+Pair rotation with short access token TTL (5–15 minutes) so family revocation takes effect quickly even if access tokens were copied before reuse detection fired.
 
-Measure before optimizing oauth2 refresh token rotation. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## LLM and mobile client notes
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Native apps embedding LLM features often cache refresh tokens in Keychain. Ensure SDK retry logic respects grace windows—duplicate refresh after timeout must not trigger family revocation for legitimate users. Never log refresh response bodies in analytics pipelines; token leakage in crash reports is a common rotation bypass.
+## IdP-specific implementation notes
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+**Auth0:** Enable rotating refresh tokens per application; configure reuse detection interval aligned with your grace window. **Okta:** Use custom authorization server policies; verify refresh behavior for SPA vs native clients separately. **Keycloak:** Client policy for refresh token max reuse; test offline sessions vs standard refresh. **Cognito:** Document which app clients support rotation natively vs require custom Lambda triggers.
 
-## Rollout and migration
+Regardless of vendor, export metrics on `invalid_grant` spikes after enabling rotation—often reveals SDK double-refresh bugs before users flood support.
 
-Ship oauth2 refresh token rotation changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Database migration for token families
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Backfill `family_id` for existing refresh tokens before enforcing rotation. Run dual-write period where old tokens work without family metadata but new tokens populate families. After 30 days, revoke legacy non-rotating tokens with comms to users on ancient app versions.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-## Testing recommendations
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-## Incident patterns we see
+Validate with staging load tests and document rollback before enabling enforcement in production.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
-
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
-
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
-
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
-
-## Resources
-
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Validate with staging load tests and document rollback before enabling enforcement in production.

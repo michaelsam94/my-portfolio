@@ -3,16 +3,146 @@ title: "Vector Databases in Production: pgvector and Beyond"
 slug: "vector-databases-in-production"
 description: "A production guide to vector databases: when pgvector is enough, HNSW vs IVFFlat indexing, filtering, scaling limits, and choosing a dedicated store like Qdrant."
 datePublished: "2026-01-29"
-dateModified: "2026-01-29"
-tags: ["Vector Database", "pgvector", "Postgres", "RAG"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "vector database, pgvector, embeddings storage, similarity search, vector search production, HNSW"
 faq:
-  - q: "Is pgvector good enough for production?"
-    a: "For most applications, yes. pgvector turns Postgres into a capable vector store, handling millions of vectors with HNSW indexing while letting you keep vectors, metadata, and relational data in one transactional database. Consider a dedicated vector database when you reach hundreds of millions of vectors or need advanced features it lacks."
-  - q: "What is the difference between HNSW and IVFFlat?"
-    a: "HNSW builds a graph for fast, high-recall approximate search with higher memory use and slower index builds. IVFFlat clusters vectors into lists and is cheaper to build with lower memory but generally lower recall. HNSW is the default choice for query-heavy production workloads."
-  - q: "Do I need a dedicated vector database?"
-    a: "Not usually to start. If you already run Postgres, pgvector avoids adding infrastructure and keeps everything in one place. Move to a dedicated store like Qdrant, Milvus, or Pinecone when scale, filtering performance, or specialized indexing outgrows what pgvector comfortably handles."
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Vector Databases in Production: pgvector and Beyond"
+slug: "vector-databases-in-production"
+description: "A production guide to vector databases: when pgvector is enough, HNSW vs IVFFlat indexing, filtering, scaling limits, and choosing a dedicated store like Qdrant."
+datePublished: "2026-01-29"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector database, pgvector, embeddings storage, similarity search, vector search production, HNSW"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-databases-in-production"
+slug: "vector-databases-in-production"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-databases-in-production"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-databases-in-production"
+slug: "vector-databases-in-production"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-databases-in-production"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-databases-in-production"
+slug: "vector-databases-in-production"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-databases-in-production"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-databases-in-production"
+slug: "vector-databases-in-production"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-databases-in-production"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-databases-in-production"
+slug: "vector-databases-in-production"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-databases-in-production"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Vector Databases in Production: pgvector and Beyond"
+slug: "vector-databases-in-production"
+description: "A production guide to vector databases: when pgvector is enough, HNSW vs IVFFlat indexing, filtering, scaling limits, and choosing a dedicated store like Qdrant."
+datePublished: "2026-01-29"
+dateModified: "2026-07-17"
+tags:
+  - "Vector Database"
+  - "pgvector"
+  - "Postgres"
+  - "RAG"
+keywords: "vector database, pgvector, embeddings storage, similarity search, vector search production, HNSW"
+faq:
+  - q: "What is the main production risk with vector databases in production?"
+    a: "Teams ship without field measurement—vector databases in production failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector databases in production?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector databases in production changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 The most common over-engineering I see in RAG projects is standing up a dedicated vector database on day one. For the overwhelming majority of applications, [pgvector](https://github.com/pgvector/pgvector) — the vector extension for Postgres — is the right answer, and it stays the right answer well past the scale most teams ever reach. You get similarity search, your metadata, and your relational data in one transactional database you already know how to operate.
@@ -95,6 +225,18 @@ Whichever you run, a few things separate a vector store that works in a demo fro
 
 My default recommendation stands: **start with pgvector.** It's less infrastructure, no sync problem, and enough for most of what people build. Reach for a dedicated vector database when you can name the specific limit you've hit — scale, filtering, or a feature you genuinely need. Choosing based on a benchmark blog post instead of your own measured constraints is how teams end up operating a distributed system they didn't need.
 
+## pgvector before dedicated vector DB
+
+Hybrid filters (`WHERE tenant_id = $1 ORDER BY embedding <=> $2`) are trivial in Postgres; awkward in some dedicated engines. Start HNSW index on pgvector; measure recall@10 on production query log sample. Billion-vector scale or sub-10ms at huge QPS — then evaluate Pinecone/Weaviate with same eval set, not blog benchmarks.
+
+## pgvector before dedicated vector DB
+
+Hybrid filters (`WHERE tenant_id = $1 ORDER BY embedding <=> $2`) are trivial in Postgres; awkward in some dedicated engines. Start HNSW index on pgvector; measure recall@10 on production query log sample. Billion-vector scale or sub-10ms at huge QPS — then evaluate Pinecone/Weaviate with same eval set, not blog benchmarks.
+
+## Field metrics and rollback
+
+Capture baseline p75 error rate and latency on tier-1 routes before merge. Compare seven days post-deploy sliced by mobile and region. Document rollback in PR and runbook.
+
 ## Resources
 
 - [pgvector — GitHub](https://github.com/pgvector/pgvector)
@@ -103,3 +245,52 @@ My default recommendation stands: **start with pgvector.** It's less infrastruct
 - [Weaviate — documentation](https://weaviate.io/developers/weaviate)
 - [Pinecone — Learn: vector search](https://www.pinecone.io/learn/vector-database/)
 - [HNSW algorithm paper (arXiv)](https://arxiv.org/abs/1603.09320)
+
+## Trade-offs I keep revisiting for vector databases in production
+
+AI systems around vector databases in production fail on evaluation blindness and cost cliffs. Define golden sets and latency/cost budgets before tuning ANN parameters or prompt length.
+
+For vector databases in production:
+- Separate embedding model version from index generation — rebuilds are migrations
+- Filter/metadata strategy matters as much as HNSW params
+- Cache semantic results carefully; stale answers look like model regressions
+- Log prompts/outputs with PII redaction and retention limits
+
+Ship a thin eval harness in CI for critical intents so prompt changes cannot silent-break production.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Coverage % | Team-defined SLO | Page on burn rate |
+| Mean time to detect | Baseline − noise | Ticket if sustained |
+| Escapes to prod | Budget cap | Weekly review |
+
+## What reviewers should challenge in vector databases in production PRs
+
+Reviewers should challenge assumptions encoded in vector databases in production: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario C for vector databases in production: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+2. Scenario A for vector databases in production: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+3. Scenario B for vector databases in production: bad config shipped — prove rollback within the declared RTO without data corruption.
+
+## Capacity planning with vector databases in production in mind
+
+Roll out vector databases in production behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Multi-tenant concerns in vector databases in production
+
+Detail 1 (634): for vector databases in production, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When multi-tenant concerns in vector databases in production becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break vector databases in production, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about vector databases in production: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Compliance evidence for vector databases in production
+
+Detail 2 (708): for vector databases in production, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for vector databases in production becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break vector databases in production, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about vector databases in production: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

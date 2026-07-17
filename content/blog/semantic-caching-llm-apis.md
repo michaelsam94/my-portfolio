@@ -3,16 +3,17 @@ title: "Semantic Caching for LLM APIs"
 slug: "semantic-caching-llm-apis"
 description: "How semantic caching cuts LLM API latency and cost by reusing answers to similar questions. Embeddings, thresholds, invalidation, and the failure modes to avoid."
 datePublished: "2026-03-04"
-dateModified: "2026-03-04"
-tags: ["LLM", "Caching", "Performance", "Infrastructure"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "semantic caching, LLM cache, embeddings cache, reduce LLM latency, cache LLM responses, similarity cache"
 faq:
-  - q: "What is semantic caching for LLM APIs?"
-    a: "Semantic caching stores past prompt-response pairs and returns a cached answer when a new prompt is semantically similar — not just byte-identical — to a stored one. It uses embeddings and a similarity threshold instead of exact-string matching, so paraphrased questions can still hit the cache."
-  - q: "How is semantic caching different from normal caching?"
-    a: "A normal cache keys on the exact request string, so 'reset my password' and 'how do I reset my password' miss each other. A semantic cache keys on meaning via embeddings, so both can return the same stored answer if their vectors are close enough."
-  - q: "What is the main risk of semantic caching?"
-    a: "False hits. If your similarity threshold is too loose, the cache returns an answer to a subtly different question, which is worse than a slow correct answer. Tuning the threshold and scoping the cache carefully is essential."
+  - q: "Semantic vs exact cache?"
+    a: "Semantic uses embeddings to match meaning, not literal strings."
+  - q: "Main risk?"
+    a: "False hits — wrong answer fast is worse than slow correct answer."
+  - q: "Cache scope?"
+    a: "Include model version, system prompt hash, and tenant in cache key scope."
 ---
 
 Exact-match caching does almost nothing for LLM traffic. Users never phrase the same question the same way twice — "how do I cancel my subscription," "cancel subscription," and "I want to stop paying" are three cache misses that all deserve one answer. Semantic caching fixes this by keying on *meaning* instead of the literal string, and when it works it turns a 2-second, few-cents LLM call into a 15-millisecond lookup that costs effectively nothing.
@@ -90,6 +91,14 @@ The infrastructure is modest: any [vector database in production](https://blog.m
 
 Semantic caching is worth building the moment you have repeated, non-personalized queries and care about latency or cost. Start conservative on the threshold, scope keys to everything that changes the answer, treat prompt changes as flushes, and instrument hits so a bad match surfaces before your users find it. Done carefully it's nearly free performance; done carelessly it's a machine for serving wrong answers quickly.
 
+## Operational notes for semantic caching llm apis
+
+Log cache hit rate, false-positive reports, and similarity score distribution. When users flag wrong cached answers, capture prompt pair for threshold tuning. Invalidate cache entries when system prompt or retrieval corpus version changes — scope keys must include those versions or stale policy answers slip through.
+
+## Notes on semantic caching llm apis
+
+Log cache hit rate, false-positive reports, and similarity score distribution. When users flag wrong cached answers, capture prompt pair for threshold tuning. Invalidate cache entries when system prompt or retrieval corpus version changes — scope keys must include those versions or stale policy answers slip through.
+
 ## Resources
 
 - [OpenAI embeddings guide](https://platform.openai.com/docs/guides/embeddings)
@@ -97,3 +106,11 @@ Semantic caching is worth building the moment you have repeated, non-personalize
 - [Pinecone: what is a vector database](https://www.pinecone.io/learn/vector-database/)
 - [pgvector — vector similarity for Postgres](https://github.com/pgvector/pgvector)
 - [MTEB: Massive Text Embedding Benchmark](https://huggingface.co/spaces/mteb/leaderboard)
+
+Review semantic caching llm apis metrics after the next release train on mid-tier mobile devices — regressions that pass lab Lighthouse often fail CrUX field data.
+
+## Cache key scoping
+
+Scope semantic cache by model version, system prompt hash, and tenant ID. A cache hit across tenants or prompt versions returns wrong answers confidently — worse than a cache miss.
+
+Document owner, rollback path, and the metric you expect to move after the next deploy.

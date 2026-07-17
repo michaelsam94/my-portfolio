@@ -3,8 +3,8 @@ title: "Self-Critique Loops for LLMs"
 slug: "llm-reflection-self-critique"
 description: "Improve LLM output quality with self-critique loops: generate-critique-revise patterns, when reflection helps, budget controls, and production architectures that don't triple your latency."
 datePublished: "2025-01-02"
-dateModified: "2025-01-02"
-tags: ["AI", "LLM", "AI Agents", "Machine Learning"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM self-critique, reflection prompting, generate critique revise, Reflexion agent, LLM output improvement"
 faq:
   - q: "Do self-critique loops always improve output quality?"
@@ -14,7 +14,6 @@ faq:
   - q: "Should the critic be the same model as the generator?"
     a: "Use the same or stronger model for critique. A weaker critic misses errors the generator made. Common pattern: strong model critiques, mid-tier model generates (or vice versa for cost — mid generates, strong critiques only when needed). Never use the exact same prompt for both roles."
 ---
-
 The first draft SQL query ran but scanned 40 million rows. A second pass — asking the model to review its own output against the requirements — caught the missing WHERE clause. Self-critique loops (generate → critique → revise) exploit the fact that LLMs are often better at finding flaws in existing text than producing perfect text initially. The technique works, but blind application triples latency and cost on tasks that didn't need a second opinion.
 
 ## The Reflexion pattern
@@ -228,6 +227,10 @@ Measure quality delta vs cost increase per task type before enabling reflection 
 - Reflexion memory stored across attempts within session
 - Quality delta vs cost measured per task type before global enable
 - A/B test: reflection on vs off for each feature before production deploy
+
+## Cost guardrails
+
+Cap reflection iterations per request and per tenant daily budget. Log `reflection_rounds` and `tokens_spent_on_critique` separately from primary generation so finance and on-call can see when self-critique becomes an expensive loop rather than a quality win.
 
 ## Resources
 

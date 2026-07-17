@@ -3,7 +3,7 @@ title: "Product Flavors and Build Variants"
 slug: "android-build-variants-flavors"
 description: "Configure Android product flavors and build variants: dimension design, flavor-specific resources, BuildConfig fields, and keeping multi-flavor projects maintainable."
 datePublished: "2026-07-14"
-dateModified: "2026-07-14"
+dateModified: "2026-07-17"
 tags: ["Android", "Gradle", "Build", "Architecture"]
 keywords: "Android product flavors, build variants Gradle, flavorDimensions, BuildConfig flavors, Android multi-flavor setup"
 faq:
@@ -254,6 +254,148 @@ Test: one debug per tier, one release for primary market. Skip exotic combinatio
 - CI matrix tests critical variant combinations (not all permutations)
 - applicationIdSuffix per flavor for side-by-side installation
 - Flavor-specific feature modules for >20% code divergence
+
+## Variant-aware dependency injection
+
+When flavors ship different implementations of the same interface, wire them in flavor-specific Hilt modules instead of `if (BuildConfig.PREMIUM)` inside `@Inject` constructors:
+
+```kotlin
+// free/src/.../BillingModule.kt
+@Module
+@InstallIn(SingletonComponent::class)
+interface BillingModule {
+    @Binds
+    fun bindBilling(impl: FreeBillingManager): BillingManager
+}
+
+// pro/src/.../BillingModule.kt
+@Module
+@InstallIn(SingletonComponent::class)
+interface BillingModule {
+    @Binds
+    fun bindBilling(impl: PlayBillingManager): BillingManager
+}
+```
+
+`main` code depends on `BillingManager` only — Gradle selects the module at compile time. JVM tests in `main` use `@TestInstallIn` fakes; flavor instrumented tests validate real Play Billing integration on `proDebug` hardware.
+
+## Signing and publishing matrix
+
+Each publishable variant needs an explicit signing config — debug keys must never ship to Play:
+
+```kotlin
+android {
+    signingConfigs {
+        create("proRelease") {
+            storeFile = file(System.getenv("PRO_RELEASE_STORE") ?: "keystore.jks")
+            storePassword = providers.environmentVariable("PRO_STORE_PASS").orNull
+            keyAlias = "pro"
+            keyPassword = providers.environmentVariable("PRO_KEY_PASS").orNull
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("proRelease")
+        }
+    }
+}
+```
+
+Play Console mapping:
+
+| Variant | Track | applicationId |
+|---------|-------|-----------------|
+| proRelease | production | com.example.app |
+| freeRelease | internal only | com.example.app.free |
+
+Upload `proRelease` AAB to production; keep `freeRelease` for sideload QA or omit from Play entirely via `variant.enable = false`.
+
+## Manifest merge per flavor
+
+Flavor manifests overlay permissions and components:
+
+```xml
+<!-- pro/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="com.android.vending.BILLING"/>
+    <application>
+        <meta-data android:name="com.google.android.play.billingclient.version"
+            android:value="7.0.0"/>
+    </application>
+</manifest>
+```
+
+Free flavor omits billing permission — Play policy reviewers see smaller permission footprint on free listing if published.
+
+Use `tools:replace` sparingly; prefer missing declarations in free flavor over fighting merger conflicts.
+
+## Resource overlay pitfalls
+
+`src/pro/res/values/colors.xml` overrides `brand_primary` — ensure `src/free` defines the same keys referenced in `main` layouts or build fails on missing resource in one variant. Lint `MissingTranslation` per flavor in CI:
+
+```bash
+./gradlew lintProRelease lintFreeRelease
+```
+
+Vector drawables in flavor folders must keep identical viewport sizes when swapping branding — otherwise Espresso screenshot diffs explode.
+
+## Feature module onFlavor pattern
+
+For large divergence, attach feature modules to flavors:
+
+```kotlin
+dependencies {
+    "proImplementation"(project(":feature:analytics-premium"))
+    "freeImplementation"(project(":feature:ads"))
+}
+```
+
+`:feature:ads` must not leak into pro dependency graph — verify with:
+
+```bash
+./gradlew :app:dependencyInsight --dependency ads --configuration proReleaseRuntimeClasspath
+```
+
+Should report "not found."
+
+## Local development ergonomics
+
+Android Studio Build Variants panel defaults to last selection — document team default `proDebug` in README. Pre-commit hook optional:
+
+```bash
+./gradlew assembleProDebug -q || exit 1
+```
+
+Pair with `android.injected.build.model.only.versioned=3` for CI model sync. Use `gradle.properties`:
+
+```properties
+android.defaults.buildfeatures.buildconfig=true
+android.nonTransitiveRClass=true
+```
+
+Non-transitive R speeds multi-flavor builds by preventing accidental cross-module resource coupling.
+
+## When flavors are the wrong tool
+
+| Need | Better approach |
+|------|-----------------|
+| A/B experiment UI | Remote Config + single variant |
+| Staging API URL | CI `buildConfigField` injection |
+| Per-user entitlements | Backend feature flags |
+| 12 language locales | Resource qualifiers, not flavors |
+| Internal dogfood | ApplicationId suffix + separate track |
+
+Flavors multiply CI time linearly with combinatorics — two dimensions × two build types = eight APK/AAB outputs if unfiltered.
+
+## Migration off flavor explosion
+
+Strangulation path when variants exceed six:
+
+1. Move environment URLs to remote config — delete env dimension.
+2. Collapse region flavors into `values-xx` resources plus locale APIs.
+3. Extract premium features into `:feature:premium` with runtime flag from Play Billing entitlement check — single `release` variant, gated features.
+
+Expect two-release overlap where both flavor check and entitlement check guard premium code — remove `BuildConfig.PREMIUM` only after analytics confirms zero free-variant premium calls.
 
 ## Resources
 

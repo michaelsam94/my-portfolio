@@ -1,111 +1,215 @@
 ---
 title: "RAG: Cdn Stale While Revalidate"
 slug: "rag-cdn-stale-while-revalidate"
-description: "Cdn Stale While Revalidate: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Stale-while-revalidate at the CDN edge keeps RAG API responses fast during corpus updates—serve cached retrieval bundles while background revalidation fetches fresh chunks without user-visible latency spikes."
 datePublished: "2026-05-13"
-dateModified: "2026-05-13"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Cdn"]
-keywords: "rag, cdn, stale, while, revalidate, ai, production, engineering, architecture"
+keywords: "stale-while-revalidate, SWR, CDN caching, RAG API cache, Cache-Control, edge caching, revalidation, stale-if-error"
 faq:
-  - q: "What is Cdn Stale While Revalidate?"
-    a: "Cdn Stale While Revalidate covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Cdn Stale While Revalidate?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Cdn Stale While Revalidate?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Cdn Stale While Revalidate fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Cdn Stale While Revalidate should be observable in production and safe to change in small diffs."
+  - q: "What does stale-while-revalidate mean for RAG API responses?"
+    a: "After Cache-Control max-age expires, the CDN may continue serving the cached response for an additional stale-while-revalidate window while asynchronously fetching a fresh copy from origin. Users see no latency spike during revalidation— they get slightly stale retrieval results instead of waiting for origin."
+  - q: "When is stale content acceptable in RAG retrieval?"
+    a: "Acceptable for public documentation with version metadata in responses, cached search results for non-critical queries, and static embedding manifests. Unacceptable for real-time policy documents, regulated content without version checks, or personalized authenticated retrieval where staleness could show wrong tenant data."
+  - q: "How does stale-while-revalidate differ from stale-if-error?"
+    a: "stale-while-revalidate triggers background refresh when content is past max-age but still within the SWR window. stale-if-error serves stale content only when origin returns an error (5xx). Use both: SWR for normal freshness, stale-if-error for origin outage resilience."
 ---
-Cdn Stale While Revalidate sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Corpus v47 went live at 14:00. The CDN served cached retrieval responses for `/api/v1/public/search` with a five-minute max-age. Every cache entry expired at 14:05 simultaneously. Without stale-while-revalidate, those requests would have blocked on origin while the RAG API recomputed hybrid search results—p95 would have jumped from 45 ms at edge to 800 ms at origin. With `stale-while-revalidate=600`, the CDN kept serving v46 results for up to ten additional minutes while background revalidation pulled v47 gradually. Users searching public docs saw no latency cliff; they might have seen slightly outdated snippets until revalidation completed.
 
-When cdn stale while revalidate is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Stale-while-revalidate (SWR) is an HTTP Cache-Control extension that decouples user-perceived latency from origin freshness. For RAG systems serving cacheable public retrieval at CDN edge, it is the difference between invisible corpus updates and post-deploy latency incidents.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## How stale-while-revalidate works
 
-Solid AI engineering turns cdn stale while revalidate from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag cdn stale while revalidate bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for cdn stale while revalidate, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag cdn stale while revalidate flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for cdn stale while revalidate in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag cdn stale while revalidate changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Cdn Stale While Revalidate: typed boundary + structured errors
-export async function handleCdnStaleWhileRevalidate(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-cdn-stale-while-revalidate");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Standard caching timeline without SWR:
 
 ```
+0──────── max-age ────────►| BLOCKING MISS | fresh origin fetch
+                           expiry
+```
 
+With SWR:
 
-## Operational concerns
+```
+0──────── max-age ──── SWR window ────►| must revalidate or miss
+                           expiry      (blocking)
+                    
+During SWR window: serve stale immediately + async background fetch
+```
 
-Runbooks for cdn stale while revalidate should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+The CDN returns cached content instantly. A background request fetches fresh content and updates the cache for subsequent requests. Only one background fetch per cache key—not one per user request.
 
-Production rag cdn stale while revalidate work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Cache-Control headers for RAG endpoints
 
-Rollouts for cdn stale while revalidate benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Configure origin to emit appropriate headers:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```python
+# api/public_retrieval.py
+CORPUS_TTL_SEC = 300        # 5 min fresh
+SWR_WINDOW_SEC = 600        # 10 min stale serve + background refresh
+STALE_IF_ERROR_SEC = 86400  # 24h stale on origin 5xx
 
-## Security and compliance angles
+def cache_headers(corpus_version: str) -> dict[str, str]:
+    return {
+        "Cache-Control": (
+            f"public, max-age={CORPUS_TTL_SEC}, "
+            f"stale-while-revalidate={SWR_WINDOW_SEC}, "
+            f"stale-if-error={STALE_IF_ERROR_SEC}"
+        ),
+        "Surrogate-Key": f"corpus-{corpus_version}",
+        "Vary": "Accept-Encoding",
+    }
+```
 
-Even when cdn stale while revalidate is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+CDN must support SWR—Cloudflare, Fastly, and Akamai do. CloudFront supports `stale-while-revalidate` in Cache-Control since 2021.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag cdn stale while revalidate so security reviews do not rely on tribal knowledge.
+## Freshness vs correctness tradeoffs for RAG
 
-## Testing strategy
+SWR introduces staleness. Whether that is acceptable depends on content type:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that cdn stale while revalidate depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+| Content type | max-age | SWR window | Rationale |
+|-------------|---------|------------|-----------|
+| Public KB search | 300s | 600s | Minor staleness OK with version header |
+| Embedding manifest | 3600s | 7200s | Version in URL is primary freshness |
+| API OpenAPI spec | 86400s | 3600s | Rarely changes |
+| Policy/compliance docs | 60s | 0s | No SWR—freshness critical |
+| Authenticated retrieval | private, no-cache | — | Never CDN cache shared responses |
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Expose corpus version in response body so clients detect staleness:
 
-## Migration and evolution
+```json
+{
+  "corpus_version": "v47",
+  "cached_at": "2026-07-17T14:03:00Z",
+  "results": [...]
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag cdn stale while revalidate functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Frontend can show "results may not reflect latest updates" if `corpus_version` lags known current.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where cdn stale while revalidate spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## CDN configuration examples
 
-## Related concepts
+**Fastly** — respects Cache-Control SWR natively. Optionally override:
 
-Cdn Stale While Revalidate intersects with broader ai topics — see companion notes on [rag-cdn patterns](https://blog.michaelsam94.com/rag-cdn/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```
+# fastly.vcl (usually not needed—origin headers suffice)
+if (beresp.http.Cache-Control ~ "stale-while-revalidate") {
+  set beresp.stale_while_revalidate = 600s;
+}
+```
 
-## The takeaway
+**Cloudflare** — enable "Respect origin Cache-Control" in cache rules. SWR honored automatically.
 
-Cdn Stale While Revalidate rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag cdn stale while revalidate becomes a maintainable asset instead of incident fuel.
+**CloudFront** — configure origin response headers policy to forward Cache-Control. SWR supported in modern behaviors.
+
+Verify SWR behavior with test:
+
+```bash
+# First request — MISS, populates cache
+curl -sI "https://cdn.example.com/api/v1/public/search?q=refund&corpus=v47" | grep -i age
+
+# Wait past max-age, request again — should be HIT with Age > max-age
+sleep 310
+curl -sI "https://cdn.example.com/api/v1/public/search?q=refund&corpus=v47" | grep -E "Age|X-Cache"
+# Expect: Age: 310+, X-Cache: HIT (stale served)
+```
+
+## Interaction with corpus version bumps
+
+When corpus version increments (v47 → v48):
+
+**Without version in URL.** All cached keys expire on schedule. SWR smooths the transition—stale v47 results serve while v48 revalidates. Users may briefly see v47 snippets. Acceptable for public docs.
+
+**With version in URL** (`corpus=v48` param). New version = new cache keys = cold miss for v48, but v47 keys remain for clients still requesting old version. No stampede on either version. Preferred pattern for major updates.
+
+Combine both: version in URL for major bumps, SWR for within-version freshness.
+
+## Background revalidation load on RAG origin
+
+SWR shifts load from synchronous user requests to asynchronous background fetches. Origin still receives revalidation traffic—just not blocking users.
+
+Estimate background QPS:
+
+```
+background_qps ≈ unique_cache_keys / SWR_window_seconds
+```
+
+For 10,000 unique search query cache keys with 600s SWR window: ~17 background revalidations/sec at steady state after max-age expiry. Manageable for most RAG APIs.
+
+Spike occurs when many keys expire simultaneously (deploy clears cache metadata). Combine SWR with:
+- TTL jitter per key (vary max-age ±10%)
+- Surrogate key soft purge instead of hard delete
+- Probabilistic early revalidation at CDN (Fastly `stale-while-revalidate-max-age`)
+
+## stale-if-error for origin resilience
+
+Pair SWR with `stale-if-error` for origin outage protection:
+
+```
+Cache-Control: public, max-age=300, stale-while-revalidate=600, stale-if-error=86400
+```
+
+If RAG origin returns 502 during embedding service outage, CDN serves last known good response for up to 24 hours. Critical for public documentation availability during partial pipeline failures.
+
+Caution: stale-if-error on retrieval can serve very outdated content. Cap the window (3600–86400s) and monitor corpus version in stale responses.
+
+## Anti-patterns
+
+**SWR on authenticated endpoints without Vary.** Shared cache serves tenant A's retrieval to tenant B. Use `private` or tenant-scoped cache keys with `Vary: Authorization`.
+
+**Infinite SWR window.** `stale-while-revalidate=31536000` defeats caching purpose—content never refreshes unless manually purged.
+
+**SWR without corpus version exposure.** Users cannot tell answers are stale; trust erodes silently.
+
+**Blocking revalidation fallback.** Some CDN misconfigurations block on revalidation miss. Test explicitly.
+
+## Monitoring SWR effectiveness
+
+Metrics to track:
+
+- **CDN Age header distribution** — values > max-age indicate SWR serving
+- **Origin QPS during corpus deploy** — should be flat with SWR vs spike without
+- **User-facing p95 latency** — should not spike at max-age boundary
+- **Corpus version mismatch rate** — client-reported vs current version
+
+Dashboard panel: overlay cache hit rate, origin QPS, and p95 latency around deploy times. SWR success shows stable p95 despite origin QPS bump from background fetches.
+
+## Application-level SWR complement
+
+CDN SWR handles HTTP caching. Apply same pattern in application Redis cache:
+
+```python
+async def get_with_swr(key: str, loader, ttl: int, swr: int):
+    entry = await redis.get(key)
+    if entry:
+        data = json.loads(entry)
+        age = time.time() - data["stored_at"]
+        if age < ttl:
+            return data["value"]
+        if age < ttl + swr:
+            asyncio.create_task(_background_refresh(key, loader, ttl))
+            return data["value"]
+    return await _refresh(key, loader, ttl)
+```
+
+Layer CDN SWR (edge) over application SWR (Redis) over vector index (source of truth). Each layer adds latency absorption.
+
+## Client-side freshness hints for RAG applications
+
+Frontend clients should read corpus_version from API responses and compare against a known-current version endpoint. When mismatch detected, show non-blocking banner: "Newer documents available—refresh for latest results." This converts SWR staleness from silent trust erosion into explicit user choice.
+
+Mobile RAG clients with offline cache extend SWR semantics to local storage—stale-while-revalidate applies to on-device cache layers with same TTL discipline as CDN. Sync corpus version on app launch before serving cached retrieval results.
+
+## Measuring SWR effectiveness in production
+
+Add custom CDN headers or origin response headers tracking revalidation outcomes: X-Cache-Status (HIT/STALE/MISS), X-Corpus-Version, X-Revalidated-At. Log these in RAG API access logs for analysis. Weekly report: percentage of requests served stale vs fresh, average staleness duration in seconds, correlation between stale serve rate and user feedback "outdated answer" reports. Tune max-age and SWR window based on evidence—not defaults.
+
+## Acceptance criteria for cdn stale while revalidate
+
+Ship only when staging demonstrates the failure modes you claim to handle. Record the evidence — load test output, chaos result, or screenshot of the alert firing — in the PR. Revisit the settings after the first real incident; production will teach you which timeout or retention value was optimistic. Prefer boring, documented tradeoffs over clever defaults that only exist in one engineer's head.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- RFC 5861 — stale-while-revalidate and stale-if-error
+- Fastly stale content serving guide
+- CloudFront Cache-Control support documentation
+- HTTP caching best practices for API responses

@@ -3,16 +3,146 @@ title: "Modern Color with OKLCH"
 slug: "web-color-functions-oklch"
 description: "Use OKLCH color in CSS for perceptually uniform palettes: syntax, comparison with HSL and LCH, wide-gamut support, and building accessible color systems."
 datePublished: "2026-03-15"
-dateModified: "2026-03-15"
-tags: ["Web", "CSS", "Design", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "OKLCH, CSS color, perceptual color, wide gamut, color palette, P3, LCH, color contrast"
 faq:
-  - q: "What is OKLCH and why is it better than HSL for CSS?"
-    a: "OKLCH is a perceptual color space where L is lightness, C is chroma (saturation), and H is hue. Unlike HSL, where yellow at 50% lightness looks much brighter than blue at 50% lightness, OKLCH lightness values produce visually uniform results across all hues. This makes it practical to generate color palettes by adjusting L and C while keeping perceived brightness consistent, which is essential for accessible design systems."
-  - q: "Can I use OKLCH in production browsers?"
-    a: "Yes. OKLCH is supported in all modern browsers as of 2024: Chrome 111+, Firefox 113+, Safari 15.4+, and Edge 111+. Provide HSL or hex fallbacks for older browsers using @supports or the cascade. In 2026, baseline support covers over 95% of users globally, making OKLCH viable as the primary color format with hex fallbacks only for legacy environments."
-  - q: "How does OKLCH help with wide-gamut displays?"
-    a: "OKLCH can express colors beyond the sRGB gamut that HSL and hex cannot represent. On displays supporting Display P3 or Rec.2020, OKLCH colors with high chroma values render as more vivid, saturated colors. The browser automatically clamps to the display's gamut. This means a single OKLCH definition looks good on both standard and wide-gamut screens, with wide-gamut displays showing richer colors automatically."
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Modern Color with OKLCH"
+slug: "web-color-functions-oklch"
+description: "Use OKLCH color in CSS for perceptually uniform palettes: syntax, comparison with HSL and LCH, wide-gamut support, and building accessible color systems."
+datePublished: "2026-03-15"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "OKLCH, CSS color, perceptual color, wide gamut, color palette, P3, LCH, color contrast"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-color-functions-oklch"
+slug: "web-color-functions-oklch"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-color-functions-oklch"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-color-functions-oklch"
+slug: "web-color-functions-oklch"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-color-functions-oklch"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-color-functions-oklch"
+slug: "web-color-functions-oklch"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-color-functions-oklch"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-color-functions-oklch"
+slug: "web-color-functions-oklch"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-color-functions-oklch"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-color-functions-oklch"
+slug: "web-color-functions-oklch"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-color-functions-oklch"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Modern Color with OKLCH"
+slug: "web-color-functions-oklch"
+description: "Use OKLCH color in CSS for perceptually uniform palettes: syntax, comparison with HSL and LCH, wide-gamut support, and building accessible color systems."
+datePublished: "2026-03-15"
+dateModified: "2026-07-17"
+tags:
+  - "Web"
+  - "CSS"
+  - "Design"
+  - "Frontend"
+keywords: "OKLCH, CSS color, perceptual color, wide gamut, color palette, P3, LCH, color contrast"
+faq:
+  - q: "What is the main production risk with web color functions oklch?"
+    a: "Teams ship without field measurement—web color functions oklch failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web color functions oklch?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web color functions oklch changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 I generated a palette in HSL: ten hues at 50% saturation and 50% lightness. Yellow screamed. Blue whispered. Purple looked fine. The palette was mathematically consistent and visually a mess. HSL's lightness axis doesn't match human perception — it's based on the underlying RGB model, not how bright colors actually look. OKLCH fixes this by using a perceptually uniform space where equal L values look equally bright regardless of hue. It's the color format CSS has needed for decades, and it's finally usable in production.
@@ -160,29 +290,39 @@ Convert existing colors with DevTools or tools:
 
 The cascade handles fallback automatically — browsers that don't understand OKLCH use the hex.
 
-## Common production mistakes
+## Token migration checklist
 
-Teams get color functions oklch wrong in predictable ways:
+Convert palette with `@csstools/postcss-oklab-function`; ship one release with hex fallback inside `@supports not (color: oklch(0 0 0))`. Re-run APCA contrast on components that passed WCAG under hex — OKLCH identical coordinates can fail on colored backgrounds because perceptual lightness shifted. Document P3-only brand colors with sRGB fallback token for Windows laptops without wide gamut.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Token migration checklist
 
-Production implementations of color functions oklch fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Convert palette with `@csstools/postcss-oklab-function`; ship one release with hex fallback inside `@supports not (color: oklch(0 0 0))`. Re-run APCA contrast on components that passed WCAG under hex — OKLCH identical coordinates can fail on colored backgrounds because perceptual lightness shifted. Document P3-only brand colors with sRGB fallback token for Windows laptops without wide gamut.
 
-## Debugging and triage workflow
+## Design token migration checklist
 
-When color functions oklch misbehaves in production, work top-down instead of guessing:
+1. Export Figma styles to OKLCH tokens (Figma supports OKLCH natively in 2025+)
+2. Replace `:root` CSS variables in one PR per app shell
+3. Run visual regression on marketing + app chrome
+4. Update Storybook swatches for designers
+5. Document token naming: `--color-brand-500` not `--blue`
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Print and forced-colors modes
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+```css
+@media print {
+  :root { --brand: oklch(30% 0.05 250); }
+}
+
+@media (forced-colors: active) {
+  .button { border: 2px solid ButtonText; }
+}
+```
+
+OKLCH does not exempt you from Windows High Contrast—test `forced-colors` separately.
+
+## OKLCH in Canvas and WebGL
+
+CSS OKLCH does not automatically propagate to canvas—convert with color.js if drawing charts programmatically for consistent brand colors between DOM and canvas layers.
 
 ## Resources
 
@@ -191,3 +331,52 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [OKLCH in CSS (Evil Martians)](https://evilmartians.com/chronicles/oklch-in-css-why-quit-rgb-hsl)
 - [Can I use OKLCH](https://caniuse.com/mdn-css_types_color_oklch)
 - [colorjs.io conversion library](https://colorjs.io/)
+
+## Failure modes specific to web color functions oklch
+
+Performance work on web color functions oklch must prioritize field metrics (CrUX / RUM) over lab vanity. Lab still helps for debugging, but ship decisions should key off p75 LCP, INP, and CLS on real devices.
+
+For web color functions oklch:
+- Attribute regressions to releases with RUM + deploy markers
+- Budget JS bytes and long tasks on the critical route; defer the rest
+- Images: correct dimensions, modern formats, priority hints on LCP candidates
+- Avoid layout shifts from late fonts, ads, and injected banners
+
+A useful ritual: every sprint, pick the worst URL in CrUX for your template and run a focused fix with a before/after RUM chart.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Cold start p95 | Team-defined SLO | Page on burn rate |
+| Throttle count | Baseline − noise | Ticket if sustained |
+| Downstream timeouts | Budget cap | Weekly review |
+
+## Ownership and on-call for web color functions oklch
+
+Reviewers should challenge assumptions encoded in web color functions oklch: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario C for web color functions oklch: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+2. Scenario A for web color functions oklch: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+3. Scenario B for web color functions oklch: bad config shipped — prove rollback within the declared RTO without data corruption.
+
+## Rollout sequence that worked for web color functions oklch
+
+Roll out web color functions oklch behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Compliance evidence for web color functions oklch
+
+Detail 1 (191): for web color functions oklch, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for web color functions oklch becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break web color functions oklch, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about web color functions oklch: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Developer experience when changing web color functions oklch
+
+Detail 2 (222): for web color functions oklch, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing web color functions oklch becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break web color functions oklch, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about web color functions oklch: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

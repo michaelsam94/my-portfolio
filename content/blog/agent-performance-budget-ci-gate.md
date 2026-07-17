@@ -1,111 +1,246 @@
 ---
 title: "AI Agents: Performance Budget Ci Gate"
 slug: "agent-performance-budget-ci-gate"
-description: "Performance Budget Ci Gate: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Enforce web performance budgets in CI with Lighthouse, bundle analysis, and flaky-test controls—so regressions fail pulls before users feel them."
 datePublished: "2026-07-11"
 dateModified: "2026-07-11"
 tags: ["AI", "Agent", "Performance"]
-keywords: "agent, performance, budget, ci, gate, ai, production, engineering, architecture"
+keywords: "performance budget, CI gate, Lighthouse CI, bundle size, Core Web Vitals, regression prevention"
 faq:
-  - q: "What is Performance Budget Ci Gate?"
-    a: "Performance Budget Ci Gate covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Performance Budget Ci Gate?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Performance Budget Ci Gate?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Performance Budget Ci Gate fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Performance Budget Ci Gate should be observable in production and safe to change in small diffs."
+  - q: "Which metrics belong in a performance budget?"
+    a: "Start with field-aligned Core Web Vitals—LCP, INP, CLS—plus transfer size for JavaScript and CSS on critical routes. Add TTFB for SSR apps and main-thread blocking time if your product is interaction-heavy. Avoid vanity scores alone; budget real user metrics proxies lab can approximate."
+  - q: "Should performance gates block merges on first failure?"
+    a: "Use warn-only for two sprints while baselines stabilize, then enforce on protected branches. First failures should post a diff comment with the metric, delta, and likely file—developers fix faster when the bot names the offending chunk."
+  - q: "How do you reduce Lighthouse CI flakiness?"
+    a: "Pin Chromium version, run three medians and compare the median not the best, throttle CPU and network consistently, warm caches identically, and disable unrelated animations in test accounts. Never run perf jobs on shared runners without resource isolation if variance exceeds 5%."
+  - q: "What if a legitimate feature exceeds the budget?"
+    a: "Require an explicit budget bump in the same PR with product sign-off in the commit message or linked ticket. Budgets are contracts; silent erosion recreates the problem you built the gate to stop."
 ---
-Performance Budget Ci Gate sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Performance regressions rarely arrive as a single 800 KB dependency. They arrive as twelve "small" changes across three teams: a marketing pixel here, a chart library there, an icon pack imported with `import *`. By the time Real User Monitoring shows LCP climbing, the diff that caused it is six releases ago and nobody owns the rollback.
 
-When performance budget ci gate is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+A performance budget CI gate turns "we should check Lighthouse before release" into a mechanical merge blocker on critical routes. This article covers choosing budgets, wiring Lighthouse CI and bundle checks into GitHub Actions, and keeping the signal trustworthy enough that engineers do not `#skip-perf` every other PR.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Budgets are per-route contracts, not global scores
 
-Solid AI engineering turns performance budget ci gate from a recurring argument into a documented pattern with tests and an owner.
+One global "Performance score > 90" fails teams building both a marketing homepage and a logged-in dashboard with WebSockets. Define budgets per URL or user journey:
 
-## Design principles that survive production
+| Route | LCP (lab) | JS transfer | CSS transfer | Notes |
+|-------|-----------|-------------|--------------|-------|
+| `/` | ≤ 2.2s | ≤ 180 KB | ≤ 40 KB | SSR hero image priority |
+| `/app/dashboard` | ≤ 2.8s | ≤ 420 KB | ≤ 60 KB | Code-split charts |
+| `/checkout` | ≤ 2.0s | ≤ 150 KB | ≤ 30 KB | Zero third-party scripts |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent performance budget ci gate bugs hide.
+Derive numbers from **field data** (CrUX, RUM) at p75, then tighten 10–15% in lab to account for throttling variance. If you lack field data, ship RUM first—budgets without production baselines are guesses.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for performance budget ci gate, you do not yet understand the behavior you shipped.
+Also budget **JavaScript execution time** on interaction-heavy SPAs. Transfer size alone misses hydrated frameworks that parse large JSON on the main thread.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Repository layout for budget as code
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent performance budget ci gate flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for performance budget ci gate in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent performance budget ci gate changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Performance Budget Ci Gate: typed boundary + structured errors
-export async function handlePerformanceBudgetCiGate(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-performance-budget-ci-gate");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Commit budgets beside the app so changes are reviewed like any other config:
 
 ```
+perf/
+  budgets.json          # thresholds per URL
+  lighthouserc.js       # LHCI config
+  urls.txt              # paths to test
+scripts/
+  check-bundle-size.mjs # webpack/vite stats gate
+```
 
+`budgets.json` example consumable by custom scripts and LHCI assertions:
 
-## Operational concerns
+```json
+{
+  "/": {
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 184320 },
+      { "resourceType": "stylesheet", "budget": 40960 }
+    ],
+    "timings": [
+      { "metric": "largest-contentful-paint", "budget": 2200 },
+      { "metric": "cumulative-layout-shift", "budget": 0.1 }
+    ]
+  }
+}
+```
 
-Runbooks for performance budget ci gate should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Document how to run locally: `npm run perf:check` should mirror CI within 5% variance.
 
-Production agent performance budget ci gate work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Lighthouse CI in GitHub Actions
 
-Rollouts for performance budget ci gate benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Pin versions. Unpinned `@lhci/cli@latest` is a flaky-test factory.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+# .github/workflows/performance.yml
+name: Performance Budget
 
-## Security and compliance angles
+on:
+  pull_request:
+    branches: [main]
 
-Even when performance budget ci gate is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent performance budget ci gate so security reviews do not rely on tribal knowledge.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-## Testing strategy
+      - run: npm ci
+      - run: npm run build
+      - run: npm run start:ci &  # production server on :3000
+      - run: npx wait-on http://127.0.0.1:3000
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that performance budget ci gate depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+      - name: Run Lighthouse CI
+        run: npx @lhci/cli@0.14.0 autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+      - name: Bundle size gate
+        run: node scripts/check-bundle-size.mjs
+```
 
-## Migration and evolution
+`lighthouserc.js`:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent performance budget ci gate functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```javascript
+module.exports = {
+  ci: {
+    collect: {
+      url: ["http://127.0.0.1:3000/", "http://127.0.0.1:3000/app/dashboard"],
+      numberOfRuns: 3,
+      settings: {
+        preset: "desktop",
+        throttling: {
+          rttMs: 40,
+          throughputKbps: 10240,
+          cpuSlowdownMultiplier: 1,
+        },
+      },
+    },
+    assert: {
+      assertions: {
+        "largest-contentful-paint": ["error", { maxNumericValue: 2800 }],
+        "total-blocking-time": ["warn", { maxNumericValue: 200 }],
+        "resource-summary:script:size": ["error", { maxNumericValue: 430000 }],
+      },
+    },
+    upload: {
+      target: "temporary-public-storage",
+    },
+  },
+};
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where performance budget ci gate spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+LHCI compares median of three runs. Use `error` for merge blockers, `warn` for metrics still stabilizing.
 
-## Related concepts
+## Bundle size script that names the offender
 
-Performance Budget Ci Gate intersects with broader ai topics — see companion notes on [agent-performance patterns](https://blog.michaelsam94.com/agent-performance/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Developers ignore "budget exceeded." They fix "added 92 KB via `recharts` in `DashboardChart.tsx`."
 
-## The takeaway
+```javascript
+// scripts/check-bundle-size.mjs
+import { readFileSync } from "node:fs";
+import gzipSize from "gzip-size";
 
-Performance Budget Ci Gate rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent performance budget ci gate becomes a maintainable asset instead of incident fuel.
+const budgets = JSON.parse(readFileSync("perf/budgets.json", "utf8"));
+const stats = JSON.parse(readFileSync("dist/stats.json", "utf8")); // webpack --json
+
+const mainChunk = stats.assets.find((a) => a.name.startsWith("main"));
+const size = gzipSize.sync(readFileSync(`dist/${mainChunk.name}`));
+const budget = budgets["/app/dashboard"].resourceSizes.find(
+  (r) => r.resourceType === "script"
+).budget;
+
+if (size > budget) {
+  const modules = stats.modules
+    .filter((m) => m.size > 5000)
+    .sort((a, b) => b.size - a.size)
+    .slice(0, 5)
+    .map((m) => `  ${m.size} bytes  ${m.name}`)
+    .join("\n");
+
+  console.error(
+    `JS gzip ${size} exceeds budget ${budget} by ${size - budget} bytes\nTop modules:\n${modules}`
+  );
+  process.exit(1);
+}
+```
+
+Ensure production build emits `stats.json` in CI only—do not ship it to users.
+
+## Controlling flake and false positives
+
+Flaky perf CI erodes trust faster than no CI. Mitigations:
+
+- **Dedicated runner labels** or self-hosted agents with fixed CPU for perf jobs
+- **Median of N runs** (3 minimum; 5 for noisy SPAs)
+- **Seed data** — fixed test user, frozen clock, disabled feature-flag randomness
+- **Block third-party network** in CI or use mock ad/analytics endpoints; external scripts dominate variance
+- **Compare against base branch** — fail only if delta exceeds threshold (e.g., LCP +300ms vs main) when absolute budgets are tight
+
+```javascript
+// Pseudo: delta gate — fail if PR regresses main median by >5%
+const mainLcp = await fetchMainBranchArtifact("lcp-median");
+const prLcp = currentRun.medianLcp;
+if (prLcp > mainLcp * 1.05) {
+  fail(`LCP regressed ${prLcp - mainLcp}ms vs main (${mainLcp}ms)`);
+}
+```
+
+Store main-branch artifacts from the last green deploy.
+
+## Team workflow integration
+
+1. **Design review** — new routes add a row to `budgets.json` before UI ships.
+2. **PR template** — checkbox: "Perf CI green or budget updated with ticket."
+3. **Bot comment** — LHCI posts comparison table; required review for infra team only when budget file changes.
+4. **Release** — sync lab budgets quarterly against CrUX p75 movement.
+
+When product requests a heavy widget, the negotiation is numeric: "Accept 40 KB JS increase on dashboard—bump budget in same PR with VP sign-off."
+
+## What to gate in CI vs monitor in production
+
+| Signal | CI gate | Production monitor |
+|--------|---------|-------------------|
+| LCP on critical routes | Yes (lab proxy) | RUM p75 alert |
+| INP | Warn in CI | RUM primary |
+| CLS | Yes | RUM |
+| JS bundle size | Yes | Optional |
+| API latency | No (use contract tests) | APM SLO |
+| CDN cache hit ratio | No | Dashboard |
+
+CI catches preventable diffs; RUM catches configuration and traffic shifts lab never sees.
+
+## When the gate fails mid-sprint
+
+Triage order:
+
+1. Re-run job once—variance vs real regression
+2. Check if failure is third-party (compare network waterfall to main)
+3. Identify chunk diff via stats.json
+4. Fix, lazy-load, or remove—budget bump is last resort
+
+Keep a public `#perf-ci` channel with last month's false-positive rate. Transparency keeps enforcement credible.
+
+## Extending gates to preview deployments
+
+Static CI on localhost misses CDN configuration, Brotli compression, and edge caching. Optionally run **scheduled** Lighthouse against staging or preview URLs with the same budgets but looser thresholds (+10%). Nightly drift catches infra regressions PR gates cannot see—misconfigured cache headers, accidental `no-store` on static assets, TLS middleboxes adding latency.
+
+Do not block PRs on preview-only jobs; preview environments vary in cold-start behavior. Use them for trend graphs and Slack alerts, not merge gates.
+
+## Accessibility and performance overlap
+
+Focus management, layout shifts from lazy-loaded fonts, and modal scroll lock bugs hurt both CLS and accessibility scores. When perf CI flags CLS regression, check whether the fix is purely visual (reserve space for ads) or structural (missing dimensions on images). Teams that treat CLS as a design-system concern fix faster than teams that treat it as a Lighthouse chore.
+
+Performance budget CI gates work when budgets reflect real user journeys, scripts tell engineers exactly what grew, and flake is fought as seriously as test flake. The outcome is not a green Lighthouse badge—it is one less silent multi-release slowdown reaching production.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [web.dev: Performance budgets](https://web.dev/articles/performance-budgets-101)
+- [Lighthouse CI documentation](https://github.com/GoogleChrome/lighthouse-ci/blob/main/docs/getting-started.md)
+- [Google Chrome: Core Web Vitals](https://web.dev/articles/vitals)
+- [webpack-bundle-analyzer](https://github.com/webpack-contrib/webpack-bundle-analyzer)
+- [Calibre: How to set useful performance budgets](https://calibreapp.com/docs/budgets/performance-budgets)

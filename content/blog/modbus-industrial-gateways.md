@@ -3,8 +3,8 @@ title: "Modbus and Industrial IoT Gateways"
 slug: "modbus-industrial-gateways"
 description: "A field guide to Modbus and industrial IoT gateways: RTU vs TCP, register maps, protocol translation to MQTT, polling strategy, and the failure modes on the plant floor."
 datePublished: "2026-04-19"
-dateModified: "2026-04-19"
-tags: ["IoT", "Protocols", "Embedded"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Modbus, Modbus TCP, industrial IoT gateway, protocol translation, RTU, SCADA, edge gateway"
 faq:
   - q: "What is Modbus and why is it still everywhere?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is the difference between Modbus RTU and Modbus TCP?"
     a: "Modbus RTU runs over serial lines (RS-485/RS-232) using a compact binary frame with a CRC, typically in a multi-drop bus with one master. Modbus TCP wraps the same data model in TCP/IP packets, dropping the CRC because TCP handles integrity and using an MBAP header instead. RTU is common on older field buses; TCP is common for Ethernet-connected equipment."
 ---
-
 Walk into almost any factory, water treatment plant, or building automation closet and you'll find Modbus — a protocol older than most of the engineers maintaining it, still faithfully shuttling register values between PLCs, meters, and drives. The job of an industrial IoT gateway is to stand at the boundary between that world and the modern IP stack: it polls those Modbus devices, turns raw registers into meaningful telemetry, and forwards it to a message broker or cloud where the rest of your system can use it. That translation layer is unglamorous and absolutely critical, because it's where the plant floor meets everything else.
 
 I've written gateway firmware and the edge software that runs on it, and the recurring lesson is that Modbus is easy to read about and full of small, device-specific gotchas in practice. Let me lay out how it works and where it bites.

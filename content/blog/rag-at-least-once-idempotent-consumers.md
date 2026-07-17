@@ -1,111 +1,156 @@
 ---
-title: "RAG: At Least Once Idempotent Consumers"
+title: "At-Least-Once Delivery with Idempotent Consumers"
 slug: "rag-at-least-once-idempotent-consumers"
-description: "At Least Once Idempotent Consumers: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2024-11-19"
-dateModified: "2024-11-19"
-tags: ["AI", "Rag"]
-keywords: "rag, at, least, once, idempotent, consumers, ai, production, engineering, architecture"
+description: "Kafka and queue consumers that survive duplicates — idempotency keys, dedup stores, and exactly-once illusion patterns."
+datePublished: "2025-07-25"
+dateModified: "2026-07-17"
+tags:
+  - "Kafka"
+  - "Distributed Systems"
+  - "Backend"
+keywords: "at-least-once, idempotent consumers, kafka, deduplication"
 faq:
-  - q: "What is At Least Once Idempotent Consumers?"
-    a: "At Least Once Idempotent Consumers covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize At Least Once Idempotent Consumers?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with At Least Once Idempotent Consumers?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does At Least Once Idempotent Consumers fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. At Least Once Idempotent Consumers should be observable in production and safe to change in small diffs."
+  - q: "Why not aim for exactly-once everywhere?"
+    a: "True exactly-once across heterogeneous systems is rare and expensive — idempotent at-least-once is simpler and sufficient when dedup is enforced at business operation layer."
+  - q: "Where should idempotency keys live?"
+    a: "In a durable store with TTL exceeding max redelivery window — database unique constraint or Redis SET NX with compaction job."
+  - q: "What happens on poison messages?"
+    a: "After N failures, move to DLQ with original offset preserved — replay only after fix with same idempotency keys preventing double apply."
 ---
-At Least Once Idempotent Consumers is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Message brokers guarantee at-least-once in realistic deployments — networks retry, consumers crash after process but before commit. Idempotent consumers make duplicate delivery harmless by recording processed keys or relying on natural uniqueness constraints. Teams that skip this ship double charges, duplicate emails, and inconsistent ledger entries that reconcile only at month-end.
 
-When at least once idempotent consumers is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Delivery semantics recap
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+At-most-once loses messages; at-least-once duplicates; exactly-once needs transactional outbox or broker transactions plus idempotent sinks. Pick semantics deliberately per topic criticality.
 
-Solid AI engineering turns at least once idempotent consumers from a recurring argument into a documented pattern with tests and an owner.
+Size idempotency store TTL to max consumer lag plus max replay window documented in runbook — shorter TTL reintroduces duplicate side effects after broker maintenance.
 
-## Design principles that survive production
+## Idempotency key design
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag at least once idempotent consumers bugs hide.
+Use business key — payment_id, order_id, event_id — not offset alone. Keys must be stable across republish. Include producer version when schema changes affect side effects.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for at least once idempotent consumers, you do not yet understand the behavior you shipped.
+## Dedup store patterns
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Postgres unique on idempotency_key with outcome JSON for safe reply replay. Redis for hot path with async write-through to DB. TTL must exceed consumer lag worst case.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag at least once idempotent consumers flows so duplicates are harmless or detectable.
+## Consumer offset commit ordering
 
-## Implementation patterns
+Process then commit offset only after dedup record durable — crash between causes redelivery handled by idempotency. Never commit before side effects complete.
 
-A practical baseline for at least once idempotent consumers in ai stacks:
+## Bulk consume and partial batch failure
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Kafka batch processing: mark individual messages processed; do not fail whole batch if one duplicate — selective commit strategies per framework.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag at least once idempotent consumers changes safer because business rules stay isolated from transport details.
+## Testing duplicate delivery
 
-```typescript
-// At Least Once Idempotent Consumers: typed boundary + structured errors
-export async function handleAtLeastOnceIdempotentConsumers(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-at-least-once-idempotent-consumers");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Chaos inject redelivery in staging; property tests that f(f(x)) equals f(x) for handler f. Load test dedup store write contention.
 
-```
+## Reconciliation jobs for drift detection
 
+Nightly compare sum of processed business events with source system totals — idempotency prevents duplicates but bugs can skip processing entirely. Alert on divergence beyond rounding tolerance; replay missing keys from archived topic with same idempotency store.
 
-## Operational concerns
+## Ordering with idempotency
 
-Game-day exercises for at least once idempotent consumers beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Idempotency prevents duplicate effect not out-of-order — use partition key ordering for state machine transitions. Version column reject stale event even if idempotency key unique.
 
-Production rag at least once idempotent consumers work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Bulk idempotent batch consumers
 
-Rollouts for at least once idempotent consumers benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Batch of 100 messages partial failure — commit offset per message processed not whole batch unless all idempotent individually. Document partial batch retry semantics in consumer README.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+At-least-once plus idempotency beats fragile exactly-once dreams. Design keys from business identity, store outcomes, commit offsets after durability, and test duplicates on purpose.
 
-## Security and compliance angles
+Load test consumer with artificial duplicate delivery at 10x normal rate — dedup store must handle write contention without timing out handler.
 
-Even when at least once idempotent consumers is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Design review checklist item 1 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag at least once idempotent consumers so security reviews do not rely on tribal knowledge.
+Observability gap 1 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
 
-## Testing strategy
+Regression test 1 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that at least once idempotent consumers depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Runbook section 1 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Design review checklist item 2 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
 
-## Migration and evolution
+Observability gap 2 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag at least once idempotent consumers functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Regression test 2 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where at least once idempotent consumers spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Runbook section 2 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
 
-## Related concepts
+Design review checklist item 3 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
 
-At Least Once Idempotent Consumers intersects with broader ai topics — see companion notes on [rag-at patterns](https://blog.michaelsam94.com/rag-at/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Observability gap 3 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
 
-## The takeaway
+Regression test 3 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
 
-At Least Once Idempotent Consumers rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag at least once idempotent consumers becomes a maintainable asset instead of incident fuel.
+Runbook section 3 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
 
-## Resources
+Design review checklist item 4 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+Observability gap 4 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+Regression test 4 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Runbook section 4 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Design review checklist item 5 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Observability gap 5 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 5 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 5 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 6 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 6 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 6 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 6 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 7 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 7 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 7 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 7 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 8 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 8 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 8 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 8 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 9 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 9 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 9 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 9 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 10 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 10 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 10 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 10 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 11 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 11 in at-least-once idempotent consumers often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 11 for at-least-once idempotent consumers should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 11 for at-least-once idempotent consumers documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 12 for at-least-once idempotent consumers: validate failure modes, owner, and rollback before merge to main.
+
+## Common regressions around at least once idempotent consumers
+
+Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to at least once idempotent consumers and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.

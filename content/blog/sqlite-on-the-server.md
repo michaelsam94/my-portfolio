@@ -3,7 +3,7 @@ title: "SQLite on the Server: Turso, Litestream, and LiteFS"
 slug: "sqlite-on-the-server"
 description: "SQLite on the server explained: how Turso, Litestream, and LiteFS turn an embedded database into a replicated, edge-ready backend — and where it breaks."
 datePublished: "2026-04-09"
-dateModified: "2026-04-09"
+dateModified: "2026-07-17"
 tags: ["Backend", "Databases", "Edge"]
 keywords: "SQLite server, Turso, Litestream, LiteFS, embedded database, edge SQLite, replicated SQLite"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Litestream continuously streams SQLite's WAL to object storage for point-in-time backup and disaster recovery, but the database stays single-node. LiteFS is a FUSE filesystem that replicates SQLite across nodes with a single primary for writes and multiple read replicas. Turso is a managed platform built on libSQL, a SQLite fork, that distributes replicas to the edge and offers a remote client protocol. They solve backup, multi-node replication, and managed edge distribution respectively."
   - q: "Why is SQLite fast for server workloads?"
     a: "Because there is no network hop between the application and the database. Queries run in-process against a memory-mapped local file, so a read that would cost a network round trip against Postgres costs microseconds against local SQLite. For read-heavy workloads where data fits on a node, this locality often beats a networked database despite Postgres having a more sophisticated engine."
+faqAnswers:
+  - question: "When is sqlite on the server the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for sqlite on the server?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back sqlite on the server safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 For most of its life, SQLite was the database you embedded in a phone app or a desktop tool, never the one behind a web service. That assumption is now wrong. A stack of tooling — Litestream, LiteFS, and Turso — has turned SQLite into a legitimate server database with backup, replication, and edge distribution, while keeping its defining advantage: the database is a local file, so queries run in-process with no network round trip. Running SQLite on the server means your read path can be microseconds instead of milliseconds, because there's nothing to cross the wire.
 
 I'll be upfront that I like this pattern more than I expected to. I've shipped a read-heavy internal service on LiteFS and the P99 latency chart was almost boring — flat and low — precisely because the "database call" was a local memory-mapped read. But the model has real constraints, and pretending otherwise gets you burned. Here's the honest picture.
@@ -99,3 +105,52 @@ Within its lane, though, server-side SQLite is one of the best price/performance
 - [Turso documentation](https://docs.turso.tech/)
 - [libSQL repository](https://github.com/tursodatabase/libsql)
 - [SQLite WAL mode documentation](https://www.sqlite.org/wal.html)
+
+## Trade-offs I keep revisiting for sqlite on the server
+
+Operating sqlite on the server well means tying design choices to measurable outcomes and explicit owners. Ambiguous ownership is how pages rot.
+
+For sqlite on the server:
+- Write the SLO and the user journey it protects
+- Automate the boring verification; reserve humans for judgment calls
+- Prefer progressive delivery with fast rollback over big-bang cuts
+- Keep runbooks next to the code that can break
+
+Revisit the design when the metric that justified sqlite on the server stops moving — sunsetting is a feature.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Coverage % | Team-defined SLO | Page on burn rate |
+| Mean time to detect | Baseline − noise | Ticket if sustained |
+| Escapes to prod | Budget cap | Weekly review |
+
+## What reviewers should challenge in sqlite on the server PRs
+
+Reviewers should challenge assumptions encoded in sqlite on the server: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario B for sqlite on the server: bad config shipped — prove rollback within the declared RTO without data corruption.
+2. Scenario C for sqlite on the server: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+3. Scenario A for sqlite on the server: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+
+## Post-incident changes after sqlite on the server failures
+
+Roll out sqlite on the server behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Multi-tenant concerns in sqlite on the server
+
+Detail 1 (489): for sqlite on the server, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When multi-tenant concerns in sqlite on the server becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break sqlite on the server, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about sqlite on the server: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Compliance evidence for sqlite on the server
+
+Detail 2 (388): for sqlite on the server, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for sqlite on the server becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break sqlite on the server, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about sqlite on the server: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

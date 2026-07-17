@@ -1,0 +1,1513 @@
+{
+  "batch": 9,
+  "slice": "2250-2499",
+  "total": 250,
+  "completed": 250,
+  "needs_rewrite": 0,
+  "needs_expand": 0,
+  "updated_at": "2026-07-17T12:12:07.106688+00:00",
+  "first_slug": "ocpp-2-0-1-device-model",
+  "last_slug": "rag-explainability-shap-lime",
+  "posts": [
+    {
+      "index": 2250,
+      "slug": "ocpp-2-0-1-device-model",
+      "words": 1246,
+      "status": "done"
+    },
+    {
+      "index": 2251,
+      "slug": "ocpp-2-0-1-vs-1-6",
+      "words": 1307,
+      "status": "done"
+    },
+    {
+      "index": 2252,
+      "slug": "ocpp-firmware-update-management",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2253,
+      "slug": "ocpp-load-balancing-smart-charging",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2254,
+      "slug": "ocpp-local-controller-offline",
+      "words": 1225,
+      "status": "done"
+    },
+    {
+      "index": 2255,
+      "slug": "ocpp-metervalues-sampled-data",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2256,
+      "slug": "ocpp-reservation-authorization",
+      "words": 1210,
+      "status": "done"
+    },
+    {
+      "index": 2257,
+      "slug": "ocpp-security-profiles-tls",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2258,
+      "slug": "ocpp-smart-charging-profiles",
+      "words": 1216,
+      "status": "done"
+    },
+    {
+      "index": 2259,
+      "slug": "ocpp-transaction-lifecycle",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2260,
+      "slug": "offline-first-flutter-sync",
+      "words": 1248,
+      "status": "done"
+    },
+    {
+      "index": 2261,
+      "slug": "oidc-backchannel-logout-revocation",
+      "words": 1382,
+      "status": "done"
+    },
+    {
+      "index": 2262,
+      "slug": "oidc-client-authentication-methods",
+      "words": 1383,
+      "status": "done"
+    },
+    {
+      "index": 2263,
+      "slug": "oidc-jarm-response-mode",
+      "words": 1211,
+      "status": "done"
+    },
+    {
+      "index": 2264,
+      "slug": "oidc-openid-connect-explained",
+      "words": 1201,
+      "status": "done"
+    },
+    {
+      "index": 2265,
+      "slug": "oidc-par-pushed-authorization",
+      "words": 1226,
+      "status": "done"
+    },
+    {
+      "index": 2266,
+      "slug": "oidc-token-exchange-rfc8693",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2267,
+      "slug": "olap-vs-oltp-workloads",
+      "words": 1224,
+      "status": "done"
+    },
+    {
+      "index": 2268,
+      "slug": "on-device-ai-android-gemini-nano",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2269,
+      "slug": "on-device-ai-for-privacy",
+      "words": 1229,
+      "status": "done"
+    },
+    {
+      "index": 2270,
+      "slug": "on-device-embeddings-mobile-search",
+      "words": 1228,
+      "status": "done"
+    },
+    {
+      "index": 2271,
+      "slug": "on-device-llm-llama-cpp-mobile",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2272,
+      "slug": "on-device-llm-mediapipe-llm-inference",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2273,
+      "slug": "on-device-llm-mlc-mobile",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2274,
+      "slug": "on-device-llm-quantization-mobile",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2275,
+      "slug": "opentelemetry-collector-pipelines",
+      "words": 1231,
+      "status": "done"
+    },
+    {
+      "index": 2276,
+      "slug": "ops-argocd-app-of-apps",
+      "words": 1209,
+      "status": "done"
+    },
+    {
+      "index": 2277,
+      "slug": "ops-autoscaling-predictive-scheduled",
+      "words": 1215,
+      "status": "done"
+    },
+    {
+      "index": 2278,
+      "slug": "ops-blue-green-vs-canary",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2279,
+      "slug": "ops-cost-anomaly-detection",
+      "words": 1205,
+      "status": "done"
+    },
+    {
+      "index": 2280,
+      "slug": "ops-database-migrations-zero-downtime",
+      "words": 1205,
+      "status": "done"
+    },
+    {
+      "index": 2281,
+      "slug": "ops-feature-flag-driven-releases",
+      "words": 1222,
+      "status": "done"
+    },
+    {
+      "index": 2282,
+      "slug": "ops-progressive-delivery-flagger",
+      "words": 1201,
+      "status": "done"
+    },
+    {
+      "index": 2283,
+      "slug": "ops-rollback-strategies-safe",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2284,
+      "slug": "ops-secrets-sops-age-encryption",
+      "words": 1210,
+      "status": "done"
+    },
+    {
+      "index": 2285,
+      "slug": "ops-terraform-policy-sentinel-opa",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2286,
+      "slug": "ota-firmware-updates-iot",
+      "words": 1203,
+      "status": "done"
+    },
+    {
+      "index": 2287,
+      "slug": "outbox-pattern-polling-vs-wal",
+      "words": 1255,
+      "status": "done"
+    },
+    {
+      "index": 2288,
+      "slug": "outbox-pattern-transactional-kafka",
+      "words": 1256,
+      "status": "done"
+    },
+    {
+      "index": 2289,
+      "slug": "owasp-top-10-2025",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2290,
+      "slug": "pa11y-automated-accessibility-testing",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2291,
+      "slug": "partial-prerendering-nextjs",
+      "words": 1268,
+      "status": "done"
+    },
+    {
+      "index": 2292,
+      "slug": "passkeys-vs-passwords-migration",
+      "words": 1210,
+      "status": "done"
+    },
+    {
+      "index": 2293,
+      "slug": "passkeys-webauthn-implementation",
+      "words": 1232,
+      "status": "done"
+    },
+    {
+      "index": 2294,
+      "slug": "passwordless-magic-links",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2295,
+      "slug": "payments-ux-3ds2-frictionless-flow",
+      "words": 1216,
+      "status": "done"
+    },
+    {
+      "index": 2296,
+      "slug": "payments-ux-card-element-design",
+      "words": 1205,
+      "status": "done"
+    },
+    {
+      "index": 2297,
+      "slug": "payments-ux-error-message-clarity",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2298,
+      "slug": "payments-ux-invoice-receipt-display",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2299,
+      "slug": "payments-ux-multi-currency-display",
+      "words": 1215,
+      "status": "done"
+    },
+    {
+      "index": 2300,
+      "slug": "payments-ux-saved-payment-methods",
+      "words": 1205,
+      "status": "done"
+    },
+    {
+      "index": 2301,
+      "slug": "payments-ux-subscription-upgrade-flow",
+      "words": 1334,
+      "status": "done"
+    },
+    {
+      "index": 2302,
+      "slug": "payments-ux-wallet-buttons-apple-google",
+      "words": 1280,
+      "status": "done"
+    },
+    {
+      "index": 2303,
+      "slug": "performance-budget-bundle-analyzer-ci",
+      "words": 1276,
+      "status": "done"
+    },
+    {
+      "index": 2304,
+      "slug": "performance-caching-layers-strategy",
+      "words": 1260,
+      "status": "done"
+    },
+    {
+      "index": 2305,
+      "slug": "performance-latency-percentiles",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2306,
+      "slug": "performance-n-plus-one-detection",
+      "words": 1229,
+      "status": "done"
+    },
+    {
+      "index": 2307,
+      "slug": "performance-profiling-flamegraphs",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2308,
+      "slug": "platform-engineering-golden-paths",
+      "words": 1227,
+      "status": "done"
+    },
+    {
+      "index": 2309,
+      "slug": "platform-engineering-internal-developer-platform",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2310,
+      "slug": "platform-engineering-scorecards",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2311,
+      "slug": "platform-engineering-self-service-infra",
+      "words": 1222,
+      "status": "done"
+    },
+    {
+      "index": 2312,
+      "slug": "post-quantum-cryptography-migration",
+      "words": 1225,
+      "status": "done"
+    },
+    {
+      "index": 2313,
+      "slug": "post-quantum-tls-hybrid",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2314,
+      "slug": "postgres-advisory-locks-patterns",
+      "words": 1211,
+      "status": "done"
+    },
+    {
+      "index": 2315,
+      "slug": "postgres-citext-case-insensitive",
+      "words": 1206,
+      "status": "done"
+    },
+    {
+      "index": 2316,
+      "slug": "postgres-connection-limits-max-connections",
+      "words": 1200,
+      "status": "done"
+    },
+    {
+      "index": 2317,
+      "slug": "postgres-connection-pooling-pgbouncer",
+      "words": 1205,
+      "status": "done"
+    },
+    {
+      "index": 2318,
+      "slug": "postgres-exclusion-constraints-scheduling",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2319,
+      "slug": "postgres-failover-pg-rewind",
+      "words": 1243,
+      "status": "done"
+    },
+    {
+      "index": 2320,
+      "slug": "postgres-fdw-cross-database-queries",
+      "words": 1223,
+      "status": "done"
+    },
+    {
+      "index": 2321,
+      "slug": "postgres-full-text-search-tsvector",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2322,
+      "slug": "postgres-generated-columns-indexing",
+      "words": 1232,
+      "status": "done"
+    },
+    {
+      "index": 2323,
+      "slug": "postgres-hot-standby-feedback-conflicts",
+      "words": 1201,
+      "status": "done"
+    },
+    {
+      "index": 2324,
+      "slug": "postgres-hstore-vs-jsonb-choice",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2325,
+      "slug": "postgres-huge-pages-memory-tuning",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2326,
+      "slug": "postgres-index-strategies-btree-gin",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2327,
+      "slug": "postgres-jsonb-indexing-queries",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2328,
+      "slug": "postgres-lateral-joins-correlated",
+      "words": 1251,
+      "status": "done"
+    },
+    {
+      "index": 2329,
+      "slug": "postgres-listen-notify-realtime",
+      "words": 1206,
+      "status": "done"
+    },
+    {
+      "index": 2330,
+      "slug": "postgres-lock-monitoring-pg-lock",
+      "words": 1222,
+      "status": "done"
+    },
+    {
+      "index": 2331,
+      "slug": "postgres-logical-replication-cdc",
+      "words": 1210,
+      "status": "done"
+    },
+    {
+      "index": 2332,
+      "slug": "postgres-parallel-query-tuning",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2333,
+      "slug": "postgres-partitioning-large-tables",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2334,
+      "slug": "postgres-pg-cron-scheduled-jobs",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2335,
+      "slug": "postgres-pg-snapshot-export-consistency",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2336,
+      "slug": "postgres-pg-stat-statements-tuning",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2337,
+      "slug": "postgres-pgbackrest-backup-strategy",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2338,
+      "slug": "postgres-pgvector-hybrid-search",
+      "words": 1248,
+      "status": "done"
+    },
+    {
+      "index": 2339,
+      "slug": "postgres-prepared-statement-plan-cache",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2340,
+      "slug": "postgres-query-planning-explain-analyze",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2341,
+      "slug": "postgres-recursive-cte-hierarchies",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2342,
+      "slug": "postgres-reindex-concurrently-bloat",
+      "words": 1207,
+      "status": "done"
+    },
+    {
+      "index": 2343,
+      "slug": "postgres-row-level-security-multitenant",
+      "words": 1217,
+      "status": "done"
+    },
+    {
+      "index": 2344,
+      "slug": "postgres-sequence-gap-contention",
+      "words": 1211,
+      "status": "done"
+    },
+    {
+      "index": 2345,
+      "slug": "postgres-statistics-extended-multivariate",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2346,
+      "slug": "postgres-synchronous-commit-tradeoffs",
+      "words": 1209,
+      "status": "done"
+    },
+    {
+      "index": 2347,
+      "slug": "postgres-table-inheritance-patterns",
+      "words": 1207,
+      "status": "done"
+    },
+    {
+      "index": 2348,
+      "slug": "postgres-tablespaces-io-isolation",
+      "words": 1227,
+      "status": "done"
+    },
+    {
+      "index": 2349,
+      "slug": "postgres-temporal-tables-system-versioning",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2350,
+      "slug": "postgres-upsert-on-conflict-patterns",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2351,
+      "slug": "postgres-vacuum-autovacuum-tuning",
+      "words": 1208,
+      "status": "done"
+    },
+    {
+      "index": 2352,
+      "slug": "postgres-wal-compression-archiving",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2353,
+      "slug": "postgres-window-functions-analytics",
+      "words": 1316,
+      "status": "done"
+    },
+    {
+      "index": 2354,
+      "slug": "postgres-work-mem-sort-hash-tuning",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2355,
+      "slug": "postmortems-blameless-culture",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2356,
+      "slug": "predictive-back-gestures-android",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2357,
+      "slug": "privacy-by-design-engineering",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2358,
+      "slug": "privacy-consent-mode-analytics",
+      "words": 1279,
+      "status": "done"
+    },
+    {
+      "index": 2359,
+      "slug": "privacy-cookie-consent-banner-ux",
+      "words": 1281,
+      "status": "done"
+    },
+    {
+      "index": 2360,
+      "slug": "privacy-data-minimization-forms",
+      "words": 1273,
+      "status": "done"
+    },
+    {
+      "index": 2361,
+      "slug": "privacy-dpia-frontend-data-flows",
+      "words": 1286,
+      "status": "done"
+    },
+    {
+      "index": 2362,
+      "slug": "privacy-engineering-mobile-gdpr",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2363,
+      "slug": "privacy-local-storage-pii-risks",
+      "words": 1266,
+      "status": "done"
+    },
+    {
+      "index": 2364,
+      "slug": "privacy-privacy-by-design-frontend",
+      "words": 1281,
+      "status": "done"
+    },
+    {
+      "index": 2365,
+      "slug": "privacy-right-to-erasure-ui",
+      "words": 1264,
+      "status": "done"
+    },
+    {
+      "index": 2366,
+      "slug": "privacy-third-party-script-audit",
+      "words": 1273,
+      "status": "done"
+    },
+    {
+      "index": 2367,
+      "slug": "progressive-delivery-canary-analysis",
+      "words": 1231,
+      "status": "done"
+    },
+    {
+      "index": 2368,
+      "slug": "progressive-web-apps-2026",
+      "words": 1256,
+      "status": "done"
+    },
+    {
+      "index": 2369,
+      "slug": "progressive-web-apps-offline-service-worker",
+      "words": 1225,
+      "status": "done"
+    },
+    {
+      "index": 2370,
+      "slug": "progressive-web-apps-push-notifications",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2371,
+      "slug": "prompt-caching-in-practice",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2372,
+      "slug": "prompt-engineering-anti-patterns",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2373,
+      "slug": "prompt-engineering-decomposition",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2374,
+      "slug": "prompt-engineering-role-persona",
+      "words": 1209,
+      "status": "done"
+    },
+    {
+      "index": 2375,
+      "slug": "prompt-engineering-system-prompts",
+      "words": 1218,
+      "status": "done"
+    },
+    {
+      "index": 2376,
+      "slug": "prompt-engineering-xml-structured",
+      "words": 1216,
+      "status": "done"
+    },
+    {
+      "index": 2377,
+      "slug": "prompt-injection-agent-security",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2378,
+      "slug": "proto-datastore-typed-preferences",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2379,
+      "slug": "pulumi-vs-terraform",
+      "words": 1217,
+      "status": "done"
+    },
+    {
+      "index": 2380,
+      "slug": "pwa-app-shell-architecture",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2381,
+      "slug": "pwa-background-sync-patterns",
+      "words": 1223,
+      "status": "done"
+    },
+    {
+      "index": 2382,
+      "slug": "pwa-install-prompt-ux",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2383,
+      "slug": "pwa-offline-first-ui-patterns",
+      "words": 1218,
+      "status": "done"
+    },
+    {
+      "index": 2384,
+      "slug": "pwa-push-notifications-web",
+      "words": 1227,
+      "status": "done"
+    },
+    {
+      "index": 2385,
+      "slug": "pwa-service-worker-caching-strategies",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2386,
+      "slug": "pwa-workbox-recipes-production",
+      "words": 1232,
+      "status": "done"
+    },
+    {
+      "index": 2387,
+      "slug": "quantizing-llms-int4-gguf",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2388,
+      "slug": "queue-bull-board-monitoring",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2389,
+      "slug": "queue-celery-task-routing",
+      "words": 1210,
+      "status": "done"
+    },
+    {
+      "index": 2390,
+      "slug": "queue-nats-jetstream-persistence",
+      "words": 1201,
+      "status": "done"
+    },
+    {
+      "index": 2391,
+      "slug": "queue-priority-inversion-prevention",
+      "words": 1204,
+      "status": "done"
+    },
+    {
+      "index": 2392,
+      "slug": "queue-rabbitmq-dead-letter-exchange",
+      "words": 1211,
+      "status": "done"
+    },
+    {
+      "index": 2393,
+      "slug": "queue-sidekiq-reliable-scheduler",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2394,
+      "slug": "queue-sqs-fifo-deduplication",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2395,
+      "slug": "queue-temporal-workflow-saga",
+      "words": 1203,
+      "status": "done"
+    },
+    {
+      "index": 2396,
+      "slug": "qwik-resumability-explained",
+      "words": 1217,
+      "status": "done"
+    },
+    {
+      "index": 2397,
+      "slug": "rag-3ds2-frictionless-flow",
+      "words": 1213,
+      "status": "done"
+    },
+    {
+      "index": 2398,
+      "slug": "rag-ab-test-statistical-power",
+      "words": 1202,
+      "status": "done"
+    },
+    {
+      "index": 2399,
+      "slug": "rag-accessibility-automated-axe",
+      "words": 1280,
+      "status": "done"
+    },
+    {
+      "index": 2400,
+      "slug": "rag-account-enumeration-prevention",
+      "words": 1253,
+      "status": "done"
+    },
+    {
+      "index": 2401,
+      "slug": "rag-adaptive-throttling-load",
+      "words": 1255,
+      "status": "done"
+    },
+    {
+      "index": 2402,
+      "slug": "rag-adversarial-robustness-testing",
+      "words": 1252,
+      "status": "done"
+    },
+    {
+      "index": 2403,
+      "slug": "rag-agentic-retrieval-loops",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2404,
+      "slug": "rag-ambient-mesh-ebpf",
+      "words": 1265,
+      "status": "done"
+    },
+    {
+      "index": 2405,
+      "slug": "rag-aml-transaction-monitoring",
+      "words": 1257,
+      "status": "done"
+    },
+    {
+      "index": 2406,
+      "slug": "rag-anomaly-detection-metrics",
+      "words": 1281,
+      "status": "done"
+    },
+    {
+      "index": 2407,
+      "slug": "rag-anycast-dns-failover",
+      "words": 1274,
+      "status": "done"
+    },
+    {
+      "index": 2408,
+      "slug": "rag-api-key-scoping-tenants",
+      "words": 1268,
+      "status": "done"
+    },
+    {
+      "index": 2409,
+      "slug": "rag-article-suggestion-confidence",
+      "words": 1260,
+      "status": "done"
+    },
+    {
+      "index": 2410,
+      "slug": "rag-at-least-once-idempotent-consumers",
+      "words": 1257,
+      "status": "done"
+    },
+    {
+      "index": 2411,
+      "slug": "rag-audit-log-immutable-trail",
+      "words": 1258,
+      "status": "done"
+    },
+    {
+      "index": 2412,
+      "slug": "rag-auto-tagging-taxonomy",
+      "words": 1249,
+      "status": "done"
+    },
+    {
+      "index": 2413,
+      "slug": "rag-backpressure-flow-control",
+      "words": 1249,
+      "status": "done"
+    },
+    {
+      "index": 2414,
+      "slug": "rag-backup-restore-drills",
+      "words": 1251,
+      "status": "done"
+    },
+    {
+      "index": 2415,
+      "slug": "rag-bandit-exploration-exploitation",
+      "words": 1259,
+      "status": "done"
+    },
+    {
+      "index": 2416,
+      "slug": "rag-behavioral-anomaly-login",
+      "words": 1254,
+      "status": "done"
+    },
+    {
+      "index": 2417,
+      "slug": "rag-bfcache-navigation-restore",
+      "words": 1258,
+      "status": "done"
+    },
+    {
+      "index": 2418,
+      "slug": "rag-bias-detection-evaluation",
+      "words": 1245,
+      "status": "done"
+    },
+    {
+      "index": 2419,
+      "slug": "rag-blue-green-database-migration",
+      "words": 1255,
+      "status": "done"
+    },
+    {
+      "index": 2420,
+      "slug": "rag-bm25-elasticsearch-tuning",
+      "words": 1262,
+      "status": "done"
+    },
+    {
+      "index": 2421,
+      "slug": "rag-breach-notification-playbook",
+      "words": 1240,
+      "status": "done"
+    },
+    {
+      "index": 2422,
+      "slug": "rag-cache-aside-vs-read-through",
+      "words": 1252,
+      "status": "done"
+    },
+    {
+      "index": 2423,
+      "slug": "rag-cache-stampede-prevention",
+      "words": 1435,
+      "status": "done"
+    },
+    {
+      "index": 2424,
+      "slug": "rag-canary-analysis-flagger",
+      "words": 1234,
+      "status": "done"
+    },
+    {
+      "index": 2425,
+      "slug": "rag-canary-token-alerts",
+      "words": 1245,
+      "status": "done"
+    },
+    {
+      "index": 2426,
+      "slug": "rag-capacity-forecasting-models",
+      "words": 1247,
+      "status": "done"
+    },
+    {
+      "index": 2427,
+      "slug": "rag-catalog-datahub-amundsen",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2428,
+      "slug": "rag-cdc-debezium-postgres",
+      "words": 1262,
+      "status": "done"
+    },
+    {
+      "index": 2429,
+      "slug": "rag-cdn-cache-purge-strategies",
+      "words": 1238,
+      "status": "done"
+    },
+    {
+      "index": 2430,
+      "slug": "rag-cdn-stale-while-revalidate",
+      "words": 1214,
+      "status": "done"
+    },
+    {
+      "index": 2431,
+      "slug": "rag-cert-manager-dns01",
+      "words": 1224,
+      "status": "done"
+    },
+    {
+      "index": 2432,
+      "slug": "rag-certificate-transparency-monitoring",
+      "words": 1225,
+      "status": "done"
+    },
+    {
+      "index": 2433,
+      "slug": "rag-changelog-compacted-topics",
+      "words": 1260,
+      "status": "done"
+    },
+    {
+      "index": 2434,
+      "slug": "rag-chaos-monkey-game-days",
+      "words": 1245,
+      "status": "done"
+    },
+    {
+      "index": 2435,
+      "slug": "rag-chargeback-dispute-automation",
+      "words": 1207,
+      "status": "done"
+    },
+    {
+      "index": 2436,
+      "slug": "rag-chatops-incident-bots",
+      "words": 1260,
+      "status": "done"
+    },
+    {
+      "index": 2437,
+      "slug": "rag-chunk-overlap-tuning",
+      "words": 1211,
+      "status": "done"
+    },
+    {
+      "index": 2438,
+      "slug": "rag-chunking-strategies-compared",
+      "words": 1215,
+      "status": "done"
+    },
+    {
+      "index": 2439,
+      "slug": "rag-circuit-breaker-bulkhead-patterns",
+      "words": 1245,
+      "status": "done"
+    },
+    {
+      "index": 2440,
+      "slug": "rag-citation-attribution-grounding",
+      "words": 1215,
+      "status": "done"
+    },
+    {
+      "index": 2441,
+      "slug": "rag-cloud-trail-anomaly-alerts",
+      "words": 1222,
+      "status": "done"
+    },
+    {
+      "index": 2442,
+      "slug": "rag-cluster-autoscaler-node-pools",
+      "words": 1228,
+      "status": "done"
+    },
+    {
+      "index": 2443,
+      "slug": "rag-colbert-late-interaction",
+      "words": 1257,
+      "status": "done"
+    },
+    {
+      "index": 2444,
+      "slug": "rag-cold-start-recommendations",
+      "words": 1234,
+      "status": "done"
+    },
+    {
+      "index": 2445,
+      "slug": "rag-cold-storage-tiering",
+      "words": 1232,
+      "status": "done"
+    },
+    {
+      "index": 2446,
+      "slug": "rag-collaborative-filtering-embeddings",
+      "words": 1201,
+      "status": "done"
+    },
+    {
+      "index": 2447,
+      "slug": "rag-color-contrast-apca",
+      "words": 1270,
+      "status": "done"
+    },
+    {
+      "index": 2448,
+      "slug": "rag-column-encryption-pgcrypto",
+      "words": 1270,
+      "status": "done"
+    },
+    {
+      "index": 2449,
+      "slug": "rag-compaction-schedule-tuning",
+      "words": 1264,
+      "status": "done"
+    },
+    {
+      "index": 2450,
+      "slug": "rag-component-library-documentation",
+      "words": 1220,
+      "status": "done"
+    },
+    {
+      "index": 2451,
+      "slug": "rag-compression-lz4-zstd",
+      "words": 1473,
+      "status": "done"
+    },
+    {
+      "index": 2452,
+      "slug": "rag-conftest-manifest-validation",
+      "words": 1379,
+      "status": "done"
+    },
+    {
+      "index": 2453,
+      "slug": "rag-connection-pooling-tuning",
+      "words": 1365,
+      "status": "done"
+    },
+    {
+      "index": 2454,
+      "slug": "rag-connection-proxy-pgbouncer",
+      "words": 1305,
+      "status": "done"
+    },
+    {
+      "index": 2455,
+      "slug": "rag-consent-management-records",
+      "words": 1464,
+      "status": "done"
+    },
+    {
+      "index": 2456,
+      "slug": "rag-consent-screen-ux-patterns",
+      "words": 1407,
+      "status": "done"
+    },
+    {
+      "index": 2457,
+      "slug": "rag-consumer-group-rebalance",
+      "words": 1390,
+      "status": "done"
+    },
+    {
+      "index": 2458,
+      "slug": "rag-container-image-scanning-gate",
+      "words": 1249,
+      "status": "done"
+    },
+    {
+      "index": 2459,
+      "slug": "rag-container-queries-responsive",
+      "words": 1262,
+      "status": "done"
+    },
+    {
+      "index": 2460,
+      "slug": "rag-content-moderation-pipeline",
+      "words": 1274,
+      "status": "done"
+    },
+    {
+      "index": 2461,
+      "slug": "rag-content-security-policy-nonce",
+      "words": 1430,
+      "status": "done"
+    },
+    {
+      "index": 2462,
+      "slug": "rag-context-pruning-heuristics",
+      "words": 1519,
+      "status": "done"
+    },
+    {
+      "index": 2463,
+      "slug": "rag-contextual-bandits-features",
+      "words": 1416,
+      "status": "done"
+    },
+    {
+      "index": 2464,
+      "slug": "rag-contextual-retrieval-anthropic",
+      "words": 1271,
+      "status": "done"
+    },
+    {
+      "index": 2465,
+      "slug": "rag-conversation-state-machine",
+      "words": 1282,
+      "status": "done"
+    },
+    {
+      "index": 2466,
+      "slug": "rag-core-web-vitals-field-data",
+      "words": 1343,
+      "status": "done"
+    },
+    {
+      "index": 2467,
+      "slug": "rag-cors-preflight-caching",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2468,
+      "slug": "rag-counterfactual-explanations",
+      "words": 1221,
+      "status": "done"
+    },
+    {
+      "index": 2469,
+      "slug": "rag-cron-timezone-dst-bugs",
+      "words": 1232,
+      "status": "done"
+    },
+    {
+      "index": 2470,
+      "slug": "rag-cross-encoder-reranking",
+      "words": 1290,
+      "status": "done"
+    },
+    {
+      "index": 2471,
+      "slug": "rag-csat-feedback-loop",
+      "words": 1258,
+      "status": "done"
+    },
+    {
+      "index": 2472,
+      "slug": "rag-csrf-double-submit-cookie",
+      "words": 1497,
+      "status": "done"
+    },
+    {
+      "index": 2473,
+      "slug": "rag-css-cascade-layers-order",
+      "words": 1273,
+      "status": "done"
+    },
+    {
+      "index": 2474,
+      "slug": "rag-data-masking-anonymization",
+      "words": 1293,
+      "status": "done"
+    },
+    {
+      "index": 2475,
+      "slug": "rag-data-quality-expectations",
+      "words": 1287,
+      "status": "done"
+    },
+    {
+      "index": 2476,
+      "slug": "rag-data-retention-automation",
+      "words": 1303,
+      "status": "done"
+    },
+    {
+      "index": 2477,
+      "slug": "rag-datasheet-datasets",
+      "words": 1268,
+      "status": "done"
+    },
+    {
+      "index": 2478,
+      "slug": "rag-dead-letter-queue-handling",
+      "words": 1241,
+      "status": "done"
+    },
+    {
+      "index": 2479,
+      "slug": "rag-deepfake-detection-signals",
+      "words": 1249,
+      "status": "done"
+    },
+    {
+      "index": 2480,
+      "slug": "rag-demand-sensing-realtime",
+      "words": 1216,
+      "status": "done"
+    },
+    {
+      "index": 2481,
+      "slug": "rag-dependency-confusion-defense",
+      "words": 1258,
+      "status": "done"
+    },
+    {
+      "index": 2482,
+      "slug": "rag-design-system-versioning",
+      "words": 1254,
+      "status": "done"
+    },
+    {
+      "index": 2483,
+      "slug": "rag-design-tokens-style-dictionary",
+      "words": 1226,
+      "status": "done"
+    },
+    {
+      "index": 2484,
+      "slug": "rag-device-fingerprinting-signals",
+      "words": 1248,
+      "status": "done"
+    },
+    {
+      "index": 2485,
+      "slug": "rag-distributed-lock-redis-etcd",
+      "words": 1239,
+      "status": "done"
+    },
+    {
+      "index": 2486,
+      "slug": "rag-ebpf-security-observability",
+      "words": 1250,
+      "status": "done"
+    },
+    {
+      "index": 2487,
+      "slug": "rag-edge-compute-workers-kv",
+      "words": 1285,
+      "status": "done"
+    },
+    {
+      "index": 2488,
+      "slug": "rag-edge-middleware-geolocation",
+      "words": 1219,
+      "status": "done"
+    },
+    {
+      "index": 2489,
+      "slug": "rag-egress-filtering-dns",
+      "words": 1254,
+      "status": "done"
+    },
+    {
+      "index": 2490,
+      "slug": "rag-embedded-analytics-sdk",
+      "words": 1230,
+      "status": "done"
+    },
+    {
+      "index": 2491,
+      "slug": "rag-embedding-store-versioning",
+      "words": 1236,
+      "status": "done"
+    },
+    {
+      "index": 2492,
+      "slug": "rag-env-var-validation-schema",
+      "words": 1240,
+      "status": "done"
+    },
+    {
+      "index": 2493,
+      "slug": "rag-error-budget-policy-enforcement",
+      "words": 1267,
+      "status": "done"
+    },
+    {
+      "index": 2494,
+      "slug": "rag-evaluation-ragas-framework",
+      "words": 1212,
+      "status": "done"
+    },
+    {
+      "index": 2495,
+      "slug": "rag-event-sourcing-cqrs-basics",
+      "words": 1233,
+      "status": "done"
+    },
+    {
+      "index": 2496,
+      "slug": "rag-exactly-once-delivery-claims",
+      "words": 1239,
+      "status": "done"
+    },
+    {
+      "index": 2497,
+      "slug": "rag-expand-contract-migrations",
+      "words": 1244,
+      "status": "done"
+    },
+    {
+      "index": 2498,
+      "slug": "rag-experiment-sequential-testing",
+      "words": 1238,
+      "status": "done"
+    },
+    {
+      "index": 2499,
+      "slug": "rag-explainability-shap-lime",
+      "words": 1250,
+      "status": "done"
+    }
+  ]
+}

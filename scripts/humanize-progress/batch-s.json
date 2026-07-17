@@ -1,0 +1,357 @@
+{
+  "batch": "s-slugs",
+  "total": 52,
+  "rewritten": 52,
+  "skipped": 0,
+  "under_1200_words": 0,
+  "completed_at": "2026-07-17T10:14:19.309931+00:00",
+  "samples": {
+    "rewritten": [
+      {
+        "slug": "llm-serving-temperature-sampling-explained",
+        "status": "rewritten",
+        "words": 1452,
+        "created": true
+      },
+      {
+        "slug": "llm-session-based-recsys",
+        "status": "rewritten",
+        "words": 1416,
+        "created": true
+      },
+      {
+        "slug": "llm-session-fixation-prevention",
+        "status": "rewritten",
+        "words": 1464,
+        "created": true
+      },
+      {
+        "slug": "llm-settlement-cutoff-windows",
+        "status": "rewritten",
+        "words": 1454,
+        "created": true
+      },
+      {
+        "slug": "llm-short-lived-credentials-rotation",
+        "status": "rewritten",
+        "words": 1467,
+        "created": true
+      }
+    ],
+    "skipped": []
+  },
+  "results": [
+    {
+      "slug": "llm-serving-temperature-sampling-explained",
+      "status": "rewritten",
+      "words": 1452,
+      "created": true
+    },
+    {
+      "slug": "llm-session-based-recsys",
+      "status": "rewritten",
+      "words": 1416,
+      "created": true
+    },
+    {
+      "slug": "llm-session-fixation-prevention",
+      "status": "rewritten",
+      "words": 1464,
+      "created": true
+    },
+    {
+      "slug": "llm-settlement-cutoff-windows",
+      "status": "rewritten",
+      "words": 1454,
+      "created": true
+    },
+    {
+      "slug": "llm-short-lived-credentials-rotation",
+      "status": "rewritten",
+      "words": 1467,
+      "created": true
+    },
+    {
+      "slug": "llm-sidecar-resource-overhead",
+      "status": "rewritten",
+      "words": 1463,
+      "created": true
+    },
+    {
+      "slug": "llm-slot-filling-dialogue",
+      "status": "rewritten",
+      "words": 1419,
+      "created": true
+    },
+    {
+      "slug": "llm-slowly-changing-dimensions",
+      "status": "rewritten",
+      "words": 1450,
+      "created": true
+    },
+    {
+      "slug": "llm-sparse-dense-hybrid",
+      "status": "rewritten",
+      "words": 1489,
+      "created": true
+    },
+    {
+      "slug": "llm-speculation-rules-prerender",
+      "status": "rewritten",
+      "words": 1441,
+      "created": true
+    },
+    {
+      "slug": "llm-spiffe-spire-identity",
+      "status": "rewritten",
+      "words": 1472,
+      "created": true
+    },
+    {
+      "slug": "llm-spot-instance-interruption-handling",
+      "status": "rewritten",
+      "words": 1457,
+      "created": true
+    },
+    {
+      "slug": "llm-sql-generation-text-to-sql",
+      "status": "rewritten",
+      "words": 1389,
+      "created": true
+    },
+    {
+      "slug": "llm-sso-saml-metadata-rotation",
+      "status": "rewritten",
+      "words": 1443,
+      "created": true
+    },
+    {
+      "slug": "llm-star-schema-normalization",
+      "status": "rewritten",
+      "words": 1453,
+      "created": true
+    },
+    {
+      "slug": "llm-state-store-rocksdb",
+      "status": "rewritten",
+      "words": 1457,
+      "created": true
+    },
+    {
+      "slug": "llm-status-page-communication",
+      "status": "rewritten",
+      "words": 1425,
+      "created": true
+    },
+    {
+      "slug": "llm-step-functions-saga-retries",
+      "status": "rewritten",
+      "words": 1429,
+      "created": true
+    },
+    {
+      "slug": "llm-step-up-authentication-risk",
+      "status": "rewritten",
+      "words": 1424,
+      "created": true
+    },
+    {
+      "slug": "llm-storybook-visual-regression",
+      "status": "rewritten",
+      "words": 1425,
+      "created": true
+    },
+    {
+      "slug": "llm-stream-processing-windowing",
+      "status": "rewritten",
+      "words": 1436,
+      "created": true
+    },
+    {
+      "slug": "llm-structured-extraction-pipelines",
+      "status": "rewritten",
+      "words": 1451,
+      "created": true
+    },
+    {
+      "slug": "llm-subresource-integrity-hashes",
+      "status": "rewritten",
+      "words": 1355,
+      "created": true
+    },
+    {
+      "slug": "llm-subscription-billing-dunning",
+      "status": "rewritten",
+      "words": 1448,
+      "created": true
+    },
+    {
+      "slug": "llm-summarization-map-reduce",
+      "status": "rewritten",
+      "words": 1400,
+      "created": true
+    },
+    {
+      "slug": "llm-synonym-graph-expansion",
+      "status": "rewritten",
+      "words": 1442,
+      "created": true
+    },
+    {
+      "slug": "llm-synthetic-media-labeling",
+      "status": "rewritten",
+      "words": 1418,
+      "created": true
+    },
+    {
+      "slug": "llm-table-bloat-vacuum-tuning",
+      "status": "rewritten",
+      "words": 1441,
+      "created": true
+    },
+    {
+      "slug": "llm-tax-calculation-vat-gst",
+      "status": "rewritten",
+      "words": 1468,
+      "created": true
+    },
+    {
+      "slug": "llm-timeseries-anomaly-alerting",
+      "status": "rewritten",
+      "words": 1368,
+      "created": true
+    },
+    {
+      "slug": "llm-tls-certificate-pinning-mobile",
+      "status": "rewritten",
+      "words": 1452,
+      "created": true
+    },
+    {
+      "slug": "llm-toil-reduction-automation",
+      "status": "rewritten",
+      "words": 1429,
+      "created": true
+    },
+    {
+      "slug": "llm-token-budget-compression",
+      "status": "rewritten",
+      "words": 1403,
+      "created": true
+    },
+    {
+      "slug": "llm-token-budgeting-strategies",
+      "status": "rewritten",
+      "words": 1431,
+      "created": true
+    },
+    {
+      "slug": "llm-tokenization-payment-vault",
+      "status": "rewritten",
+      "words": 1435,
+      "created": true
+    },
+    {
+      "slug": "llm-toxicity-classifier-threshold",
+      "status": "rewritten",
+      "words": 1422,
+      "created": true
+    },
+    {
+      "slug": "llm-translation-memory-cat-tools",
+      "status": "rewritten",
+      "words": 1435,
+      "created": true
+    },
+    {
+      "slug": "llm-translation-quality-evaluation",
+      "status": "rewritten",
+      "words": 1418,
+      "created": true
+    },
+    {
+      "slug": "llm-tree-of-thoughts-search",
+      "status": "rewritten",
+      "words": 1408,
+      "created": true
+    },
+    {
+      "slug": "llm-two-tower-retrieval",
+      "status": "rewritten",
+      "words": 1417,
+      "created": true
+    },
+    {
+      "slug": "llm-usage-metering-aggregation",
+      "status": "rewritten",
+      "words": 1429,
+      "created": true
+    },
+    {
+      "slug": "llm-vector-index-rebuild",
+      "status": "rewritten",
+      "words": 1421,
+      "created": true
+    },
+    {
+      "slug": "llm-view-transitions-spa-mp",
+      "status": "rewritten",
+      "words": 1440,
+      "created": true
+    },
+    {
+      "slug": "llm-vulnerability-triage-sla",
+      "status": "rewritten",
+      "words": 1448,
+      "created": true
+    },
+    {
+      "slug": "llm-waf-bot-management",
+      "status": "rewritten",
+      "words": 1453,
+      "created": true
+    },
+    {
+      "slug": "llm-wallet-pass-provisioning",
+      "status": "rewritten",
+      "words": 1447,
+      "created": true
+    },
+    {
+      "slug": "llm-watermark-late-data",
+      "status": "rewritten",
+      "words": 1467,
+      "created": true
+    },
+    {
+      "slug": "llm-watermarking-outputs",
+      "status": "rewritten",
+      "words": 1342,
+      "created": true
+    },
+    {
+      "slug": "llm-webhook-signature-verification",
+      "status": "rewritten",
+      "words": 1472,
+      "created": true
+    },
+    {
+      "slug": "llm-workflow-idempotency-keys",
+      "status": "rewritten",
+      "words": 1440,
+      "created": true
+    },
+    {
+      "slug": "llm-workload-identity-federation",
+      "status": "rewritten",
+      "words": 1449,
+      "created": true
+    },
+    {
+      "slug": "llm-write-through-cache-consistency",
+      "status": "rewritten",
+      "words": 1413,
+      "created": true
+    }
+  ]
+}

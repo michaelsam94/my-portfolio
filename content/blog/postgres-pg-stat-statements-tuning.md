@@ -3,7 +3,7 @@ title: "Postgres pg_stat_statements for Query Tuning"
 slug: "postgres-pg-stat-statements-tuning"
 description: "Enable pg_stat_statements, interpret total_time vs mean_time, find regressions after deploys, and reset safely in production."
 datePublished: "2026-02-25"
-dateModified: "2026-02-25"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
@@ -42,84 +42,133 @@ Export top 50 queryids nightly to Prometheus or ClickHouse. Alert when mean_exec
 
 High `shared_blks_read` relative to calls indicates cache misses — index missing or working set exceeds shared_buffers. High mean time with low blocks suggests CPU-heavy sorts or JSON parsing in SQL.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## Enabling and permissions
 
-## Debugging and triage workflow
+CREATE EXTENSION pg_stat_statements; set track=all and max=10000. Requires shared_preload_libraries restart. Grant pg_read_all_stats to observability role.
 
-When production misbehaves, work top-down:
+## Normalized query text pitfalls
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+ORMs emit different whitespace — same queryid still groups. Dynamic SQL with literal IN lists creates thousands of queryids — fix app to use arrays.
 
-## Operational checklist
+## pg_stat_statements_reset discipline
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Reset single queryid after verified fix. Global reset before load test baseline; never during incident triage when you need comparison.
 
-## Performance tuning notes
+## Correlating with pg_stat_io (PG16+)
 
-Measure before optimizing postgres pg stat statements tuning. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Join top total_exec_time queries with read_bytes — distinguishes CPU-heavy from IO-heavy optimization paths.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+## Dashboard queries for weekly review
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Top 10 by total_exec_time, top 10 by mean_exec_time over 100ms, top 10 by shared_blks_read per call. Review in weekly DB guild — assign owner per queryid. Stale queries after feature removal still consuming CPU show up here before users complain.
 
-## Rollout and migration
+## pg_stat_statements vs auto_explain
 
-Ship postgres pg stat statements tuning changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+pg_stat_statements aggregates; auto_explain logs individual slow plans. Use statements for capacity planning, auto_explain for debugging specific regression after deploy. Enable auto_explain only on canary replica to avoid log volume explosion.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## Export pipeline to warehouse
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Nightly COPY (SELECT * FROM pg_stat_statements) to S3 → Snowflake. Join queryid history with deploy table on timestamp — regression analysis survives pg_stat_statements_reset in prod. Retention 90 days for trend charts in DB guild reviews.
 
-## Testing recommendations
+## wal_bytes and temp_blks_written columns
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+PG13+ tracks WAL generation per query — bulk UPDATE showing high wal_bytes suggests batched update opportunity. temp_blks_written flags sorts/hash aggregates spilling to disk — add work_mem cautiously or rewrite query with LIMIT subquery.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## Role separation
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Application role should not have pg_stat_statements_reset — only DBA automation role. Developers read views masking query text containing literal secrets — normalize or redact in export ETL if apps embed PII in dynamic SQL (anti-pattern but happens).
 
-## Incident patterns we see
+## Example weekly report query
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+```sql
+SELECT queryid,
+       left(query, 80) AS q,
+       calls,
+       round(total_exec_time/1000, 1) AS total_sec,
+       round(100.0 * total_exec_time / sum(total_exec_time) OVER (), 2) AS pct_cluster
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 15;
+```
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+pct_cluster column focuses optimization on queries consuming >5% cluster time — diminishing returns below 1% unless tail latency SLO breach tied to specific queryid.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## pg_stat_statements in managed RDS
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+RDS Parameter group: shared_preload_libraries includes pg_stat_statements, track=all. reboot instance once — plan maintenance window. Performance Insights overlays top waits with statements — correlate wait event IO:DataFileRead with shared_blks_read from pg_stat_statements same queryid.
 
-## Team ownership
+## Identifying plan regression after ANALYZE
 
-Assign an owner for postgres pg stat statements tuning standards: code templates, lint rules, and onboarding docs. Platform teams provide paved roads; product teams stay responsible for SLOs.
+mean_exec_time jump without call increase after autovacuum — check if generic plan replaced custom plan. pg_stat_statements plans extension PG14+ stores sample plans per queryid — compare plan_id histogram before and after stats change.
 
-Review this pattern in architecture reviews when touching money, auth, or personal data. Security and compliance questions early beat retrofitting controls later.
+## Security: redacting query text
 
+Some apps embed secrets in dynamic SQL — export view replaces literals with $1 before warehouse load. Better fix: ban dynamic secret embedding; interim redaction prevents Snowflake leak.
 
-## Capacity and cost considerations
+## Capacity planning query
 
-Postgres tuning decisions interact with cloud bill line items: larger instances buy more shared_buffers and IO throughput but do not fix N+1 query patterns. Right-size after measuring — a doubled instance hiding missing indexes is wasted spend. Track cost per thousand requests alongside p95 latency when evaluating pooling, caching, and read replica additions.
+Sum total_exec_time across all queries ≈ single-core busy time if one CPU — rough sanity check. If sum exceeds wall-clock interval × cores, queries parallelized or I/O overlapped — use with system CPU metrics not alone.
 
-## Cross-region and DR implications
+## shared_preload_libraries ordering
 
-Replication lag, connection pooler failover, and DNS TTL determine how quickly traffic shifts during regional failure. Rehearse failover quarterly; document whether your pattern favors RPO over RTO or vice versa. Clients with aggressive timeouts may fail over before the database promotion completes — coordinate cutover windows with application drain policies.
+pg_stat_statements must appear in shared_preload_libraries before restart — RDS parameter group change requires maintenance reboot. Staging must mirror prod parameter group class — "works in dev docker" without shared_preload fails silently (extension CREATE succeeds but no stats accumulate).
 
-## Compatibility matrix
+## Query id join to pg_stat_activity
 
-Maintain an internal matrix of validated versions: Postgres major, pooler mode, driver version, and ORM release tested together. Upgrades outside the matrix require explicit sign-off and extended soak in staging with production-shaped load.
+Active long-running query matched to pg_stat_statements queryid via pg_stat_activity.query_id PG14+ — kill session with context of total historical time spent in same query shape. Incident: one runaway report query identified among hundreds of similar SELECTs.
 
-## Review cadence
+## min/max_exec_time columns
 
-Revisit configuration quarterly even when metrics look flat. Schema drift, new query patterns from product features, and tenant growth change optimal settings silently until an incident exposes them.
+PG13+ min_exec_time and max_exec_time expose tail spread — high max with low mean indicates occasional catastrophic plan or lock wait embedded in same queryid bucket. Investigate max before mean when p99 SLO fails but mean looks fine.
+
+## stddev_exec_time for noisy queries
+
+High standard deviation suggests plan instability or data skew — candidate for prepare custom plan or statistics target increase on leading column.
+
+## Export to Grafana
+
+postgres_exporter pg_stat_statements custom query top-N by total_time as gauge — dashboard panel refreshes 1m; links to runbook queryid lookup table maintained by DB guild.
+
+## pg_stat_statements in read replica
+
+Track statements on replica separately — reporting queries dominate replica stats not seen on primary pg_stat_statements. Export replica stats to separate dashboard; optimize read path without confusing primary OLTP tuning session.
+
+## Limit pg_stat_statements.max
+
+Cap at 10000; evicted queryids lost history — archive nightly top 500 to warehouse before eviction matters for quarterly trending. Increase max only if memory headroom verified on shared_buffers plus stats overhead.
+
+## Tie to query plan cache
+
+pg_stat_statements plans table join queryid to sample plans — when mean time spikes, diff sample plans for same queryid detecting index drop regression vs data volume growth using same plan shape.
+
+## Role of pg_buffercache
+
+For top shared_blks_read query, check if pages in buffer cache — cold cache after restart explains post-deploy spike not bad plan. correlate pg_stat_statements reset time with RDS reboot events in incident timeline.
+
+## Example alert rules
+
+Alert when any queryid mean_exec_time > 500ms for 15m AND calls > 100/min — excludes one-off reports. Alert when total_exec_time share > 10% for single queryid after deploy marker — automatic rollback discussion in incident channel without blaming deploy author individually.
+
+## Closing notes
+
+Weekly DB guild agenda: review top five queryids by total_exec_time delta week-over-week; assign owner before next meeting; close loop when metric returns below threshold or documented as acceptable trade-off.
+
+## Additional guidance
+
+Rotate pg_stat_statements history into data warehouse before major version upgrade — upgrade wipes stats otherwise. Compare pre/post upgrade top queryid mean_exec_time to detect planner regression from PG major jump not caught in staging due to smaller dataset lacking production skew on tenant_id leading column statistics.
+
+Deep dive: pairing pg_stat_statements with pg_stat_io for PG16 shows read_bytes dominated by sequential scan node id visible in auto_explain sample — optimizer chose seq scan because reltuples stale after COPY import; ANALYZE single table fixes mean_exec_time drop forty percent without query rewrite proving stats maintenance before index addition avoids unnecessary CREATE INDEX CONCURRENTLY week-long project.
+
+Automated weekly Slack bot posts top three queryids by total_exec_time delta with links to Grafana dashboard filtered queryid — visibility sustains tuning culture without manual guild scheduling conflict when DBAs travel or on vacation incident week.
+
+Archive pg_stat_statements nightly before RDS maintenance reboot — post-reboot comparison to prior week identifies planner regressions after minor version upgrade.
+
+Join deploy webhook timestamp with queryid mean_exec_time chart — five-minute spike after release visible before customer tickets arrive when regression isolated to single new query shape.
+
+Create read-only Grafana dashboard per service team filtered by application_name connection setting — teams tune their queries without access to cluster-wide pg_stat_statements export containing other tenants SQL text in shared database hosting model.
+
+Reset single queryid after verified fix to measure improvement — global reset during incident destroys before-and-after comparison needed for postmortem timeline reconstruction.
 
 ## Resources
 

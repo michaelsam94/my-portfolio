@@ -1,111 +1,157 @@
 ---
-title: "Secrets Scanning Precommit"
+title: "Secrets Scanning in Pre-Commit for Agent Repos"
 slug: "llm-secrets-scanning-precommit"
-description: "Secrets Scanning Precommit: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-10-22"
-dateModified: "2025-10-22"
-tags: ["AI", "Llm", "Secrets"]
-keywords: "llm, secrets, scanning, precommit, ai, production, engineering, architecture"
+description: "Block sk- keys and webhook tokens before push — gitleaks staged diff, detect-secrets baselines, custom Hugging Face token rules for teams running LLM features in production."
+datePublished: "2026-06-21"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+  - "Security"
+  - "DevOps"
+keywords: "secrets scanning, pre-commit, gitleaks, agent API keys"
 faq:
-  - q: "What is Secrets Scanning Precommit?"
-    a: "Secrets Scanning Precommit covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Secrets Scanning Precommit?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Secrets Scanning Precommit?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Secrets Scanning Precommit fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Secrets Scanning Precommit should be observable in production and safe to change in small diffs."
+  - q: "When should teams prioritize Secrets Scanning in Pre-Commit for Agent Repos?"
+    a: "Before any agent repo accepts prompts, notebooks, or tool YAML from multiple contributors."
+  - q: "What is the most common mistake with pre-commit secrets scanning?"
+    a: "CI-only scanning that lets secrets enter git history before the first pipeline run."
+  - q: "How do we know Secrets Scanning in Pre-Commit for Agent Repos is working?"
+    a: "Define a leading metric for pre-commit secrets scanning (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
+  - q: "Should MCP configs be scanned for secrets?"
+    a: "Yes — scan mcp.json, tool YAML, and agent prompt files for sk- keys and webhook tokens embedded in URLs."
 ---
-Secrets Scanning Precommit sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+An OpenAI key committed in eval_runner.py rotated three staging environments when GitHub secret scanning fired.
 
-When secrets scanning precommit is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Block sk- keys and webhook tokens before push — gitleaks staged diff, detect-secrets baselines, custom Hugging Face token rules.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The production story behind pre-commit secrets scanning
 
-Solid AI engineering turns secrets scanning precommit from a recurring argument into a documented pattern with tests and an owner.
+CI-only scanning that lets secrets enter git history before the first pipeline run. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Secrets Scanning in Pre-Commit for Agent Repos is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
 
-## Design principles that survive production
+The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Pre-Commit Secrets Scanning is how you convert that chaos into an invariant someone can operate.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm secrets scanning precommit bugs hide.
+## Designing secrets scanning in pre-commit for agent repos for real constraints
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for secrets scanning precommit, you do not yet understand the behavior you shipped.
+Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For pre-commit secrets scanning, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm secrets scanning precommit flows so duplicates are harmless or detectable.
+Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
 
-## Implementation patterns
+## Implementation walkthrough
 
-A practical baseline for secrets scanning precommit in ai stacks:
+Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits pre-commit secrets scanning during an incident.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm secrets scanning precommit changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Secrets Scanning Precommit: typed boundary + structured errors
-export async function handleSecretsScanningPrecommit(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-secrets-scanning-precommit");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```python
+# Operational hook — pre-commit secrets scanning
+def apply_secrets_scanning_precommit(ctx):
+    validate_preconditions(ctx)
+    result = execute(ctx)
+    emit_metrics(result)
+    return result
 ```
 
+## Platform depth
 
-## Operational concerns
+Platform teams own defaults and libraries; product teams own domain config. Document interfaces where pre-commit secrets scanning gates handoffs to downstream owners.
+Review after every magnitude change in traffic or model swap — assumptions drift silently.
 
-Alert on user-visible symptoms for secrets scanning precommit — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Failure modes worth rehearsing
 
-Production llm secrets scanning precommit work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+- Missing idempotency when clients retry.
+- Implicit defaults that differ between staging and production.
+- Dashboards green while user-visible SLO burns.
+- Credential or metadata rotation without overlap window.
+- Schema or index change without blue-green validation.
 
-Rollouts for secrets scanning precommit benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Metrics and alerts
 
-## Security and compliance angles
+Leading indicators: error rate on pre-commit secrets scanning, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
 
-Even when secrets scanning precommit is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Day-two operations
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm secrets scanning precommit so security reviews do not rely on tribal knowledge.
+Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; pre-commit secrets scanning regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
 
-## Testing strategy
+## Production hardening
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that secrets scanning precommit depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Pin versions affecting pre-commit secrets scanning. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Handoff and ownership
 
-## Migration and evolution
+Secrets Scanning in Pre-Commit for Agent Repos touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm secrets scanning precommit functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Further reading
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where secrets scanning precommit spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+- [OpenTelemetry docs](https://opentelemetry.io/docs/)
+- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
 
-## Related concepts
+## Operating pre-commit secrets scanning after scale events (review 1)
 
-Secrets Scanning Precommit intersects with broader ai topics — see companion notes on [llm-secrets patterns](https://blog.michaelsam94.com/llm-secrets/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
 
-## The takeaway
+When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
 
-Secrets Scanning Precommit rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm secrets scanning precommit becomes a maintainable asset instead of incident fuel.
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating pre-commit secrets scanning after scale events (review 2)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating pre-commit secrets scanning after scale events (review 3)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating pre-commit secrets scanning after scale events (review 4)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating pre-commit secrets scanning after scale events (review 5)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Reference table
+
+| Scope | Duration |
+|---|---|
+| Staged | 0.5–2s |
+| Full repo | 2–15 min |
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [OpenTelemetry docs](https://opentelemetry.io/docs/)
+- [AWS documentation](https://docs.aws.amazon.com/)

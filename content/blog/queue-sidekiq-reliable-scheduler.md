@@ -3,127 +3,216 @@ title: "Sidekiq Reliable Scheduler"
 slug: "queue-sidekiq-reliable-scheduler"
 description: "Scheduled jobs with Redis — unique jobs and death handlers for failures."
 datePublished: "2026-03-18"
-dateModified: "2026-03-18"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue sidekiq reliable scheduler, production, backend"
+keywords: "sidekiq scheduler, sidekiq-cron, reliable scheduling, sidekiq unique jobs"
 faq:
-  - q: "What problem does Sidekiq Reliable Scheduler solve?"
-    a: "It addresses production gaps teams hit when scaling queue sidekiq reliable scheduler: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue sidekiq reliable scheduler appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How does Sidekiq schedule jobs for the future?"
+    a: "Sidekiq stores scheduled jobs in a Redis sorted set (schedule) scored by Unix timestamp. The Sidekiq scheduler process polls due scores and pushes jobs to the appropriate queue lists. If scheduler process is down, jobs run late but remain in Redis — they are not lost unless Redis loses data."
+  - q: "What is the difference between sidekiq-scheduler, sidekiq-cron, and Sidekiq Enterprise periodic jobs?"
+    a: "sidekiq-cron loads cron YAML into Redis and enqueues on schedule. sidekiq-scheduler adds dynamic rescheduling from worker code. Sidekiq Enterprise provides Periodic Jobs with leader election built in. All require exactly one scheduler leader per Redis to avoid duplicate enqueues unless unique jobs guard duplicates."
+  - q: "How do Sidekiq death handlers relate to scheduled jobs?"
+    a: "Death handlers run when a job exhausts retries and lands in the Dead set. For scheduled/recurring jobs, a death handler prevents silent failure — log, alert, or re-enqueue next interval. Without handlers, nightly billing may fail for weeks before anyone notices empty invoices."
 ---
 
-## Production context
+Subscription renewals stopped shipping on March 3rd because the Sidekiq scheduler pod had been OOMKilled for eleven days — and nobody noticed the empty `schedule` poll metric. Jobs were still in Redis, waiting for a process to call `enqueue` on due timestamps. Sidekiq scheduling is reliable against process crashes **if** Redis persists and **if** you run a singleton scheduler with monitoring.
 
-A billing service lost duplicate events because queue sidekiq reliable scheduler was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Redis data structures behind scheduling
 
-Senior backend work on sidekiq reliable scheduler is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Sidekiq keys (simplified):
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+schedule          ZSET  score=timestamp, member=job payload
+retry             ZSET  backoff retries
+dead              SET   exhausted failures
+queue:default     LIST  ready jobs
 ```
 
-## Implementation checklist
+If poller stops, `schedule` ZSET grows with due scores in the past — backlog executes in burst when scheduler returns.
 
-Validate inputs at the trust boundary with schema versioning.
+Monitor:
 
-Use timeouts and cancellation on every outbound call; propagate context.
+```ruby
+Sidekiq::ScheduledSet.new.size
+Sidekiq::Stats.new.scheduled_size
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+Alert when oldest due job age > 5 minutes.
 
-Run migrations with lock_timeout and statement_timeout set.
+## sidekiq-cron setup
 
-Load test at 2× expected peak with production-like payload sizes.
+```yaml
+# config/schedule.yml
+billing_daily:
+  cron: "0 2 * * *"
+  class: BillingDailyJob
+  queue: critical
+```
 
-## Observability
+```ruby
+Sidekiq.configure_server do |config|
+  config.on(:startup) do
+    schedule = YAML.load_file(Rails.root.join('config/schedule.yml'))
+    Sidekiq::Cron::Job.load_from_hash(schedule)
+  end
+end
+```
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Cron jobs re-register on Sidekiq **server** startup — not on web pods.
 
-Dashboards for queue sidekiq reliable scheduler should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## Dynamic scheduling from workers
 
-## Security notes
+```ruby
+class TrialReminderJob
+  include Sidekiq::Job
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+  def perform(user_id, day)
+    send_reminder(user_id, day)
+    TrialReminderJob.perform_in(3.days, user_id, day + 1) if day < 7
+  end
+end
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Use UTC consistently: `Time.zone = 'UTC'`.
 
-## Common production mistakes
+## Unique jobs to prevent duplicate schedules
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+```ruby
+class BillingDailyJob
+  include Sidekiq::Job
+  sidekiq_options lock: :until_executed, on_conflict: :log
 
-## Debugging and triage workflow
+  def perform
+    InvoiceGenerator.run!
+  end
+end
+```
 
-When production misbehaves, work top-down:
+Ensure lock Redis keys use same Redis as Sidekiq.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+## Death handlers for recurring failures
 
-## Operational checklist
+```ruby
+Sidekiq.configure_server do |config|
+  config.death_handlers << ->(job, ex) do
+    Sentry.capture_exception(ex, extra: { jid: job['jid'], class: job['class'] })
+    PagerDuty.trigger('billing daily failed', job) if job['class'] == 'BillingDailyJob'
+  end
+end
+```
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+## Singleton scheduler and leader election
 
-## Performance tuning notes
+**Anti-pattern:** Sidekiq server with cron enabled on every worker replica → duplicate enqueues at 2:00 AM.
 
-Measure before optimizing queue sidekiq reliable scheduler. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Run one `sidekiq` deployment with cron, separate high-memory workers for batch without cron enabled.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+## Clock skew and DST
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+```yaml
+billing_daily:
+  cron: "0 2 * * * America/New_York"
+```
 
-## Rollout and migration
+Test DST boundaries. Use UTC for storage, local for display.
 
-Ship queue sidekiq reliable scheduler changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Redis persistence implications
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Scheduled jobs survive Sidekiq restart only if Redis persists (AOF everysec typical). Ephemeral Redis in dev → false "scheduler unreliable" diagnosis.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## Sidekiq Web and operational visibility
 
-## Testing recommendations
+Mount Sidekiq::Web behind auth. Tabs that matter: Scheduled, Retries, Dead, Cron (last enqueue time).
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Catch-up behavior after long outage
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document business decision: skip vs burst catch-up missed cron runs when scheduler down > 24h.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Metrics export with Yabeda or Prometheus
 
-## Incident patterns we see
+Wire Grafana alert: `sidekiq_scheduled_latency_seconds` p99 > 300 during business hours.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## Argument serialization and schedule size
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Keep args as IDs referencing database rows — multi-megabyte JSON in scheduled job slows Redis poll loop.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Reliable scheduler checklist
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+- [ ] Redis AOF/RDB persistence enabled
+- [ ] Single cron registration path (one server role)
+- [ ] Unique locks on financial periodic jobs
+- [ ] Death handlers alert on billing/settlement jobs
+- [ ] Monitor `scheduled_size` and overdue job age
+- [ ] DST and timezone documented in schedule.yml
 
-## Resources
+Sidekiq's scheduler is durable because Redis is durable — not because polling is magic. Run one leader, lock duplicates, alert on death and overdue schedules, and rehearse what happens when eleven days of renewals enqueue in one minute.
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+## sidekiq-scheduler vs perform_at load
+
+High-volume `perform_at` from user actions (remind me later) fills schedule ZSET — distinct from cron. Monitor schedule size separately from cron job count. Archive old scheduled jobs or use Redis TTL patterns for canceled reminders to prevent unbounded ZSET growth.
+
+## Redis memory fragmentation
+
+Sidekiq schedule entries serialize job args — memory fragmentation after burst schedule causes Redis OOM before `maxmemory` apparent full. Enable active defrag in Redis 4+ during maintenance window if schedule-heavy app shows RSS >> used_memory.
+
+## Sidekiq Enterprise periodic vs cron
+
+Enterprise periodic jobs integrate leader election — worth license when sidekiq-cron duplicate enqueue causes financial incident. Evaluate after first duplicate billing cron incident cost exceeds license.
+
+## Graceful quiet before deploy
+
+Run `sidekiqctl quiet` before deploy stops new job fetch; scheduler may still enqueue — quiet workers only. For zero duplicate cron during deploy, pause cron jobs in Sidekiq Web before pod termination if deploy spans cron minute boundary.
+
+## Scheduled job idempotency
+
+Cron enqueues even when previous run still active unless unique lock — long-running nightly job overlapping next cron creates duplicate parallel runs. Extend unique lock duration or use `lock: :while_executing` on job class.
+
+## Kubernetes CronJob vs Sidekiq cron
+
+Some teams run K8s CronJob that enqueues Sidekiq job instead of sidekiq-cron — duplicates scheduler responsibility. Pick one: Sidekiq-native cron for job args in Ruby ecosystem, K8s CronJob only when Sidekiq unavailable. Dual cron double-charges customers.
+
+## Redis ACL and Sidekiq scheduler
+
+Redis 6 ACL limits keys Sidekiq uses — scheduler role needs access to `schedule`, `queues`, and queue lists. Overly restrictive ACL causes silent schedule poll failures with generic connection errors — test ACL in staging with exact production prefix.
+
+## Daylight saving and cron drift
+
+Sidekiq-cron uses Fugit parser — invalid cron strings fail at load with error in logs during deploy. Add CI validation of schedule.yml schema and cron parse before merge.
+
+## Horizontal scaling Sidekiq without cron
+
+Worker replicas scale horizontally; only scheduler pod loads cron — HPA on worker deployment must exclude scheduler deployment from same manifest template. Template mistake duplicates cron on every HPA scale event before unique lock catches duplicate.
+
+## Sidekiq Pro super_fetch reliability
+
+Sidekiq Pro super_fetch reduces job loss on process crash — scheduler reliability separate from fetch reliability. Enterprise customers combine reliable scheduler with super_fetch so cron enqueue and worker fetch both survive Redis hiccups; evaluate bundle for financial cron paths.
+
+## Monitoring Redis schedule key memory
+
+`MEMORY USAGE` on schedule key during growth incident — identifies runaway perform_at from bug looping schedule without delete. Fix bug then ZREM orphaned entries or restart from known good backup if schedule corrupted.
+
+## Runbook: scheduler pod not running
+
+Step 1: verify Sidekiq process up. Step 2: check Redis schedule ZSET size and oldest score. Step 3: check sidekiq-cron last enqueue. Step 4: manual `Sidekiq::Cron::Job.find(name).enque!` for missed critical cron once after fix. Step 5: postmortem why alert did not fire.
+
+## Billing cron idempotency audit
+
+Before enabling new billing cron, QA verifies duplicate enqueue produces single charge — Stripe idempotency keys plus Sidekiq unique lock plus death handler page on any duplicate invoice ID in database unique constraint violation log.
+
+## Closing principle
+
+Scheduled money movement without scheduler monitoring is a liability. One Redis, one cron leader, unique jobs on financial tasks, death handlers that page, and alerts on overdue schedule entries — minimum bar before calling Sidekiq scheduling production-ready.
+
+## Read next when cron misfires
+
+Compare Sidekiq Web cron last enqueue timestamp with expected cron — if stale, scheduler process is down while workers healthy. If enqueue fresh but job not running, queue routing or worker `-Q` subscription mismatch is next check before blaming cron expression typo.
+
+Document tier ownership, DLX bindings, cron schedules, and FIFO group-key schema in the same repository as application code — operational knowledge drift causes repeat incidents when runbooks live only in wiki software nobody updates after reorganizations.
+
+Include scheduler pod health in the same PagerDuty service as payment workers — siloed alerts let scheduler die quietly while workers process backlog that never replenishes from cron.
+
+Verify cron timezone in staging by enqueuing test job one minute ahead — catches UTC versus local misconfiguration before billing window.
+Run cron enqueue from a single scheduler role and prove in staging with two pods that duplicate fires cannot happen; pair with uniqueness locks on the worker.

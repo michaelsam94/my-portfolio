@@ -3,16 +3,20 @@ title: "Technical Writing for Engineers"
 slug: "technical-writing-for-engineers"
 description: "How engineers write documentation that gets read: audience-first structure, runnable examples, diagrams, review workflows, and maintaining docs as code."
 datePublished: "2025-12-02"
-dateModified: "2025-12-02"
-tags: ["Career", "Documentation", "Communication", "Engineering"]
+dateModified: "2026-07-17"
+tags:
+  - "Career"
+  - "Documentation"
+  - "Communication"
+  - "Engineering"
 keywords: "technical writing engineers, documentation best practices, README structure, docs as code, engineering communication, runbook writing"
 faq:
-  - q: "What makes technical documentation useful vs ignored?"
-    a: "Useful docs answer a specific question for a specific reader in under two minutes. They lead with the outcome (how to deploy, how to debug X), include copy-pasteable commands that work, and stay current with the code. Ignored docs are vague encyclopedias, missing prerequisites, or obviously stale — wrong version numbers, broken links, references to removed services."
-  - q: "How should engineers structure a README?"
-    a: "Open with one sentence on what the project does and who it is for. Follow with quickstart (install + run in five steps), prerequisites, configuration table, common tasks, troubleshooting FAQ, and links to deeper docs. Put architecture and contribution guidelines after the reader can successfully run something."
-  - q: "Should documentation live in the same repo as code?"
-    a: "Yes for anything tied to implementation — API docs, runbooks, ADRs, and READMEs should version with code in the same repo or monorepo docs folder. Use docs-as-code workflows: Markdown in git, PR review for doc changes, CI checks for broken links. Separate wikis without review tend to rot."
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
 ---
 
 The best incident response of my career started with a runbook that had one accurate command and the name of the on-call who last verified it. The worst started with a Confluence page titled "Platform Overview" that was forty screens long and mentioned a service decommissioned eighteen months earlier. Engineers write constantly — PR descriptions, design docs, postmortems, Slack threads — but "technical writing" as a skill rarely gets deliberate practice.
@@ -183,6 +187,10 @@ Assign a named owner per doc directory in `CODEOWNERS`. Stale docs older than si
 - [ ] Diátaxis types separated (tutorial vs reference vs how-to)
 - [ ] Quarterly doc drill with engineer unfamiliar with service
 
+## Review workflow that keeps docs honest
+
+Treat doc changes like code: PR review, CI link checking, ownership in CODEOWNERS. Require doc updates in the same PR as breaking API changes — block merge if `CHANGELOG` or API reference is stale. Schedule quarterly "doc debt" sprints to fix top ten support-ticket topics that lack runbooks. Measure doc success by time-to-resolution in support tickets referencing doc links, not by page view count alone.
+
 ## Resources
 
 - [Google developer documentation style guide](https://developers.google.com/style)
@@ -190,3 +198,96 @@ Assign a named owner per doc directory in `CODEOWNERS`. Stale docs older than si
 - [Write the Docs](https://www.writethedocs.org/)
 - [Architecture Decision Records (GitHub)](https://adr.github.io/)
 - [Technical Writing Courses (Google)](https://developers.google.com/tech-writing)
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## technical writing for engineers rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## API reference layers
+
+OpenAPI spec generated from code stays accurate; narrative docs explain auth flows, pagination, idempotency, and error retry policy OpenAPI cannot express.
+
+```yaml
+# openapi excerpt — pair with prose on rate limits
+paths:
+  /charges:
+    post:
+      summary: Create charge (idempotent via Idempotency-Key header)
+```
+
+Link from each operation to guide section with curl example.
+
+## On-call documentation hierarchy
+
+1. Runbook (symptom → fix)
+2. Architecture diagram (context)
+3. ADR (why built this way)
+4. Postmortem index (historical failures)
+
+On-call starts at layer 1 — never layer 3 at 3 AM.
+
+## Writing for international teams
+
+Simple sentences, avoid idioms, define acronyms, UTC timestamps always, explicit locale assumptions in date formatting docs.
+
+## Docs search
+
+If using MkDocs/Docusaurus, configure local search or Algolia — unsearchable docs become Slack questions.
+
+## Measuring doc success
+
+- Time-to-first-success for onboarding survey
+- Support ticket tags "docs unclear"
+- Search zero-result queries
+
+Quarterly review top zero-result queries → new pages.
+
+## Changelog discipline
+
+User-facing docs need changelog entry per release — link migration guides for breaking API changes.
+
+## Pair writing
+
+Engineer drafts accuracy; tech writer edits clarity — 30-minute pairing beats async comment wars.
+
+Technical writing compounds — every hour invested in quickstart saves ten hours of interrupts over the doc lifetime.

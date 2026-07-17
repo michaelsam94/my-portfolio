@@ -96,6 +96,14 @@ AI code review in CI is worth having. It genuinely catches bugs that slip past h
 
 If you're setting up review automation as part of a broader pipeline, it pairs naturally with [fast CI/CD pipelines](https://blog.michaelsam94.com/fast-cicd-pipelines/) and [AI coding agents for senior engineers](https://blog.michaelsam94.com/using-ai-coding-agents-senior-engineer/).
 
+## Prompt injection via PR diffs
+
+Malicious contributors embed "ignore previous instructions" in comments or test fixtures. Sanitize diff fed to review model; strip strings matching instruction patterns. Never auto-merge on AI approval alone — human required on auth, billing, infra paths regardless of AI score.
+
+## Review scope limits
+
+Feeding 5,000-line diffs blows context and misses issues. Chunk by file with severity aggregation; cap files at 500 lines per invocation. Security-sensitive globs (`**/auth/**`, `**/payment/**`) get dedicated pass with stricter rubric.
+
 ## Resources
 
 - [GitHub Actions documentation](https://docs.github.com/en/actions)

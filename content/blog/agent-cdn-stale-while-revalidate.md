@@ -1,111 +1,251 @@
 ---
 title: "AI Agents: Cdn Stale While Revalidate"
 slug: "agent-cdn-stale-while-revalidate"
-description: "Cdn Stale While Revalidate: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Stale-while-revalidate at the CDN for agent workloads — Cache-Control directives, origin shielding, prompt manifest freshness, and balancing latency with correctness."
 datePublished: "2026-05-13"
 dateModified: "2026-05-13"
 tags: ["AI", "Agent", "Cdn"]
-keywords: "agent, cdn, stale, while, revalidate, ai, production, engineering, architecture"
+keywords: "stale-while-revalidate, stale-if-error, CDN caching, Cache-Control, agent latency, edge caching, SWR, origin shield"
 faq:
-  - q: "What is Cdn Stale While Revalidate?"
-    a: "Cdn Stale While Revalidate covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Cdn Stale While Revalidate?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Cdn Stale While Revalidate?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Cdn Stale While Revalidate fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Cdn Stale While Revalidate should be observable in production and safe to change in small diffs."
+  - q: "What does stale-while-revalidate mean for agent-facing HTTP responses?"
+    a: "When a cached response passes its max-age freshness window but remains within the stale-while-revalidate window, the CDN can serve the stale copy immediately while fetching a fresh version from origin in the background. Users see low latency; the next request gets updated content. Ideal for agent SDK loaders, tool schema catalogs, and public documentation where brief staleness is acceptable."
+  - q: "How is stale-while-revalidate different from stale-if-error?"
+    a: "stale-while-revalidate applies during normal operation when origin is healthy but revalidation is needed. stale-if-error allows serving stale content when origin returns errors or times out — a resilience pattern for agent status pages and read-only config during partial outages. Many production setups combine both directives on the same response."
+  - q: "Can SWR hide critical prompt or safety-policy updates?"
+    a: "Yes — that is the tradeoff. If max-age=300 and stale-while-revalidate=3600, clients may see policy text up to 3900 seconds old. Safety-critical prompts should use short max-age, versioned URLs, or active purge on deploy rather than long SWR windows. Non-critical UI copy can tolerate longer staleness."
+  - q: "Do all CDNs honor stale-while-revalidate identically?"
+    a: "No. Cloudflare, Fastly, and Akamai support SWR with vendor-specific nuances in how background revalidation is scheduled and whether stale-if-error interacts with origin shield tiers. CloudFront added broader Cache-Control support in recent years but behavior differs from dedicated edge platforms. Test with your provider's cache analyzer before relying on SWR in production."
 ---
-Cdn Stale While Revalidate is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Agent chat widgets fail the latency test in two places: model inference and everything **before** the first token — loading embed scripts, fetching tenant config, downloading tool JSON Schema, warming WebAssembly tokenizers. Those assets are read-heavy, change infrequently relative to chat traffic, and tolerate seconds (sometimes minutes) of staleness. **`Cache-Control: stale-while-revalidate`** lets CDNs serve instantly from edge while refreshing asynchronously — the same pattern that makes news sites feel fast without blocking on origin RTT for every page view.
 
-When cdn stale while revalidate is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Used poorly, SWR keeps a recalled safety filter or revoked API schema alive at the edge long after you fixed origin. Used well, it cuts p95 embed load time from 400 ms to 40 ms without running a purge API on every deploy. This piece covers how SWR interacts with agent asset lifecycles, how to tune directives per resource class, and where origin shields fit.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Freshness model refresher
 
-Solid AI engineering turns cdn stale while revalidate from a recurring argument into a documented pattern with tests and an owner.
+HTTP caching distinguishes:
 
-## Design principles that survive production
+- **Fresh** — `Age <= max-age` (or `Expires` in the future). Serve without contacting origin.
+- **Stale** — past freshness but potentially still servable under extension directives.
+- **Must revalidate** — `no-cache` requires validation but allows stored copy after 304.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent cdn stale while revalidate bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for cdn stale while revalidate, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent cdn stale while revalidate flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for cdn stale while revalidate in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent cdn stale while revalidate changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Cdn Stale While Revalidate: typed boundary + structured errors
-export async function handleCdnStaleWhileRevalidate(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-cdn-stale-while-revalidate");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+`stale-while-revalidate=<seconds>` extends servable stale lifetime **after** max-age expires. During SWR window, edge returns stale body immediately and triggers background revalidation.
 
 ```
+Timeline (max-age=60, stale-while-revalidate=300)
 
+0s ──────── 60s ──────────────────────────────── 360s
+   FRESH         STALE (SWR) — serve + revalidate      TOO STALE — must block or miss
+```
 
-## Operational concerns
+`stale-if-error=<seconds>` is orthogonal — serves stale on origin 5xx/timeout within its window, even outside SWR if configured.
 
-Game-day exercises for cdn stale while revalidate beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+## Agent asset tiers and SWR tuning
 
-Production agent cdn stale while revalidate work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Not all agent HTTP responses should use SWR.
 
-Rollouts for cdn stale while revalidate benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+| Resource | Example path | Suggested policy |
+|----------|--------------|------------------|
+| Immutable hashed bundles | `/static/agent.a8f3.js` | `max-age=31536000, immutable` — no SWR needed |
+| Tenant embed config | `/embed/{id}/config.json` | `max-age=60, stale-while-revalidate=3600, stale-if-error=86400` |
+| Tool schema registry | `/schemas/tools/v2/index.json` | `max-age=300, stale-while-revalidate=1800` |
+| Public status / model availability | `/status.json` | `max-age=15, stale-while-revalidate=60, stale-if-error=300` |
+| Authenticated entitlements | `/v1/me/features` | `private, no-store` — never CDN cache |
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Safety policies and content moderation rules belong in **short max-age** tiers or versioned paths, not long SWR. Marketing copy on `/docs/pricing` can SWR aggressively.
 
-## Security and compliance angles
+## Origin response headers
 
-Even when cdn stale while revalidate is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Express / Node example for embed config:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent cdn stale while revalidate so security reviews do not rely on tribal knowledge.
+```typescript
+// routes/embedConfig.ts
+type CacheProfile = "aggressive" | "balanced" | "strict";
 
-## Testing strategy
+const PROFILES: Record<CacheProfile, string> = {
+  aggressive: "public, max-age=120, stale-while-revalidate=7200, stale-if-error=86400",
+  balanced:   "public, max-age=60, stale-while-revalidate=3600, stale-if-error=43200",
+  strict:     "public, max-age=10, stale-while-revalidate=60, stale-if-error=300",
+};
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that cdn stale while revalidate depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+export function embedConfigHandler(profile: CacheProfile = "balanced") {
+  return async (req: Request, res: Response) => {
+    const tenantId = req.params.tenantId;
+    const config = await loadEmbedConfig(tenantId);
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", PROFILES[profile]);
+    res.setHeader("Vary", "Accept-Encoding");
+    // Surrogate keys for targeted purge when profile is "strict"
+    res.setHeader("Surrogate-Key", `tenant-${tenantId} embed-config`);
+    res.setHeader("ETag", `"${config.versionHash}"`);
 
-## Migration and evolution
+    if (req.headers["if-none-match"] === `"${config.versionHash}"`) {
+      return res.status(304).end();
+    }
+    res.json(config);
+  };
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent cdn stale while revalidate functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**ETag** and **Last-Modified** enable cheap 304 revalidation during background refresh — origin sends empty body, edge keeps stale until new body arrives.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where cdn stale while revalidate spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+For Next.js agent dashboards:
 
-## Related concepts
+```javascript
+// app/api/public/tool-schemas/route.ts
+export async function GET() {
+  const schemas = await getPublicToolSchemas();
+  return Response.json(schemas, {
+    headers: {
+      "Cache-Control": "public, max-age=300, stale-while-revalidate=1800, stale-if-error=3600",
+      "CDN-Cache-Control": "max-age=300, stale-while-revalidate=1800", // Cloudflare override
+    },
+  });
+}
+```
 
-Cdn Stale While Revalidate intersects with broader ai topics — see companion notes on [agent-cdn patterns](https://blog.michaelsam94.com/agent-cdn/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Some providers honor `CDN-Cache-Control` or `Surrogate-Control` separately from browser `Cache-Control` — set shorter browser max-age and longer edge SWR when appropriate.
 
-## The takeaway
+## CDN configuration patterns
 
-Cdn Stale While Revalidate rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent cdn stale while revalidate becomes a maintainable asset instead of incident fuel.
+**Fastly** — VCL or Compute@Edge can enforce SWR even if origin omits it (be explicit in origin instead when possible):
+
+```vcl
+# beresp stage — normalize agent config caching
+if (req.url ~ "^/embed/" && beresp.status == 200) {
+  set beresp.cacheable = true;
+  set beresp.ttl = 60s;
+  set beresp.stale_while_revalidate = 3600s;
+  set beresp.stale_if_error = 86400s;
+}
+```
+
+**Cloudflare** — Cache Rules transform origin headers; enable "Respect stale" options per tier. Page Rules legacy — prefer Cache Rules with custom cache keys for tenant paths.
+
+**CloudFront** — attach cache policies with min/max/default TTL; ensure origin sends appropriate Cache-Control since policy may cap TTL. Origin shield in front of S3 reduces revalidation load when thousands of edges background-fetch simultaneously.
+
+## Origin shield and thundering herd
+
+SWR without shielding can stampede origin: 500 edge PoPs each background-revalidate the same stale object at once after TTL expiry.
+
+```
+Without shield: Edge₁..Edge₅₀₀ ──► Origin (500 concurrent revalidations)
+
+With shield:    Edge₁..Edge₅₀₀ ──► Shield POP ──► Origin (1 revalidation)
+```
+
+Place **origin shield** (Fastly shield POP, CloudFront secondary cache, Cloudflare tiered cache) between edge and origin for hot agent config paths. Monitor origin QPS during deploy windows — spikes indicate SWR misconfiguration or missing shield.
+
+## Interaction with agent deploy pipelines
+
+Versioned hashed assets (`agent.v3.f4e2d1.js`) need no SWR — filename change busts cache naturally. SWR matters for **unversioned** endpoints:
+
+1. Deploy new prompt config to origin
+2. Without purge, edges serve stale until max-age + SWR expires
+3. With SWR, users get old config instantly while edge revalidates
+
+Mitigation stack:
+
+- Bump `versionHash` in config → ETag changes → background revalidation picks up new JSON
+- Pair deploy with surrogate-key soft purge for strict tiers
+- Reduce max-age during active incident response
+
+Automated check in CI:
+
+```python
+# tests/test_cache_headers.py
+import httpx
+
+def test_embed_config_swr_headers():
+    r = httpx.get("https://staging.cdn.example/embed/demo/config.json")
+    cc = r.headers["cache-control"]
+    assert "stale-while-revalidate" in cc
+    assert "max-age=" in cc
+    max_age = int(next(p.split("=")[1] for p in cc.split(",") if "max-age" in p))
+    swr = int(next(p.split("=")[1] for p in cc.split(",") if "stale-while-revalidate" in p))
+    assert max_age <= 300, "max-age too long for safety-sensitive embed config"
+    assert swr >= max_age, "SWR should extend beyond freshness window"
+```
+
+## Measuring SWR effectiveness
+
+Metrics to track:
+
+- **Edge hit ratio** — should rise after enabling SWR on config paths
+- **Origin revalidation QPS** — 304 rate vs 200 rate
+- **Time-to-fresh after deploy** — p95 seconds until sampled PoPs serve new ETag
+- **Embed load p95** — client-side RUM for widget initialization
+
+Log CDN debug headers (`Age`, `X-Cache`, `CF-Cache-Status`, `Fastly-Debug`) in synthetic monitors. Alert when post-deploy freshness exceeds SLO (e.g., 90% of PoPs fresh within 5 minutes).
+
+## Failure modes and debugging
+
+**Stale safety policy after emergency fix** — long SWR window + no purge. Response: shorten TTL tier, emergency purge, switch to versioned policy URLs.
+
+**Infinite stale loop** — origin always 500 during revalidation; `stale-if-error` serves ancient content indefinitely. Cap `stale-if-error`, page on prolonged origin errors, fail closed for auth paths.
+
+**Vary header misconfiguration** — `Vary: *` disables cache sharing; agent configs that vary on `Authorization` when they shouldn't destroy hit ratio.
+
+**Compression double-keying** — ensure `Vary: Accept-Encoding` only; brotli vs gzip variants cache separately.
+
+**Private data leakage** — never attach SWR to responses containing session tokens or PII. `Cache-Control: private` or `no-store` for user-specific agent settings.
+
+## Browser vs CDN SWR
+
+Modern browsers implement SWR for subresources fetched with cache API semantics, but agent embeds often load cross-origin from a CDN domain — **browser cache** follows CDN headers on first fetch. Service workers can implement custom SWR for offline agent UIs:
+
+```javascript
+// sw.js — stale-while-revalidate for tool schema cache
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (!url.pathname.startsWith("/schemas/")) return;
+
+  event.respondWith(
+    caches.open("schemas-v1").then(async (cache) => {
+      const cached = await cache.match(event.request);
+      const networkFetch = fetch(event.request).then((res) => {
+        if (res.ok) cache.put(event.request, res.clone());
+        return res;
+      });
+      return cached || networkFetch;
+    })
+  );
+});
+```
+
+Coordinate CDN and service worker TTLs — double caching with divergent policies causes ghost bugs.
+
+## Case study: embed latency before and after SWR
+
+A production agent embed serving 2M daily loads had p95 initialization of 380 ms, dominated by config fetch (`/embed/config.json`) with `Cache-Control: max-age=0, must-revalidate` — every page load blocked on origin RTT. After switching to `max-age=60, stale-while-revalidate=3600` with origin shield:
+
+- Edge hit ratio on config path rose from 12% to 89%
+- p95 embed init dropped to 52 ms globally
+- Origin config QPS fell from 2,000 to 180 (mostly background 304s)
+- Post-deploy freshness: 95% of PoPs served new ETag within 90 seconds without manual purge
+
+The tradeoff surfaced once: an emergency moderation rule change took four minutes to propagate globally — acceptable given parallel Slack alert to enterprise tenants. They added a `strict` cache profile for tenants under regulatory review (`max-age=10, stale-while-revalidate=60`) switchable via feature flag without code deploy.
+
+## Decision matrix: when not to use SWR
+
+| Scenario | Recommendation |
+|----------|----------------|
+| OAuth JWKS rotation during key compromise | Hard purge + `no-cache` until stable |
+| A/B prompt experiment with legal review | Short max-age only; no SWR |
+| Global agent SDK with content-hashed filename | `immutable`; SWR irrelevant |
+| Rate-limit config affecting abuse prevention | `max-age=5` max; monitor freshness SLO |
+| Static marketing blog for agent docs | Aggressive SWR + stale-if-error |
+
+Document the chosen profile in your tenant onboarding runbook so customer success does not promise "instant config updates" when CDN policy says otherwise.
+
+## Closing
+
+Stale-while-revalidate is the right default for **read-heavy, latency-sensitive, eventually-consistent** agent assets: embed configs, public schemas, docs, status endpoints. It is the wrong default for **authorization, safety enforcement, and secrets**. Tune max-age for acceptable staleness bounds, add stale-if-error for resilience, shield origin from revalidation herds, and verify behavior on your specific CDN. SWR buys speed — explicit versioning and purge paths buy correctness when speed would lie.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [RFC 9111 — HTTP Caching (stale-while-revalidate)](https://www.rfc-editor.org/rfc/rfc9111.html#section-4.2.4)
+- [web.dev — stale-while-revalidate](https://web.dev/articles/stale-while-revalidate)
+- [Fastly — stale content delivery](https://www.fastly.com/documentation/guides/concepts/edge-state/cache/stale/)
+- [Cloudflare Cache Rules documentation](https://developers.cloudflare.com/cache/how-to/cache-rules/)
+- [Amazon CloudFront cache policies and origin shield](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cache-policies.html)

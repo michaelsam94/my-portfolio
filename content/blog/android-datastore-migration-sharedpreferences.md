@@ -198,6 +198,24 @@ When datastore migration sharedpreferences misbehaves in production, work top-do
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Migration transaction atomicity
+
+`SharedPreferencesMigration` runs once — crash mid-migration corrupts if not using DataStore transactional API. Wrap migration test: prefs half-populated, kill process, relaunch — DataStore should resume or rollback cleanly.
+
+## Proto vs Preferences schema evolution
+
+Adding required proto field without default breaks old clients — use proto3 optional or reserve field numbers. Preferences keys deletion needs migration step removing stale keys or UI shows ghost settings.
+
+## Datastore Migration Sharedpreferences Supplement 0 on Samsung and Pixel divergence
+
+Exercise datastore migration sharedpreferences supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching datastore; regressions above 8% block release for `android-datastore-migration-sharedpreferences-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Datastore Migration Sharedpreferences Supplement 0" should map to a single runbook section with known workarounds.
+
+## Sharedpreferences regression gates for Play Vitals
+
+Before promoting `android-datastore-migration-sharedpreferences-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [DataStore guide (Android)](https://developer.android.com/topic/libraries/architecture/datastore)

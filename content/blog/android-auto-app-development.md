@@ -210,6 +210,24 @@ Teams get auto app development wrong in predictable ways:
 
 Shipping auto app development on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## Distraction optimization templates
+
+Media and messaging templates restrict custom UI — attempting full Compose in car screen fails certification. Test on Desktop Head Unit with touch and rotary input profiles; focus order differs from phone TalkBack.
+
+## CarAppService lifecycle
+
+User disconnects phone USB — service killed without warning. Persist navigation session to recover on reconnect; do not assume `onDestroy` equals user exit.
+
+## Auto App Development Supplement 0 on Samsung and Pixel divergence
+
+Exercise auto app development supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching auto; regressions above 8% block release for `android-auto-app-development-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Auto App Development Supplement 0" should map to a single runbook section with known workarounds.
+
+## Development regression gates for Play Vitals
+
+Before promoting `android-auto-app-development-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android for Cars App Library guide](https://developer.android.com/training/cars/apps)

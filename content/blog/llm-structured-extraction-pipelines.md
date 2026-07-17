@@ -3,8 +3,8 @@ title: "Structured Data Extraction with LLMs"
 slug: "llm-structured-extraction-pipelines"
 description: "Extract structured fields from unstructured text with LLMs: schema design, chunking strategies, confidence scoring, and validation pipelines that survive production."
 datePublished: "2025-03-25"
-dateModified: "2025-03-25"
-tags: ["AI", "LLM", "Data Extraction", "NLP"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM structured extraction, information extraction pipeline, JSON extraction LLM, document parsing AI, entity extraction production"
 faq:
   - q: "When should I use an LLM instead of regex or NER for extraction?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I know if an extraction is reliable?"
     a: "Run constrained decoding to guarantee schema validity, then add semantic validation — check that dates parse, amounts are positive, referenced IDs exist in your database. Track per-field confidence by running the same extraction twice at different temperatures and comparing results."
 ---
-
 Your operations team receives 500 invoices daily as PDFs, emails, and photographed receipts. Each one needs vendor name, line items, totals, and tax amounts pushed into your accounting system. A rules engine worked when you had three vendors with consistent formats. Vendor number 47 uses a layout nobody has seen before, and the regex pipeline returns empty fields.
 
 LLM-based structured extraction handles format variability that breaks traditional parsers. The catch: you need a pipeline, not a single prompt. Schema design, chunking, constrained generation, validation, and human review hooks determine whether extraction survives contact with real documents.

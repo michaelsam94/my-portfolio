@@ -1,111 +1,320 @@
 ---
 title: "RAG: Cert Manager Dns01"
 slug: "rag-cert-manager-dns01"
-description: "Cert Manager Dns01: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "cert-manager DNS-01 challenges issue TLS certificates for internal RAG API endpoints—wildcard certs for multi-tenant retrieval services without HTTP-01 ingress exposure."
 datePublished: "2026-02-18"
-dateModified: "2026-02-18"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Cert"]
-keywords: "rag, cert, manager, dns01, ai, production, engineering, architecture"
+keywords: "cert-manager, DNS-01, ACME, Let's Encrypt, TLS certificates, Kubernetes, RAG API, wildcard certificate, Route53, Cloudflare DNS"
 faq:
-  - q: "What is Cert Manager Dns01?"
-    a: "Cert Manager Dns01 covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Cert Manager Dns01?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Cert Manager Dns01?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Cert Manager Dns01 fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Cert Manager Dns01 should be observable in production and safe to change in small diffs."
+  - q: "Why use DNS-01 instead of HTTP-01 for RAG API certificates?"
+    a: "DNS-01 proves domain ownership via TXT records, enabling wildcard certificates (*.rag.internal.example.com) and certs for services without public HTTP endpoints. RAG retrieval APIs often run on internal ingress or service mesh—HTTP-01 requires exposing /.well-known/acme-challenge/ publicly."
+  - q: "What DNS provider integrations does cert-manager support?"
+    a: "cert-manager supports Route53, Cloudflare, Google Cloud DNS, Azure DNS, and 30+ providers via webhook solvers. Choose based on where your RAG API DNS records live. Cloudflare and Route53 are the most common in production Kubernetes."
+  - q: "How do you automate cert renewal for RAG services?"
+    a: "cert-manager Certificate resources auto-renew before expiry (default 30 days before). Monitor Certificate Ready condition and cert-manager metrics. Failed DNS-01 challenges during renewal usually indicate IAM permission drift or API token expiry—not something users notice until TLS handshake fails."
 ---
-Cert Manager Dns01 is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The internal RAG retrieval API served ten tenant-specific subdomains—`acme.rag.internal.example.com`, `beta.rag.internal.example.com`, and eight more. Each needed TLS because service mesh mTLS terminated at the gateway and client SDKs validated certificates. HTTP-01 ACME was impossible: no public ingress, no port 80 exposure for challenge paths. DNS-01 via cert-manager with Route53 solved it—one wildcard Certificate resource, automatic renewal, TXT record challenges invisible to RAG clients.
 
-When cert manager dns01 is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+TLS for RAG infrastructure is non-negotiable: retrieval APIs carry query text that may include sensitive context, embedding endpoints accept document payloads, and admin APIs expose corpus management. cert-manager with DNS-01 is the standard Kubernetes pattern for internal and wildcard certificates.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## ACME challenge types for RAG deployments
 
-Solid AI engineering turns cert manager dns01 from a recurring argument into a documented pattern with tests and an owner.
+| Challenge | Proves | Wildcard | Internal services |
+|-----------|--------|----------|-------------------|
+| HTTP-01 | Control of web server | No | Requires public HTTP |
+| DNS-01 | Control of DNS zone | Yes | Works for internal |
+| TLS-ALPN-01 | Control of TLS port | No | Requires public 443 |
 
-## Design principles that survive production
+RAG APIs on internal ingress, private GKE clusters, or VPN-only access need DNS-01.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag cert manager dns01 bugs hide.
+## cert-manager installation and issuers
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for cert manager dns01, you do not yet understand the behavior you shipped.
+Install cert-manager in the cluster:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag cert manager dns01 flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for cert manager dns01 in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag cert manager dns01 changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Cert Manager Dns01: typed boundary + structured errors
-export async function handleCertManagerDns01(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-cert-manager-dns01");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
 ```
 
+Create a ClusterIssuer for Let's Encrypt production:
 
-## Operational concerns
+```yaml
+# cert-manager/cluster-issuer-letsencrypt-prod.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: platform@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          route53:
+            region: us-east-1
+            hostedZoneID: Z1234567890ABC
+        selector:
+          dnsZones:
+            - "rag.internal.example.com"
+```
 
-Game-day exercises for cert manager dns01 beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+For Cloudflare:
 
-Production rag cert manager dns01 work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```yaml
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+        selector:
+          dnsZones:
+            - "rag.example.com"
+```
 
-Rollouts for cert manager dns01 benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Use staging issuer first to avoid rate limits during testing:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+```
 
-## Security and compliance angles
+## Wildcard certificate for multi-tenant RAG
 
-Even when cert manager dns01 is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+One wildcard cert covers all tenant subdomains:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag cert manager dns01 so security reviews do not rely on tribal knowledge.
+```yaml
+# cert-manager/rag-wildcard-cert.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rag-api-wildcard
+  namespace: rag-production
+spec:
+  secretName: rag-api-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "rag.internal.example.com"
+    - "*.rag.internal.example.com"
+  renewBefore: 720h  # 30 days
+```
 
-## Testing strategy
+cert-manager creates CertificateRequest → Order → Challenge → TXT record → validation → Secret with tls.crt and tls.key.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that cert manager dns01 depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Reference in Ingress:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```yaml
+# ingress/rag-api.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rag-api
+  namespace: rag-production
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - "*.rag.internal.example.com"
+      secretName: rag-api-tls
+  rules:
+    - host: "*.rag.internal.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rag-retrieval
+                port:
+                  number: 8080
+```
 
-## Migration and evolution
+## IAM permissions for Route53 DNS-01
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag cert manager dns01 functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+cert-manager needs permission to create/delete TXT records:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where cert manager dns01 spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "route53:GetChange",
+      "Resource": "arn:aws:route53:::change/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/Z1234567890ABC"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "route53:ListHostedZonesByName",
+      "Resource": "*"
+    }
+  ]
+}
+```
 
-## Related concepts
+Attach via IRSA (IAM Roles for Service Accounts) on EKS:
 
-Cert Manager Dns01 intersects with broader ai topics — see companion notes on [rag-cert patterns](https://blog.michaelsam94.com/rag-cert/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```yaml
+# cert-manager service account annotation
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/cert-manager-route53
+```
 
-## The takeaway
+Permission drift is the top cause of renewal failure—audit IAM when renewals break.
 
-Cert Manager Dns01 rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag cert manager dns01 becomes a maintainable asset instead of incident fuel.
+## Monitoring certificate lifecycle
+
+Alert on Certificate not Ready:
+
+```yaml
+# prometheus-rules/cert-manager.yaml
+groups:
+  - name: cert-manager
+    rules:
+      - alert: CertificateExpiringSoon
+        expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "Certificate {{ $labels.name }} expires in <7 days"
+      - alert: CertificateNotReady
+        expr: certmanager_certificate_ready_status{condition="False"} == 1
+        for: 1h
+        labels:
+          severity: critical
+```
+
+Check challenge status on failure:
+
+```bash
+kubectl describe challenge -n rag-production
+kubectl describe certificaterequest -n rag-production
+kubectl logs -n cert-manager deploy/cert-manager
+```
+
+Common failures:
+- TXT record propagation delay (increase challenge timeout)
+- Wrong hosted zone ID
+- Cloudflare proxy orange-cloud interfering (DNS-only for ACME)
+- Rate limit hit (use staging, wait, or switch CA)
+
+## Private CA alternative for air-gapped RAG
+
+Let's Encrypt requires outbound internet. Air-gapped or strict compliance environments use private CA:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: rag-private-ca
+spec:
+  ca:
+    secretName: rag-ca-root-secret
+```
+
+Issue certs same as ACME flow but signed by internal CA. Clients must trust the CA root—distribute via corporate MDM or SDK configuration.
+
+## cert-manager with service mesh
+
+Istio/Linkerd gateways reference the same Secret:
+
+```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: rag-gateway
+  namespace: rag-production
+spec:
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: rag-api-tls  # cert-manager Secret
+      hosts:
+        - "*.rag.internal.example.com"
+```
+
+cert-manager rotates Secret; Istio picks up new cert within sync interval (typically minutes).
+
+## Multi-cluster and multi-region
+
+Each cluster needs its own Certificate resource—or use cert-manager's `Certificate` with DNS solver in each cluster pointing to same zone. Let's Encrypt rate limits: 50 certs per registered domain per week. Wildcard counts as one.
+
+For geo-distributed RAG with regional subdomains:
+
+```
+us-east.rag.example.com  → cert in us-east-1 cluster
+eu-west.rag.example.com   → cert in eu-west-1 cluster
+*.rag.example.com         → wildcard if single global ingress
+```
+
+## Security considerations
+
+- Store Cloudflare/API tokens in Kubernetes Secrets with RBAC restriction
+- Rotate DNS provider tokens annually
+- Use separate ClusterIssuers for staging vs production
+- Audit cert-manager logs for unauthorized Certificate requests
+- mTLS between RAG components is separate from edge TLS—cert-manager handles edge; service mesh handles internal
+
+## Troubleshooting checklist
+
+1. `kubectl get certificate -A` — Ready=True?
+2. `kubectl describe challenge` — State=valid?
+3. DNS TXT record present? `dig _acme-challenge.rag.internal.example.com TXT`
+4. IAM/token permissions current?
+5. cert-manager pod logs for ACME errors
+6. Let's Encrypt rate limit status
+
+TLS automation removes one ops burden from RAG platform teams—until renewal fails silently. Monitor Certificate Ready condition proactively.
+
+## Multi-cluster certificate management
+
+Organizations running RAG across US and EU clusters need region-appropriate certificates. cert-manager ClusterIssuer per region with DNS-01 solver pointing to regional Route53 hosted zones—or a global zone with geo-routed records. Avoid copying TLS secrets between clusters manually; each cluster's cert-manager manages its own Certificate resource referencing the same DNS names with appropriate regional validation.
+
+Document certificate expiry in runbooks even with auto-renewal—cert-manager failures during holiday weekends have caused production outages when nobody noticed Certificate Ready=False for 72 hours.
+
+## Troubleshooting DNS-01 challenge failures in private clusters
+
+Private GKE/EKS clusters without public DNS resolution sometimes fail DNS-01 propagation checks. cert-manager needs outbound DNS to verify TXT record propagation. Ensure cluster nodes resolve _acme-challenge TXT records via public DNS (8.8.8.8 or Route53 resolver), not internal DNS that lacks ACME challenge records. Split-horizon DNS causes cert-manager to think challenge failed when public resolvers see it correctly—configure recursive resolver for cert-manager pod DNS policy.
+
+
+## Production rollout notes
+
+Enterprise deployments often require private CA integration alongside Let's Encrypt for external-facing RAG APIs. Run dual Certificate resources: public ACME cert for customer-facing retrieval endpoints, private CA cert for internal service mesh mTLS. cert-manager supports both ClusterIssuers simultaneously—ensure Secret names differ to avoid overwrite in Ingress and Gateway resources.
+
+## Common regressions around cert manager dns01
+
+Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to cert manager dns01 and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.
+
+
+Also for rag cert manager dns01: change one variable at a time when tuning, keep a rollback path tested quarterly, and verify consumer or replica behavior — not only the primary signal you expected to move.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- cert-manager DNS-01 documentation
+- Let's Encrypt rate limits
+- Route53 IRSA setup for EKS
+- Cloudflare API token permissions for DNS edit

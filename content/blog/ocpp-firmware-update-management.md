@@ -3,7 +3,7 @@ title: "Firmware Updates over OCPP"
 slug: "ocpp-firmware-update-management"
 description: "Manage EV charger firmware updates over OCPP: UpdateFirmware messages, download monitoring, rollback strategies, and fleet-wide deployment."
 datePublished: "2025-10-24"
-dateModified: "2025-10-24"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Operations"]
 keywords: "OCPP firmware update, UpdateFirmware OCPP, EV charger firmware, OCPP 2.0.1 firmware, charging station updates, fleet firmware management"
 faq:
@@ -211,16 +211,45 @@ Schedule updates for off-peak hours (2–4 AM local time) via `retrieveDateTime`
 - InstallationFailed excluded from auto-retry; manual review required
 - OCPP reconnect verified within 10 minutes post-install
 
-## Common production mistakes
+## Fleet operations war stories worth rehearsing
 
-Teams get ocpp firmware update management wrong in predictable ways:
+- **Timezone bugs in `retrieveDateTime`** — chargers in DST boundaries install at wrong local hour; use UTC internally, display local only in UI.
+- **CDN cache poisoning** — stale firmware URL served from edge; version URLs must be immutable (`/v2.4.1/` never overwritten).
+- **Parallel rollouts** — ops runs manual update while automated rollout also targets same site; dedupe by `requestId` and freeze manual tools during fleet jobs.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Delta updates and bandwidth math
 
-Production implementations of ocpp firmware update management fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Full images for AC chargers range 50–200 MB. Updating 800 units on cellular SIMs can exhaust data pools in hours. Where vendor tooling supports binary deltas, prefer diff packages — a 120 MB full image may reduce to 8–15 MB delta when jumping one minor version.
+
+```python
+def choose_firmware_package(charger, target_version):
+    current = charger.firmware_version
+    delta = find_delta(current, target_version)
+    if delta and delta.size_mb < 0.25 * full_image_size(target_version):
+        return delta
+    return full_image(target_version)
+```
+
+Log download duration and bytes per charger. Spikes in `DownloadFailed` on cellular sites often trace to MTU issues or proxy timeouts, not corrupt images — configure CDN range requests and extend HTTP client timeouts on charger firmware.
+
+## Post-install verification beyond OCPP reconnect
+
+Reconnecting to CSMS is necessary but insufficient. Define a **health checklist** before marking rollout success:
+
+1. `BootNotification` with new `firmwareVersion`
+2. Test `Authorize` + short `StartTransaction` on one connector (canary session)
+3. Verify `MeterValues` measurands match pre-update baseline
+4. Confirm Security Profile unchanged (Profile 3 cert still valid)
+
+Automate canary sessions in staging; in production, run them only on explicit canary cohort chargers to avoid billing noise. If health check fails after `Installed`, trigger automatic rollback on dual-bank hardware before ops gets paged.
+
+## RequestId deduplication across retries
+
+OCPP 2.0.1 ties firmware status to `requestId`. CSMS must treat duplicate `FirmwareStatusNotification` with same `requestId` and status as idempotent — chargers retry on flaky WebSocket. Store `(station_id, request_id, status)` unique constraint; ignore exact duplicates, alert on conflicting status transitions for same request.
+
+## Vendor-specific status quirks
+
+Some chargers report `Downloaded` but delay `Installing` until local maintenance window despite `installDateTime` passed — document vendor matrix. Others reboot twice during install; only mark success after second `BootNotification` with matching version. Field ops runbooks need per-model notes, not generic OCPP state diagram.
 
 ## Resources
 

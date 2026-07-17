@@ -3,16 +3,17 @@ title: "Secrets Management Done Right"
 slug: "secrets-management"
 description: "A practical guide to secrets management: why .env files leak, how to use Vault and KMS, dynamic credentials, rotation, and keeping secrets out of your mobile app."
 datePublished: "2026-07-11"
-dateModified: "2026-07-11"
-tags: ["Security", "DevOps", "Secrets", "Infrastructure"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "secrets management, HashiCorp Vault, secret rotation, environment secrets, credential security, KMS, dynamic secrets"
 faq:
-  - q: "Why are .env files considered bad for secrets?"
-    a: "They're plaintext, easily committed to git by accident, copied between machines, and shared over Slack. They also can't be rotated centrally or audited — you never know who read a secret or when. They're fine for local dev config, not for production credentials."
-  - q: "What's the difference between a KMS and a secrets manager?"
-    a: "A KMS (like AWS KMS or Cloud KMS) manages encryption keys and performs cryptographic operations — it encrypts and decrypts but doesn't usually store your application secrets. A secrets manager (Vault, AWS Secrets Manager) stores, distributes, rotates, and audits the secrets themselves, often using a KMS underneath."
+  - q: "Why are .env files bad?"
+    a: "Plaintext, easily committed, not centrally rotatable or auditable."
+  - q: "KMS vs secrets manager?"
+    a: "KMS manages keys; secrets managers store and distribute secrets using KMS underneath."
   - q: "What are dynamic secrets?"
-    a: "Dynamic secrets are credentials generated on demand with a short lease, then automatically revoked. Instead of a long-lived database password, the app asks Vault for one that's valid for an hour. If it leaks, the blast radius is one hour, not forever."
+    a: "Short-lived credentials generated on demand and auto-revoked."
 ---
 
 Most breaches I've seen up close didn't start with a clever exploit — they started with a credential in the wrong place. An AWS key in a git commit. A database password in a Slack thread. A `.env` file copied to a laptop that later got stolen. Secrets management is the discipline of making sure credentials are stored, delivered, rotated, and audited so that a single leak doesn't hand an attacker your whole system.
@@ -92,6 +93,14 @@ If you're staring at a pile of `.env` files, don't boil the ocean:
 
 Secrets management done right means that when a laptop is stolen or a repo goes public, your answer isn't panic — it's "those credentials were short-lived, scoped, and already rotated." That's the difference between an incident and a breach.
 
+## Operational notes for secrets management
+
+Audit secret access monthly: Vault audit log or cloud trail for Secrets Manager GetSecretValue filtered by production paths. Revoke credentials owned by departed employees the same day — standing API keys in shared vault folders accumulate owners quickly. Run game day: rotate database dynamic secret while traffic flows, measure app reconnect time, ensure connection pools refresh leases without manual pod restart unless your framework requires it.
+
+## Notes on secrets management
+
+Audit secret access monthly: Vault audit log or cloud trail for Secrets Manager GetSecretValue filtered by production paths. Revoke credentials owned by departed employees the same day — standing API keys in shared vault folders accumulate owners quickly. Run game day: rotate database dynamic secret while traffic flows, measure app reconnect time, ensure connection pools refresh leases without manual pod restart unless your framework requires it.
+
 ## Resources
 
 - [HashiCorp Vault documentation](https://developer.hashicorp.com/vault/docs)
@@ -100,3 +109,11 @@ Secrets management done right means that when a laptop is stolen or a repo goes 
 - [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
 - [NIST SP 800-57 — Key Management Recommendations](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final)
 - [gitleaks — secret scanning](https://github.com/gitleaks/gitleaks)
+
+Break-glass credentials need hardware MFA, ticket reference, and weekly review; dynamic secrets reduce how often break-glass is needed.
+
+Review secrets management metrics after the next release train on mid-tier mobile devices — regressions that pass lab Lighthouse often fail CrUX field data.
+
+## Envelope encryption pattern
+
+KMS encrypts a data key; the data key encrypts application secrets at rest. Rotate KMS keys annually; re-encrypt data keys without application downtime using KMS automatic rotation where supported.

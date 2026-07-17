@@ -4,7 +4,7 @@ seoTitle: "Building an Internal Developer Platform (IDP)"
 slug: "platform-engineering-internal-developer-platform"
 description: "What platform engineering really is, how to build an internal developer platform (IDP) with golden paths and self-service, and failure modes to avoid."
 datePublished: "2026-05-22"
-dateModified: "2026-05-22"
+dateModified: "2026-07-17"
 tags: ["Platform Engineering", "DevEx", "Infrastructure", "Backstage"]
 keywords: "platform engineering, internal developer platform, IDP, self-service infrastructure, developer experience, Backstage"
 faq:
@@ -89,6 +89,38 @@ Do not boil the ocean. Find the single most painful, most repeated workflow — 
 Platform engineering done well is invisible: developers just notice that shipping got easy and that everything runs the same way. Done poorly, it is a monument to good intentions. The dividing line is treating the platform as a product with real customers — your own engineers. Want help scoping a first golden path? [Get in touch](/#contact).
 
 Measure developer NPS quarterly on platform products — ticket volume down while NPS flat means teams stopped asking because they gave up.
+
+## Platform team sizing heuristic
+
+One platform engineer per 25–30 product engineers is a starting ratio — adjust for regulated environments or heavy Kubernetes. Under-staffed platforms become ticket queues.
+
+## Internal pricing and chargeback
+
+Show teams cost of resources provisioned through IDP. S3 bucket monthly estimate on team dashboard. Visibility alone reduces orphan environments.
+
+## Developer journey mapping
+
+Map top five weekly tasks: deploy fix, rotate secret, add env var, scale replicas, debug prod trace. Score friction 1–5. Roadmap orders golden paths by friction times frequency.
+
+## Platform API versioning
+
+platform.yaml in each service records IDP API version. Breaking CLI changes ship with codemod and 90-day deprecation.
+
+## Security review integration
+
+Self-service paths embed IaC scan, SBOM, dependency audit in scaffold CI before first merge. Security reviews templates quarterly, not every service.
+
+## Case study: first golden path
+
+One fintech team paved create service to production deploy in 11 minutes after IDP launch — previously three weeks of ticket ping-pong. Second path (provision Postgres) took longer because data classification workflow could not be fully automated — human approval remained, but plan generation was instant.
+
+## Platform product manager role
+
+Internal platform needs PM prioritizing developer pain over infra elegance. Interview script: what did you do yesterday that the platform should have made unnecessary? Answers become backlog, not architecture diagrams.
+
+## Field notes on platform engineering internal developer platform
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

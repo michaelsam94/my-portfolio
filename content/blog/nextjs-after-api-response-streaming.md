@@ -3,8 +3,8 @@ title: "after() API for Post-Response Work"
 slug: "nextjs-after-api-response-streaming"
 description: "Next.js after() runs work post-response — logging, analytics, and revalidation without blocking TTFB."
 datePublished: "2027-01-01"
-dateModified: "2027-01-01"
-tags: ["Next.js", "Performance", "Server"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js after API, post-response work, non-blocking server tasks"
 faq:
   - q: "What is after() API for Post-Response Work?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are common mistakes with after() API for Post-Response Work?"
     a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
 ---
-
 The gap between reading about after() api for post-response work and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.

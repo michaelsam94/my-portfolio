@@ -3,7 +3,7 @@ title: "Blue-Green vs Canary Deployments"
 slug: "ops-blue-green-vs-canary"
 description: "Choose between blue-green and canary deployments: traffic switching, rollback speed, infrastructure cost, and how to implement each with Kubernetes and load balancers."
 datePublished: "2025-12-30"
-dateModified: "2025-12-30"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Deployment", "Kubernetes", "SRE"]
 keywords: "blue-green deployment, canary deployment, progressive delivery, zero downtime deploy, Kubernetes rollout"
 faq:
@@ -156,6 +156,41 @@ When blue green vs canary misbehaves in production, work top-down instead of gue
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Database coupling breaks pure blue-green
+
+Blue-green assumes instant traffic switch. Schema migrations coupling both colors need **expand/contract** migrations — green must read/write compatible schema with blue until cutover completes. Document which deploy strategy each service uses in its README; platform teams defaulting blue-green on stateful services cause split-brain writes.
+
+## Canary analysis metrics
+
+Flagger (or Argo Rollouts) needs metric templates beyond HTTP 5xx:
+
+| Metric | Why |
+|--------|-----|
+| p99 latency | Slow burn regressions |
+| Business KPI (checkout success) | User-visible |
+| Error budget burn | SLO-linked rollback |
+
+Define minimum canary duration — 2 minutes catches crashloops, not memory leaks. 30–60 minutes for consumer-facing APIs.
+
+## Smoke tests in the cutover path
+
+Blue-green switch should run automated smoke against green internal URL before LB flip — `POST /checkout/test` with synthetic card in staging mirror. Canary uses same smoke as analysis metric input.
+
+## Session affinity complications
+
+Sticky sessions on blue while green receives 10% canary — users hit both versions; ensure schema backward compatibility for session serialization across versions.
+
+## DNS TTL and blue-green
+
+DNS flip for blue-green needs low TTL pre-cutover — 300s TTL means 5 min straggler traffic to old color. Prefer LB weighted switch over DNS when possible.
+
+## Feature flags vs traffic split
+
+Canary splits traffic; feature flags split code paths — combining both without matrix causes "10% traffic sees 50% enabled flag" confusion. Document interaction in deploy runbook.
+## Database blue-green with read replicas
+
+Blue writes primary, green validates against replica lag <1s before cutover — cutover with 10s lag duplicates writes to wrong color briefly.
 
 ## Resources
 

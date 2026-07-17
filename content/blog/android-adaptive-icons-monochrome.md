@@ -90,6 +90,28 @@ The whole thing takes an afternoon once and then rarely changes. What it buys is
 
 Modern Android icons are layered: a masked background, a foreground logo confined to the central 66dp safe zone, and a monochrome silhouette that powers themed icons. Design to the safe zone or lose your edges to device masks; ship a monochrome layer or opt out of theming and look inconsistent. Use vectors so Android generates the density variants for you, keep a legacy fallback for old contexts, and always preview against multiple mask shapes and the tinted themed-icon mode. Do that and your icon reads correctly everywhere — which is the entire point of the adaptive system.
 
+## Themed icon API 33+
+
+Monochrome layer must be single-color silhouette — gradients break on Pixel launcher themed icons. Provide `@drawable/ic_launcher_monochrome` separate from full-color adaptive layers; verify on Android 13 QPR themed icon setting.
+
+## OEM launcher variance
+
+Samsung OneUI may ignore monochrome — ship legacy icon fallback in manifest for pre-13 and test on top three OEM launchers in pre-launch report.
+
+## Adaptive Icons Monochrome Supplement 0 on Samsung and Pixel divergence
+
+Exercise adaptive icons monochrome supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching adaptive; regressions above 8% block release for `android-adaptive-icons-monochrome-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Adaptive Icons Monochrome Supplement 0" should map to a single runbook section with known workarounds.
+
+## Monochrome regression gates for Play Vitals
+
+Before promoting `android-adaptive-icons-monochrome-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing adaptive with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing adaptive icons monochrome supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Android — Create app icons (adaptive icons)](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive)

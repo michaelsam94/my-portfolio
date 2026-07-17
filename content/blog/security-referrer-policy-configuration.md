@@ -3,136 +3,224 @@ title: "Referrer-Policy Configuration for Privacy"
 slug: "security-referrer-policy-configuration"
 description: "Referrer leakage in URLs — strict-origin-when-cross-origin vs no-referrer for sensitive routes."
 datePublished: "2026-10-23"
-dateModified: "2026-10-23"
+dateModified: "2026-07-17"
 tags: ["Security", "Headers", "Privacy"]
 keywords: "Referrer-Policy header, referrer leakage privacy, strict-origin-when-cross-origin"
 faq:
-  - q: "What is Referrer-Policy Configuration for Privacy?"
-    a: "Referrer-Policy Configuration for Privacy is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Referrer-Policy Configuration for Privacy?"
-    a: "Adopt Referrer-Policy Configuration for Privacy when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Referrer-Policy Configuration for Privacy?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "Safest default?"
+    a: "strict-origin-when-cross-origin for most apps; no-referrer on sensitive admin routes."
+  - q: "Referer vs Referrer-Policy?"
+    a: "Policy controls how much URL is sent; misspelling Referer is in the HTTP spec forever."
+  - q: "Tokens in query strings?"
+    a: "Fix URL design first; Referrer-Policy is defense in depth."
 ---
 
-The gap between reading about referrer-policy configuration for privacy and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+A full account URL with a password-reset token appeared in a third-party analytics dashboard—via the Referer header on a tracking pixel. The application team assumed HTTPS meant privacy; nobody mapped which subresources received full URLs on cross-origin requests.
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+Referrer-Policy is one HTTP response header that controls leakage of browsing context. Misconfiguration is silent until compliance or a customer notices sensitive paths in vendor logs.
 
-## Architecture and boundaries
+## How Referer behaves without policy
 
-Before changing implementation details, draw the boundary diagram. Referrer-Policy Configuration for Privacy touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
+Browsers default toward sending referrer information—historically full URLs. Any third-party script, font, analytics pixel, or CDN asset request may include the current page URL in Referer. Query strings with tokens, internal IDs, or search terms leave your origin.
 
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
-```
+The HTTP header is misspelled `Referer` forever; `Referrer-Policy` is spelled correctly. Both appear in specs and tools—grep for either in audits.
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+## Policy values and trade-offs
 
-Document which metrics you expect to move. If referrer-policy configuration for privacy is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
+| Policy | Same-origin | Cross-origin HTTPS | HTTPS→HTTP |
+| --- | --- | --- | --- |
+| no-referrer | none | none | none |
+| strict-origin | origin | origin | none |
+| strict-origin-when-cross-origin | full URL | origin | none |
+| origin | origin | origin | none |
+| same-origin | full URL | none | none |
 
-## Implementation patterns
+**strict-origin-when-cross-origin** balances analytics on your own site with privacy on external requests—reasonable global default for marketing and product surfaces.
 
-Start with the smallest change that proves the approach. For referrer-policy configuration for privacy, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+**no-referrer** for `/account/*`, `/admin/*`, medical search results, and document preview routes handling sensitive filenames.
 
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("security_referrer_policy_configuration");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
-```
+## Deployment layers
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
+Set globally in middleware:
+
+```javascript
+app.use((req, res, next) => {
+  const sensitive = /^\/(account|admin|reset)/.test(req.path);
+  res.setHeader(
+    "Referrer-Policy",
+    sensitive ? "no-referrer" : "strict-origin-when-cross-origin"
+  );
+  next();
+});
 ```
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+CDN path rules can apply zone-specific policies without redeploying application code—document zone maps in security baseline so new microsites inherit correct defaults.
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+HTML meta tag works but is weaker than HTTP header for subresources loaded before parser reaches meta—prefer header.
 
-## Accessibility requirements
+Per-element override for exceptions:
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+```html
+<img src="https://analytics.example.com/pixel" referrerpolicy="no-referrer" alt="" />
+```
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+Use when document policy stays permissive but one embed must not leak paths.
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+## OAuth, SAML, and payment flows
 
-## Security and privacy considerations
+Identity provider redirects sometimes log referrer URLs containing authorization codes when integrations misconfigure redirect URIs. Regression-test IdP login after tightening policy—broken flows show up as sudden login failure spikes, not CSP console errors.
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+Payment iframes and 3-D Secure challenges may require explicit `referrerpolicy` on embed tags. Coordinate with payment vendor documentation before global no-referrer.
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+## Interaction with CSP and analytics
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+Content-Security-Policy violation reports may include referrer URLs—treat report endpoints as sensitive logs with restricted access. Strict-Transport-Security prevents downgrade scenarios where HTTPS URLs would leak to HTTP endpoints.
 
-## Testing strategy
+Marketing attribution often depends on full referrer paths. After tightening policy, cross-origin analytics sees origins only. Migrate campaigns to UTM parameters you control and first-party collection stored server-side. Coordinate with growth before deploy—revenue attribution regressions are politically harder than privacy tickets.
 
-Layer tests to match risk:
+## Healthcare and search leakage
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+Applications putting patient names or diagnoses in query strings need `no-referrer` on result pages regardless of other zones. URL design fix comes first; policy limits damage when legacy URLs cannot change immediately.
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+## GDPR and vendor contracts
 
-## Common production mistakes
+Full URLs with user identifiers may constitute personal data under GDPR. Data processing agreements with analytics vendors must cover referrer collection—or policy must strip paths cross-origin. Export weekly header snapshots from production into evidence storage for audits proving control persistence after CDN refactors.
 
-Teams get referrer-policy configuration for privacy wrong in predictable ways:
+## Testing checklist
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+- curl -I sensitive routes for expected policy value
+- Browser devtools Network tab: inspect Referer on third-party requests before and after change
+- Playwright assertion on password reset page
+- Verify OAuth and checkout E2E still pass
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Incident response for referrer leaks
 
-## Debugging and triage workflow
+If a leaked URL appears in a vendor dashboard:
 
-When referrer-policy configuration for privacy misbehaves in production, work top-down:
+1. Rotate any tokens in the path immediately
+2. Set no-referrer on affected routes
+3. Audit which third-party scripts receive subresource referrers
+4. Notify privacy/compliance if PII exposed
+5. Move identifiers from URLs to opaque server-side session state post-incident
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+## Search query leakage
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+Healthcare and legal apps with query strings in URLs need `no-referrer` on search result pages — `strict-origin-when-cross-origin` still leaks path on same-origin subresource requests to CDNs.
+
+## Referrer-Policy on redirects
+
+302 chains inherit policy from final response — set Referrer-Policy on all redirect hops in OAuth and password reset flows, not only the landing page.
 
 ## Resources
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+- [MDN Referrer-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy)
+- [W3C Referrer Policy spec](https://www.w3.org/TR/referrer-policy/)
+- [OWASP Information Exposure through query strings](https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url)
+- [web.dev Referrer best practices](https://web.dev/articles/referrer-best-practices)
+- [RFC 7231 Referer header](https://datatracker.ietf.org/doc/html/rfc7231#section-5.5.2)
+
+## Operational checklist (1)
+
+Before promoting Security Referrer Policy Configuration changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Security Referrer Policy Configuration after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Referrer Policy Configuration touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Security Referrer Policy Configuration changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Security Referrer Policy Configuration after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Referrer Policy Configuration touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Security Referrer Policy Configuration changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (8)
+
+Re-baseline Security Referrer Policy Configuration after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (9)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Referrer Policy Configuration touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (10)
+
+Before promoting Security Referrer Policy Configuration changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Reviewer checklist for security referrer policy configuration
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most security referrer policy configuration regressions before production.
+
+| Check | Expected for security referrer policy configuration |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Incident patterns around security referrer policy configuration
+
+Most incidents involving security referrer policy configuration start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+Concrete probe 2: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Invariants to enforce for security referrer policy configuration
+
+Name three invariants that must hold after every deploy of security referrer policy configuration. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+| Check | Expected for security referrer policy configuration |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for security referrer policy configuration
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to security referrer policy configuration, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+Concrete probe 4: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for security referrer policy configuration
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for security referrer policy configuration should include the revert command and the expected user-visible effect within five minutes.
+
+| Check | Expected for security referrer policy configuration |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for security referrer policy configuration
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how security referrer policy configuration breaks without a clear owner in the incident channel.
+
+Concrete probe 6: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Capacity and cost notes for security referrer policy configuration
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct security referrer policy configuration changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+| Check | Expected for security referrer policy configuration |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for security referrer policy configuration in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

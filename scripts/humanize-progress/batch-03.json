@@ -1,0 +1,2221 @@
+{
+  "batch": "03",
+  "slice": "750-999",
+  "updated_at": "2026-07-17T10:42:06.590762+00:00",
+  "total": 250,
+  "done": 250,
+  "pending": 0,
+  "pending_breakdown": {
+    "template": 0,
+    "generic_filler": 0,
+    "under_1200": 0
+  },
+  "rewritten_this_run": [
+    "backend-job-scheduling-temporal",
+    "backend-multi-tenancy-data-isolation",
+    "backend-payment-idempotency-ledgers",
+    "backend-saga-choreography-orchestration",
+    "backend-search-elasticsearch-relevance",
+    "background-jobs-cron-scheduling",
+    "background-jobs-priority-fairness",
+    "background-jobs-queue-workers",
+    "baseline-profiles-android-startup",
+    "career-deep-work-focus",
+    "career-managing-up-communication",
+    "career-mentoring-junior-engineers",
+    "career-running-effective-meetings",
+    "career-writing-design-docs",
+    "cdc-event-envelope-schema",
+    "cdc-streaming-to-warehouse",
+    "chaos-engineering-game-days",
+    "ci-cd-artifact-management",
+    "ci-cd-deployment-strategies-blue-green",
+    "ci-cd-github-actions-reusable-workflows",
+    "clean-architecture-pragmatically",
+    "clickhouse-realtime-analytics",
+    "columnar-storage-parquet",
+    "compose-animated-content-transitions",
+    "compose-animation-apis-overview",
+    "compose-autofill-integration",
+    "compose-bottom-sheet-scaffold",
+    "compose-drag-and-drop-reorder",
+    "compose-focus-management-tv",
+    "compose-multiplatform-navigation",
+    "compose-multiplatform-shared-ui",
+    "compose-nested-scroll-connection",
+    "compose-pager-carousel-patterns",
+    "compose-preview-tooling-multipreview",
+    "compose-subcompose-layout-patterns",
+    "compose-text-field-state-2026",
+    "concurrency-actor-model",
+    "concurrency-backpressure-strategies",
+    "concurrency-lock-free-data-structures",
+    "connection-pool-health-check-validation",
+    "connection-pool-leak-detection-hikari",
+    "connection-pool-pg-pool-node-postgres",
+    "connection-pool-prepared-statement-pgbouncer",
+    "connection-pool-prisma-accelerate-edge",
+    "connection-pool-r2dbc-reactive-postgres",
+    "connection-pool-serverless-proxy-rds",
+    "connection-pool-sizing-formula-little",
+    "connection-pool-transaction-mode-pitfalls",
+    "consent-management-platforms",
+    "container-scanning-trivy-grype",
+    "containers-oci-runtime-internals",
+    "content-system-asset-optimization-pipeline",
+    "content-system-localization-workflows",
+    "content-system-mdx-component-mapping",
+    "content-system-preview-draft-workflows",
+    "content-system-rich-text-sanitization",
+    "content-system-structured-content-modeling",
+    "content-system-versioning-rollback",
+    "core-web-vitals-ttfb-edge-caching",
+    "cqrs-command-query-separation",
+    "cqrs-command-validation-pipeline",
+    "cqrs-event-versioning-upcasting",
+    "cqrs-read-model-rebuild-strategies",
+    "cqrs-snapshot-frequency-tuning",
+    "critical-css-extraction-strategies",
+    "csp-frame-ancestors-clickjacking",
+    "csp-nonce-per-request-implementation",
+    "csp-report-only-monitoring",
+    "csp-strict-dynamic-scripts",
+    "csrf-double-submit-cookie-pattern",
+    "csrf-samesite-tokens",
+    "csrf-synchronizer-token-spa",
+    "css-anchor-positioning",
+    "css-animation-performance-compositor",
+    "css-architecture-bem-vs-modules",
+    "css-architecture-utility-first-layers",
+    "css-cascade-layers",
+    "css-container-queries",
+    "css-content-visibility-performance",
+    "css-custom-properties-theming",
+    "css-flexbox-gap-fallbacks",
+    "css-grid-auto-fit-minmax-patterns",
+    "css-has-selector-patterns",
+    "css-isolation-stacking-context",
+    "css-logical-properties-migration",
+    "css-nesting-native",
+    "css-overflow-anchor-scroll-jank",
+    "css-print-stylesheets-product",
+    "css-scroll-driven-animations",
+    "css-sticky-positioning-pitfalls",
+    "css-subgrid-layouts",
+    "css-view-transitions-spa",
+    "dart-3-class-modifiers",
+    "dart-async-streams-patterns",
+    "dart-extension-types-zero-cost",
+    "dart-isolate-groups-shared-memory",
+    "dart-macros-code-generation",
+    "dart-mixins-composition",
+    "dart-null-safety-sound-migration",
+    "dart-pattern-matching-destructuring",
+    "data-catalog-discovery",
+    "data-contracts-schema-enforcement",
+    "data-incremental-models-dbt",
+    "data-lakehouse-iceberg",
+    "data-lineage-tracking",
+    "data-mesh-domain-ownership",
+    "data-modeling-slowly-changing-dimensions",
+    "data-orchestration-airflow-dagster",
+    "data-partitioning-bucketing",
+    "data-quality-great-expectations",
+    "data-reverse-etl-operational",
+    "data-streaming-exactly-once-flink",
+    "data-vault-modeling",
+    "data-warehouse-cost-optimization",
+    "data-warehouse-star-schema",
+    "database-cdc-debezium-kafka",
+    "database-deadlock-detection-prevention",
+    "database-isolation-levels-explained",
+    "database-migration-backfill-batching",
+    "database-migration-blue-green-cutover",
+    "database-migration-column-rename-safe",
+    "database-migration-concurrent-index-add",
+    "database-migration-data-verification-checksums",
+    "database-migration-enum-type-evolution",
+    "database-migration-expand-contract",
+    "database-migration-feature-flag-gating",
+    "database-migration-flyway-baseline",
+    "database-migration-foreign-key-deferred",
+    "database-migration-liquibase-changelog",
+    "database-migration-lock-timeout-guard",
+    "database-migration-not-null-backfill",
+    "database-migration-prisma-shadow-db",
+    "database-migration-rollback-strategies",
+    "database-migration-zero-downtime-expand",
+    "database-read-replicas-consistency",
+    "database-sharding-strategies"
+  ],
+  "rewritten_count": 136,
+  "samples_done": [
+    {
+      "index": 750,
+      "slug": "auth-ux-account-recovery-flows",
+      "words": 1422,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 751,
+      "slug": "auth-ux-device-trust-prompts",
+      "words": 1225,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 752,
+      "slug": "auth-ux-magic-link-flow",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 753,
+      "slug": "auth-ux-multi-factor-step-up",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 754,
+      "slug": "auth-ux-oauth-consent-screens",
+      "words": 1212,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 755,
+      "slug": "auth-ux-passkey-enrollment-flow",
+      "words": 1227,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 756,
+      "slug": "auth-ux-progressive-profile-collection",
+      "words": 1236,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 757,
+      "slug": "auth-ux-session-expiry-handling",
+      "words": 1201,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    }
+  ],
+  "samples_pending": [],
+  "items": [
+    {
+      "index": 750,
+      "slug": "auth-ux-account-recovery-flows",
+      "words": 1422,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 751,
+      "slug": "auth-ux-device-trust-prompts",
+      "words": 1225,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 752,
+      "slug": "auth-ux-magic-link-flow",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 753,
+      "slug": "auth-ux-multi-factor-step-up",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 754,
+      "slug": "auth-ux-oauth-consent-screens",
+      "words": 1212,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 755,
+      "slug": "auth-ux-passkey-enrollment-flow",
+      "words": 1227,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 756,
+      "slug": "auth-ux-progressive-profile-collection",
+      "words": 1236,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 757,
+      "slug": "auth-ux-session-expiry-handling",
+      "words": 1201,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 758,
+      "slug": "auth-ux-social-login-buttons",
+      "words": 1246,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 759,
+      "slug": "auth-zero-trust-service-identity",
+      "words": 1217,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 760,
+      "slug": "authorization-policy-engines-opa",
+      "words": 1231,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 761,
+      "slug": "authorization-relationship-based-zanzibar",
+      "words": 1310,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 762,
+      "slug": "avif-webp-fallback-picture-element",
+      "words": 1277,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 763,
+      "slug": "axe-core-ci-integration-patterns",
+      "words": 1325,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 764,
+      "slug": "backend-api-versioning-deprecation",
+      "words": 1262,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 765,
+      "slug": "backend-bulkhead-isolation-pattern",
+      "words": 1304,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 766,
+      "slug": "backend-caching-invalidation-strategies",
+      "words": 1218,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 767,
+      "slug": "backend-feature-flags-server-side",
+      "words": 1441,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 768,
+      "slug": "backend-for-frontend-bff",
+      "words": 1283,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 769,
+      "slug": "backend-graphql-vs-rest-decision",
+      "words": 1254,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 770,
+      "slug": "backend-idempotent-consumer-pattern",
+      "words": 1226,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 771,
+      "slug": "backend-job-scheduling-temporal",
+      "words": 1251,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 772,
+      "slug": "backend-multi-tenancy-data-isolation",
+      "words": 1257,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 773,
+      "slug": "backend-outbox-inbox-messaging",
+      "words": 1353,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 774,
+      "slug": "backend-payment-idempotency-ledgers",
+      "words": 1261,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 775,
+      "slug": "backend-retry-jitter-exponential-backoff",
+      "words": 1266,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 776,
+      "slug": "backend-saga-choreography-orchestration",
+      "words": 1254,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 777,
+      "slug": "backend-search-elasticsearch-relevance",
+      "words": 1247,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 778,
+      "slug": "backend-search-opensearch-vector",
+      "words": 1218,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 779,
+      "slug": "backend-webhooks-fan-out-delivery",
+      "words": 1266,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 780,
+      "slug": "background-jobs-cron-scheduling",
+      "words": 1243,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 781,
+      "slug": "background-jobs-priority-fairness",
+      "words": 1244,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 782,
+      "slug": "background-jobs-queue-workers",
+      "words": 1222,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 783,
+      "slug": "backstage-developer-portals",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 784,
+      "slug": "baseline-profiles-android-startup",
+      "words": 1280,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 785,
+      "slug": "bot-detection-mitigation",
+      "words": 1252,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 786,
+      "slug": "building-an-llm-router",
+      "words": 1400,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 787,
+      "slug": "building-an-mcp-server-practical-guide",
+      "words": 1334,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 788,
+      "slug": "building-reliable-ai-agents",
+      "words": 1308,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 789,
+      "slug": "caching-strategies",
+      "words": 1257,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 790,
+      "slug": "career-deep-work-focus",
+      "words": 1215,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 791,
+      "slug": "career-managing-up-communication",
+      "words": 1246,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 792,
+      "slug": "career-mentoring-junior-engineers",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 793,
+      "slug": "career-running-effective-meetings",
+      "words": 1210,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 794,
+      "slug": "career-writing-design-docs",
+      "words": 1269,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 795,
+      "slug": "cdc-change-data-capture-lag-slo",
+      "words": 1203,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 796,
+      "slug": "cdc-debezium-heartbeat-topics",
+      "words": 1239,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 797,
+      "slug": "cdc-debezium-snapshot-modes",
+      "words": 1204,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 798,
+      "slug": "cdc-event-envelope-schema",
+      "words": 1220,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 799,
+      "slug": "cdc-streaming-to-warehouse",
+      "words": 1274,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 800,
+      "slug": "cdn-caching-strategies-edge",
+      "words": 1200,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 801,
+      "slug": "chaos-engineering-game-days",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 802,
+      "slug": "chaos-engineering-practical",
+      "words": 1243,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 803,
+      "slug": "choosing-an-embeddings-model",
+      "words": 1232,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 804,
+      "slug": "ci-cd-artifact-management",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 805,
+      "slug": "ci-cd-deployment-strategies-blue-green",
+      "words": 1266,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 806,
+      "slug": "ci-cd-github-actions-reusable-workflows",
+      "words": 1255,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 807,
+      "slug": "ci-cd-matrix-builds-caching",
+      "words": 1240,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 808,
+      "slug": "ci-cd-monorepo-affected-builds",
+      "words": 1217,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 809,
+      "slug": "ci-cd-secrets-oidc-keyless",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 810,
+      "slug": "clean-architecture-pragmatically",
+      "words": 1263,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 811,
+      "slug": "clickhouse-realtime-analytics",
+      "words": 1211,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 812,
+      "slug": "coap-constrained-devices",
+      "words": 1310,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 813,
+      "slug": "code-review-effective-practices",
+      "words": 1201,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 814,
+      "slug": "code-review-pull-request-size",
+      "words": 1230,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 815,
+      "slug": "columnar-storage-parquet",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 816,
+      "slug": "compose-accessibility-semantics",
+      "words": 1214,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 817,
+      "slug": "compose-adaptive-layout-canonical",
+      "words": 1283,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 818,
+      "slug": "compose-animated-content-transitions",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 819,
+      "slug": "compose-animation-animated-content",
+      "words": 1263,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 820,
+      "slug": "compose-animation-apis-overview",
+      "words": 1253,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 821,
+      "slug": "compose-animation-shared-element",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 822,
+      "slug": "compose-app-shortcuts-compose",
+      "words": 1315,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 823,
+      "slug": "compose-autofill-integration",
+      "words": 1223,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 824,
+      "slug": "compose-barcode-scanner-compose",
+      "words": 1288,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 825,
+      "slug": "compose-biometric-prompt-compose",
+      "words": 1258,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 826,
+      "slug": "compose-blur-modifier-effects",
+      "words": 1312,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 827,
+      "slug": "compose-bottom-sheet-scaffold",
+      "words": 1284,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 828,
+      "slug": "compose-camera-camerax-compose",
+      "words": 1268,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 829,
+      "slug": "compose-canvas-custom-drawing",
+      "words": 1289,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 830,
+      "slug": "compose-custom-layout-measure-policy",
+      "words": 1212,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 831,
+      "slug": "compose-custom-lazy-layouts",
+      "words": 1474,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 832,
+      "slug": "compose-derived-state-optimization",
+      "words": 1272,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 833,
+      "slug": "compose-derivedstateof-when-to-use",
+      "words": 1272,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 834,
+      "slug": "compose-drag-and-drop-reorder",
+      "words": 1228,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 835,
+      "slug": "compose-feature-delivery-ui",
+      "words": 1299,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 836,
+      "slug": "compose-focus-management-tv",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 837,
+      "slug": "compose-gesture-detection-pointerinput",
+      "words": 1233,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 838,
+      "slug": "compose-glance-widgets",
+      "words": 1266,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 839,
+      "slug": "compose-graphics-layer-effects",
+      "words": 1263,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 840,
+      "slug": "compose-hilt-navigation-compose",
+      "words": 1291,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 841,
+      "slug": "compose-in-app-update-compose",
+      "words": 1286,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 842,
+      "slug": "compose-interactive-previews",
+      "words": 1287,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 843,
+      "slug": "compose-koin-compose-scoping",
+      "words": 1295,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 844,
+      "slug": "compose-layout-inspector-tools",
+      "words": 1289,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 845,
+      "slug": "compose-lifecycle-viewmodel-scoping",
+      "words": 1289,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 846,
+      "slug": "compose-location-permissions-flow",
+      "words": 1283,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 847,
+      "slug": "compose-lookahead-layout-animations",
+      "words": 1257,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 848,
+      "slug": "compose-lottie-compose-integration",
+      "words": 1295,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 849,
+      "slug": "compose-map-compose-integration",
+      "words": 1271,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 850,
+      "slug": "compose-material3-expressive-design",
+      "words": 1299,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 851,
+      "slug": "compose-modifier-node-api",
+      "words": 1383,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 852,
+      "slug": "compose-multiplatform-navigation",
+      "words": 1200,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 853,
+      "slug": "compose-multiplatform-resources",
+      "words": 1280,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 854,
+      "slug": "compose-multiplatform-shared-ui",
+      "words": 1273,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 855,
+      "slug": "compose-navigation-type-safe-routes",
+      "words": 1397,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 856,
+      "slug": "compose-navigation3-type-safe",
+      "words": 1296,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 857,
+      "slug": "compose-nested-scroll-connection",
+      "words": 1270,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 858,
+      "slug": "compose-notification-permission-android13",
+      "words": 1292,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 859,
+      "slug": "compose-pager-carousel-patterns",
+      "words": 1244,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 860,
+      "slug": "compose-performance-stability-recomposition",
+      "words": 1235,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 861,
+      "slug": "compose-permissions-accompanist",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 862,
+      "slug": "compose-play-integrity-check",
+      "words": 1303,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 863,
+      "slug": "compose-preview-parameter-providers",
+      "words": 1296,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 864,
+      "slug": "compose-preview-tooling-multipreview",
+      "words": 1201,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 865,
+      "slug": "compose-pull-to-refresh-material3",
+      "words": 1256,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 866,
+      "slug": "compose-recomposition-count-debug",
+      "words": 1293,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 867,
+      "slug": "compose-remember-keys-pitfalls",
+      "words": 1220,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 868,
+      "slug": "compose-retained-state-savable",
+      "words": 1263,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 869,
+      "slug": "compose-review-manager-compose",
+      "words": 1278,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 870,
+      "slug": "compose-rive-vector-animations",
+      "words": 1292,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 871,
+      "slug": "compose-screenshot-testing-paparazzi",
+      "words": 1273,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 872,
+      "slug": "compose-shared-element-transitions",
+      "words": 1340,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 873,
+      "slug": "compose-side-effects-launchedeffect",
+      "words": 1203,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 874,
+      "slug": "compose-snapshot-state-internals",
+      "words": 1325,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 875,
+      "slug": "compose-stability-annotations-deep",
+      "words": 1325,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 876,
+      "slug": "compose-stability-strong-skipping",
+      "words": 1303,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 877,
+      "slug": "compose-subcompose-layout-patterns",
+      "words": 1275,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 878,
+      "slug": "compose-swipe-to-dismiss-actions",
+      "words": 1210,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 879,
+      "slug": "compose-testing-semantics-tree",
+      "words": 1352,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 880,
+      "slug": "compose-text-autosize-basictext",
+      "words": 1291,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 881,
+      "slug": "compose-text-field-state-2026",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 882,
+      "slug": "compose-ui-test-semantics",
+      "words": 1311,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 883,
+      "slug": "compose-webview-accompanist",
+      "words": 1264,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 884,
+      "slug": "concurrency-actor-model",
+      "words": 1216,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 885,
+      "slug": "concurrency-backpressure-strategies",
+      "words": 1237,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 886,
+      "slug": "concurrency-lock-free-data-structures",
+      "words": 1267,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 887,
+      "slug": "connection-pool-health-check-validation",
+      "words": 1217,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 888,
+      "slug": "connection-pool-hikari-tuning-java",
+      "words": 1212,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 889,
+      "slug": "connection-pool-leak-detection-hikari",
+      "words": 1271,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 890,
+      "slug": "connection-pool-pg-pool-node-postgres",
+      "words": 1248,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 891,
+      "slug": "connection-pool-prepared-statement-pgbouncer",
+      "words": 1271,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 892,
+      "slug": "connection-pool-prisma-accelerate-edge",
+      "words": 1213,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 893,
+      "slug": "connection-pool-r2dbc-reactive-postgres",
+      "words": 1272,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 894,
+      "slug": "connection-pool-serverless-proxy-rds",
+      "words": 1215,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 895,
+      "slug": "connection-pool-sizing-formula-little",
+      "words": 1239,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 896,
+      "slug": "connection-pool-transaction-mode-pitfalls",
+      "words": 1274,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 897,
+      "slug": "connection-pooling-serverless-databases",
+      "words": 1390,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 898,
+      "slug": "consent-management-platforms",
+      "words": 1220,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 899,
+      "slug": "container-image-security-sbom",
+      "words": 1319,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 900,
+      "slug": "container-scanning-trivy-grype",
+      "words": 1223,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 901,
+      "slug": "containers-oci-runtime-internals",
+      "words": 1216,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 902,
+      "slug": "content-security-policy-hardening",
+      "words": 1257,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 903,
+      "slug": "content-system-asset-optimization-pipeline",
+      "words": 1262,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 904,
+      "slug": "content-system-headless-cms-frontend",
+      "words": 1240,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 905,
+      "slug": "content-system-localization-workflows",
+      "words": 1227,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 906,
+      "slug": "content-system-mdx-component-mapping",
+      "words": 1229,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 907,
+      "slug": "content-system-preview-draft-workflows",
+      "words": 1206,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 908,
+      "slug": "content-system-rich-text-sanitization",
+      "words": 1227,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 909,
+      "slug": "content-system-structured-content-modeling",
+      "words": 1229,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 910,
+      "slug": "content-system-versioning-rollback",
+      "words": 1258,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 911,
+      "slug": "context-engineering-beyond-prompts",
+      "words": 1213,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 912,
+      "slug": "core-web-vitals-cls-font-loading",
+      "words": 1202,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 913,
+      "slug": "core-web-vitals-inp-optimization",
+      "words": 1259,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 914,
+      "slug": "core-web-vitals-lcp-image-strategies",
+      "words": 1211,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 915,
+      "slug": "core-web-vitals-ttfb-edge-caching",
+      "words": 1209,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 916,
+      "slug": "cqrs-command-query-separation",
+      "words": 1208,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 917,
+      "slug": "cqrs-command-validation-pipeline",
+      "words": 1220,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 918,
+      "slug": "cqrs-event-versioning-upcasting",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 919,
+      "slug": "cqrs-read-model-rebuild-strategies",
+      "words": 1249,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 920,
+      "slug": "cqrs-snapshot-frequency-tuning",
+      "words": 1223,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 921,
+      "slug": "critical-css-extraction-strategies",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 922,
+      "slug": "csp-frame-ancestors-clickjacking",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 923,
+      "slug": "csp-nonce-per-request-implementation",
+      "words": 1226,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 924,
+      "slug": "csp-report-only-monitoring",
+      "words": 1210,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 925,
+      "slug": "csp-strict-dynamic-scripts",
+      "words": 1280,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 926,
+      "slug": "csrf-cors-modern-web",
+      "words": 1358,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 927,
+      "slug": "csrf-double-submit-cookie-pattern",
+      "words": 1215,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 928,
+      "slug": "csrf-samesite-tokens",
+      "words": 1269,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 929,
+      "slug": "csrf-synchronizer-token-spa",
+      "words": 1206,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 930,
+      "slug": "css-anchor-positioning",
+      "words": 1221,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 931,
+      "slug": "css-animation-performance-compositor",
+      "words": 1216,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 932,
+      "slug": "css-architecture-bem-vs-modules",
+      "words": 1279,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 933,
+      "slug": "css-architecture-utility-first-layers",
+      "words": 1245,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 934,
+      "slug": "css-cascade-layers",
+      "words": 1244,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 935,
+      "slug": "css-container-queries",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 936,
+      "slug": "css-content-visibility-performance",
+      "words": 1235,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 937,
+      "slug": "css-custom-properties-theming",
+      "words": 1266,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 938,
+      "slug": "css-flexbox-gap-fallbacks",
+      "words": 1249,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 939,
+      "slug": "css-grid-auto-fit-minmax-patterns",
+      "words": 1261,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 940,
+      "slug": "css-has-selector-patterns",
+      "words": 1247,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 941,
+      "slug": "css-isolation-stacking-context",
+      "words": 1264,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 942,
+      "slug": "css-logical-properties-migration",
+      "words": 1234,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 943,
+      "slug": "css-nesting-native",
+      "words": 1275,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 944,
+      "slug": "css-overflow-anchor-scroll-jank",
+      "words": 1240,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 945,
+      "slug": "css-print-stylesheets-product",
+      "words": 1242,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 946,
+      "slug": "css-scroll-driven-animations",
+      "words": 1215,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 947,
+      "slug": "css-sticky-positioning-pitfalls",
+      "words": 1242,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 948,
+      "slug": "css-subgrid-layouts",
+      "words": 1223,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 949,
+      "slug": "css-view-transitions-spa",
+      "words": 1218,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 950,
+      "slug": "cutting-llm-costs-caching-routing-batching",
+      "words": 1373,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 951,
+      "slug": "dart-3-class-modifiers",
+      "words": 1232,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 952,
+      "slug": "dart-3-patterns-records-sealed",
+      "words": 1204,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 953,
+      "slug": "dart-async-streams-patterns",
+      "words": 1277,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 954,
+      "slug": "dart-extension-types-zero-cost",
+      "words": 1228,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 955,
+      "slug": "dart-ffi-native-interop",
+      "words": 1365,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 956,
+      "slug": "dart-isolate-groups-shared-memory",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 957,
+      "slug": "dart-macros-code-generation",
+      "words": 1223,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 958,
+      "slug": "dart-mixins-composition",
+      "words": 1200,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 959,
+      "slug": "dart-null-safety-sound-migration",
+      "words": 1230,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 960,
+      "slug": "dart-pattern-matching-destructuring",
+      "words": 1250,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 961,
+      "slug": "dart-sealed-classes-exhaustive-switch",
+      "words": 1206,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 962,
+      "slug": "data-anonymization-pseudonymization",
+      "words": 1219,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 963,
+      "slug": "data-catalog-discovery",
+      "words": 1206,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 964,
+      "slug": "data-contracts-schema-enforcement",
+      "words": 1235,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 965,
+      "slug": "data-incremental-models-dbt",
+      "words": 1211,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 966,
+      "slug": "data-lakehouse-iceberg",
+      "words": 1234,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 967,
+      "slug": "data-lineage-tracking",
+      "words": 1257,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 968,
+      "slug": "data-mesh-domain-ownership",
+      "words": 1228,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 969,
+      "slug": "data-modeling-slowly-changing-dimensions",
+      "words": 1262,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 970,
+      "slug": "data-orchestration-airflow-dagster",
+      "words": 1209,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 971,
+      "slug": "data-partitioning-bucketing",
+      "words": 1211,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 972,
+      "slug": "data-quality-great-expectations",
+      "words": 1228,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 973,
+      "slug": "data-reverse-etl-operational",
+      "words": 1233,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 974,
+      "slug": "data-streaming-exactly-once-flink",
+      "words": 1275,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 975,
+      "slug": "data-vault-modeling",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 976,
+      "slug": "data-warehouse-cost-optimization",
+      "words": 1253,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 977,
+      "slug": "data-warehouse-star-schema",
+      "words": 1261,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 978,
+      "slug": "database-cdc-debezium-kafka",
+      "words": 1216,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 979,
+      "slug": "database-deadlock-detection-prevention",
+      "words": 1247,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 980,
+      "slug": "database-isolation-levels-explained",
+      "words": 1275,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 981,
+      "slug": "database-migration-backfill-batching",
+      "words": 1262,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 982,
+      "slug": "database-migration-blue-green-cutover",
+      "words": 1234,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 983,
+      "slug": "database-migration-column-rename-safe",
+      "words": 1201,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 984,
+      "slug": "database-migration-concurrent-index-add",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 985,
+      "slug": "database-migration-data-verification-checksums",
+      "words": 1203,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 986,
+      "slug": "database-migration-enum-type-evolution",
+      "words": 1261,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 987,
+      "slug": "database-migration-expand-contract",
+      "words": 1248,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 988,
+      "slug": "database-migration-feature-flag-gating",
+      "words": 1204,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 989,
+      "slug": "database-migration-flyway-baseline",
+      "words": 1226,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 990,
+      "slug": "database-migration-foreign-key-deferred",
+      "words": 1202,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 991,
+      "slug": "database-migration-liquibase-changelog",
+      "words": 1258,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 992,
+      "slug": "database-migration-lock-timeout-guard",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 993,
+      "slug": "database-migration-not-null-backfill",
+      "words": 1205,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 994,
+      "slug": "database-migration-prisma-shadow-db",
+      "words": 1202,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 995,
+      "slug": "database-migration-rollback-strategies",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 996,
+      "slug": "database-migration-zero-downtime-expand",
+      "words": 1260,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 997,
+      "slug": "database-optimistic-vs-pessimistic-locking",
+      "words": 1210,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 998,
+      "slug": "database-read-replicas-consistency",
+      "words": 1277,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    },
+    {
+      "index": 999,
+      "slug": "database-sharding-strategies",
+      "words": 1251,
+      "status": "done",
+      "template": false,
+      "generic_filler": false
+    }
+  ]
+}

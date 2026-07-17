@@ -3,7 +3,7 @@ title: "Build Provenance with SLSA"
 slug: "supply-chain-provenance-slsa"
 description: "SLSA provides a framework for securing software build pipelines with provenance attestations, hermetic builds, and tamper-resistant release artifacts. Learn levels, implementation, and GitHub Actions integration."
 datePublished: "2025-10-01"
-dateModified: "2025-10-01"
+dateModified: "2026-07-17"
 tags: ["Security", "Supply Chain", "SLSA", "DevOps"]
 keywords: "SLSA provenance, supply chain levels, build attestation, Sigstore cosign, SLSA GitHub Actions, hermetic builds, software supply chain security"
 faq:
@@ -13,8 +13,15 @@ faq:
     a: "An SBOM lists what went into your artifact — dependencies, versions, licenses. SLSA provenance describes how the artifact was built — which source commit, which builder, which workflow, what inputs. SBOM answers 'what's inside?' Provenance answers 'who built this and from what?' Both are complementary; SLSA provenance often references the SBOM as a build material."
   - q: "Can I verify SLSA provenance in my deployment pipeline?"
     a: "Yes — tools like slsa-verifier check that an artifact's provenance attestation matches your policy (expected builder, source repository, branch). Container registries (GitHub Container Registry, Google Artifact Registry) store attestations alongside images. Your deploy pipeline rejects artifacts without valid provenance or with provenance from unexpected sources."
+faqAnswers:
+  - question: "When is supply chain provenance slsa the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for supply chain provenance slsa?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back supply chain provenance slsa safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
+    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
-
 After the SolarWinds and Codecov incidents, our security team stopped asking "did we scan for CVEs?" and started asking "can we prove this binary was built from our source code by our CI system?" Vulnerability scanning catches known bad dependencies. Provenance catches the case where someone else's build pipeline — or an attacker who compromised it — produced the artifact you're about to deploy.
 
 SLSA (Supply-chain Levels for Software Artifacts, pronounced "salsa") is a framework from Google and the OpenSSF that defines progressive levels of build pipeline security. At its core is provenance: a signed attestation that links an artifact to its exact source, builder, and build parameters.
@@ -152,30 +159,6 @@ cosign verify ghcr.io/org/my-app@v1.2.3 \
 4. Enable Dependabot/Renovate for controlled dependency updates.
 5. Document your build process in a `BUILD.md` (Level 1, if nothing else).
 
-## Common production mistakes
-
-Teams get supply chain provenance slsa wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of supply chain provenance slsa fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
-## Debugging and triage workflow
-
-When supply chain provenance slsa misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
-
 ## Resources
 
 - [SLSA specification](https://slsa.dev/spec/v1.0/)
@@ -183,3 +166,52 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [slsa-verifier tool](https://github.com/slsa-framework/slsa-verifier)
 - [Sigstore Cosign documentation](https://docs.sigstore.dev/cosign/overview/)
 - [OpenSSF Supply Chain Security guide](https://best.openssf.org/)
+
+## Field notes on supply chain provenance slsa
+
+Supply-chain controls for supply chain provenance slsa only work when attestations are verified in the deploy path, not merely generated for auditors.
+
+For supply chain provenance slsa:
+- Pin dependencies; verify checksums; prefer lockfiles committed
+- Sign images keylessly (Fulcio) and verify with policy in admission
+- SBOMs stored beside artifacts; VEX documents suppressions with expiry
+- Block deploys on unknown provenance, not only on scanner CVEs
+
+Tabletop a compromised builder scenario — detection time and revoke path matter more than tool logos.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Latency p99 | Team-defined SLO | Page on burn rate |
+| Error rate | Baseline − noise | Ticket if sustained |
+| Cost per 1k ops | Budget cap | Weekly review |
+
+## Metrics and alarms for supply chain provenance slsa
+
+Reviewers should challenge assumptions encoded in supply chain provenance slsa: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario A for supply chain provenance slsa: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+2. Scenario B for supply chain provenance slsa: bad config shipped — prove rollback within the declared RTO without data corruption.
+3. Scenario C for supply chain provenance slsa: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+
+## Post-incident changes after supply chain provenance slsa failures
+
+Roll out supply chain provenance slsa behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Caching interactions with supply chain provenance slsa
+
+Detail 1 (600): for supply chain provenance slsa, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When caching interactions with supply chain provenance slsa becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break supply chain provenance slsa, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about supply chain provenance slsa: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Multi-tenant concerns in supply chain provenance slsa
+
+Detail 2 (883): for supply chain provenance slsa, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When multi-tenant concerns in supply chain provenance slsa becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break supply chain provenance slsa, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about supply chain provenance slsa: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

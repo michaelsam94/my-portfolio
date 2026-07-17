@@ -1,111 +1,252 @@
 ---
 title: "AI Agents: Package Lock Integrity"
 slug: "agent-package-lock-integrity"
-description: "Package Lock Integrity: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Treat package-lock.json as a supply-chain contract for agent services — npm ci enforcement, lockfile drift detection, integrity hashes, and CI gates that block phantom dependency upgrades."
 datePublished: "2025-11-02"
 dateModified: "2025-11-02"
-tags: ["AI", "Agent", "Package"]
-keywords: "agent, package, lock, integrity, ai, production, engineering, architecture"
+tags: ["AI Agents", "Supply Chain", "Node.js", "CI/CD"]
+keywords: "package-lock integrity, npm ci lockfile, dependency supply chain security, lockfile drift CI, npm audit agent services"
 faq:
-  - q: "What is Package Lock Integrity?"
-    a: "Package Lock Integrity covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Package Lock Integrity?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Package Lock Integrity?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Package Lock Integrity fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Package Lock Integrity should be observable in production and safe to change in small diffs."
+  - q: "Why commit package-lock.json for agent backend services?"
+    a: "The lockfile pins exact dependency versions and integrity hashes for every transitive package. Without it, `npm install` on Tuesday resolves different sub-dependencies than Monday — silent behavior changes in SDK clients, token parsers, or gRPC stacks your agent orchestrator relies on."
+  - q: "What is the difference between npm install and npm ci?"
+    a: "`npm ci` deletes node_modules and installs exactly from package-lock.json — failing if lock and package.json disagree. `npm install` may mutate the lockfile. CI and Docker builds for production agent services should always use `npm ci`."
+  - q: "How do dependency confusion attacks relate to lockfiles?"
+    a: "Attackers publish malicious packages with names matching internal scopes. A lockfile with explicit resolved URLs and integrity checks reduces risk of unexpected registry swaps — pair with `.npmrc` scope routing and verified publish provenance."
+  - q: "Should Renovate or Dependabot bump the lockfile automatically?"
+    a: "Yes, via PRs that run full test suites and `npm audit`. Never hand-edit lockfiles at scale. Auto-PRs with lockfile-only diffs are reviewable; accidental `npm install` on a laptop is not."
 ---
-Package Lock Integrity sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When package lock integrity is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Production agent API started returning malformed tool schema errors after a routine deploy — no application code changed. The diff was one file: `package-lock.json`, updated because a developer ran `npm install` locally to "fix" a peer dependency warning. A transitive package three levels deep swapped patch versions; its JSON Schema validator now rejected optional fields your orchestrator sends. Package lock integrity is not npm pedantry — it is how you keep agent runtimes deterministic when half your stack is third-party SDKs.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What the lockfile actually guarantees
 
-Solid AI engineering turns package lock integrity from a recurring argument into a documented pattern with tests and an owner.
+`package-lock.json` (npm v7+) records:
 
-## Design principles that survive production
+- Exact **version** and **resolved** tarball URL for each package
+- **integrity** subresource hash (`sha512-…`) verified on download
+- Dependency graph structure — who depends on whom
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent package lock integrity bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for package lock integrity, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent package lock integrity flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for package lock integrity in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent package lock integrity changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Package Lock Integrity: typed boundary + structured errors
-export async function handlePackageLockIntegrity(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-package-lock-integrity");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+```json
+"node_modules/openai": {
+  "version": "4.52.0",
+  "resolved": "https://registry.npmjs.org/openai/-/openai-4.52.0.tgz",
+  "integrity": "sha512-abc123…",
+  "requires": {
+    "node-fetch": "^2.6.7"
   }
 }
-
 ```
 
+CI that runs `npm ci` reproduces this graph byte-for-byte. CI that runs `npm install` does not.
 
-## Operational concerns
+## Failure modes when integrity slips
 
-Game-day exercises for package lock integrity beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+| Scenario | Symptom | How lock integrity helps |
+|----------|---------|--------------------------|
+| Local `npm install` commits accidental lock churn | Mysterious prod-only bugs | CI rejects lock/package.json mismatch |
+| Registry substitution / typo squat | Malicious code execution | Integrity hash mismatch fails install |
+| Missing lock in Docker build | Different image each build | `npm ci` requires lock present |
+| Renovate PR merged without tests | Broken agent SDK | Required CI on lock-only PRs |
 
-Production agent package lock integrity work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Agent services pull in heavy trees: `@anthropic-ai/sdk`, `@langchain/core`, `zod`, gRPC plugins. Any one shifting patch version changes serialization edge cases.
 
-Rollouts for package lock integrity benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+## CI gate — lockfile must match package.json
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+# .github/workflows/ci.yml
+jobs:
+  verify-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Fail if lockfile drifted
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          if ! git diff --exit-code package-lock.json; then
+            echo "package-lock.json out of sync with package.json"
+            exit 1
+          fi
+```
 
-## Security and compliance angles
+Second `npm install --package-lock-only` simulates what a careless local install would change — if diff non-empty, block merge.
 
-Even when package lock integrity is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Docker — never install without lock
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent package lock integrity so security reviews do not rely on tribal knowledge.
+```dockerfile
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
-## Testing strategy
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+USER node
+CMD ["node", "dist/server.js"]
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that package lock integrity depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Copy lock before source so dependency layer caches independently. `--ignore-scripts` in deps stage blocks postinstall scripts until you audit them — enable selectively per package if needed.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Detecting unexpected lock changes in PR review
 
-## Migration and evolution
+```bash
+#!/bin/bash
+# scripts/check-lockfile-scope.sh
+LOCK_DIFF=$(git diff origin/main -- package-lock.json | wc -l)
+PKG_DIFF=$(git diff origin/main -- package.json | wc -l)
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent package lock integrity functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+if [ "$LOCK_DIFF" -gt 100 ] && [ "$PKG_DIFF" -lt 5 ]; then
+  echo "Large lockfile churn without matching package.json changes — likely accidental npm install"
+  exit 1
+fi
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where package lock integrity spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Heuristic, not perfect — catches the common "committed entire lock regen" mistake.
 
-## Related concepts
+## npm audit in agent service pipelines
 
-Package Lock Integrity intersects with broader ai topics — see companion notes on [agent-package patterns](https://blog.michaelsam94.com/agent-package/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```yaml
+  - run: npm audit --audit-level=high --omit=dev
+    continue-on-error: false
+```
 
-## The takeaway
+Audit complements lock integrity — known CVEs in pinned versions still matter. Pair with Renovate security grouping:
 
-Package Lock Integrity rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent package lock integrity becomes a maintainable asset instead of incident fuel.
+```json
+{
+  "extends": ["config:base"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["patch", "minor"],
+      "matchPackagePatterns": ["*"],
+      "groupName": "npm dependencies"
+    }
+  ],
+  "lockFileMaintenance": { "enabled": true }
+}
+```
+
+## Scope routing for private agent packages
+
+If your org publishes `@yourco/agent-tools` to a private registry, `.npmrc` must pin scopes — lockfile alone does not stop `@yourco` resolving to public squatters if misconfigured:
+
+```
+@yourco:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+```
+
+Verify lock `resolved` URLs point at expected registry in CI:
+
+```javascript
+const lock = require("./package-lock.json");
+const packages = lock.packages || {};
+for (const [name, meta] of Object.entries(packages)) {
+  if (name.startsWith("node_modules/@yourco/") && meta.resolved) {
+    if (!meta.resolved.includes("npm.pkg.github.com")) {
+      throw new Error(`Unexpected registry for ${name}: ${meta.resolved}`);
+    }
+  }
+}
+```
+
+## Python agent services — poetry.lock / uv.lock parity
+
+Node-centric, but agent repos often mix Python workers. Same principles:
+
+- Commit `poetry.lock` or `uv.lock`
+- CI runs `poetry install --sync` or `uv sync --frozen`
+- Never deploy from unconstrained `pip install -r requirements.txt` without hashes
+
+Cross-language monorepos need per-ecosystem integrity gates — one slipped lock poisons the shared deploy train.
+
+## Incident response when lock integrity breaks
+
+1. **Identify deploy** with lockfile-only diff — revert image tag first
+2. **Diff lock** between good/bad builds: `git diff v1.2.0 v1.2.1 -- package-lock.json`
+3. **Trace transitive package** that changed — read its changelog
+4. **Pin override** temporarily via `overrides` (npm) while upstream fixes
+5. **Post-incident** — add CI rule that flags lock-only deploys without `dependencies` label in PR
+
+The schema validator incident reverted in twelve minutes; follow-up added lockfile drift CI and a PR template checkbox: "I did not run npm install unless updating dependencies."
+
+## Team norms that stick
+
+- Dependency bumps are **their own PR** — never mixed with feature work
+- Local dev: `npm ci` after pulling main, not `npm install`
+- Pre-commit hook optional: reject staged lockfile if package.json unstaged
+- Document in CONTRIBUTING.md — agent runtime stability depends on it
+
+Lock integrity will not stop determined supply-chain attacks alone — combine with provenance attestation (Sigstore cosign for internal packages), least-privilege registry tokens, and regular audit. It **does** stop the boring, expensive accidents that dominate incident postmortems.
+
+## Monorepo lockfiles — one per workspace package
+
+Agent platforms often split `@yourco/agent-gateway`, `@yourco/tool-sdk`, and `@yourco/eval-runner` in a npm workspaces monorepo. Each workspace package with runtime dependencies needs its lock entry honored — root `npm ci` installs the unified tree. CI should verify:
+
+```bash
+npm ci --workspaces --include-workspace-root
+npm run test --workspaces
+```
+
+Avoid `nohoist` unless you understand duplicate singleton risks — two copies of `zod` in one Node process can fail schema checks in maddening ways. If you must hoist differently, document why in the package README.
+
+## SBOM export from locked graphs
+
+Regulated customers increasingly ask for Software Bill of Materials on agent services. Generate SBOM from the **lockfile**, not live node_modules:
+
+```bash
+npm ci --omit=dev
+npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+```
+
+Attach `sbom.json` to release artifacts in CI. When lock integrity fails, SBOM drift alerts alongside test failures — same root cause, different stakeholder.
+
+## Overrides and resolutions — surgical pins
+
+When a transitive package has a critical bug, npm `overrides` pin without waiting for upstream:
+
+```json
+{
+  "overrides": {
+    "broken-pkg": "1.2.4"
+  }
+}
+```
+
+Commit override and lock together; expire overrides with ticket links — they mask debt. Review quarterly: can the override be removed after upstream fix?
+
+## Local developer ergonomics without breaking integrity
+
+`npm install some-new-pkg` is fine when **intentionally** adding dependencies — then commit both `package.json` and lock. For daily sync:
+
+```bash
+git pull --rebase
+npm ci
+```
+
+Document in onboarding. Optional Corepack pin for npm version itself so lock format stays consistent across laptops and CI (`"packageManager": "npm@10.8.2"` in root package.json).
+
+## Pairing lock integrity with container image tags
+
+Agent services deployed as immutable images should bake `package-lock.json` hash into build metadata:
+
+```dockerfile
+ARG LOCK_SHA
+LABEL org.opencontainers.image.source.lock_digest="${LOCK_SHA}"
+```
+
+Build pipeline computes `sha256sum package-lock.json` and passes it as build arg — runtime operators compare deployed image label against git tag lock hash to confirm what shipped matches what was reviewed. Mismatch means someone rebuilt from dirty workspace; block promote.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [npm ci documentation](https://docs.npmjs.com/cli/v10/commands/npm-ci)
+- [package-lock.json format (npm)](https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json)
+- [OWASP Nest — Dependency Chain Security](https://nest.owasp.org/csks/dependency-chain-security)
+- [OpenSSF Scorecard](https://github.com/ossf/scorecard)
+- [Renovate Bot Documentation](https://docs.renovatebot.com/)

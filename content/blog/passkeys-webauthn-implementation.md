@@ -3,7 +3,7 @@ title: "Implementing Passkeys and WebAuthn"
 slug: "passkeys-webauthn-implementation"
 description: "A hands-on guide to implementing passkeys with WebAuthn: registration and authentication flows, synced vs device-bound credentials, and safe fallbacks."
 datePublished: "2026-07-04"
-dateModified: "2026-07-04"
+dateModified: "2026-07-17"
 tags: ["Authentication", "WebAuthn", "Passkeys", "Security"]
 keywords: "passkeys, WebAuthn, passwordless, FIDO2, authentication, credential management, public key credential"
 faq:
@@ -128,6 +128,31 @@ On mobile, passkeys tie into platform credential managers directly, and it fits 
 ## Worth doing
 
 Passkeys are the rare security upgrade that also improves UX — users tap a fingerprint instead of remembering a password, and you delete an entire class of attacks from your threat model. Build on WebAuthn with a solid library, default to synced passkeys for consumers, let users register multiple credentials, keep a phishing-resistant recovery path, and roll out alongside passwords before you retire them. The API looks intimidating for about a day; the two-ceremony model is the whole thing.
+
+## attestation and enterprise policy
+
+`attestation` conveys authenticator model — enterprises use it to allow only certain security keys. Consumer apps often set `attestation: 'none'` to reduce fingerprinting and simplify registration. Document choice in security FAQ.
+
+## Cross-device authentication (hybrid)
+
+`transport: 'hybrid'` enables phone-as-authenticator for desktop login via QR + Bluetooth. Test on Windows Hello + iPhone combos — UX breaks when Bluetooth permissions denied. Offer USB key path in same UI.
+
+## WebAuthn server challenge storage
+
+Store challenges server-side with 5-minute TTL, single-use consumption on verify. Redis pattern:
+
+```python
+def store_challenge(user_id, challenge):
+    redis.setex(f"webauthn:challenge:{user_id}", 300, challenge)
+
+def consume_challenge(user_id, expected):
+    key = f"webauthn:challenge:{user_id}"
+    val = redis.getdel(key)
+    if val != expected:
+        raise VerificationError("challenge mismatch")
+```
+
+Never embed challenge only in client session without server binding — session fixation risk.
 
 ## Resources
 

@@ -1,111 +1,197 @@
 ---
 title: "AI Agents: Multi Cluster Federation"
 slug: "agent-multi-cluster-federation"
-description: "Multi Cluster Federation: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "How to federate agent runtimes across Kubernetes clusters without turning DNS, identity, and placement into a weekly incident."
 datePublished: "2026-03-02"
 dateModified: "2026-03-02"
 tags: ["AI", "Agent", "Multi"]
-keywords: "agent, multi, cluster, federation, ai, production, engineering, architecture"
+keywords: "kubernetes federation, multi-cluster agents, kubefed, placement policy, cross-cluster service discovery, agent orchestration"
 faq:
-  - q: "What is Multi Cluster Federation?"
-    a: "Multi Cluster Federation covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Multi Cluster Federation?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Multi Cluster Federation?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Multi Cluster Federation fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Multi Cluster Federation should be observable in production and safe to change in small diffs."
+  - q: "When does multi-cluster federation beat a single large cluster for agent workloads?"
+    a: "Federation pays off when you need regional latency isolation, blast-radius containment between tenants, or GPU capacity that no single cluster can hold. A single cluster with good node pools is simpler until you hit quota ceilings, compliance boundaries that require data residency, or an outage that takes down every agent at once."
+  - q: "Should agent pods be replicated identically in every member cluster?"
+    a: "No. Placement should follow demand and data locality. Inference replicas belong near users; batch embedding jobs can sit in cheaper regions; control-plane components that coordinate tool calls need quorum but not full duplication. Treat each cluster as a capacity pool with explicit placement rules rather than mirroring everything everywhere."
+  - q: "What breaks first when teams adopt federation without planning?"
+    a: "Cross-cluster DNS and identity. Agents resolve tool endpoints by hostname; if federated services expose inconsistent names or certificates, tool calls fail intermittently. The second failure mode is split-brain scheduling—two clusters both think they own the same tenant shard and duplicate side effects."
+  - q: "How do you test federation before production traffic?"
+    a: "Run a shadow tenant whose tool calls are routed through federated DNS but whose writes land in an isolated database. Inject cluster failure by cordoning a member cluster during business hours in staging. Verify that placement policies reschedule work and that no agent session loses idempotency keys mid-flight."
 ---
-Multi Cluster Federation sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The pager went off at 2:14 a.m. because the `us-east` cluster lost its API server etcd quorum, and every agent session pinned to that region started timing out on tool calls. What saved the night was not a bigger cluster—it was federation: workloads re-homed to `eu-west` within four minutes because placement policies, service exports, and identity trust had been wired months earlier. Multi-cluster federation for agent platforms is less about Kubernetes trivia and more about deciding which failures your users never see.
 
-When multi cluster federation is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Why one cluster stops being enough
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Agent platforms differ from stateless APIs in three ways that push you toward multiple clusters.
 
-Solid AI engineering turns multi cluster federation from a recurring argument into a documented pattern with tests and an owner.
+First, **latency follows the model**. An agent that calls a CRM, a vector store, and a payment API on every turn cannot sit halfway across an ocean from two of those dependencies without blowing p95 budgets. Regional clusters let you colocate inference with data residency requirements.
 
-## Design principles that survive production
+Second, **blast radius is nonlinear**. A runaway tool loop or a poisoned embedding batch can saturate GPU nodes and starve unrelated tenants. Federation lets you cordon a region without draining the entire fleet.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent multi cluster federation bugs hide.
+Third, **capacity is lumpy**. Cloud providers sell GPU in blocks; your largest customer may need an entire node pool for a week during quarter-end automation. Federating placement across clusters turns capacity into a fungible pool instead of a single choke point.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for multi cluster federation, you do not yet understand the behavior you shipped.
+The mistake is treating federation as "many clusters, same yaml." Without explicit contracts for naming, identity, and scheduling, you inherit N copies of every operational sharp edge.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## A reference topology
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent multi cluster federation flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for multi cluster federation in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent multi cluster federation changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Multi Cluster Federation: typed boundary + structured errors
-export async function handleMultiClusterFederation(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-multi-cluster-federation");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Picture three member clusters—`prod-use1`, `prod-euw1`, `prod-apse2`—fronted by a global control plane that holds tenant metadata, session state, and placement decisions. Agents run as Deployments in member clusters; the orchestrator decides *where* based on tenant region, GPU SKU, and maintenance windows.
 
 ```
+                    ┌─────────────────────┐
+                    │  Global control     │
+                    │  (tenant registry,  │
+                    │   session router)   │
+                    └──────────┬──────────┘
+           ┌───────────────────┼───────────────────┐
+           ▼                   ▼                   ▼
+    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+    │ prod-use1   │     │ prod-euw1   │     │ prod-apse2  │
+    │ agent-worker│     │ agent-worker│     │ agent-worker│
+    │ tool-proxy  │     │ tool-proxy  │     │ tool-proxy  │
+    └─────────────┘     └─────────────┘     └─────────────┘
+```
 
+Tool proxies terminate mTLS inside each region so outbound integrations never hairpin through a distant cluster. Session stickiness lives in the global layer; compute is fungible below it.
 
-## Operational concerns
+## Placement policies that actually get used
 
-Alert on user-visible symptoms for multi cluster federation — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Kubernetes Cluster API and projects like KubeFed (or managed fleet products) expose placement through policies. The useful ones for agents encode business rules, not generic anti-affinity.
 
-Production agent multi cluster federation work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```yaml
+apiVersion: policy.kubefed.io/v1alpha1
+kind: ReplicaSchedulingPreference
+metadata:
+  name: tenant-acme-agents
+  namespace: agents
+spec:
+  targetKind: FederatedDeployment
+  totalReplicas: 12
+  clusters:
+    prod-use1:
+      minReplicas: 4
+      maxReplicas: 8
+      weight: 2
+    prod-euw1:
+      minReplicas: 2
+      maxReplicas: 6
+      weight: 1
+    prod-apse2:
+      minReplicas: 0
+      maxReplicas: 4
+      weight: 1
+  rebalance: true
+```
 
-Rollouts for multi cluster federation benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Pair this with a **tenant label** on every namespaced object. Your orchestrator should refuse to schedule if `tenant_id` is missing—silent sharing of a default namespace is how cross-tenant leaks start.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+For GPU-heavy inference, add a **capacity-aware scheduler plugin** or use taints that only lift when `nvidia.com/gpu` free count exceeds a floor. Federation without capacity signal sends pods to clusters that accept the spec but never pull the image in time.
 
-## Security and compliance angles
+## Cross-cluster naming and service export
 
-Even when multi cluster federation is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Agents resolve tools by hostname. If `tools.internal` resolves differently per cluster, you get heisenbugs.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent multi cluster federation so security reviews do not rely on tribal knowledge.
+Standardize on **Multi-Cluster Services (MCS)** or an equivalent service export CRD:
 
-## Testing strategy
+```yaml
+apiVersion: networking.k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: tool-gateway
+  namespace: agents
+---
+apiVersion: networking.k8s.io/v1alpha1
+kind: ServiceImport
+metadata:
+  name: tool-gateway
+  namespace: agents
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+  type: ClusterSetIP
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that multi cluster federation depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Clients in any member cluster dial `tool-gateway.agents.svc.clusterset.local`. DNS must be identical everywhere—verify with a CronJob that curls the clusterset name from each region and emits a metric when resolution fails.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+TLS certificates should be issued for the clusterset hostname, not per-cluster variants. cert-manager with a shared ACME DNS-01 solver across zones is the usual pattern.
 
-## Migration and evolution
+## Identity across cluster boundaries
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent multi cluster federation functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Workloads need to prove *which tenant* they act for when calling tools. SPIFFE/SPIRE or cloud workload identity federated through OIDC trust bundles is the durable approach.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where multi cluster federation spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Each member cluster runs a SPIRE server agent pair; agents receive SVIDs with selectors like `tenant:acme` and `region:eu-west`. Tool gateways validate JWT-SVID at the edge and map to OAuth client credentials stored in the tenant's region.
 
-## Related concepts
+Rotate trust bundles on a schedule and **version them**. During rotation, accept both bundle N and N+1 for a overlap window equal to your longest agent session TTL.
 
-Multi Cluster Federation intersects with broader ai topics — see companion notes on [agent-multi patterns](https://blog.michaelsam94.com/agent-multi/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Session routing without sticky disasters
 
-## The takeaway
+When a user reconnects, the global router must find an existing session or assign a home cluster. Store session metadata in a globally replicated store (CockroachDB, DynamoDB Global Tables, or Redis with active-active conflict rules).
 
-Multi Cluster Federation rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent multi cluster federation becomes a maintainable asset instead of incident fuel.
+```typescript
+interface AgentSession {
+  sessionId: string;
+  tenantId: string;
+  homeCluster: string;
+  lastSeenAt: Date;
+  idempotencyKey: string;
+}
+
+async function routeSession(sessionId: string): Promise<string> {
+  const session = await sessionStore.get(sessionId);
+  if (session && clusterHealth.isReady(session.homeCluster)) {
+    return session.homeCluster;
+  }
+  const candidate = await placement.pickCluster({
+    tenantId: session?.tenantId,
+    preferRegions: geoHintFromRequest(),
+  });
+  await sessionStore.upsert({ ...session, homeCluster: candidate });
+  return candidate;
+}
+```
+
+Never migrate a session mid-tool-call without checkpointing partial results. Either wait for idle or serialize tool state to object storage before re-homing.
+
+## Failure modes worth rehearsing
+
+| Scenario | Symptom | Mitigation |
+|----------|---------|------------|
+| Member API server down | New pods stuck Pending | Pre-declare overflow replicas in sibling clusters |
+| Split placement | Duplicate side effects | Leader election on tenant shard + idempotency keys |
+| Stale DNS cache | 503 on tool-gateway | Lower TTL on clusterset records; alert on NXDOMAIN spikes |
+| Image pull storm | GPU nodes idle while queue grows | Harbor/ECR pull-through cache per region |
+| etcd restore | Old placement state | Version placement generation; reject schedules from stale gen |
+
+Run game days that cordon one cluster during peak staging traffic. Measure time-to-recover and document which runbook steps were missing.
+
+## Observability that spans clusters
+
+Unified labels beat unified clusters. Every metric and log line should carry `cluster`, `tenant_id`, `agent_version`, and `session_id` (hashed if PII-sensitive). Dashboards grouped by cluster reveal skew; dashboards grouped by tenant reveal noisy neighbors.
+
+Trace context must propagate across the global router into member clusters. If your tracing backend charges per span, sample aggressively on health checks but never sample tool-call failures.
+
+Alert on **federation control plane lag**—the time between a placement change and all member clusters acknowledging it. Lag above two reconciliation intervals means you are flying blind during failover.
+
+## Rollout sequence that avoids Friday surprises
+
+Week 1: Stand up two member clusters with identical baseline addons (CNI, CSI, ingress, metrics). No agent workloads yet.
+
+Week 2: Export a hello-world service via MCS; verify DNS and TLS from both clusters.
+
+Week 3: Migrate one internal tenant with feature flag `federation_enabled`. Compare error rates to the single-cluster baseline.
+
+Week 4: Enable placement policies for new tenants only; grandfather existing ones until confidence is high.
+
+Week 5+: Automate cluster join with Terraform modules that pin addon versions. Manual join steps do not scale past three clusters.
+
+## What good looks like six months in
+
+On-call engineers can drain a cluster in under ten minutes without customer-visible errors. Tenant onboarding picks a region and gets capacity without a ticket to platform. GPU utilization graphs look like a single pool even though etcd never shared a byte between regions.
+
+Federation is operational glue. The clusters are interchangeable; the contracts—placement, naming, identity, session routing—are the product.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Kubernetes Multi-Cluster Services API](https://multicluster.sigs.k8s.io/concepts/multicluster-services-api/)
+- [KubeFed documentation](https://github.com/kubernetes-sigs/kubefed)
+- [Cluster API — cluster lifecycle](https://cluster-api.sigs.k8s.io/)
+- [SPIFFE — workload identity standard](https://spiffe.io/docs/latest/spiffe-about/overview/)
+- [Google Anthos multi-cluster architecture](https://cloud.google.com/anthos/clusters/docs/multi-cluster-gke)

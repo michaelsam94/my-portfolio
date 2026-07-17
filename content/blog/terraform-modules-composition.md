@@ -3,8 +3,8 @@ title: "Composable Terraform Modules"
 slug: "terraform-modules-composition"
 description: "Build reusable Terraform modules with clear interfaces, composition patterns, and versioning so infrastructure code scales across teams without copy-paste."
 datePublished: "2025-12-10"
-dateModified: "2025-12-10"
-tags: ["Terraform", "Infrastructure", "DevOps", "Modules"]
+dateModified: "2026-07-17"
+tags: ['Terraform', 'Infrastructure', 'DevOps', 'Modules']
 keywords: "Terraform modules, composable infrastructure, module composition patterns, Terraform module versioning, reusable IaC, Terraform registry"
 faq:
   - q: "When should I create a Terraform module vs inline resources?"
@@ -13,185 +13,254 @@ faq:
     a: "Tag module repositories with semantic versions (v1.2.0). Consumers pin to a version: source = 'git::https://github.com/org/terraform-modules/vpc?ref=v1.2.0'. Never point production at main/master — a breaking change in the module repo shouldn't break production on the next plan. Use the Terraform Registry for public modules; private registries (Terraform Cloud, Artifactory) for internal modules."
   - q: "What belongs in a module's interface?"
     a: "Inputs: the minimum variables needed to customize behavior (name, environment, CIDR range, instance type). Outputs: everything downstream modules or root modules need (VPC ID, subnet IDs, security group IDs). Hide internal implementation details — consumers shouldn't need to know how many subnets the VPC module creates, just the subnet IDs they can pass to an EC2 module."
+faqAnswers:
+  - question: "When is terraform modules composition the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for terraform modules composition?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back terraform modules composition safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
+Four teams copied the same 200-line VPC configuration into their repos. Within six months they diverged: Team A added VPC flow logs; Team B used wrong CIDR sizing; Team C shipped a security group bug the others avoided; Team D never upgraded provider constraints. Module extraction took one week; alignment took one `terraform plan` cycle. One `module "vpc"` call replaced four forks of truth.
 
-We had four teams copying the same 200-line VPC configuration into their Terraform repos, diverging within months. Team A added flow logs; team B didn't. Team C used different CIDR sizing. Team D's version had a security group bug that the others avoided. Module extraction took a week; alignment took a day. One `module "vpc"` call replaced four divergent copies.
+Terraform modules are reusable infrastructure packages. Good modules have tight interfaces, tested defaults, semantic versioning, and compose cleanly. Bad modules are 400-line copy-paste blocks with forty undocumented variables and a README that says "see main.tf."
 
-Terraform modules are reusable packages of infrastructure code. Good modules have clear interfaces, sensible defaults, and compose with other modules. Bad modules are copy-pasted resource blocks with 40 undocumented variables.
-
-## Module structure
+## Module anatomy and repository layout
 
 ```
-modules/
-  vpc/
-    main.tf        # Resource definitions
-    variables.tf   # Input variables with descriptions and defaults
-    outputs.tf     # Output values for downstream consumers
-    versions.tf    # Provider version constraints
-    README.md      # Usage examples and input/output documentation
+modules/vpc/
+  main.tf        # Resources
+  variables.tf   # Inputs with descriptions, types, validation
+  outputs.tf     # Contract surface for consumers
+  versions.tf    # terraform and provider version constraints
+  README.md      # Examples, input/output tables (terraform-docs)
+  examples/complete/
+  tests/vpc.tftest.hcl
 ```
 
-Keep modules focused. A VPC module creates VPCs, subnets, route tables, and NAT gateways. It doesn't also create ECS clusters — that's a separate module that consumes VPC outputs.
+**Single responsibility:** a VPC module creates VPC, subnets, route tables, NAT, flow logs. It does not also deploy ECS clusters. An `ecs-service` module **consumes** VPC outputs.
 
-## Defining a clean interface
+## Interface design: minimum viable surface
+
+Expose only what callers must customize:
 
 ```hcl
 variable "name" {
-  description = "Name prefix for all VPC resources"
+  description = "Prefix for resource names"
   type        = string
 }
 
 variable "cidr_block" {
-  description = "CIDR block for the VPC"
+  description = "VPC CIDR"
   type        = string
   default     = "10.0.0.0/16"
 }
 
 variable "az_count" {
-  description = "Number of availability zones (determines subnet count)"
+  description = "Number of AZs (2-4)"
   type        = number
   default     = 2
   validation {
     condition     = var.az_count >= 2 && var.az_count <= 4
-    error_message = "AZ count must be between 2 and 4."
+    error_message = "Use 2-4 AZs for HA; standard prod uses 3."
   }
 }
 ```
 
-Every variable has a description, a type, and a default where sensible. Validation blocks catch errors at plan time, not apply time.
+Every variable gets `description`, `type`, sensible `default`, and `validation` where constraints exist. Catch misconfig at plan time, not when NAT gateway billing surprises finance.
 
-## Composition patterns
+Outputs export what downstream modules need — nothing more:
 
-Modules compose by passing outputs to inputs:
+```hcl
+output "vpc_id" { value = aws_vpc.this.id }
+output "private_subnet_ids" { value = aws_subnet.private[*].id }
+output "public_subnet_ids" { value = aws_subnet.public[*].id }
+```
+
+Internal resources stay private. Removing an output is a breaking change requiring major version bump.
+
+## Composition at the root module
+
+Root modules wire environment-specific values and orchestrate child modules:
 
 ```hcl
 module "vpc" {
-  source     = "../../modules/vpc"
+  source     = "git::https://github.com/org/terraform-modules.git//vpc?ref=v2.1.0"
   name       = "production"
   cidr_block = "10.1.0.0/16"
   az_count   = 3
 }
 
-module "app" {
-  source     = "../../modules/ecs-service"
-  name       = "api"
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnet_ids
+module "api_service" {
+  source      = "git::https://github.com/org/terraform-modules.git//ecs-service?ref=v1.4.0"
+  name        = "api"
+  vpc_id      = module.vpc.vpc_id
+  subnet_ids  = module.vpc.private_subnet_ids
+  cluster_arn = module.ecs_cluster.arn
 }
 ```
 
-Each module is independent. The root module wires them together. Adding a cache layer means adding a module block — no changes to VPC or app modules.
+Data flows through outputs → inputs. No remote state reads between sibling modules in the same root — keeps plans atomic and dependency graph explicit in one `terraform graph`.
 
-## Root module vs child module responsibilities
+## Versioning, pinning, and upgrade cadence
 
-**Root module (environment):** Instantiates child modules, wires outputs to inputs, defines backend configuration, sets environment-specific values.
-
-**Child module (reusable):** Creates resources for one concern, accepts variables, exposes outputs, contains no backend or provider configuration.
+Tag modules with semver. Consumers **pin**:
 
 ```hcl
-# Good — caller decides instance type
-variable "instance_type" { type = string }
-resource "aws_instance" "app" {
-  instance_type = var.instance_type
-}
+source = "git::https://github.com/org/terraform-modules.git//vpc?ref=v2.1.0"
 ```
 
-## Versioning and consumption
+Never `ref=main` in production. Breaking changes bump major version; document in CHANGELOG.md with migration steps.
 
-Pin module versions in production:
+| Version bump | When | Example |
+| --- | --- | --- |
+| Major | Removed/changed output | `private_subnet_ids` split into two outputs |
+| Minor | New optional variable | `enable_ipv6 = false` default |
+| Patch | Bug fix | Fix NAT route association |
+
+Establish Renovate/Dependabot for module version bumps in consumer repos. Weekly PR with plan diff attached. Major version bumps require platform team office hours.
+
+## Wrapping upstream modules
+
+The public Terraform AWS VPC module is excellent — wrap it to enforce org defaults:
 
 ```hcl
-module "vpc" {
+module "upstream_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.8.1"
-  name    = "production"
-  cidr    = "10.1.0.0/16"
+  version = "5.1.1"
+  enable_flow_log    = true  # org-mandated
+  enable_nat_gateway = true
 }
 ```
 
-Release internal modules with changelogs. Breaking changes require a major version bump.
+Your wrapper adds tagging standards, naming conventions, and policy-compliant defaults without forking upstream. Upgrade upstream minor versions in wrapper; consumers pin wrapper version.
 
-## Testing modules
+## for_each vs count: stable resource addressing
 
-```bash
-terraform fmt -check -recursive modules/
-terraform validate
-tflint --module
-checkov -d modules/vpc/
-```
-
-Include an `examples/` directory with working configurations that serve as both documentation and test fixtures. Use `terraform test` (native since 1.6) or Terratest for integration validation.
-
-## Publishing internal modules
-
-Treat module repos like libraries: semver tags, changelog, deprecation notices. Consumers pin versions; maintainers support N-1 major. Run example root modules in `examples/` directory as living documentation — CI applies and destroys them weekly to prove modules still compose. Broken examples are the first signal interface drift broke consumers.
-
-## Composition over inheritance in module design
-
-Prefer small modules composed at the root over mega-modules with boolean flags. A `database` module plus `monitoring` module beats `database_with_optional_monitoring = true`. Callers see explicit dependencies in plan output. When modules grow flags, split them — the combinatorial test matrix explodes otherwise.
-
-## Module testing in CI pipelines
-
-Run `terraform validate` and `tflint` on every PR touching modules. For published modules, tag releases only after integration tests pass in a sandbox account. Document breaking changes in CHANGELOG with migration snippets — consumers upgrading across major versions should find copy-paste steps, not archaeology in git history.
-
-## Variable and output contracts
-
-Module interfaces are APIs — document every variable:
+`count` shifts indices when list order changes — destroys wrong resources:
 
 ```hcl
-variable "vpc_cidr" {
-  description = "CIDR block for VPC. Must not overlap with peered VPCs."
-  type        = string
-  validation {
-    condition     = can(cidrhost(var.vpc_cidr, 0))
-    error_message = "Must be valid IPv4 CIDR."
+resource "aws_subnet" "private" {
+  for_each = { for s in var.subnets : s.name => s }
+  cidr_block = each.value.cidr
+}
+```
+
+Document in module README — consumers learn after painful RDS recreation if you do not warn explicitly.
+
+## Provider alias patterns for multi-region
+
+Multi-region modules pass provider aliases explicitly:
+
+```hcl
+module "replica_bucket" {
+  source = "./s3-replica"
+  providers = { aws.replica = aws.west }
+}
+```
+
+Module README lists required provider configurations — implicit defaults cause cryptic plan errors in consumer roots.
+
+## Testing modules before release
+
+Terraform 1.6+ native tests in `tests/*.tftest.hcl`:
+
+```hcl
+run "subnet_count_matches_az" {
+  command = plan
+  variables { name = "test", az_count = 3 }
+  assert {
+    condition     = length(aws_subnet.private) == 3
+    error_message = "Expected one private subnet per AZ"
   }
 }
 ```
 
-Outputs should expose only what consumers need — leaking internal resource IDs encourages tight coupling. Use `sensitive = true` on outputs containing secrets.
+Run `terraform test` in module repo CI before tagging release. `examples/complete/` runs `terraform init -backend=false`, `validate`, and `test` on every PR.
 
-## State management across modules
+## Terragrunt for DRY environment config
 
-Root module owns state; child modules inherit:
+Terragrunt wraps Terraform for DRY backend config and provider generation:
 
 ```hcl
-# root/main.tf
-module "network" { source = "./modules/network" }
-module "eks" {
-  source     = "./modules/eks"
-  vpc_id     = module.network.vpc_id
-  subnet_ids = module.network.private_subnet_ids
-  depends_on = [module.network]
+terraform {
+  source = "git::...//vpc?ref=v2.1.0"
+}
+inputs = {
+  name       = "staging"
+  cidr_block = "10.2.0.0/16"
 }
 ```
 
-Explicit `depends_on` when module outputs aren't referenced directly but ordering matters (IAM before EKS). `-target` applies are escape hatches, not deployment strategy — document why if used.
+Parent `terragrunt.hcl` generates `backend.hcl` and `provider.tf` — environments differ only in inputs.
 
-## Anti-patterns in module composition
+## Anti-patterns that rot module libraries
 
-- **Monolithic root module** — 2000-line main.tf with no modules; untestable
-- **Circular module dependencies** — module A needs output from B needs output from A
-- **Unpinned module sources** — `source = "git::..."` without ref tag
-- **Copy-paste modules** — fork instead of parameterizing; drift guaranteed
+| Anti-pattern | Why it hurts | Fix |
+| --- | --- | --- |
+| Kitchen-sink module | VPC + RDS + ECS in one module | Split by domain |
+| Leaky `map(any)` passthrough | Consumers bypass defaults | Explicit variables |
+| Hidden IAM role names | Collisions across environments | Prefix with `var.name` |
+| Unpinned providers in module | Consumer resolution breaks | Pin in `versions.tf` |
 
-Pair with [Terraform drift detection](https://blog.michaelsam94.com/terraform-drift-detection/) when composed modules drift from declared state.
+## terraform-docs and README discipline
 
-## Common production mistakes
+`terraform-docs` generates input/output tables from variable blocks — README stays synchronized with code. Module PRs without updated `examples/complete` diff rejected in CODEOWNERS review — documentation drift is the leading cause of module misconfiguration.
 
-Teams get modules composition wrong in predictable ways:
+## Governance: CODEOWNERS and RFC for breaking changes
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Platform team owns `modules/vpc/CODEOWNERS`. Major version requires RFC: migration guide, `terraform state mv` commands, deprecation window. Release candidate tags tested against three consumer roots before GA. Private Terraform Registry resolves modules faster than `git::` clone every CI plan.
 
-Terraform patterns for modules composition rot when emergency console edits never get codified, `ignore_changes` blocks multiply without documentation, and drift detection runs monthly instead of daily on production workspaces.
+## When NOT to module
+
+- One-off migration resources
+- Single security group rule unique to one app
+- Prototypes exploring provider behavior
+
+The test: **will another team instantiate this exact pattern twice?** If no, inline until pattern stabilizes.
+
+## Synthesis
+
+Module when pattern repeats; minimal validated interface; semver pin; compose via outputs; test before tag; wrap upstream for org defaults. Modules are **APIs for infrastructure** — design them with the same rigor as public library contracts.
+
+## Module composition patterns in practice
+
+Three composition patterns cover most org layouts:
+
+| Pattern | Structure | Best for |
+| --- | --- | --- |
+| Layered stack | network → data → compute → app | Platform team owns lower layers |
+| Service module | One module per deployable service | Product teams own full stack slice |
+| Wrapper + upstream | Thin org wrapper around registry module | Enforcing defaults without fork |
+
+Layered stacks apply in dependency order — network state must apply before compute state reads subnet IDs.
+
+## Consumer contract tests
+
+Downstream roots snapshot expected `module.vpc` outputs in `tests/fixtures/expected_outputs.json` — CI fails when module minor version removes output field platform apps depend on.
+
+## Changelog and semver contract
+
+Every module tag requires CHANGELOG.md entry. Consumers subscribe to GitHub Releases RSS. Deprecation window: six months README banner before removing module input.
+
+## Examples directory enforced in CI
+
+`examples/complete/` runs `terraform init -backend=false`, `validate`, and `test` on every PR. Broken examples block merge before consumers copy broken patterns.
+
+## Private registry over git sources
+
+Terraform Cloud private registry resolves modules faster than `git::` clone every CI plan. Publish on tag push; consumers pin `version = "2.1.0"` not floating git ref. Release notes changelog is contract.
+
+## Variable validation UX
+
+Validation `error_message` must say how to fix: "az_count must be 2-4 for HA; use 3 for standard prod" not "Invalid value." Plan-time errors are UX for other teams consuming your module.
+
+## Module upgrade communication
+
+Publish migration notes in platform newsletter when releasing major module versions — not only GitHub Releases.
 
 ## Resources
 
 - [Terraform module documentation](https://developer.hashicorp.com/terraform/language/modules)
-- [terraform-aws-modules (community reference)](https://github.com/terraform-aws-modules)
-- [Terratest for module integration testing](https://terratest.gruntwork.io/)
-- [Standard module structure — Terraform docs](https://developer.hashicorp.com/terraform/language/modules/develop/structure)
-- [Semantic versioning for Terraform modules](https://developer.hashicorp.com/terraform/language/modules/develop/composition)
+- [terraform-docs](https://terraform-docs.io/)
+- [Semantic Versioning](https://semver.org/)

@@ -1,111 +1,249 @@
 ---
-title: "AI Agents: View Transitions Spa Mp"
+title: "View Transitions in Agent SPAs and Multi-Page Apps"
 slug: "agent-view-transitions-spa-mp"
-description: "View Transitions Spa Mp: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2026-06-01"
-dateModified: "2026-06-01"
-tags: ["AI", "Agent", "View"]
-keywords: "agent, view, transitions, spa, mp, ai, production, engineering, architecture"
+description: "Use the View Transitions API for agent UI navigation: shared element transitions between chat and settings, MPA vs SPA tradeoffs, and fallbacks when streaming content updates mid-transition."
+datePublished: "2025-05-05"
+dateModified: "2026-07-17"
+tags: ["AI Agents", "Frontend", "CSS", "UX"]
+keywords: "view transitions API agent UI, SPA MPA agent portal, shared element transition chat, document startViewTransition"
 faq:
-  - q: "What is View Transitions Spa Mp?"
-    a: "View Transitions Spa Mp covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize View Transitions Spa Mp?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with View Transitions Spa Mp?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does View Transitions Spa Mp fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. View Transitions Spa Mp should be observable in production and safe to change in small diffs."
+  - q: "Should agent portals use View Transitions for every route change?"
+    a: "No — reserve for high-frequency navigations users perform repeatedly: chat ↔ history, chat ↔ agent settings, thread ↔ tool detail. One-off admin pages don't benefit; motion fatigue sets in. Keep transitions under 300ms."
+  - q: "Do View Transitions work with SSR and MPAs?"
+    a: "Cross-document view transitions (Chrome 126+) enable MPA transitions with `@view-transition` meta and matching `view-transition-name` on shared elements. SPAs use `document.startViewTransition()` in JS. Agent portals on Next.js can mix both."
+  - q: "What happens if agent tokens stream during an active transition?"
+    a: "DOM mutations mid-transition cause jank or aborted animations. Pause scroll-to-bottom on chat container until `transition.finished`, or exclude streaming message list from named transition elements. Prefer transitioning chrome (header, sidebar) not token stream."
+  - q: "Fallback for Safari and Firefox?"
+    a: "Feature detect `document.startViewTransition`; instant navigation without animation. Don't polyfill with heavy JS layout thrashing — degraded instant swap is fine. ~70% Chrome coverage is enough for enhancement, not dependency."
 ---
-Most teams encounter view transitions spa mp after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
 
-When view transitions spa mp is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent UIs jump between chat, run history, tool traces, and billing settings — hard cuts make the product feel like four different apps stitched in a hurry. The **View Transitions API** gives you shared-element morphs and cross-fade page swaps with browser-composited animations, not React state fighting CSS transitions. Agent-specific wrinkle: SSE token streams mutate the DOM while transitions expect stable snapshots.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## SPA vs MPA for agent portals
 
-Solid AI engineering turns view transitions spa mp from a recurring argument into a documented pattern with tests and an owner.
+| Pattern | Pros for agents | View Transition approach |
+|---------|-----------------|--------------------------|
+| SPA (Vite/React) | Instant thread switch, WS reuse | `startViewTransition()` + client router |
+| MPA (Next.js app router) | SEO for docs, simpler data boundaries | Cross-document + `@view-transition` |
+| Hybrid | Chat SPA in shell, settings MPA | Named elements on layout shell only |
 
-## Design principles that survive production
+Most production agent dashboards are SPA-heavy for chat; use MPA transitions only on marketing/docs boundaries.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent view transitions spa mp bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for view transitions spa mp, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent view transitions spa mp flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for view transitions spa mp in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent view transitions spa mp changes safer because business rules stay isolated from transport details.
+## Basic SPA transition wrapper
 
 ```typescript
-// View Transitions Spa Mp: typed boundary + structured errors
-export async function handleViewTransitionsSpaMp(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-view-transitions-spa-mp");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+function navigateWithTransition(
+  callback: () => void,
+  options?: { skipTransition?: boolean }
+) {
+  if (options?.skipTransition || !document.startViewTransition) {
+    callback();
+    return;
   }
+  document.startViewTransition(() => {
+    callback();
+  });
 }
 
+// React Router example
+function useTransitionNavigate() {
+  const navigate = useNavigate();
+  return (to: string) => {
+    navigateWithTransition(() => navigate(to));
+  };
+}
 ```
 
+CSS defaults cross-fade root snapshot old/new — customize:
 
-## Operational concerns
+```css
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 250ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
 
-Runbooks for view transitions spa mp should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+## Shared element: agent avatar sidebar → settings header
 
-Production agent view transitions spa mp work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Assign matching `view-transition-name`:
 
-Rollouts for view transitions spa mp benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```tsx
+// ChatSidebar.tsx
+<img
+  src={agent.avatarUrl}
+  alt=""
+  style={{ viewTransitionName: "agent-avatar" }}
+/>
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+// SettingsHeader.tsx — same name
+<img
+  src={agent.avatarUrl}
+  alt=""
+  style={{ viewTransitionName: "agent-avatar" }}
+/>
+```
 
-## Security and compliance angles
+Browser morphs position/size between routes automatically when names match.
 
-Even when view transitions spa mp is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Excluding streaming content
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent view transitions spa mp so security reviews do not rely on tribal knowledge.
+Chat message list grows every 50ms during generation — do **not** name-transition the list:
 
-## Testing strategy
+```tsx
+<div className="chat-chrome" style={{ viewTransitionName: "chat-shell" }}>
+  <AgentHeader agent={agent} style={{ viewTransitionName: "agent-header" }} />
+  <MessageList
+    messages={messages}
+    /* no viewTransitionName — live region */
+    aria-live="polite"
+  />
+</div>
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that view transitions spa mp depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Gate auto-scroll during transition:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```typescript
+const transitionNavigate = useTransitionNavigate();
 
-## Migration and evolution
+useEffect(() => {
+  if (document.startViewTransition) {
+    const vt = (document as any).activeViewTransition;
+    if (vt) {
+      vt.finished.then(() => scrollToBottom());
+      return;
+    }
+  }
+  scrollToBottom();
+}, [messages]);
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent view transitions spa mp functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Cross-document MPA transitions
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where view transitions spa mp spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Enable on both pages:
 
-## Related concepts
+```html
+<!-- layout.html -->
+<meta name="view-transition" content="same-origin" />
+```
 
-View Transitions Spa Mp intersects with broader ai topics — see companion notes on [agent-view patterns](https://blog.michaelsam94.com/agent-view/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```css
+/* shared-styles.css */
+.agent-sidebar-logo {
+  view-transition-name: agent-logo;
+}
+```
 
-## The takeaway
+Same-origin requirement: chat.example.com → settings.example.com needs same site; subdomains require consistent policy.
 
-View Transitions Spa Mp rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent view transitions spa mp becomes a maintainable asset instead of incident fuel.
+Next.js App Router — opt in per layout:
+
+```tsx
+export default function AgentLayout({ children }) {
+  return (
+    <>
+      <meta name="view-transition" content="same-origin" />
+      <aside className="agent-sidebar-logo">...</aside>
+      {children}
+    </>
+  );
+}
+```
+
+## Transition vs agent state persistence
+
+SPA transitions don't unmount WebSocket/SSE if layout route persists — good. Full page MPA transitions tear down streams — reconnect on `pageshow`:
+
+```typescript
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) reconnectAgentStream(sessionId);
+});
+```
+
+Persist `sessionId` in `sessionStorage` for bfcache restore.
+
+## Accessibility
+
+- Respect `prefers-reduced-motion`:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+```
+
+- Focus management: move focus to `h1` on new route after `transition.finished`.
+- Don't rely on motion alone for state change — announce route change to screen readers.
+
+## Performance notes
+
+View transitions capture DOM snapshots — expensive on huge DOMs. Agent chat with 10k messages: virtualize list **before** enabling transitions, or transition only layout chrome.
+
+DevTools → Rendering → "Show view transition snapshots" for debugging stuck transitions.
+
+## Testing
+
+```typescript
+test("navigates chat to settings with transition", async ({ page }) => {
+  await page.goto("/chat/agent-1");
+  await page.click('[data-testid="settings-link"]');
+  await expect(page).toHaveURL("/settings/agent-1");
+  await expect(page.locator("h1")).toContainText("Agent Settings");
+});
+```
+
+Visual regression on transition mid-frame is flaky — assert final state, optional Percy on `transition.finished` hook in test harness.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [MDN — View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)
+- [Chrome Developers — Cross-document view transitions](https://developer.chrome.com/docs/web-platform/view-transitions/cross-document)
+- [web.dev — Smooth transitions with the View Transitions API](https://web.dev/articles/view-transitions)
+- [React Router — future.v7_startTransition integration patterns](https://reactrouter.com/)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+

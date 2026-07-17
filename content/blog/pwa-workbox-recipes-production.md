@@ -3,23 +3,23 @@ title: "Workbox Recipes for Production PWAs"
 slug: "pwa-workbox-recipes-production"
 description: "Workbox strategies and recipes — generateSW vs injectManifest, runtime caching rules, and debugging."
 datePublished: "2026-12-14"
-dateModified: "2026-12-14"
+dateModified: "2026-07-17"
 tags: ["PWA", "Workbox", "Service Worker"]
 keywords: "Workbox production PWA, Workbox recipes, service worker Workbox"
 faq:
-  - q: "What is Workbox Recipes for Production PWAs?"
-    a: "Workbox Recipes for Production PWAs is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Workbox Recipes for Production PWAs?"
-    a: "Adopt Workbox Recipes for Production PWAs when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Workbox Recipes for Production PWAs?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "What are Workbox recipes?"
+    a: "Pre-built routing patterns like pageCache and imageCache that apply common caching strategies without boilerplate."
+  - q: "Should recipes be used without customization?"
+    a: "Recipes are starting points. Version cache names per deploy and exclude auth routes from pageCache defaults."
+  - q: "How does offlineFallback recipe work?"
+    a: "It serves a precached offline.html when navigation requests fail network and cache miss."
 ---
 
 The gap between reading about workbox recipes for production pwas and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
 
-## Architecture and boundaries
+## Recipes vs custom strategies
 
 Before changing implementation details, draw the boundary diagram. Workbox Recipes for Production PWAs touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
 
@@ -38,7 +38,7 @@ Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
 
 Document which metrics you expect to move. If workbox recipes for production pwas is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
+## Workbox generateSW in CI
 
 Start with the smallest change that proves the approach. For workbox recipes for production pwas, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
 
@@ -65,7 +65,7 @@ Validate in staging with production-like data volumes. Empty caches and syntheti
 
 For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
 
-## Accessibility requirements
+## Precaching fonts and a11y CSS
 
 Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
 
@@ -77,7 +77,7 @@ Performance optimizations that break keyboard navigation or screen reader announ
 
 Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Navigating opaque responses safely
 
 Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
 
@@ -103,31 +103,33 @@ Layer tests to match risk:
 
 Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
 
-## Common production mistakes
 
-Teams get workbox recipes for production pwas wrong in predictable ways:
+## Recipe override for authenticated routes
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+Exclude `/account/*` from `pageCache()` — recipe defaults catch SPA navigations broadly. Custom `matchCallback` negates auth paths before applying network-first.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Precache size gate in CI
 
-## Debugging and triage workflow
+Fail build if `self.__WB_MANIFEST` total bytes exceed budget — recipes pull fonts and images aggressively. Split optional assets to runtime caching instead of precache when size creeps up release over release.
 
-When workbox recipes for production pwas misbehaves in production, work top-down:
+## workbox-window in app shell
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+Use `workbox-window` Workbox class for update UX — listens waiting SW, shows toast. Recipes alone in SW file do not connect to UI layer without client-side listener wiring.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## CDN and SW cache interaction
+
+HTML served from CDN may bypass SW on first visit — ensure SW registers on first load and subsequent navigations hit SW. Test with WebPageTest multi-run to verify cache hierarchy.
+
+## Production rollout notes
+
+Upgrade Workbox major versions in isolated branch — recipe API changes break SW silently until users report stale app. Run canary deploy to internal dogfood tenant before customer production SW update.
+## Source map and SW
+
+Ensure production source maps not precached — accidentally including `.map` files bloats precache and may expose source structure. Audit globPatterns exclude maps and test fixtures.
+
+## Closing operational guidance
+
+Pin Workbox version in lockfile — CDN import of latest workbox-sw.js in production is anti-pattern; reproducible SW builds require pinned deps. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

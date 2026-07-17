@@ -3,7 +3,7 @@ title: "Indexing and Querying JSONB"
 slug: "postgres-jsonb-indexing-queries"
 description: "Query and index JSONB in PostgreSQL efficiently: operators, GIN indexes, jsonpath, expression indexes, and schema design for semi-structured data."
 datePublished: "2026-03-19"
-dateModified: "2026-03-19"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "JSON"]
 keywords: "PostgreSQL JSONB indexing, jsonb_path_ops GIN, JSONB query operators, jsonpath Postgres, JSONB performance"
 faq:
@@ -157,29 +157,62 @@ SELECT * FROM documents WHERE data @> '{"status": "active"}';
 
 `jsonb_path_ops` smaller index than default jsonb_ops — use when queries are containment-only.
 
-## Common production mistakes
 
-Teams get jsonb indexing queries wrong in predictable ways:
+## GIN default vs jsonb_path_ops
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Default GIN supports containment and key existence. jsonb_path_ops smaller index, faster containment, loses key-existence operators. Choose path_ops when queries always containment on full path.
 
-Postgres work on jsonb indexing queries causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Expression index on nested key
 
-## Debugging and triage workflow
+Hot path filters data status — index data->>'status' B-tree often beats full document GIN when single key high cardinality.
 
-When jsonb indexing queries misbehaves in production, work top-down instead of guessing:
+## jsonb aggregation pitfalls
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+jsonb_agg in subquery without LIMIT explodes memory — same as row explosion in JOIN. Prefer lateral join with jsonb_build_object.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## TOAST and wide jsonb
+
+Large jsonb offloaded TOAST — updates to one key rewrite whole TOAST chunk. Normalize frequently updated fields to columns.
+
+## @> containment operator patterns
+
+Query `data @> '{"status":"active"}'::jsonb` uses GIN efficiently. Negation `@>` with NOT requires careful planning — often seq scan. Prefer status as generated column with B-tree when filtering active/inactive on every request.
+
+## jsonb_set for partial updates
+
+Updating nested key rewrites whole jsonb row — TOAST churn on wide documents. Hot nested field → promote to column; jsonb_set for rare admin metadata only.
+
+## jsonb_path_ops operator class
+
+CREATE INDEX ON docs USING gin (data jsonb_path_ops) — supports @> containment only. Index size 30-40% smaller than default jsonb_ops in benchmarks on nested documents — choose when query patterns fixed.
+
+## Sequential keys inside jsonb
+
+Monotonic id inside jsonb array appends cause HOT update failure — wide jsonb row rewrite each append. Normalize array to child table when array grows unbounded (comment threads, audit log in jsonb anti-pattern).
+
+## jsonb_array_elements in WHERE
+
+Unnested array search without GIN on array path often seq scans — normalize to junction table when array membership queried routinely (tag lists, category ids). jsonb OK for admin-only rare queries, not product hot path.
+
+## Statistics on jsonb paths
+
+CREATE STATISTICS ON (data) FROM table for whole jsonb document — planner estimates containment selectivity better on correlated keys inside same document. ANALYZE after statistics creation; EXPLAIN rows estimate improves for @> queries on skewed jsonb payloads.
+
+## Closing notes
+
+Document jsonb schema version in column comment — application migrates keys over time; partial index on data->>'schema_version' = '2' keeps hot path fast while legacy rows age out.
+
+## Additional guidance
+
+Validate jsonb index usage in CI EXPLAIN test for top three jsonb filter queries — fails PR when plan switches to seq scan after statistics change. Keeps jsonb_path_ops index from being dropped accidentally when developer assumes GIN unused because local dataset too small to trigger index scan in dev environment testing.
+
+jsonb_strip_nulls on ingest reduces index size when optional keys omitted frequently — smaller GIN index fits memory, improves cache hit rate for containment queries on product catalog documents with sparse optional attribute keys varying by category vertical in same collection table.
+
+Promote frequently filtered jsonb keys to generated STORED columns when EXPLAIN shows repeated jsonb_path_ops index scan on same path.
+
+CI EXPLAIN test on three hottest jsonb queries catches planner regression when statistics drift after bulk import — fails PR before merge not after marketing launch.
+
+When jsonb document width exceeds eight kilobytes TOAST threshold, promote hot filter keys to typed columns — write amplification on partial key update rewrites entire TOAST chunk slowing checkout catalog updates during flash inventory sync jobs.
 
 ## Resources
 

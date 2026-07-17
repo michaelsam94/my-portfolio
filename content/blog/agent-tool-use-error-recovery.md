@@ -205,6 +205,30 @@ Teams get tool use error recovery wrong in predictable ways:
 
 Agent systems using tool use error recovery loop infinitely when tool errors are swallowed, subagent budgets have no hard cap, and human-in-the-loop gates are bypassed under latency pressure.
 
+## Classifying retryable tool failures
+
+HTTP 429 and 503 from tools deserve exponential backoff; 400 validation errors need model self-correction with schema hint, not blind retry. Wrap tool errors as structured `{code, retryable, hint}` so the LLM does not hallucinate success after stack trace leakage.
+
+## Circuit breakers per tool vendor
+
+One SaaS tool outage should not block all agent responses. Open circuit after five consecutive failures; surface degraded mode message to user. Half-open probe with single canary request before full restore.
+
+## Production validation for Tool Use Error Recovery Supplement 0
+
+Ship behind a flag when touching Tool Use Error Recovery Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Tool Use Error Recovery Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
+## Production validation for Tool Use Error Recovery Supplement 1
+
+Ship behind a flag when touching Tool Use Error Recovery Supplement 1; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Tool Use Error Recovery Supplement 1. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [OpenAI function calling error handling](https://platform.openai.com/docs/guides/function-calling)

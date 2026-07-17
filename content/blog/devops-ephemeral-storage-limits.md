@@ -3,128 +3,179 @@ title: "Ephemeral Storage Limits and Eviction"
 slug: "devops-ephemeral-storage-limits"
 description: "Set ephemeral-storage requests/limits and monitor emptyDir pressure."
 datePublished: "2026-03-22"
-dateModified: "2026-03-22"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Kubernetes"
   - "SRE"
 keywords: "ephemeral storage, eviction"
 faq:
-  - q: "What is Ephemeral Storage Limits and Eviction?"
-    a: "Ephemeral Storage Limits and Eviction covers operational practices for ephemeral-storage in production kubernetes environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Ephemeral Storage Limits and Eviction?"
-    a: "For workloads writing logs, caches, or temp files to emptyDir."
-  - q: "What mistakes break Ephemeral Storage Limits and Eviction?"
-    a: "Missing ephemeral limits on log or download workloads."
+  - q: "Why set ephemeral-storage limits?"
+    a: "Unbounded emptyDir or logs can fill node disk; kubelet evicts unrelated pods unpredictably."
+  - q: "requests vs limits for ephemeral-storage?"
+    a: "Both affect scheduling and eviction ordering—set both on log-heavy or download workloads."
+  - q: "What metrics signal disk pressure?"
+    a: "container_fs_usage_bytes from kubelet stats; alert before node-level eviction storms."
+  - q: "Do sidecars share ephemeral quota?"
+    a: "Yes—emptyDir shared between app and log shipper counts toward the same pod limit."
 ---
+A log-heavy pod filled node disk—kubelet evicted unrelated production pods on the same node.
 
-Log-heavy pod filled node disk; kubelet evicted unrelated production pods.
+## Limit both request and limit
 
-This post walks through **Ephemeral Storage Limits and Eviction** for platform and SRE teams shipping reliable infrastructure. Set ephemeral-storage requests/limits and monitor emptyDir pressure. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+ephemeral-storage on emptyDir download and log workloads—scheduling and eviction both matter.
 
-## Problem framing: Ephemeral Storage Limits and Eviction
+A production team running ephemeral storage limits discovered that limit both request and limit
+failures show up only when upstream dependencies shift traffic mix—staging load tests with uniform
+QPS missed the regression until Black Friday.
 
-Log-heavy pod filled node disk; kubelet evicted unrelated production pods.
+Runbook entry for limit both request and limit: confirm blast radius (single namespace vs fleet-
+wide), identify last config change, roll back via documented single step, then capture metrics
+screenshots for postmortem—not ad-hoc dashboard hunting.
 
+For ephemeral storage limits, instrument limit both request and limit with low-cardinality metrics
+tied to user-visible outcomes: error rate, tail latency, freshness, or cost per successful
+operation—avoid paging on vanity gauges that never correlated with past incidents.
 
-Platform teams treat **ephemeral-storage** as solved after the first successful deploy. Production disagrees: edge cases around ephemeral storage limits, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day scenario for limit both request and limit: inject partial outage in staging quarterly,
+verify on-call can execute rollback in under fifteen minutes using only the linked runbook, update
+runbook with what actually broke.
 
-## Design principles for ephemeral-storage
+Ownership for limit both request and limit belongs in the service catalog with named rotation, last
+drill date, and known sharp edges—new engineers should deploy a safe canary within one week using
+that doc alone.
 
-Explicit contracts beat tribal knowledge. Document who owns ephemeral-storage configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management for ephemeral storage limits: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in limit both
+request and limit configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for limit both request and limit,
+multiply by headroom factor one-point-five to two, compare against cloud quotas and license limits
+before launch week—not during the first outage.
 
-A common failure mode: Missing ephemeral limits on log or download workloads. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+## Eviction ordering
 
+Guaranteed QoS for tier-one pods; best-effort log scrapers evicted first under pressure.
 
-```yaml
-# devops-ephemeral-storage-limits
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ephemeral_storage_limits
-  labels:
-    app.kubernetes.io/part-of: devops-ephemeral-storage-limits
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ephemeral_storage_limits
-  template:
-    metadata:
-      labels:
-        app: ephemeral_storage_limits
-    spec:
-      containers:
-        - name: app
-          image: app:1.0.0
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-```
+A production team running ephemeral storage limits discovered that eviction ordering failures show
+up only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-## Implementation walkthrough
+Runbook entry for eviction ordering: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Start with the smallest production-safe slice of **Ephemeral Storage Limits and Eviction**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+For ephemeral storage limits, instrument eviction ordering with low-cardinality metrics tied to
+user-visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid
+paging on vanity gauges that never correlated with past incidents.
 
+Game day scenario for eviction ordering: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for ephemeral-storage.
+Ownership for eviction ordering belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
 
-## Operational concerns in production
+Change management for ephemeral storage limits: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in eviction
+ordering configs that authors no longer notice.
 
-Day-two operations for kubernetes work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Capacity planning note: estimate peak QPS or job concurrency for eviction ordering, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
 
+## Alternatives
 
-Run game days or fault injection in staging quarterly for ephemeral storage limits. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Stdout logging or sized PVCs instead of unbounded emptyDir caches on shared nodes.
 
-## Security and compliance angles
+A production team running ephemeral storage limits discovered that alternatives failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Even when Ephemeral Storage Limits and Eviction is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when ephemeral-storage accepts configuration from multiple teams.
+Runbook entry for alternatives: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
+For ephemeral storage limits, instrument alternatives with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-For regulated workloads, maintain an immutable audit trail: who changed ephemeral-storage settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Game day scenario for alternatives: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-## Integration with platform standards
+Ownership for alternatives belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-Align ephemeral-storage with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Change management for ephemeral storage limits: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in alternatives
+configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for alternatives, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+## Monitoring
 
+container_fs_usage_bytes alerts before node-level disk pressure evictions cascade.
 
-## What to measure after rollout
+A production team running ephemeral storage limits discovered that monitoring failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Runbook entry for monitoring: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+For ephemeral storage limits, instrument monitoring with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-## Documentation your team should maintain
+Game day scenario for monitoring: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Ownership for monitoring belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Pre-production checklist
+Change management for ephemeral storage limits: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in monitoring
+configs that authors no longer notice.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Capacity planning note: estimate peak QPS or job concurrency for monitoring, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+## Load testing
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Fill emptyDir to limit in staging; document OOMKilled versus evicted behavior for on-call.
 
-## Common questions from reviewers
+A production team running ephemeral storage limits discovered that load testing failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Runbook entry for load testing: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-## Version and compatibility notes
+For ephemeral storage limits, instrument load testing with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Game day scenario for load testing: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
+Ownership for load testing belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Resources
+Change management for ephemeral storage limits: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in load testing
+configs that authors no longer notice.
 
-- https://kubernetes.io/docs/home/
-- https://github.com/kubernetes/community/tree/master/contributors/devel/sig-architecture
+Capacity planning note: estimate peak QPS or job concurrency for load testing, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
+
+Set both requests and limits on `ephemeral-storage` for emptyDir log and download workloads. Prefer stdout logging or sized PVCs over unbounded emptyDir on shared nodes—kubelet evictions are nondeterministic for neighbors.

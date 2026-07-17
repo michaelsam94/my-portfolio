@@ -3,8 +3,8 @@ title: "Circuit Breakers and Resilience"
 slug: "microservices-circuit-breaker-resilience"
 description: "Protect microservices from cascading failures with circuit breakers, bulkheads, retries, and timeouts — patterns that keep one slow dependency from taking down everything."
 datePublished: "2025-06-05"
-dateModified: "2025-06-05"
-tags: ["BE", "Microservices", "Resilience", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "circuit breaker pattern, microservices resilience, bulkhead pattern, retry with backoff, cascading failure prevention, resilience4j circuit breaker"
 faq:
   - q: "When should a circuit breaker open?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do circuit breakers interact with retries?"
     a: "Retry before the circuit breaker, not after. Retries handle transient failures (network blip). The circuit breaker handles sustained failures (service down). Retrying against an open circuit wastes resources — check circuit state before retrying."
 ---
-
 Your order service calls the payment service. Payment is slow — database lock contention, maybe a deployment gone wrong. Order service threads block waiting. Thread pool exhausts. Order service stops accepting requests. Checkout is down. Catalog service calls order service for stock checks — also hangs. The entire platform freezes because one dependency got slow.
 
 Cascading failures are the dominant failure mode in microservice architectures. Circuit breakers, bulkheads, timeouts, and retries are the four patterns that prevent one sick service from killing its callers.
@@ -228,6 +227,10 @@ When circuit breaker resilience misbehaves in production, work top-down instead 
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Half-open state tuning
+
+The half-open probe count and success threshold determine how aggressively you recover after an outage. Too eager and you flap; too conservative and you starve callers while the dependency is healthy. Start with one probe per second and three consecutive successes to close — then tune from incident data.
 
 ## Resources
 

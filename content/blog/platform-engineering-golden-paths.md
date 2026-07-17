@@ -3,7 +3,7 @@ title: "Golden Paths in Platform Engineering"
 slug: "platform-engineering-golden-paths"
 description: "Design golden paths that teams actually adopt: paved-road templates, optional escape hatches, documentation co-located with code, and measuring path vs off-path usage."
 datePublished: "2026-02-20"
-dateModified: "2026-02-20"
+dateModified: "2026-07-17"
 tags: ["Platform Engineering", "DevOps", "Developer Experience", "Architecture"]
 keywords: "golden path platform engineering, paved road developer experience, internal developer platform, platform templates, backstage scaffolder"
 faq:
@@ -165,16 +165,54 @@ Embed guardrails in templates — Terraform modules with policy-as-code (OPA, Se
 
 Pair with [platform engineering internal developer platform](https://blog.michaelsam94.com/platform-engineering-internal-developer-platform/) for broader IDP architecture decisions.
 
-## Common production mistakes
 
-Teams get golden paths wrong in predictable ways:
+## Federated template ownership
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Platform maintains base template; product verticals own template-overlays for domain-specific defaults. Federation prevents one template ignoring 40% of teams while keeping security baseline centralized.
 
-Production implementations of golden paths fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Path discovery in IDE
+
+Ship platform create CLI mirroring scaffolder templates with same skeleton Git URLs. CLI and portal share template version pin.
+
+## Cost of off-path services
+
+Track AWS spend tagged golden-path:false quarterly. Off-path services averaging 3x cost per request become migration candidates with finance backing.
+
+## Onboarding time SLA
+
+Measure hours from platform new service to first successful staging deploy with CI green. Target under 4 hours median. Interview outliers over 24 hours.
+
+## Template testing pyramid
+
+Unit test template rendering (cookiecutter/yeoman output contains required files). Integration test scaffolds to ephemeral namespace with CI green. E2E test sample service deploys and passes smoke HTTP check. Template PR failing integration test blocks merge — prevents shipping broken Dockerfile base image pin.
+
+## Documentation co-located with template
+
+README in template repo, not wiki — versioned alongside skeleton. `docs/runbook.md` link pre-wired in catalog metadata. Stale wiki link was #1 complaint in our developer survey; co-location cut onboarding questions 35%.
+
+## Naming and discoverability
+
+Golden path names should match how developers ask questions: "web-api" not "standard-microservice-template-v2." Search in portal indexes title, description, and tags — template metadata `spec.parameters` includes `tier` and `language` filters. Obscure names hide paths; adoption stays low despite good scaffolding.
+
+## Deprecation communications
+
+When web-api-v1 template sunsets, Backstage shows banner on create page and emails owners of services on v1 catalog metadata. Automated PR bumps `templateVersion` in platform.yaml when diff is mechanical — human review only for breaking Helm chart changes.
+
+## Cross-functional review of templates
+
+Security reviews Dockerfile USER directive and read-only root. SRE reviews resource requests and probes. FinOps reviews default instance sizes. Template PR requires sign-off from each function — catches golden path shipping db.r6g.4xlarge default because platform engineer tested on beefy laptop.
+
+## Hackathon and golden path adoption
+
+Run internal hackathon requiring scaffolder use — friction discovered in 24 hours beats quarterly survey. Winning projects on golden path become reference implementations cited in template README; organic advocacy beats mandate memo from VP Engineering.
+
+## Closing notes
+
+Quarterly template refresh PRs bump base image CVE patches automatically; services opt-in via catalog metadata bump field without forced migration — balance security defaults with team autonomy.
+
+## Additional guidance
+
+Golden paths succeed when time-to-first-deploy drops quarter over quarter and scaffolder usage exceeds seventy percent of new repositories without mandate. Interview teams that chose off-path quarterly — their blockers become template fixes, not optional backlog items platform engineers defer indefinitely.
 
 ## Resources
 

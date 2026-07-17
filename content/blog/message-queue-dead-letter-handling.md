@@ -3,8 +3,8 @@ title: "Dead-Letter Queue Patterns"
 slug: "message-queue-dead-letter-handling"
 description: "Handle failed messages with dead-letter queues: retry policies, poison message detection, DLQ monitoring, and replay strategies for reliable messaging."
 datePublished: "2025-05-20"
-dateModified: "2025-05-20"
-tags: ["BE", "Message Queues", "Reliability", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "dead letter queue pattern, DLQ retry policy, poison message handling, SQS dead letter queue, Kafka dead letter topic, message queue failure handling"
 faq:
   - q: "When should a message go to the dead-letter queue?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is a poison message?"
     a: "A poison message causes the consumer to crash or fail every time it is processed — corrupted data, a bug triggered by a specific payload, or a message referencing a deleted resource. Without a DLQ and max retry limit, poison messages block the queue indefinitely as they are retried forever."
 ---
-
 A payment processing worker crashes on message #47,831. The message goes back to the queue. The worker picks it up again, crashes again. Every consumer instance that touches message #47,831 fails. The queue backs up. Legitimate payments wait behind a single poison message that will never succeed.
 
 Dead-letter queues (DLQs) exist to handle exactly this. They are the pressure relief valve of reliable messaging — a holding area for messages that failed processing after exhausting retries, where operators can inspect, diagnose, and replay them without blocking the main queue.

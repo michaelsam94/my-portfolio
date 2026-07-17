@@ -3,7 +3,7 @@ title: "The OCPP Transaction Lifecycle"
 slug: "ocpp-transaction-lifecycle"
 description: "Follow the complete OCPP transaction lifecycle: authorization, StartTransaction, MeterValues, StopTransaction, and handling edge cases."
 datePublished: "2025-11-11"
-dateModified: "2025-11-11"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Protocols"]
 keywords: "OCPP transaction lifecycle, StartTransaction, StopTransaction, OCPP charging session, transaction handling OCPP, EV charging session flow"
 faq:
@@ -266,16 +266,70 @@ Pair with [OCPP local controller offline](https://blog.michaelsam94.com/ocpp-loc
 
 Pre-authorize via OCPI before OCPP StartTransaction when roaming — local auth list may be stale for roaming RFID tokens.
 
-## Common production mistakes
+## Lifecycle bugs that survive code review
 
-Teams get ocpp transaction lifecycle wrong in predictable ways:
+- **RemoteStart without matching Stop** — CSMS-initiated sessions need watchdog timers.
+- **Duplicate StartTransaction on reconnect** — charger replays start; CSMS must idempotent-accept same `transactionId`.
+- **MeterValues after Stop** — some firmware sends late samples; ignore for billing after `Ended` unless regulation requires full trace.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## TransactionEvent sequencing in OCPP 2.0.1
 
-Production implementations of ocpp transaction lifecycle fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+`TransactionEvent` carries `seqNo` — monotonic per transaction. CSMS must reject or buffer out-of-order events:
+
+```python
+def handle_transaction_event(tx, msg):
+    if msg.seq_no != tx.expected_seq:
+        buffer_out_of_order(tx, msg)
+        return
+    apply_event(tx, msg)
+    tx.expected_seq += 1
+    flush_buffered(tx)
+```
+
+Missing `Ended` events leave ghost sessions. Run a sweeper: if no `Updated` event for 24h and connector reports `Available`, auto-close with `reason: Timeout` and estimated `meterStop`.
+
+## CDR export and OCPI session alignment
+
+Internal transaction state must map cleanly to OCPI CDRs for roaming settlement:
+
+| Internal field | OCPI CDR field |
+|----------------|----------------|
+| `meter_start/stop` (Wh) | `total_energy` (kWh) |
+| `start/stop_time` | `start_date_time` / `end_date_time` |
+| `id_tag` | `cdr_token` |
+| `stop_reason` | `remark` / custom |
+
+Normalize timezones to UTC at ingestion — roaming partners reject CDRs with ambiguous offsets.
+
+## Reason code analytics
+
+Aggregate `StopTransaction.reason` monthly — `EVDisconnected` spike may mean cable wear; `Remote` spike may mean demand-response bugs. OCPP 2.0.1 `triggerReason` on TransactionEvent offers finer grain than 1.6 reason enum.
+
+## Idempotent stop handling
+
+```python
+def handle_stop(msg):
+    tx = db.get(msg.transaction_id)
+    if tx and tx.status == "completed":
+        return Ack()  # duplicate stop after reconnect
+    complete(tx, msg)
+```
+
+Duplicate stops are normal after WebSocket reconnect — billing must not double-close sessions.
+
+## Remote start timeout handling
+
+`RequestStartTransaction` without cable plugged within 60s should cancel — orphaned Preparing states block connector. UI on charger shows countdown; CSMS clears reservation automatically.
+
+## SuspendedEV and power limit events
+
+OCPP 2.0.1 `TransactionEvent` with `chargingState: SuspendedEV` during lifecycle — CSMS should not bill idle energy at full rate if tariff is time-based. Align billing engine with charging state transitions.
+## MeterStart zero on new hardware
+
+Factory reset chargers report `meterStart: 0` — billing must handle first session after install without negative energy edge case on botched migration import.
+## Transaction id namespace per station
+
+Document that transaction IDs are unique per charger, not global — CSMS databases need composite key `(station_id, transaction_id)` to avoid collision across fleet imports.
 
 ## Resources
 

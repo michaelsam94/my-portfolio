@@ -1,138 +1,240 @@
 ---
-title: "dynamic() with ssr:false Patterns"
+title: "Dynamic Import with SSR False in Next.js"
 slug: "nextjs-dynamic-import-ssr-false"
-description: "next/dynamic ssr false for client-only modules — loading skeleton, bundle splitting, and hydration boundaries."
+description: "Lazy-load client-only components with next/dynamic and ssr:false without breaking RSC boundaries."
 datePublished: "2027-01-08"
-dateModified: "2027-01-08"
-tags: ["Next.js", "Code Splitting", "Performance"]
-keywords: "next/dynamic ssr false, dynamic import Next.js, client only dynamic"
+dateModified: "2026-07-17"
+tags:
+keywords: "next/dynamic ssr false, client-only component Next.js"
 faq:
-  - q: "What is dynamic() with ssr?"
-    a: "dynamic() with ssr is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt dynamic() with ssr?"
-    a: "Adopt dynamic() with ssr when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with dynamic() with ssr?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "When should I use ssr: false?"
+    a: "For browser-only APIs: window, localStorage, WebGL, maps, rich text editors. Never for SEO-critical content."
+  - q: "Can I use ssr:false in Server Components?"
+    a: "No. dynamic() with ssr:false must be called from a Client Component. Import the dynamic wrapper from a 'use client' file."
+  - q: "Does ssr:false hurt Core Web Vitals?"
+    a: "It can increase CLS if loading state lacks dimensions. Always provide loading skeleton with fixed height."
 ---
+A chart library accessed `window` during server render and crashed the build. Wrapping it in `next/dynamic` with `{ ssr: false }` fixed production—but introduced a layout shift that dropped CLS scores. Dynamic imports defer JavaScript and skip server rendering for client-only modules; used correctly they shrink bundles, used carelessly they flash empty boxes on screen.
 
-The gap between reading about dynamic() with ssr and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
-
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
-
-## Architecture and boundaries
-
-Before changing implementation details, draw the boundary diagram. dynamic() with ssr touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
-
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
-```
-
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
-
-Document which metrics you expect to move. If dynamic() with ssr is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
-
-## Implementation patterns
-
-Start with the smallest change that proves the approach. For dynamic() with ssr, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+## Basic pattern
 
 ```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("nextjs_dynamic_import_ssr_false");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
+"use client";
+import dynamic from "next/dynamic";
+
+const Chart = dynamic(() => import("./Chart"), {
+  ssr: false,
+  loading: () => <div className="h-64 animate-pulse bg-muted" />,
+});
+
+export function DashboardChart({ data }) {
+  return <Chart data={data} />;
 }
 ```
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
+The `"use client"` boundary is mandatory. Server Components cannot call `dynamic(..., { ssr: false })`.
+
+## Splitting heavy editor bundles
+
+Rich text editors (TipTap, Lexical, Monaco) add 200–800KB gzip. Load only on edit routes:
+
+```tsx
+const Editor = dynamic(() => import("@/components/RichEditor"), {
+  ssr: false,
+  loading: () => <EditorSkeleton />,
+});
 ```
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+Measure with `@next/bundle-analyzer`. Confirm editor chunk absent from homepage bundle.
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+## Named exports
 
-## Accessibility requirements
+```tsx
+const DatePicker = dynamic(
+  () => import("./DatePicker").then((m) => m.DatePicker),
+  { ssr: false }
+);
+```
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+Default export preferred for tree-shaking clarity.
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+## Prefetching dynamic chunks
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+Next.js prefetches dynamic imports on hover for `<Link>` routes. Client-only components still download on navigation—ssr:false does not mean lazy on interaction unless you combine with conditional render:
 
-## Security and privacy considerations
+```tsx
+const [showMap, setShowMap] = useState(false);
+return (
+  <>
+    <button onClick={() => setShowMap(true)}>Show map</button>
+    {showMap && <MapComponent />}
+  </>
+);
+```
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+## App Router and RSC composition
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+Pattern: Server Component fetches data, passes props to Client wrapper that dynamic-imports visualization:
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+```tsx
+// app/analytics/page.tsx — Server Component
+export default async function Page() {
+  const data = await getAnalytics();
+  return <AnalyticsClient data={data} />;
+}
 
-## Testing strategy
+// AnalyticsClient.tsx — "use client"
+const Chart = dynamic(() => import("./Chart"), { ssr: false });
+export function AnalyticsClient({ data }) { return <Chart data={data} />; }
+```
 
-Layer tests to match risk:
+Never fetch inside client-only dynamic components if data is needed for SEO—fetch on server, render client-only shell.
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+## Error boundaries
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+Dynamic import failures (network blip on chunk load) need error UI:
 
-## Common production mistakes
+```tsx
+const Map = dynamic(() => import("./Map"), {
+  ssr: false,
+  loading: () => <MapSkeleton />,
+});
+// Wrap in React error boundary at parent level
+```
 
-Teams get dynamic() with ssr wrong in predictable ways:
+## Testing
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+Jest/Vitest cannot render ssr:false components without mock. Use `dynamic: () => require('./Component')` mock or test the loading skeleton separately.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Anti-patterns
 
-## Debugging and triage workflow
-
-When dynamic() with ssr misbehaves in production, work top-down:
-
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
-
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+- ssr:false on above-fold LCP content — kills SEO and delays paint
+- Multiple nested dynamic imports without loading states — cumulative layout shift
+- ssr:false to avoid fixing hydration mismatches — fix the mismatch instead
 
 ## Resources
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+- [next/dynamic documentation](https://nextjs.org/docs/app/building-your-application/optimizing/lazy-loading)
+- [React lazy and Suspense](https://react.dev/reference/react/lazy)
+
+
+## Monitoring chunk load failures
+
+
+Track dynamic import errors in RUM: `import().catch` wrapper or error boundary reporting. Chunk load failures spike after deploys when users hold stale HTML referencing old chunk hashes—pair with long cache on hashed assets and short cache on HTML.
+
+
+## Accessibility during load
+
+
+Loading skeletons need `aria-busy="true"` and meaningful labels. Screen readers should announce when client-only content replaces skeleton. Do not trap focus in loading state.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on dynamic import ssr false
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.

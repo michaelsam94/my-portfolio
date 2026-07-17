@@ -3,7 +3,7 @@ title: "On-Device Embeddings for Local Search"
 slug: "on-device-embeddings-mobile-search"
 description: "Build semantic search on mobile without cloud calls: embedding models on device, vector storage, quantization, and hybrid retrieval patterns for offline-first apps."
 datePublished: "2025-08-17"
-dateModified: "2025-08-17"
+dateModified: "2026-07-17"
 tags: ["AI", "Mobile", "Search", "On-Device"]
 keywords: "on-device embeddings, mobile semantic search, local vector search, Core ML embeddings, offline search"
 faq:
@@ -190,16 +190,67 @@ We embed locally after doc sync — avoids 150MB vector blob download on cellula
 
 Ship an index rebuild path: model upgrades change vector geometry — plan full re-embed on app update with progress UI for large libraries. Benchmark search on minimum supported hardware with a full index, not empty state. Privacy reviews should note embeddings are not encryption; sensitive corpora need SQLCipher or file-level encryption for the vector store. A/B test hybrid vs pure semantic on real queries — legal and SKU-style searches often need keyword recall. Monitor index size in settings so users understand storage impact. If sync brings documents from server, re-embed locally rather than trusting server vectors unless model version bytes match exactly.
 
-## Common production mistakes
+## Embedding-specific pitfalls
 
-Teams get on device embeddings mobile search wrong in predictable ways:
+- **Model swap without re-index** — mixing MiniLM and E5 vectors in one index destroys ranking.
+- **Chunk boundaries mid-sentence** — semantic drift; prefer paragraph boundaries with 10% overlap for long docs.
+- **Typeahead embedding every keystroke** — debounce 200ms+; embed query only after pause.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Normalization and cosine similarity details
 
-Production implementations of on device embeddings mobile search fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Embeddings should be L2-normalized before indexing so dot product equals cosine similarity — saves sqrt in hot path:
+
+```kotlin
+fun normalize(v: FloatArray): FloatArray {
+    val norm = sqrt(v.sumOf { it * it }.toDouble()).toFloat()
+    return v.map { it / norm }.toFloatArray()
+}
+```
+
+Store normalized vectors; query vectors normalized once per search. For INT8-quantized indexes, calibrate scale factors per dimension batch — naive cast to byte loses recall on legal/medical corpora.
+
+## Incremental index maintenance
+
+Full re-index on every edit does not scale. Maintain a **dirty doc set**:
+
+```dart
+Future<void> onDocSaved(Doc doc) async {
+  await db.markDirty(doc.id);
+  scheduleIndexWorker();  // debounced 2s
+}
+
+Future<void> indexWorker() async {
+  final dirty = await db.popDirtyDocs(limit: 50);
+  for (final doc in dirty) {
+    await vectorIndex.removeDoc(doc.id);
+    await vectorIndex.addChunks(chunkNote(doc));
+  }
+}
+```
+
+Background indexing on charger power + Wi-Fi only respects battery for field apps.
+
+## Evaluating recall on device
+
+Ship small golden query set in app test target — 50 queries with expected top-3 doc IDs. Run on CI simulator with bundled index snapshot; fail release if recall@3 drops >5% vs baseline quant model.
+
+## Multilingual queries
+
+If UI locale differs from query language, use multilingual embedding model or detect query language before encode — single-language MiniLM degrades sharply on mixed French/English notes apps.
+
+## Cold start index build
+
+First launch after install rebuilds index from documents — show progress with cancel. Blocking splash for 30s on 10k notes loses users; background index with search degraded to keyword until ready.
+
+## Synonym expansion without cloud
+
+Bundle small synonym map per domain (medical abbreviations) applied to query before embed — improves recall without larger model. Maintain as JSON asset versioned with app.
+## ANN parameter tuning on device
+
+HNSW `ef_search` trades latency vs recall — profile on minimum device; default from server benchmarks may be slow on 3-year-old phones.
+## Index corruption recovery UX
+
+When vector index checksum fails on boot, offer "Rebuild search index" with time estimate — silent rebuild blocks search with empty results users interpret as data loss.
 
 ## Resources
 

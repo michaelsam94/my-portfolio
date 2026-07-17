@@ -130,6 +130,43 @@ That's nearly 2× improvement from execution alone, before any model optimizatio
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
+## Classifying tools for concurrency safety
+
+Tag every tool with `read_only`, `write_idempotent`, or `write_non_idempotent` in the registry. The executor runs all `read_only` calls in a batch freely; serializes writes to the same resource key; rejects parallel `write_non_idempotent` calls in one turn unless the user explicitly confirmed:
+
+```python
+TOOL_SAFETY = {
+    "get_order": "read_only",
+    "update_order_status": "write_non_idempotent",
+    "search_docs": "read_only",
+}
+
+def batch_tools(calls: list[ToolCall]) -> list[list[ToolCall]]:
+    writes = [c for c in calls if TOOL_SAFETY[c.name].startswith("write")]
+    reads = [c for c in calls if TOOL_SAFETY[c.name] == "read_only"]
+    if len(writes) > 1 and same_resource(writes):
+        return [reads] + [[w] for w in writes]  # serialize conflicting writes
+    return [reads + writes] if safe_parallel(reads, writes) else sequential_batches(calls)
+```
+
+Document safety classes in tool descriptions so model routing stays aligned with executor policy.
+
+## Stable result ordering for the model
+
+`asyncio.gather` completion order is nondeterministic. The LLM expects tool results in the same order as its tool calls in the assistant message. Sort results by original call index before injecting into context:
+
+```python
+ordered = [results[c.id] for c in original_call_order]
+```
+
+Nondeterministic ordering causes flaky replay tests and confused models that associate the wrong payload with a call ID. Include call IDs in formatted results so partial failures stay unambiguous.
+
+## Tracing parallel batches as one parent span
+
+Wrap each parallel batch in a parent span `agent.tool.batch` with child spans per tool. Attributes: `batch.size`, `batch.parallel`, `batch.duration_ms`, `batch.failures`. Compare batch duration to the max child duration — if batch time equals sum of children, your parallelism is not actually running (blocking I/O on one thread, missing `await`, or a global lock).
+
+Pair batch metrics with [multi-turn state](https://blog.michaelsam94.com/agent-multi-turn-state-management/) locks — parallel reads against stale session state produce race bugs that latency dashboards alone will not explain.
+
 ## Common production mistakes
 
 Teams get parallel tool execution wrong in predictable ways:

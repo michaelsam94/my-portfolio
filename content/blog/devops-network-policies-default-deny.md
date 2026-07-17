@@ -3,128 +3,185 @@ title: "Kubernetes Network Policies: Default Deny Baseline"
 slug: "devops-network-policies-default-deny"
 description: "Implement default-deny network policies with explicit egress and ingress allowlists."
 datePublished: "2026-03-04"
-dateModified: "2026-03-04"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Kubernetes"
   - "Security"
 keywords: "network policy, default deny"
 faq:
-  - q: "What is Kubernetes Network Policies?"
-    a: "Kubernetes Network Policies covers operational practices for NetworkPolicy in production kubernetes environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Kubernetes Network Policies?"
-    a: "Roll out namespace by namespace after inventorying flows."
-  - q: "What mistakes break Kubernetes Network Policies?"
-    a: "Applying deny-all without DNS egress breaks every pod overnight."
+  - q: "Where start?"
+    a: "One namespace pilot with deny-all ingress and egress, then add allows from inventory."
+  - q: "DNS egress allow?"
+    a: "kube-system DNS and NodeLocal DNS IP explicit—deny-all breaks without DNS allow."
+  - q: "CNI support?"
+    a: "Verify CNI enforces NetworkPolicy—some overlay modes need CiliumNetworkPolicy instead."
+  - q: "Break-glass?"
+    a: "Document emergency namespace label bypass with audit alert—never permanent unlabeled production."
 ---
+Default allow namespace let compromised pod exfiltrate; pilot deny-all plus explicit allows cut lateral movement in red team exercise.
 
-Compliance demanded default-deny; the first policy broke DNS because kube-dns egress was missing.
+## Pilot rollout
 
-This post walks through **Kubernetes Network Policies: Default Deny Baseline** for platform and SRE teams shipping reliable infrastructure. Implement default-deny network policies with explicit egress and ingress allowlists. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+One namespace deny ingress and egress; inventory allows from Hubble or flow logs.
 
-## Problem framing: Kubernetes Network Policies
+Production teams running network policies default deny learned that pilot rollout regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-Compliance demanded default-deny; the first policy broke DNS because kube-dns egress was missing.
+Runbook for pilot rollout: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument pilot rollout with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Platform teams treat **NetworkPolicy** as solved after the first successful deploy. Production disagrees: edge cases around network policies default deny, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day for pilot rollout: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-## Design principles for NetworkPolicy
+Ownership for pilot rollout belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-Explicit contracts beat tribal knowledge. Document who owns NetworkPolicy configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in pilot rollout configs.
 
+Capacity note: estimate peak concurrency for pilot rollout, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-A common failure mode: Applying deny-all without DNS egress breaks every pod overnight. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Security review for network policies default deny: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
+FinOps tie-in for pilot rollout: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-```yaml
-# devops-network-policies-default-deny
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: network_policies_default_deny
-  labels:
-    app.kubernetes.io/part-of: devops-network-policies-default-deny
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: network_policies_default_deny
-  template:
-    metadata:
-      labels:
-        app: network_policies_default_deny
-    spec:
-      containers:
-        - name: app
-          image: app:1.0.0
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-```
+## DNS egress
 
-## Implementation walkthrough
+Allow UDP/TCP 53 to cluster DNS and NodeLocal—most common break on deny-all.
 
-Start with the smallest production-safe slice of **Kubernetes Network Policies: Default Deny Baseline**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Production teams running network policies default deny learned that dns egress regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
+Runbook for dns egress: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for NetworkPolicy.
+Instrument dns egress with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Operational concerns in production
+Game day for dns egress: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Day-two operations for kubernetes work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Ownership for dns egress belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in dns egress configs.
 
-Run game days or fault injection in staging quarterly for network policies default deny. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Capacity note: estimate peak concurrency for dns egress, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
 
-## Security and compliance angles
+Security review for network policies default deny: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-Even when Kubernetes Network Policies is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when NetworkPolicy accepts configuration from multiple teams.
+FinOps tie-in for dns egress: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.
 
+## CNI verification
 
-For regulated workloads, maintain an immutable audit trail: who changed NetworkPolicy settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Confirm CNI enforces NetworkPolicy—some overlays need CiliumNetworkPolicy.
 
-## Integration with platform standards
+Production teams running network policies default deny learned that cni verification regressions
+appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
+replay used production timestamps.
 
-Align NetworkPolicy with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Runbook for cni verification: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument cni verification with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Game day for cni verification: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
+Ownership for cni verification belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## What to measure after rollout
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in cni verification configs.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Capacity note: estimate peak concurrency for cni verification, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Security review for network policies default deny: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Documentation your team should maintain
+FinOps tie-in for cni verification: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+## Break-glass
 
-## Pre-production checklist
+Emergency label bypass with audit alert and forty-eight hour retrospective.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Production teams running network policies default deny learned that break-glass regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+Runbook for break-glass: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Instrument break-glass with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Common questions from reviewers
+Game day for break-glass: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Ownership for break-glass belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## Version and compatibility notes
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in break-glass configs.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Capacity note: estimate peak concurrency for break-glass, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
 
+Security review for network policies default deny: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Resources
+FinOps tie-in for break-glass: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.
 
-- https://kubernetes.io/docs/home/
-- https://github.com/kubernetes/community/tree/master/contributors/devel/sig-architecture
+## Expand waves
+
+Tier-2 namespaces after pilot metrics on ticket volume and false denies.
+
+Production teams running network policies default deny learned that expand waves regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
+
+Runbook for expand waves: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+
+Instrument expand waves with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
+
+Game day for expand waves: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
+
+Ownership for expand waves belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
+
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in expand waves configs.
+
+Capacity note: estimate peak concurrency for expand waves, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
+
+Security review for network policies default deny: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
+
+FinOps tie-in for expand waves: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.

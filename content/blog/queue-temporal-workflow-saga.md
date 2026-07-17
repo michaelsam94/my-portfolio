@@ -3,127 +3,239 @@ title: "Temporal Workflow Saga Pattern"
 slug: "queue-temporal-workflow-saga"
 description: "Durable timers and compensation activities — vs choreographed Kafka saga."
 datePublished: "2026-03-20"
-dateModified: "2026-03-20"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue temporal workflow saga, production, backend"
+keywords: "temporal saga, workflow compensation, durable execution, orchestrated saga"
 faq:
-  - q: "What problem does Temporal Workflow Saga Pattern solve?"
-    a: "It addresses production gaps teams hit when scaling queue temporal workflow saga: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue temporal workflow saga appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is the difference between an orchestrated saga in Temporal and a choreographed saga on Kafka?"
+    a: "Temporal centralizes saga logic in a workflow function that calls activities in order and runs compensations on failure. Kafka choreography publishes events — each service reacts independently. Temporal gives visible state, built-in timers, and automatic retry; Kafka scales event fan-out but debugging multi-hop failure requires distributed tracing across consumers."
+  - q: "How do Temporal timers replace sleep in saga steps?"
+    a: "workflow.sleep(duration) is durable — worker crash does not lose the timer. Temporal fires the next step when time elapses. Never use time.sleep in workflow code; use workflow timers for delays between saga steps like payment capture after 24-hour hold."
+  - q: "When should compensation run in a Temporal saga?"
+    a: "Run compensations in reverse order of successful forward steps when a later step fails and the business requires rollback — cancel shipment if payment fails, refund if shipment fails after charge. Skip compensation for steps that are safely retryable or already idempotent no-ops. Not every failure needs full rollback; define terminal failure states explicitly."
 ---
 
-## Production context
+Booking a trip charged the customer, reserved inventory, then failed sending confirmation email — and the ops runbook said "manually refund in Stripe." The Kafka choreographed saga had no single place showing which steps succeeded before the timeout. Rewriting as a Temporal workflow with explicit compensate activities turned a three-hour finance reconciliation into an automatic `RefundPayment` activity triggered by workflow failure semantics.
 
-A billing service lost duplicate events because queue temporal workflow saga was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Saga problem space
 
-Senior backend work on temporal workflow saga pattern is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Distributed transaction without 2PC:
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+Reserve inventory → Charge payment → Book carrier → Send confirmation
+        │                  │               │
+        └── on failure, undo prior steps (compensate)
 ```
 
-## Implementation checklist
+**Choreography (Kafka/events):** each service listens and emits — no central coordinator.
 
-Validate inputs at the trust boundary with schema versioning.
+**Orchestration (Temporal):** workflow code defines order and compensation.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Temporal fits when steps have strict ordering, human-visible workflow history, delays spanning hours/days, and complex compensation logic versioned with deploys.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Temporal building blocks
 
-Run migrations with lock_timeout and statement_timeout set.
+| Concept | Role in saga |
+|---------|--------------|
+| Workflow | Deterministic orchestrator — no I/O directly |
+| Activity | Side effect — call API, DB write |
+| Timer | Durable sleep between steps |
+| Signal | External event (user cancel) mid-saga |
+| Query | Read workflow state without mutation |
 
-Load test at 2× expected peak with production-like payload sizes.
+Workflow code example (TypeScript SDK):
 
-## Observability
+```typescript
+import { proxyActivities, sleep, ApplicationFailure } from '@temporalio/workflow';
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+const { reserveInventory, chargePayment, bookCarrier, sendEmail,
+        releaseInventory, refundPayment, cancelCarrier } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '2 minutes',
+    retry: { maximumAttempts: 3 },
+  });
 
-Dashboards for queue temporal workflow saga should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+export async function bookTripSaga(tripId: string, userId: string): Promise<void> {
+  let inventoryReserved = false;
+  let paymentCharged = false;
+  let carrierBooked = false;
 
-## Security notes
+  try {
+    await reserveInventory(tripId);
+    inventoryReserved = true;
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+    await chargePayment(tripId, userId);
+    paymentCharged = true;
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+    await sleep('24 hours');
 
-## Common production mistakes
+    await bookCarrier(tripId);
+    carrierBooked = true;
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+    await sendEmail(tripId, userId);
+  } catch (err) {
+    if (carrierBooked) await cancelCarrier(tripId);
+    if (paymentCharged) await refundPayment(tripId, userId);
+    if (inventoryReserved) await releaseInventory(tripId);
+    throw ApplicationFailure.nonRetryable('bookTrip failed', String(err));
+  }
+}
+```
 
-## Debugging and triage workflow
+Compensations run **reverse order** of successful forward steps.
 
-When production misbehaves, work top-down:
+## Determinism rules
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Workflow code must replay identically.
 
-## Operational checklist
+**Allowed:** control flow, `sleep`, activity calls, signals, child workflows.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+**Forbidden:** `Math.random()`, direct HTTP, `Date.now()` (use `workflow.now()`), threading.
 
-## Performance tuning notes
+## Activities: retries and idempotency
 
-Measure before optimizing queue temporal workflow saga. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+```typescript
+export async function chargePayment(tripId: string, userId: string): Promise<void> {
+  await stripe.paymentIntents.create(
+    { amount: ..., metadata: { tripId } },
+    { idempotencyKey: `charge-${tripId}` },
+  );
+}
+```
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Use heartbeats for long activities with `Context.current().heartbeat(step)`.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+## Durable timers vs queue delayed jobs
 
-## Rollout and migration
+Temporal timer survives worker pod restart, workflow code deploy (with compatible versioning), and activity worker scale to zero. Use `workflow.sleep` not external scheduler for saga delays tied to business state.
 
-Ship queue temporal workflow saga changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Signals for cancellation
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+```typescript
+export const cancelTripSignal = defineSignal('cancelTrip');
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+setHandler(cancelTripSignal, () => { cancelled = true; });
+```
 
-## Testing recommendations
+Register signal handlers before wait points that should be interruptible.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Saga vs 2PC
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Sagas accept **eventual consistency** — compensation may fail (refund API down). Design compensation retry policies separate from forward path and alert on stuck compensating workflows.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Versioning sagas in production
 
-## Incident patterns we see
+```typescript
+import { patched } from '@temporalio/workflow';
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+if (patched('add-fraud-check-v2')) {
+  await fraudCheck(tripId);
+}
+```
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Use patch markers for compatible evolution — never break replay history for running workflows.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Comparison: Temporal saga vs Kafka choreography
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+| Aspect | Temporal orchestrated | Kafka choreographed |
+|--------|----------------------|---------------------|
+| State visibility | Workflow history UI | Trace + consumer offsets |
+| Ordering | Workflow sequence | Partition key per aggregate |
+| Timeout handling | Native workflow timers | Consumer SLA + DLQ |
+| Compensation | Explicit in workflow | Each service listens for cancel events |
+| Coupling | Workflow knows all steps | Services know event schema |
 
-## Resources
+## Failure recovery story
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Worker dies mid-activity: Temporal retries on another worker. Workflow worker dies mid-sleep: new worker replays history; timer fires on time; completed activities not re-run.
+
+## Child workflows for parallel saga steps
+
+Independent steps after payment can run as child workflows with independent retry policies.
+
+## Search attributes for support tooling
+
+```typescript
+await client.workflow.start(bookTripSaga, {
+  workflowId: `trip-${tripId}`,
+  searchAttributes: { TripId: [tripId], UserId: [userId] },
+});
+```
+
+Support searches Temporal UI by business key instead of correlating Kafka offsets.
+
+## Testing sagas
+
+Temporal test environment supports time skip for timer testing and failure injection on activities.
+
+## Security and PII in workflow input
+
+Workflow inputs persist in Temporal history — pass tokenized references; activities fetch sensitive data at execution time.
+
+Temporal sagas make distributed transactions explicit: forward activities, reverse compensations, durable timers, and replay-safe workflow code. Prefer orchestration when support needs one place to read trip state; keep Kafka for event fan-out and analytics. Implement idempotent activities, test compensation failures, and version workflows — the saga story survives longer than any single deploy.
+
+## Saga timeout per step
+
+Each activity `startToCloseTimeout` bounds step duration — separate from workflow execution timeout covering entire saga. Long-running saga needs generous workflow timeout (days) with per-step timeouts minutes — misconfigured workflow timeout cancels entire trip booking while payment activity still retrying.
+
+## Human-in-the-loop signals
+
+Approval steps use signal after query:
+
+```typescript
+await condition(() => approved, '72 hours');
+```
+
+Timer plus signal pattern replaces polling database for manager approval — workflow waits durably without holding worker thread.
+
+## Kafka emit after saga step
+
+Hybrid: activity completes DB write, publishes Kafka event for read models — workflow remains orchestration source of truth; Kafka consumers stay idempotent. Do not duplicate saga compensation logic in Kafka consumers — compensate only in workflow.
+
+## Temporal Cloud namespaces
+
+Separate namespace per environment — prod workflow history never shares dev cluster. Search attributes indexed per namespace for support tooling.
+
+## Compensation ordering bugs
+
+Compensating payment before canceling shipment leaves customer charged without goods — enforce reverse forward order in code review checklist. Unit test compensation sequence with mocked activities verifying call order on mid-saga failure injection.
+
+## Workflow reset vs compensation
+
+Temporal workflow reset truncates history to point before bad activity — dangerous in financial sagas vs explicit compensation. Prefer compensate over reset in prod; reset reserved for dev debugging with namespace isolation.
+
+## Activity heartbeats for payment polling
+
+Poll payment provider status with activity heartbeat each iteration — long poll loop without heartbeat hits startToCloseTimeout while payment still processing. Heartbeat extends activity lease; workflow receives completion when provider confirms settled.
+
+## Saga observability with OpenTelemetry
+
+Trace propagation from HTTP request into workflow start and each activity span — support sees single trace for failed booking instead of correlating Kafka offsets. Temporal SDK OTel integration varies by language; verify head sampling does not drop compensation spans.
+
+## Long-running saga continue-as-new
+
+Booking saga spanning multi-day trip uses continue-as-new to reset history size while carrying state struct — prevents history limit on workflows with hundreds of signal events from user itinerary changes.
+
+## Temporal Nexus and cross-namespace saga
+
+Multi-team sagas spanning namespaces use Nexus operations — booking team workflow calls payment namespace service with typed contract. Failure handling documents which namespace owns compensation for each step to avoid double-refund across team boundaries.
+
+## Workflow query for support dashboard
+
+Expose query handler returning human-readable saga step status — support UI calls Temporal query API instead of reading raw event history JSON. Reduces mean time to answer "was payment charged?" from minutes to seconds during customer call.
+
+## Choosing saga orchestrator checklist
+
+Choose Temporal when: steps > 3, delays > minutes, human signals needed, compensation logic changes weekly. Choose Kafka choreography when: many independent reactors, event log is product, strict service decoupling mandatory. Hybrid common at scale.
+
+## Load test workflow start rate
+
+Temporal frontend limits workflow start QPS per namespace — booking flash sale starts 50k workflows/sec may require sharded workflow IDs across namespaces or rate limit at API gateway before Temporal overloads while Kafka might absorb publish spike differently.
+
+## Closing principle
+
+Temporal sagas reward teams that invest in deterministic workflow code, idempotent activities, and explicit compensation ordering. The workflow history is your distributed transaction log — treat it as production data with retention, access control, and tested failure drills.
+Ban wall-clock time and direct I/O in workflow code; add replay tests in CI so determinism bugs fail before they corrupt open histories in production.

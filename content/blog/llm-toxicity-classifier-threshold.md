@@ -1,111 +1,209 @@
 ---
-title: "Toxicity Classifier Threshold"
+title: "Toxicity Classifier Thresholds for Agent Outputs"
 slug: "llm-toxicity-classifier-threshold"
-description: "Toxicity Classifier Threshold: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-05-07"
-dateModified: "2025-05-07"
-tags: ["AI", "Llm", "Toxicity"]
-keywords: "llm, toxicity, classifier, threshold, ai, production, engineering, architecture"
+description: "Calibrate moderation models on agent-generated text: threshold tradeoffs, dual human review queues, multilingual bias, and blocking vs rewriting vs escalation policies for teams running LLM features in production."
+datePublished: "2025-04-15"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "toxicity classifier threshold agent, content moderation LLM output, agent safety filter calibration, moderation false positive"
 faq:
-  - q: "What is Toxicity Classifier Threshold?"
-    a: "Toxicity Classifier Threshold covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Toxicity Classifier Threshold?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Toxicity Classifier Threshold?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Toxicity Classifier Threshold fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Toxicity Classifier Threshold should be observable in production and safe to change in small diffs."
+  - q: "Should moderation run on user input, agent output, or both?"
+    a: "Both, with different thresholds. User input: block jailbreaks and illegal requests early. Agent output: catch hallucinated harmful content, leaked PII, and policy violations before render. Tool results may need a third profile if they contain user-generated text."
+  - q: "One global threshold or per-category?"
+    a: "Per-category. Harassment and self-harm warrant lower tolerance (higher recall) than mild profanity in a creative writing agent. A single score threshold optimizes for one category and fails others."
+  - q: "How do you reduce false positives on medical or legal agents?"
+    a: "Allowlist domain terms, use category-specific models, and route edge cases to human review instead of hard block. Calibrate on in-domain corpora — generic toxicity models flag anatomy and legal terms incorrectly."
+  - q: "Block, rewrite, or escalate — how to choose?"
+    a: "Block for high-confidence policy violations and safety risks. Rewrite (with second-pass model) for tone issues when user intent is benign. Escalate to human when confidence is mid-band (0.4–0.7) or when user tier is enterprise with SLA."
 ---
-Toxicity Classifier Threshold is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Generic toxicity APIs return a float. Production agent safety needs a **policy engine** that maps scores, categories, and context to block, rewrite, or escalate — calibrated on your agent's actual output distribution, not Twitter circa 2018. A customer support bot and a creative writing assistant should not share the same threshold table.
 
-When toxicity classifier threshold is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Score semantics vary by vendor
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Before calibrating thresholds, normalize what the score means:
 
-Solid AI engineering turns toxicity classifier threshold from a recurring argument into a documented pattern with tests and an owner.
+| Provider | Output | Notes |
+|----------|--------|-------|
+| OpenAI Moderation API | Category booleans + scores | Multi-label, good for agents |
+| Perspective API | Attribute scores 0–1 | Tunable, attrition on long text |
+| Self-hosted (Detoxify, Llama Guard) | Custom heads | Requires your labeled data |
+| Azure Content Safety | Severity levels 0–6 | Maps cleanly to tiered actions |
 
-## Design principles that survive production
+Log raw scores and model version on every decision — retrain or recalibrate when vendors update weights silently.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm toxicity classifier threshold bugs hide.
+## Tiered action matrix
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for toxicity classifier threshold, you do not yet understand the behavior you shipped.
+Design actions as a function of `(category, score, confidence, user_tier)`:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+```python
+from enum import Enum
+from dataclasses import dataclass
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm toxicity classifier threshold flows so duplicates are harmless or detectable.
+class Action(Enum):
+    ALLOW = "allow"
+    REWRITE = "rewrite"
+    BLOCK = "block"
+    ESCALATE = "escalate"
 
-## Implementation patterns
+@dataclass
+class ModerationDecision:
+    action: Action
+    categories: list[str]
+    max_score: float
 
-A practical baseline for toxicity classifier threshold in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm toxicity classifier threshold changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Toxicity Classifier Threshold: typed boundary + structured errors
-export async function handleToxicityClassifierThreshold(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-toxicity-classifier-threshold");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+THRESHOLDS = {
+    "harassment": {"block": 0.85, "escalate": 0.55},
+    "self_harm": {"block": 0.70, "escalate": 0.40},
+    "profanity": {"rewrite": 0.80, "block": 0.95},
+    "sexual": {"block": 0.88, "escalate": 0.60},
 }
 
+def decide(scores: dict[str, float], tier: str) -> ModerationDecision:
+    worst = max(scores, key=scores.get)
+    t = THRESHOLDS.get(worst, {"block": 0.90, "escalate": 0.65})
+    s = scores[worst]
+    if s >= t["block"]:
+        return ModerationDecision(Action.BLOCK, [worst], s)
+    if s >= t.get("escalate", 1.0):
+        return ModerationDecision(Action.ESCALATE, [worst], s)
+    if s >= t.get("rewrite", 1.0):
+        return ModerationDecision(Action.REWRITE, [worst], s)
+    return ModerationDecision(Action.ALLOW, [], s)
 ```
 
+Enterprise tiers may lower escalate bands to favor human review over false blocks.
 
-## Operational concerns
+## Calibration workflow
 
-Runbooks for toxicity classifier threshold should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+1. **Sample production outputs** — stratified by agent type, language, conversation length (10k+ labels minimum for stable PR curves).
+2. **Human label** — policy team marks violation type and severity; not just binary toxic/clean.
+3. **Plot PR curves per category** — pick thresholds at target recall (e.g., 95% for self-harm) and measure precision cost.
+4. **Shadow mode** — log decisions without enforcing for one week; compare to human adjudication.
+5. **Enforce with kill switch** — feature flag per agent SKU.
 
-Production llm toxicity classifier threshold work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```sql
+-- Weekly calibration query: false positive candidates
+SELECT output_id, category, score, human_label, decision
+FROM moderation_audit
+WHERE decision = 'block' AND human_label = 'allow'
+  AND created_at > now() - interval '7 days'
+ORDER BY score DESC
+LIMIT 200;
+```
 
-Rollouts for toxicity classifier threshold benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Review the top 200 weekly — if medical terms dominate, adjust allowlists not thresholds blindly.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Multilingual and dialect bias
 
-## Security and compliance angles
+Monolingual toxicity models over-flag low-resource languages and AAVE. Mitigations:
 
-Even when toxicity classifier threshold is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+- Run language detection first; route to language-specific heads where available.
+- Down-weight or skip categories with known bias until labeled data exists.
+- Track `block_rate_by_locale` — alert on 3× deviation from en-US baseline.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm toxicity classifier threshold so security reviews do not rely on tribal knowledge.
+Never ship global agents with English-only calibration sheets.
 
-## Testing strategy
+## Rewrite pass architecture
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that toxicity classifier threshold depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+When action is `REWRITE`, use a constrained second model:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```python
+REWRITE_PROMPT = """Rewrite the assistant message to comply with policy.
+Preserve factual content and user-helpful intent. Remove harassment/profanity only.
+Do not add new claims. Output the rewritten message only.
 
-## Migration and evolution
+Original:
+{message}
+"""
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm toxicity classifier threshold functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+async def moderate_and_maybe_rewrite(message: str) -> str:
+    decision = await classify(message)
+    if decision.action == Action.BLOCK:
+        return get_safe_fallback(decision.categories)
+    if decision.action == Action.REWRITE:
+        rewritten = await llm.complete(REWRITE_PROMPT.format(message=message))
+        # Re-check rewritten output — prevent bypass
+        if (await classify(rewritten)).action == Action.BLOCK:
+            return get_safe_fallback(decision.categories)
+        return rewritten
+    return message
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where toxicity classifier threshold spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Always re-moderate rewrites — attackers and models alike can launder content through rewrite steps.
 
-## Related concepts
+## Human review queue design
 
-Toxicity Classifier Threshold intersects with broader ai topics — see companion notes on [llm-toxicity patterns](https://blog.michaelsam94.com/llm-toxicity/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Escalated items need SLAs:
 
-## The takeaway
+| Queue | SLA | Staffing |
+|-------|-----|----------|
+| Self-harm signals | 15 min | 24/7 trained moderators |
+| Harassment | 4 hr | Business hours + on-call |
+| Ambiguous enterprise | 1 hr | Dedicated CSM + trust team |
 
-Toxicity Classifier Threshold rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm toxicity classifier threshold becomes a maintainable asset instead of incident fuel.
+Store agent run ID, full context (redacted PII), classifier scores, and one-click allowlist pattern for repeated false positives ("term X in oncology agent").
+
+## Agent-specific failure modes
+
+- **Tool injection:** RAG retrieves toxic forum posts → output moderation catches, but log retrieval source for corpus cleanup.
+- **Roleplay drift:** Character agents exceed profanity rewrite threshold — use separate SKU thresholds.
+- **Structured output:** JSON agents bypass string moderators — moderate rendered user-visible fields only, or schema-aware checks.
+
+## Metrics dashboard
+
+- `moderation_blocks_total` by category, agent_id
+- `false_positive_rate` from human audit sample
+- `rewrite_success_rate` (rewrite passes re-moderation)
+- `escalation_queue_age_p95`
+- User complaints correlated with block events
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [OpenAI Moderation API guide](https://platform.openai.com/docs/guides/moderation)
+- [Perspective API — threshold tuning](https://developers.perspectiveapi.com/s/about-the-api)
+- [Llama Guard — Meta safety classifier](https://github.com/meta-llama/PurpleLlama)
+- [NIST AI RMF — Map/Measure/Manage](https://www.nist.gov/itl/ai-risk-management-framework)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.

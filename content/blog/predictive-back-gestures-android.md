@@ -3,7 +3,7 @@ title: "Predictive Back Gestures: Getting Them Right"
 slug: "predictive-back-gestures-android"
 description: "A practical guide to Android predictive back gestures: migrating off onBackPressed, using OnBackPressedCallback, and wiring the predictive animation in Compose."
 datePublished: "2026-04-03"
-dateModified: "2026-04-03"
+dateModified: "2026-07-17"
 tags: ["Android", "Jetpack Compose", "Navigation", "UX"]
 keywords: "predictive back, Android back gesture, predictive back Compose, back navigation, onBackPressed, OnBackPressedCallback"
 faq:
@@ -100,6 +100,50 @@ Where you *do* write custom predictive back is for in-screen dismissals — bott
 That last one is common when you migrate incrementally: two handlers both fire. Audit your dispatcher registrations and make sure exactly one owns any given back event.
 
 Predictive back is a small feature with an outsized effect on how *finished* an app feels — the peek at the home screen or the previous screen removes the "did I just lose my place?" anxiety. It also forces a healthy discipline: back handling becomes explicit, enabled per state, and centralized in navigation rather than scattered across `onBackPressed` overrides. That cleanup is worth doing even if you didn't care about the animation.
+
+## androidx.activity enablement
+
+enableEdgeToEdge and OnBackPressedDispatcher callback for predictive animation. Predictive back requires Android 13+ with developer option or Android 14+ default.
+
+## Custom animation contract
+
+System scrim reveals previous destination — fragment transitions must not fight system animator. Use BackEvent progress 0.0–1.0 to scrub shared element animation.
+
+## Navigation component integration
+
+NavHost with predictive back needs consistent back stack — deep links pushing duplicate entries break predictive preview.
+
+## Testing with gesture nav
+
+Emulator with gesture navigation; UiAutomator swipe from left edge. Verify no crash when back stack empty.
+
+## Material 3 predictive back scrim
+
+Material components handle scrim opacity when using enableEdgeToEdge — custom Compose screens must animate background reveal manually or use androidx.compose.material3 AdaptiveBackHandler APIs on Android 14.
+
+## Fragment transition compatibility
+
+android:enableOnBackInvokedCallback in manifest for Android 13+. Older FragmentManager popBackStackImmediate fights predictive animation — migrate to Navigation Component 2.7+.
+
+## Compose predictive back
+
+androidx.compose.ui PredictiveBackHandler intercepts back before system animation — use when custom scaffold overlays standard Activity back. Test on Pixel with gesture nav enabled in system settings.
+
+## Analytics for back gesture completion
+
+Track back gesture started vs completed vs cancelled — high cancel rate on payment screen may indicate accidental edge swipe; adjust touchable region or require confirmation on destructive back from checkout.
+
+## androidx.activity 1.8+ APIs
+
+ProgressProviderRegistry registers custom cross-activity animations — needed when single-activity Compose app still uses Activity boundaries for SDK integrations. Test predictive back across Activity hop when third-party SDK starts separate Activity for payment.
+
+## User education for gesture nav
+
+In-app tooltip first launch after Android 14 upgrade explains edge swipe — support tickets drop when predictive preview shows destination user did not expect accidental back from checkout WebView.
+
+## WindowInsets and predictive back
+
+Edge-to-edge plus predictive back requires handling WindowInsets on bottom nav — animation reveals previous content behind gesture; insets not updated causes layout jump when gesture completes.
 
 ## Resources
 

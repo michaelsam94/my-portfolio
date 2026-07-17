@@ -3,7 +3,7 @@ title: "Proto DataStore for Typed, Safe Preferences"
 slug: "proto-datastore-typed-preferences"
 description: "Proto DataStore gives you typed, schema-backed preferences on Android: how it works, migrating from SharedPreferences, and the protobuf pitfalls to avoid."
 datePublished: "2026-05-11"
-dateModified: "2026-05-11"
+dateModified: "2026-07-17"
 tags: ["Android", "Data", "Kotlin"]
 keywords: "Proto DataStore, typed preferences, DataStore migration, SharedPreferences replacement, protobuf DataStore"
 faq:
@@ -130,6 +130,27 @@ Protobuf's field numbers are the contract, not the field names. You can rename `
 Other traps worth naming plainly: proto3 scalar fields can't distinguish "unset" from "default zero," so a `bool` that defaults to `false` can't tell you whether the user explicitly chose false — use a wrapper or an enum if that distinction matters. And keep the message small; DataStore rewrites the whole file on every `updateData`, so a multi-megabyte proto is the wrong tool. Settings and flags, yes. A cache of a thousand records, no — that's Room's job.
 
 Used within those lines, Proto DataStore is the storage layer I wish Android had shipped first. Typed, coroutine-native, transactional, and boring in the best possible way.
+
+
+## Corruption recovery path
+
+Proto DataStore throws `CorruptionException` on parse failures — provide `ReplaceFileCorruptionHandler` that resets to defaults and logs to Crashlytics with proto version. Silent wipe frustrates users; show one-time "settings reset" snackbar with support link.
+
+## Multi-process and DataStore
+
+Widgets and main app sharing preferences must use same DataStore file name and serializer — duplicate files diverge. Document in module README which features own which proto messages; merging unrelated settings into one proto slows migration testing.
+
+## Testing DataStore migrations
+
+Robolectric or instrumented tests run `runBlocking { dataStore.updateData }` through version chain v1→v2→v3 with fixture files — catch migration bugs before Play Store.
+
+## Proto field deprecation
+
+Mark fields deprecated in proto comments; never reuse field numbers — wire compatibility breaks silently on old app versions still in field.
+
+## Production rollout notes
+
+Expose DataStore corruption metrics to Play Console vitals — spike after OS upgrade may indicate vendor bug requiring ReplaceFileCorruptionHandler telemetry review. Prefer default reset with user notification over crash loop on startup.
 
 ## Resources
 

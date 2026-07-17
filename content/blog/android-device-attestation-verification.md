@@ -140,6 +140,16 @@ Before enabling `android-device-attestation-verification` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Device Attestation Verification on Samsung and Pixel divergence
+
+Exercise device attestation verification on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching device; regressions above 8% block release for `android-device-attestation-verification`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Device Attestation Verification" should map to a single runbook section with known workarounds.
+
+## Attestation regression gates for Play Vitals
+
+Before promoting `android-device-attestation-verification` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if verification path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

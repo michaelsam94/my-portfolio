@@ -3,127 +3,248 @@ title: "Celery Task Routing Queues"
 slug: "queue-celery-task-routing"
 description: "Route tasks by name to dedicated workers — priority and rate limits per queue."
 datePublished: "2026-03-14"
-dateModified: "2026-03-14"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue celery task routing, production, backend"
+keywords: "celery task routing, celery queues, worker concurrency, task_routes"
 faq:
-  - q: "What problem does Celery Task Routing Queues solve?"
-    a: "It addresses production gaps teams hit when scaling queue celery task routing: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue celery task routing appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How does Celery decide which queue receives a task?"
+    a: "The producer sends to an exchange/routing key (Redis/RabbitMQ backend dependent). task_routes maps task names or patterns to queue names. Workers subscribe only to queues listed in -Q flag or worker_queues config. A task routed to 'pdf' never runs on a worker that only consumes 'default'."
+  - q: "Can one Celery worker consume multiple queues?"
+    a: "Yes: celery -A proj worker -Q critical,default,low. Order in -Q can imply priority in some broker setups, but true priority requires separate workers or broker priority features. Mixing heavy and light tasks on one worker still risks head-of-line blocking unless concurrency and prefetch are tuned."
+  - q: "What is the difference between task_routes and task_default_queue?"
+    a: "task_default_queue is the fallback when no route matches — usually 'celery'. task_routes is the explicit routing table. Set default to a low-priority queue intentionally so new tasks without routes do not starve critical work."
 ---
 
-## Production context
+Email confirmation tasks sat behind a three-hour PDF export backlog because every `@shared_task` landed on the default `celery` queue and one worker pool handled everything. Splitting routes — `critical`, `default`, `batch` — and deploying workers with `-Q critical -c 4` vs `-Q batch -c 1` dropped confirmation latency from minutes to seconds without adding Redis memory. Celery routing is boring infrastructure until the wrong task shares a queue with the wrong neighbor.
 
-A billing service lost duplicate events because queue celery task routing was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Celery routing topology
 
-Senior backend work on celery task routing queues is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
-
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+Producer (Django/FastAPI)
+        │
+        ▼
+   Router (task_routes)
+        │
+   ┌────┴────┬──────────┐
+   ▼         ▼          ▼
+critical   default     batch
+   │         │          │
+   ▼         ▼          ▼
+Worker A   Worker B   Worker C
 ```
 
-## Implementation checklist
+## Defining task_routes
 
-Validate inputs at the trust boundary with schema versioning.
+```python
+# celeryconfig.py
+task_routes = {
+    'billing.tasks.charge_invoice': {'queue': 'critical'},
+    'billing.tasks.send_receipt': {'queue': 'critical'},
+    'reports.tasks.generate_pdf': {'queue': 'batch'},
+    'reports.tasks.*': {'queue': 'batch'},
+    'analytics.tasks.*': {'queue': 'low'},
+}
 
-Use timeouts and cancellation on every outbound call; propagate context.
+task_default_queue = 'default'
+task_create_missing_queues = True
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+Task definition override:
 
-Run migrations with lock_timeout and statement_timeout set.
+```python
+@shared_task(queue='critical')
+def charge_invoice(invoice_id: str):
+    ...
+```
 
-Load test at 2× expected peak with production-like payload sizes.
+Inline `queue=` beats `task_routes` for that task — use sparingly to keep routing centralized.
 
-## Observability
+## Worker deployment patterns
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+```yaml
+# critical-worker
+command: ["celery", "-A", "proj", "worker", "-Q", "critical", "-c", "8"]
 
-Dashboards for queue celery task routing should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+# batch-worker
+command: ["celery", "-A", "proj", "worker", "-Q", "batch", "-c", "1", "--prefetch-multiplier=1"]
+```
 
-## Security notes
+**Batch queue:** low concurrency, prefetch 1 — prevents one worker from hoarding hundred PDF jobs.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+**Critical queue:** higher concurrency, aggressive autoscaling on queue depth metric.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Rate limits per task
 
-## Common production mistakes
+```python
+@shared_task(rate_limit='10/m', queue='default')
+def sync_crm_contact(contact_id: str):
+    ...
+```
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Rate limit is per worker instance, not global — ten workers each at `10/m` equals 100/min fleet-wide.
 
-## Debugging and triage workflow
+## Priorities on RabbitMQ vs Redis
 
-When production misbehaves, work top-down:
+**RabbitMQ:** supports `x-max-priority` on queues; Celery can publish with priority 0–9.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+**Redis broker:** priority support is limited — **separate queues + dedicated workers** is the reliable pattern for SLA tiers on Redis.
 
-## Operational checklist
+## Kombu exchanges with RabbitMQ backend
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+```python
+from kombu import Exchange, Queue
 
-## Performance tuning notes
+task_queues = (
+    Queue('critical', Exchange('critical', type='direct'), routing_key='critical'),
+    Queue('batch', Exchange('batch', type='direct'), routing_key='batch'),
+)
+```
 
-Measure before optimizing queue celery task routing. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Redis broker ignores exchange topology — routes map directly to list names.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+## Beat scheduler separation
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Celery Beat enqueues periodic tasks — run Beat as **single instance**. Scheduled tasks still honor `task_routes`:
 
-## Rollout and migration
+```python
+app.conf.beat_schedule = {
+    'nightly-report': {
+        'task': 'reports.tasks.generate_all',
+        'schedule': crontab(hour=2, minute=0),
+        'options': {'queue': 'batch'},
+    },
+}
+```
 
-Ship queue celery task routing changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Do not run Beat on worker pods that scale horizontally — duplicate schedules duplicate charges.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## Autoscaling on queue depth
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Kubernetes HPA custom metric from Redis:
 
-## Testing recommendations
+```
+celery_queue_length{queue="critical"} → scale critical-worker deployment
+```
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Separate HPAs per queue — scaling batch workers when critical depth rises wastes money.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## Monitoring routed workloads
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Flower shows per-queue depth. Prometheus exporter labels metrics by queue. Alert when `critical` depth > 0 for > 60 seconds during business hours.
 
-## Incident patterns we see
+## Chord and chain routing implications
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+```python
+from celery import chord
+chord([fetch.s(i) for i in ids], aggregate.s()).apply_async(queue='batch')
+```
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Header tasks inherit group queue; callback may land on default — set `link` queue explicitly.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Common routing mistakes
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+1. **Workers not subscribed to new queue** — tasks accumulate invisible to default workers.
+2. **Heavy task on default** — new `@shared_task` without route goes to `task_default_queue`.
+3. **Same queue for beat and interactive** — nightly job floods `default`.
+4. **Prefetch too high on long tasks** — set `--prefetch-multiplier=1` for batch queues.
+5. **Ignoring task_acks_late** — killed worker redelivers; idempotent tasks required on critical queue.
 
-## Resources
+## Staging parity for task_routes
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Copy production `task_routes` to staging exactly — drift causes "works in staging on default queue" surprises. CI test that asserts every registered task name appears in routing table.
+
+Celery routing is configuration-as-architecture: task names map to SLA tiers, workers map to capacity pools, and the broker holds the contract between them. Get the tables right once; on-call spends fewer nights wondering why signup emails wait behind tax PDFs.
+
+## Django integration and task discovery
+
+Django autodiscovers tasks from `tasks.py` in installed apps — routing config must load before worker starts:
+
+```python
+# proj/celery.py
+app = Celery('proj')
+app.config_from_object('django.conf:settings', namespace='CELERY')
+app.autodiscover_tasks()
+```
+
+`CELERY_TASK_ROUTES` in Django settings mirrors `task_routes` dict. Forgetting to restart workers after settings change leaves old routes active — document worker restart in deploy checklist alongside migrations.
+
+## Multi-tenant routing by header
+
+SaaS platforms route tenant bulk jobs to isolated queues:
+
+```python
+def route_for_task(name, args, kwargs, options, task=None, **kw):
+    tenant_tier = kwargs.get('tenant_tier', 'default')
+    if tenant_tier == 'enterprise':
+        return {'queue': 'critical'}
+    return {'queue': 'default'}
+
+app.conf.task_router = (route_for_task,)
+```
+
+Dynamic routers beat static dict for tenant-specific SLAs — test router unit tests with kwargs fixtures.
+
+## Celery 5.x and quorum queues (RabbitMQ)
+
+RabbitMQ 3.8+ quorum queues for durability pair with Celery when broker URL uses quorum declaration in `task_queues`. Routing keys unchanged; worker prefetch must stay low on quorum due to delivery semantics — consult Celery + RabbitMQ quorum docs for your version combo.
+
+## Flower auth and queue isolation
+
+Flower displays same queue topology as workers — mount behind same SSO as admin tools. Read-only Flower for developers prevents accidental revoke without blocking queue visibility for debugging.
+
+## Migration playbook: monolith queue split
+
+Week 1: add routes, deploy workers subscribed to new queues, keep default workers on old queue. Week 2: migrate task names batch by batch; monitor depth on both. Week 3: remove default worker subscription to migrated tasks. Never big-bang route change without dual-subscribe period — tasks in flight during deploy land on old queue otherwise.
+
+## Celery canvas routing for chains
+
+Task chains pass results sequentially — each link inherits queue of chain head unless overridden per signature:
+
+```python
+(chain(process.s(i).set(queue='batch') for i in ids) | aggregate.s()).apply_async()
+```
+
+Misconfigured chain sends million map tasks to default while reduce lands on batch — verify chain queue propagation in staging load test.
+
+## Eventlet/gevent pool and I/O bound routing
+
+Gevent workers handle many I/O bound tasks on one process — routing webhooks to gevent pool and CPU PDF generation to prefork pool separates concerns better than single pool concurrency tuning. `-P gevent` worker only consumes `io` queue; CPU queue on prefork `-c 2`.
+
+## Broker connection pool size
+
+Each worker opens broker connections per process — scaling critical workers 10→50 increases RabbitMQ connection count. Route consolidation reduces connections but increases blast radius — monitor broker `connection_count` alert alongside queue depth.
+
+## SQS as Celery broker routing
+
+When using SQS broker via kombu, queue names map to SQS queue URLs in `task_queues` — IAM policy must allow `sqs:SendMessage` per queue ARN. Routing mistake sends tasks to nonexistent URL — tasks lost without Redis-style visibility; monitor SQS ApproximateNumberOfMessagesSent anomaly detection.
+
+## Priority inversion in Celery chord
+
+Chord callback runs after all header tasks complete — slowest header task blocks callback regardless of queue priority. Split chord headers to batch queue and promote callback to critical only if callback itself is SLA-sensitive; headers still gate completion.
+
+## Instrumentation with task_prerun signal
+
+Log queue and routing key on every task execution for traceability:
+
+```python
+from celery.signals import task_prerun
+
+@task_prerun.connect
+def log_routing(task_id, task, **kwargs):
+    delivery = task.request.delivery_info or {}
+    logger.info('task_start', extra={
+        'task': task.name,
+        'queue': delivery.get('routing_key'),
+        'exchange': delivery.get('exchange'),
+    })
+```
+
+Ship logs to structured aggregator — dashboard top tasks by queue catches routing regressions within hour of deploy instead of after customer complaint.
+
+## Rolling deploy and in-flight task routing
+
+Tasks published before deploy land on queue configured at publish time; workers after deploy may subscribe different set — in-flight tasks on removed queue stall until old worker drains. Blue-green worker deploy: keep old worker pool subscribed old+new queues until depth zero before decommission.
+CI should fail if task_routes targets a queue absent from any worker Deployment -Q list — routes without consumers are silent black holes.

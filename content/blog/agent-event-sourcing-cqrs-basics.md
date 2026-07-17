@@ -7,105 +7,264 @@ dateModified: "2024-11-04"
 tags: ["AI", "Agent", "Event"]
 keywords: "agent, event, sourcing, cqrs, basics, ai, production, engineering, architecture"
 faq:
-  - q: "What is Event Sourcing Cqrs Basics?"
-    a: "Event Sourcing Cqrs Basics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Event Sourcing Cqrs Basics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Event Sourcing Cqrs Basics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Event Sourcing Cqrs Basics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Event Sourcing Cqrs Basics should be observable in production and safe to change in small diffs."
+  - q: "Why would an agent system use event sourcing instead of storing final state in Postgres?"
+    a: "Agent runs are long, branching, and non-deterministic. Event sourcing records every decision—user message, model completion, tool call, approval gate—as an immutable fact. You get a perfect audit trail for compliance, the ability to replay sessions for debugging, and the option to rebuild read models when prompts or eval logic change. CRUD on a single 'session state' JSON blob collapses under concurrency and loses history."
+  - q: "What is CQRS in the context of agent orchestration?"
+    a: "Command Query Responsibility Segregation separates writes (append events to the log) from reads (projected views optimized for UI). The write side accepts 'RunTool' commands and emits ToolStarted/ToolCompleted events. The read side maintains a denormalized 'session timeline' view for the dashboard and a separate 'billing summary' view—each rebuilt from the same event stream without contending locks on one wide table."
+  - q: "How do you handle LLM non-determinism when replaying events?"
+    a: "Store model outputs as events at write time—never re-invoke the LLM on replay unless explicitly running a counterfactual simulation. The event payload captures tokens, model version, and raw completion. Replay reconstructs what happened, not what might happen today with a newer model. For 'what-if' replays, fork the stream at a point and label results as simulated."
+  - q: "When is event sourcing overkill for agents?"
+    a: "Skip it for stateless single-turn chatbots with no tools and no audit requirements. Adopt it when sessions span multiple tools, human approvals, billing per step, regulatory retention, or cross-session analytics. The operational cost of an event store is justified when 'what exactly did the agent do?' is a production question, not a dev curiosity."
 ---
-Event Sourcing Cqrs Basics sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Support needed the full story of a billing dispute: which tools ran, what the model saw, who approved the wire transfer. The session table had a JSON column `state` overwritten on every step—latest snapshot only, no ordering guarantee under concurrent tool callbacks, and a migration last month that truncated nested fields. Reconstructing the session meant guessing from scattered CloudWatch logs. The team had a CRUD model for a workflow that was inherently a narrative.
 
-When event sourcing cqrs basics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Event sourcing stores facts; CQRS serves queries from purpose-built projections. Together they give agent platforms something relational update-in-place cannot: an append-only history that survives schema changes, concurrent writers, and post-incident scrutiny. This post covers the basics without assuming you are building a bank—but with the rigor you need if auditors eventually call.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Event sourcing in one paragraph
 
-Solid AI engineering turns event sourcing cqrs basics from a recurring argument into a documented pattern with tests and an owner.
+Instead of `UPDATE sessions SET status = 'done'`, you append:
 
-## Design principles that survive production
+```
+SessionStarted     { sessionId, userId, tenantId, at }
+UserMessageReceived { text, at }
+ModelCompletionRecorded { model, tokens, content, at }
+ToolCallRequested  { tool, args, at }
+ToolCallCompleted  { tool, result, latencyMs, at }
+SessionCompleted   { outcome, at }
+```
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent event sourcing cqrs basics bugs hide.
+Current state is derived by folding events—a **fold** or **aggregate** in domain-driven design terms. The event log is the system of record; projections are disposable caches you rebuild.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for event sourcing cqrs basics, you do not yet understand the behavior you shipped.
+## CQRS: why one table is not enough
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Agent UIs need a fast chronological timeline. Finance needs per-tenant token totals. Safety review needs a queue of sessions with policy flags. One normalized schema serving all three creates hot rows and expensive joins.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent event sourcing cqrs basics flows so duplicates are harmless or detectable.
+CQRS splits:
 
-## Implementation patterns
+- **Command side:** validates business rules, appends events, enforces invariants (e.g., cannot complete session while tool pending).
+- **Query side:** consumers read from projections updated synchronously (strong consistency for UI) or asynchronously (eventual consistency for analytics).
 
-A practical baseline for event sourcing cqrs basics in ai stacks:
+```
+┌──────────┐    commands     ┌─────────────┐    events    ┌──────────────┐
+│   API    │ ──────────────► │  Aggregate  │ ───────────► │  Event Store │
+└──────────┘                 └─────────────┘              └──────┬───────┘
+                                                                 │
+                    ┌────────────────────────────────────────────┼────────────┐
+                    ▼                                            ▼            ▼
+            TimelineProjection                          BillingProjection  SafetyQueue
+            (Postgres read model)                       (ClickHouse)       (Redis stream)
+```
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+## Modeling agent sessions as aggregates
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent event sourcing cqrs basics changes safer because business rules stay isolated from transport details.
+An aggregate is a consistency boundary—everything inside commits together. For agents, `Session` is the natural aggregate root.
 
 ```typescript
-// Event Sourcing Cqrs Basics: typed boundary + structured errors
-export async function handleEventSourcingCqrsBasics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-event-sourcing-cqrs-basics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+// domain/session.aggregate.ts
+type SessionEvent =
+  | { type: "SessionStarted"; sessionId: string; userId: string; at: string }
+  | { type: "UserMessageReceived"; text: string; at: string }
+  | { type: "ModelCompletionRecorded"; model: string; content: string; tokens: number; at: string }
+  | { type: "ToolCallCompleted"; tool: string; result: unknown; at: string }
+  | { type: "SessionCompleted"; outcome: "success" | "failed" | "cancelled"; at: string };
+
+interface SessionState {
+  sessionId: string;
+  userId: string;
+  status: "active" | "completed" | "failed";
+  pendingTools: number;
+  totalTokens: number;
+  lastMessageAt: string | null;
+}
+
+export function fold(state: SessionState | null, event: SessionEvent): SessionState {
+  switch (event.type) {
+    case "SessionStarted":
+      return {
+        sessionId: event.sessionId,
+        userId: event.userId,
+        status: "active",
+        pendingTools: 0,
+        totalTokens: 0,
+        lastMessageAt: null,
+      };
+    case "ModelCompletionRecorded":
+      return {
+        ...state!,
+        totalTokens: state!.totalTokens + event.tokens,
+        lastMessageAt: event.at,
+      };
+    case "ToolCallCompleted":
+      return { ...state!, pendingTools: Math.max(0, state!.pendingTools - 1) };
+    case "SessionCompleted":
+      return { ...state!, status: event.outcome === "success" ? "completed" : "failed" };
+    default:
+      return state!;
   }
 }
 
+export function decide(
+  state: SessionState | null,
+  command: { type: "CompleteSession"; outcome: string },
+): SessionEvent[] {
+  if (!state || state.status !== "active") {
+    throw new Error("Cannot complete inactive session");
+  }
+  if (state.pendingTools > 0) {
+    throw new Error("Cannot complete while tools are pending");
+  }
+  return [{ type: "SessionCompleted", outcome: command.outcome as "success", at: new Date().toISOString() }];
+}
 ```
 
+Commands that violate invariants never become events—the aggregate rejects them before append.
+
+## Event store implementation patterns
+
+Production options span managed services (EventStoreDB, Amazon EventBridge with archival) and DIY Postgres tables:
+
+```sql
+-- Minimal Postgres event store
+CREATE TABLE agent_events (
+  id            BIGSERIAL PRIMARY KEY,
+  stream_id     TEXT NOT NULL,           -- e.g. session/{uuid}
+  stream_version INT NOT NULL,           -- optimistic concurrency
+  event_type    TEXT NOT NULL,
+  payload       JSONB NOT NULL,
+  metadata      JSONB NOT NULL DEFAULT '{}',
+  occurred_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (stream_id, stream_version)
+);
+
+CREATE INDEX idx_agent_events_stream ON agent_events (stream_id, stream_version);
+```
+
+Append with expected version check:
+
+```typescript
+async function appendEvents(
+  db: Db,
+  streamId: string,
+  expectedVersion: number,
+  events: SessionEvent[],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const { rows } = await tx.query(
+      `SELECT COALESCE(MAX(stream_version), 0) AS v FROM agent_events WHERE stream_id = $1`,
+      [streamId],
+    );
+    const current = Number(rows[0].v);
+    if (current !== expectedVersion) {
+      throw new ConcurrencyError(streamId, expectedVersion, current);
+    }
+    for (let i = 0; i < events.length; i++) {
+      await tx.query(
+        `INSERT INTO agent_events (stream_id, stream_version, event_type, payload, metadata)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [streamId, current + i + 1, events[i].type, events[i], { correlationId: crypto.randomUUID() }],
+      );
+    }
+  });
+}
+```
+
+Optimistic concurrency prevents two workers from interleaving conflicting events on the same session—a realistic failure when tool callbacks arrive out of order.
+
+## Projections: building read models
+
+Projectors subscribe to new events and update read tables. Keep projectors **idempotent**: processing the same event twice should not double-count tokens.
+
+```python
+# projections/billing_projector.py
+def handle_model_completion(event: dict, conn) -> None:
+    session_id = event["metadata"]["stream_id"]
+    tokens = event["payload"]["tokens"]
+    tenant_id = event["metadata"].get("tenant_id")
+
+    conn.execute(
+        """
+        INSERT INTO billing_daily (tenant_id, day, total_tokens, event_id)
+        VALUES (%s, CURRENT_DATE, %s, %s)
+        ON CONFLICT (tenant_id, day) DO UPDATE
+          SET total_tokens = billing_daily.total_tokens + EXCLUDED.total_tokens
+        WHERE NOT EXISTS (
+          SELECT 1 FROM processed_events WHERE event_id = EXCLUDED.event_id
+        )
+        """,
+        (tenant_id, tokens, event["id"]),
+    )
+    conn.execute(
+        "INSERT INTO processed_events (event_id) VALUES (%s) ON CONFLICT DO NOTHING",
+        (event["id"],),
+    )
+```
+
+Run projectors as dedicated consumers with at-least-once delivery; dedupe via `processed_events` or deterministic upserts.
+
+## Snapshots for long agent runs
+
+A session with eighty events slows replay. Every N events (or when fold latency exceeds a threshold), persist a snapshot:
+
+```
+SessionSnapshot { state: SessionState, atVersion: 42 }
+```
+
+Load latest snapshot, then fold only events after version 42. Snapshots are optimization, not source of truth—you can delete and rebuild them from the log.
+
+## CQRS read paths for agent UX
+
+**Timeline projection** powers the operator console—chronological list with icons per event type. Sub-100 ms load time; paginate backward by version.
+
+**Session summary** holds current status, last message preview, token count—what the inbox list needs without scanning full history.
+
+**Search projection** denormalizes tool names and outcomes into Elasticsearch for "show me sessions where `delete_database` was called."
+
+Each projection evolves independently. Adding a safety flag to the search index does not migrate the billing table.
 
 ## Operational concerns
 
-Runbooks for event sourcing cqrs basics should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+**Retention and GDPR.** Events may contain PII in user messages. Define retention policies per stream type; tombstone events (`UserDataErased`) instruct projectors to redact without deleting audit metadata.
 
-Production agent event sourcing cqrs basics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Replay storms.** Rebuilding a projection replays all history—do it off-peak with rate limits. Version projectors (`billing_v3`) so you can run old and new in parallel before cutover.
 
-Rollouts for event sourcing cqrs basics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Monitoring.** Track `append_latency_ms`, `projection_lag_seconds`, `concurrency_conflict_total`. Lagging billing projection is finance risk; lagging timeline is UX risk.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Testing event-sourced agents
 
-## Security and compliance angles
+**Given-When-Then on aggregates.** Given a sequence of events, when command X, then expect events Y or rejection Z. No database required.
 
-Even when event sourcing cqrs basics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+**Property tests on fold.** Random event sequences never produce negative `pendingTools` or `totalTokens`.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent event sourcing cqrs basics so security reviews do not rely on tribal knowledge.
+**Integration tests.** Append real events to Testcontainers Postgres; assert projector output matches golden files.
 
-## Testing strategy
+```typescript
+// session.aggregate.test.ts
+describe("Session aggregate", () => {
+  it("rejects complete while tools pending", () => {
+    const events: SessionEvent[] = [
+      { type: "SessionStarted", sessionId: "s1", userId: "u1", at: "t0" },
+      // Tool started but not completed — fold would show pendingTools > 0
+    ];
+    const state = events.reduce(fold, null);
+    expect(() => decide(state, { type: "CompleteSession", outcome: "success" })).toThrow();
+  });
+});
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that event sourcing cqrs basics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## When not to reach for the event store
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Event sourcing adds moving parts. If your agent is a thin wrapper around one LLM call with no tools, Postgres `sessions` row plus `updated_at` is fine. Adopt events when debugging requires narrative, compliance requires immutability, or multiple read shapes contend on one write model.
 
-## Migration and evolution
-
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent event sourcing cqrs basics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
-
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where event sourcing cqrs basics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
-
-## Related concepts
-
-Event Sourcing Cqrs Basics intersects with broader ai topics — see companion notes on [agent-event patterns](https://blog.michaelsam94.com/agent-event/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Start small: event-source the tool-call boundary only—append `ToolCallCompleted` while keeping user messages in conventional tables—then expand once projectors prove stable.
 
 ## The takeaway
 
-Event Sourcing Cqrs Basics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent event sourcing cqrs basics becomes a maintainable asset instead of incident fuel.
+Event sourcing and CQRS give agent platforms an append-only history and flexible read models suited to long, branching, auditable workflows. Model sessions as aggregates with explicit invariants, append to a versioned store with optimistic concurrency, project into purpose-built views, and snapshot for replay performance. Store LLM outputs at write time so replay shows what happened—not a stochastic re-roll. The complexity is real, but so is the alternative cost of explaining agent behavior from a overwritten JSON column.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Martin Fowler — Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html)
+- [Martin Fowler — CQRS](https://martinfowler.com/bliki/CQRS.html)
+- [Greg Young — CQRS Documents](https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf)
+- [EventStoreDB documentation](https://www.eventstore.com/eventstoredb)
+- [Marten — .NET document DB with event sourcing](https://martendb.io/events/)

@@ -3,8 +3,8 @@ title: "Serving Many LoRA Adapters at Once"
 slug: "llm-serving-multi-lora-adapters"
 description: "Serve multiple LoRA adapters on one base model: PEFT composition, S-LoRA and LoRAX patterns, adapter routing, memory budgeting, and production deployment with vLLM."
 datePublished: "2025-03-18"
-dateModified: "2025-03-18"
-tags: ["AI", "LLM", "MLOps", "Infrastructure"]
+dateModified: "2026-07-17"
+tags:
 keywords: "multi LoRA serving, S-LoRA, LoRAX, vLLM LoRA adapters, PEFT serving production, dynamic LoRA loading"
 faq:
   - q: "Can I serve hundreds of LoRA adapters on one GPU?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is the difference between merging LoRA weights and runtime adapter switching?"
     a: "Merging bakes adapter weights into the base model offline — faster inference, one model per adapter, no runtime switching. Runtime switching loads low-rank matrices separately and composes during forward pass — one base serves many adapters, essential for multi-tenant SaaS. Merge for single-tenant high-throughput; runtime switch for many tenants with sparse traffic each."
 ---
-
 Every enterprise customer wanted their own fine-tuned support bot, but launching a full Llama-8B copy per tenant would have consumed 40 GB per instance times two hundred tenants. LoRA adapters shrink the per-customer delta to tens of megabytes — the hard problem becomes serving them concurrently on shared GPUs without loading a separate base model for each. Multi-LoRA serving is how platform teams offer personalized models economically: one base weights tensor, many low-rank overlays, routed per request.
 
 ## LoRA recap for serving context

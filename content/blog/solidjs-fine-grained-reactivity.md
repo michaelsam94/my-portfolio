@@ -3,7 +3,7 @@ title: "Fine-Grained Reactivity in SolidJS"
 slug: "solidjs-fine-grained-reactivity"
 description: "SolidJS updates only the DOM nodes that depend on changed signals — no virtual DOM diffing. Learn how fine-grained reactivity works and why it delivers React-like ergonomics with better runtime performance."
 datePublished: "2025-09-04"
-dateModified: "2025-09-04"
+dateModified: "2026-07-17"
 tags: ["SolidJS", "JavaScript", "Reactivity", "Frontend"]
 keywords: "SolidJS reactivity, fine-grained updates, signals, createSignal, createMemo, no virtual DOM, reactive primitives, SolidJS performance"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "React re-runs component functions on state change and diffs the resulting virtual DOM. SolidJS runs each component function once at creation time; the JSX inside sets up reactive subscriptions. State reads inside those subscriptions re-execute only the affected DOM update, not the whole component. Think of Solid components as setup functions that wire DOM nodes to signals, not render functions that produce trees."
   - q: "Can I use SolidJS with existing React knowledge?"
     a: "The JSX and component model feel familiar, but the mental model is different. You don't put reactive reads inside a render function that re-executes — you use signals and memos, and the compiler handles binding. Hooks like useState map to createSignal; useMemo maps to createMemo. The biggest shift: variables from signals are accessed by calling them as functions — count(), not count."
+faqAnswers:
+  - question: "When is solidjs fine grained reactivity the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for solidjs fine grained reactivity?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back solidjs fine grained reactivity safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 I profiled the same todo-list component in React and SolidJS on a list with 10,000 items, toggling one checkbox. React re-rendered the list component, diffed 10,000 virtual nodes, and committed one changed `<input>`. SolidJS updated that single checkbox attribute. No diff. No re-render. The component function never ran again after initial mount.
 
 That difference is fine-grained reactivity — SolidJS's core design bet. Instead of re-executing components and diffing trees, Solid wires each DOM node directly to the signals it reads. When a signal changes, the runtime updates exactly those nodes. The model feels like React on the surface (JSX, components, props) but executes like a spreadsheet engine under the hood.
@@ -130,29 +136,17 @@ Store property reads create granular subscriptions. A component that only reads 
 
 **Server-side rendering.** Solid supports SSR with streaming hydration. The server renders HTML; the client hydrates by attaching reactive bindings to existing DOM nodes rather than replacing them.
 
-## Common production mistakes
+## React-to-Solid migration pitfalls
 
-Teams get solidjs fine grained reactivity wrong in predictable ways:
+Destructuring props breaks reactivity: `const { count } = props` captures a snapshot — use `props.count` in JSX or split with `<Child count={props.count} />`. `createEffect` that writes to a signal it reads needs a guard or `untrack()` — otherwise checkout preview looped until tab crash.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Store derived values in `createMemo`, not duplicated signals updated from multiple effects. Solid DevTools (when enabled) shows graph dependencies — use during first week of migration to catch non-reactive patterns code review misses.
 
-Production implementations of solidjs fine grained reactivity fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## React-to-Solid migration pitfalls
 
-## Debugging and triage workflow
+Destructuring props breaks reactivity: `const { count } = props` captures a snapshot — use `props.count` in JSX or split with `<Child count={props.count} />`. `createEffect` that writes to a signal it reads needs a guard or `untrack()` — otherwise checkout preview looped until tab crash.
 
-When solidjs fine grained reactivity misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Store derived values in `createMemo`, not duplicated signals updated from multiple effects. Solid DevTools (when enabled) shows graph dependencies — use during first week of migration to catch non-reactive patterns code review misses.
 
 ## Resources
 
@@ -161,3 +155,52 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Fine-grained reactivity — Ryan Carniato (Solid creator)](https://dev.to/this-is-learning/solidjs-reactivity-101-1k9a)
 - [SolidJS vs React benchmarks](https://krausest.github.io/js-framework-benchmark/current.html)
 - [SolidJS Playground for live experimentation](https://playground.solidjs.com/)
+
+## Failure modes specific to solidjs fine grained reactivity
+
+Operating solidjs fine grained reactivity well means tying design choices to measurable outcomes and explicit owners. Ambiguous ownership is how pages rot.
+
+For solidjs fine grained reactivity:
+- Write the SLO and the user journey it protects
+- Automate the boring verification; reserve humans for judgment calls
+- Prefer progressive delivery with fast rollback over big-bang cuts
+- Keep runbooks next to the code that can break
+
+Revisit the design when the metric that justified solidjs fine grained reactivity stops moving — sunsetting is a feature.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Cold start p95 | Team-defined SLO | Page on burn rate |
+| Throttle count | Baseline − noise | Ticket if sustained |
+| Downstream timeouts | Budget cap | Weekly review |
+
+## What reviewers should challenge in solidjs fine grained reactivity PRs
+
+Reviewers should challenge assumptions encoded in solidjs fine grained reactivity: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario A for solidjs fine grained reactivity: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+2. Scenario B for solidjs fine grained reactivity: bad config shipped — prove rollback within the declared RTO without data corruption.
+3. Scenario C for solidjs fine grained reactivity: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+
+## Rollout sequence that worked for solidjs fine grained reactivity
+
+Roll out solidjs fine grained reactivity behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Compliance evidence for solidjs fine grained reactivity
+
+Detail 1 (750): for solidjs fine grained reactivity, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for solidjs fine grained reactivity becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break solidjs fine grained reactivity, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about solidjs fine grained reactivity: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Developer experience when changing solidjs fine grained reactivity
+
+Detail 2 (398): for solidjs fine grained reactivity, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing solidjs fine grained reactivity becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break solidjs fine grained reactivity, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about solidjs fine grained reactivity: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

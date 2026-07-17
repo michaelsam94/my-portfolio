@@ -1,111 +1,193 @@
 ---
 title: "AI Agents: Blue Green Database Migration"
 slug: "agent-blue-green-database-migration"
-description: "Blue Green Database Migration: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Blue-green database migrations for AI agent platforms — dual-write cutovers, schema versioning for embeddings tables, connection routing, and rollback paths that survive peak traffic."
 datePublished: "2024-12-24"
 dateModified: "2024-12-24"
 tags: ["AI", "Agent", "Blue"]
-keywords: "agent, blue, green, database, migration, ai, production, engineering, architecture"
+keywords: "blue-green migration, database migration, zero downtime, agent memory store, dual write, schema migration, PostgreSQL cutover"
 faq:
-  - q: "What is Blue Green Database Migration?"
-    a: "Blue Green Database Migration covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Blue Green Database Migration?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Blue Green Database Migration?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Blue Green Database Migration fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Blue Green Database Migration should be observable in production and safe to change in small diffs."
+  - q: "When should AI teams use blue-green database migration instead of in-place ALTER?"
+    a: "Use blue-green when migrations touch large tables (conversation history, embedding indexes, tool audit logs), require incompatible schema changes, or cannot tolerate write locks during peak agent traffic. In-place migrations are fine for additive nullable columns on small tables during maintenance windows."
+  - q: "How do you keep agent memory consistent during a blue-green cutover?"
+    a: "Run a dual-write period where every conversation turn, tool result, and embedding metadata writes to both blue and green schemas. Backfill historical rows asynchronously, verify row counts and checksums per tenant, then flip read traffic with a feature flag before decommissioning blue."
+  - q: "What is the biggest rollback mistake in blue-green DB migrations?"
+    a: "Flipping reads to green before dual-write is stable, then discovering green is missing hours of agent traces. Always keep blue writable and readable for rollback until green passes reconciliation gates — and never drop blue until a full backup restore drill succeeds."
+  - q: "How long should the dual-write phase last for agent workloads?"
+    a: "Long enough to cover your peak daily cycle plus one weekly batch job (embedding reindex, analytics export). For most production agent platforms that means 48–72 hours minimum, longer if you have global traffic with no true off-peak window."
 ---
-Blue Green Database Migration sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The migration was supposed to be boring: add a JSONB column for tool-call payloads on the agent session table. In-place `ALTER` on PostgreSQL locked the table for eleven minutes during US morning traffic. Conversation writes queued, WebSocket heartbeats stacked, and on-call spent the rest of the day replaying dead-lettered tool results. The schema change was correct; the **cutover strategy** was not.
 
-When blue green database migration is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent platforms amplify ordinary database migration risk. Sessions are long-lived, writes are continuous, embeddings tables are huge, and "retry the request" does not undo a half-applied migration. Blue-green database migration — maintaining two parallel schema environments and shifting traffic deliberately — is how teams change the data plane without freezing the agents that depend on it.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Blue-green for databases: what it actually means
 
-Solid AI engineering turns blue green database migration from a recurring argument into a documented pattern with tests and an owner.
+Application blue-green usually means two deployable artifact versions. Database blue-green means two **schema-compatible data planes** (or two physical clusters) where:
 
-## Design principles that survive production
+- **Blue** serves current production traffic with the existing schema.
+- **Green** receives replicated or dual-written data with the target schema.
+- **Cutover** moves reads (then writes) to green via connection routing or proxy config.
+- **Rollback** reverses the routing flag and continues on blue if green fails validation.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent blue green database migration bugs hide.
+The agent-specific twist: you are not migrating a stateless API. You are migrating **durable agent state** — thread history, RAG cursor positions, pending human approvals, idempotency keys for tool executions.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for blue green database migration, you do not yet understand the behavior you shipped.
+## When blue-green beats expand-contract alone
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Expand-contract (add column → dual-write → backfill → switch reads → drop old) works for many changes. Choose full blue-green when:
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent blue green database migration flows so duplicates are harmless or detectable.
+| Scenario | Why blue-green |
+|----------|----------------|
+| Embedding table partition redesign | Rebuild indexes offline on green; swap alias |
+| Sharding key change | Cannot incrementally alter distribution on blue |
+| Engine swap (Postgres → Cockroach) | Different replication semantics |
+| Heavy JSON schema reshape | Backfill transforms CPU-saturate blue |
 
-## Implementation patterns
+If your change is additive and backward-compatible, expand-contract on a single cluster is simpler. Do not blue-green for sport — operational surface area doubles.
 
-A practical baseline for blue green database migration in ai stacks:
+## Architecture: routing layer
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent blue green database migration changes safer because business rules stay isolated from transport details.
+Never hardcode "the database" in agent workers. Introduce a **migration-aware datasource** that reads routing config from a control plane:
 
 ```typescript
-// Blue Green Database Migration: typed boundary + structured errors
-export async function handleBlueGreenDatabaseMigration(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-blue-green-database-migration");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+type DbTarget = "blue" | "green" | "dual";
+
+interface MigrationRouting {
+  readTarget: DbTarget;
+  writeTarget: DbTarget;
+  dualWriteEnabled: boolean;
 }
 
+export class AgentSessionRepository {
+  constructor(
+    private blue: Pool,
+    private green: Pool,
+    private routing: () => MigrationRouting,
+  ) {}
+
+  private poolForRead(): Pool {
+    const { readTarget } = this.routing();
+    if (readTarget === "green") return this.green;
+    if (readTarget === "blue") return this.blue;
+    // dual read: prefer green with blue fallback — only after validation
+    return this.green;
+  }
+
+  async insertTurn(sessionId: string, turn: AgentTurn): Promise<void> {
+    const { writeTarget, dualWriteEnabled } = this.routing();
+    const payload = serializeTurn(turn);
+
+    if (writeTarget === "blue" || dualWriteEnabled) {
+      await this.blue.query(
+        `INSERT INTO agent_turns (session_id, payload, schema_ver) VALUES ($1, $2, 1)`,
+        [sessionId, payload],
+      );
+    }
+    if (writeTarget === "green" || dualWriteEnabled) {
+      await this.green.query(
+        `INSERT INTO agent_turns_v2 (session_id, payload, tool_calls, schema_ver) VALUES ($1, $2, $3, 2)`,
+        [sessionId, payload.body, payload.toolCalls],
+      );
+    }
+  }
+}
 ```
 
+Feature flags or config service keys (`db.migration.read=green`) let you flip cohorts — internal tenants first, then 5%, then 100% — without redeploying agents.
 
-## Operational concerns
+## Phase plan for agent data migrations
 
-Game-day exercises for blue green database migration beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Phase 0 — Inventory dependencies.** Map every writer: chat API, async summarizer, embedding pipeline, analytics CDC. Missing one writer causes silent drift.
 
-Production agent blue green database migration work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Phase 1 — Provision green.** Clone replication topology or restore snapshot + logical replication. Apply target DDL on green only.
 
-Rollouts for blue green database migration benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Phase 2 — Dual-write.** All agent paths write to both schemas. Reads still on blue. Monitor dual-write error rate separately — a 0.1% failure rate across millions of turns is thousands of orphaned rows.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Phase 3 — Backfill.** Historical rows copy from blue to green with transform jobs chunked by `session_id` or time window. Track watermark in a migration metadata table.
 
-## Security and compliance angles
+**Phase 4 — Reconciliation.** Compare counts, checksums, and spot-check full session replays:
 
-Even when blue green database migration is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+-- Per-tenant reconciliation query (simplified)
+SELECT
+  t.tenant_id,
+  b.cnt AS blue_count,
+  g.cnt AS green_count,
+  ABS(b.cnt - g.cnt) AS delta
+FROM tenants t
+LEFT JOIN (
+  SELECT tenant_id, COUNT(*) AS cnt FROM blue.agent_turns GROUP BY 1
+) b USING (tenant_id)
+LEFT JOIN (
+  SELECT tenant_id, COUNT(*) AS cnt FROM green.agent_turns_v2 GROUP BY 1
+) g USING (tenant_id)
+WHERE ABS(b.cnt - g.cnt) > 0;
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent blue green database migration so security reviews do not rely on tribal knowledge.
+**Phase 5 — Read cutover.** Flip `readTarget` to green for canary tenants. Compare agent eval replay scores and p95 latency. Agents are sensitive to read latency spikes during connection pool churn.
 
-## Testing strategy
+**Phase 6 — Write cutover.** Disable blue writes; `writeTarget=green` only. Keep blue read-only for rollback window.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that blue green database migration depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Phase 7 — Decommission blue.** After retention period and successful restore drill, drop old schema or tear down cluster.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Embeddings and vector indexes
 
-## Migration and evolution
+Vector tables break naive copy migrations. Treat the embedding store as its own blue-green surface:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent blue green database migration functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+- Build green index from snapshot + CDC stream, not from live re-embed of entire corpus unless necessary.
+- Use **index aliases** (`agent_chunks_active`) pointing at blue or green physical index.
+- During cutover, pause embedding jobs or route them to both indexes with idempotent document IDs.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where blue green database migration spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Re-embedding everything on cutover night is how teams miss SLA and ship stale retrieval for half the corpus.
 
-## Related concepts
+## Agent-specific validation gates
 
-Blue Green Database Migration intersects with broader ai topics — see companion notes on [agent-blue patterns](https://blog.michaelsam94.com/agent-blue/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Before each phase advance, run automated checks tied to agent behavior:
+
+1. **Session replay** — Rehydrate 1,000 random sessions from green; verify tool-call ordering matches blue exports.
+2. **RAG consistency** — Same query set; compare top-k doc IDs between blue and green retrieval (allow minor rank shuffle if scores within epsilon).
+3. **Idempotency** — Replay tool execution IDs; green must dedupe identically to blue.
+4. **Human-in-the-loop queue** — Pending approvals visible on both sides during dual-write.
+
+Fail the gate → hold phase. Producing agents with missing tool traces is worse than delaying a migration.
+
+## Rollback that actually works
+
+Rollback is routing `readTarget=blue`, `writeTarget=blue`, `dualWriteEnabled=false`. Prerequisites:
+
+- Blue stayed writable through Phase 5 (read cutover), or you accept data loss for green-only writes.
+- Runbooks document **maximum green-only write window** — if exceeded, rollback requires merge script, not a flag flip.
+- Connection pools pre-warmed on blue so flip does not cold-start thousands of agents.
+
+Practice rollback in staging with production-shaped QPS. The flip itself should complete in under 60 seconds.
+
+## Observability
+
+Dashboard panels worth building before Phase 2:
+
+- Dual-write success/failure rate by service
+- Backfill lag (seconds behind head)
+- Reconciliation delta by tenant
+- Agent error rate correlated with migration phase annotations
+- Pool wait time on green vs blue
+
+Alert when reconciliation delta grows monotonically for 15 minutes — that indicates a missed writer, not transient lag.
+
+## Connection pool and latency gotchas
+
+Agent workers hold database connections longer than typical REST handlers because multi-step tool loops interleave reads between LLM calls. During cutover, doubling pools across blue and green can exhaust max connections on the server. Scale `max_connections` on green before Phase 2, then shrink blue pools gradually as traffic shifts. Watch `pg_stat_activity` wait events — `ClientRead` spikes often mean agents timing out mid-turn, not slow queries.
+
+## Security and compliance
+
+Dual environments mean dual access control reviews. Green clones inherit production data — encrypt at rest, restrict network paths, expire green credentials after decommission. Audit logs for migration flag changes (who flipped read traffic, when) belong in immutable storage for SOC2 and GDPR Article 30 records.
 
 ## The takeaway
 
-Blue Green Database Migration rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent blue green database migration becomes a maintainable asset instead of incident fuel.
+Blue-green database migration for AI agents is a traffic-routing problem wrapped around a data reconciliation problem. Dual-write agent turns, backfill with verifiable checkpoints, cut over reads before writes, and keep blue alive until reconciliation proves green is complete. The schema change is the easy part; proving every conversation and tool trace survived the switch is what keeps agents trustworthy after deploy night.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL logical replication documentation](https://www.postgresql.org/docs/current/logical-replication.html)
+- [Expand and contract pattern (Martin Fowler)](https://martinfowler.com/bliki/ParallelChange.html)
+- [Vitess schema migration strategies](https://vitess.io/docs/design-docs/vschema-migration/)
+- [AWS Database Migration Service best practices](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_BestPractices.html)
+- [Flyway vs Liquibase migration versioning](https://documentation.red-gate.com/fd)

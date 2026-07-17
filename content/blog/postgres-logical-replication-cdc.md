@@ -3,7 +3,7 @@ title: "Change Data Capture with Postgres Logical Replication"
 slug: "postgres-logical-replication-cdc"
 description: "A practical guide to change data capture with Postgres logical replication: how the WAL, replication slots, and Debezium turn changes into events."
 datePublished: "2026-02-11"
-dateModified: "2026-02-11"
+dateModified: "2026-07-17"
 tags: ["Backend", "Databases", "Data", "Architecture"]
 keywords: "change data capture, CDC, Postgres logical replication, Debezium, WAL, replication slots, event streaming"
 faq:
@@ -90,6 +90,26 @@ A short list of things that separate a demo from production CDC:
 The two that bite hardest are slot growth and idempotency. Treat every downstream consumer as if it *will* see duplicate events, because on restart it will, and design the apply logic to be idempotent — upserts keyed by primary key plus LSN comparison rather than blind inserts.
 
 Done carefully, CDC becomes one of the most leveraged pieces of infrastructure you can run: a single, durable, ordered feed of everything that changes in your database, from which any number of downstream systems can be built without ever touching the application's write path again. That decoupling is worth the operational diligence it demands.
+
+## Publication row filter (PG15+)
+
+CREATE PUBLICATION with WHERE tenant_id filter — subset replication for warehouse per tenant. Verify UPDATE/DELETE carry old key values for filter columns.
+
+## Replica identity FULL for UPDATE/DELETE
+
+Tables without primary key need REPLICA IDENTITY FULL — wide rows increase WAL volume. Prefer PK on every replicated table.
+
+## Slot lag monitoring
+
+pg_replication_slots confirmed_flush_lsn lag bytes — alert before disk fills from retained WAL. Drop unused slots immediately.
+
+## Schema change choreography
+
+ALTER TYPE and column renames break logical replication — expand-contract: add column, replicate both, switch consumer, drop old.
+
+## Field notes on postgres logical replication cdc
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

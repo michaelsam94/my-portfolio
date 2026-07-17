@@ -3,8 +3,8 @@ title: "OAuth 2.0 PKCE for Mobile Apps"
 slug: "oauth-pkce-mobile"
 description: "How OAuth 2.0 PKCE secures mobile login: the authorization code flow, code_verifier and code_challenge, why implicit flow is dead, and mobile-specific pitfalls."
 datePublished: "2026-03-26"
-dateModified: "2026-03-26"
-tags: ["Security", "Authentication", "Mobile"]
+dateModified: "2026-07-17"
+tags:
 keywords: "OAuth PKCE, authorization code flow, mobile OAuth, PKCE mobile, secure login mobile, token exchange"
 faq:
   - q: "What is OAuth 2.0 PKCE?"
@@ -14,7 +14,6 @@ faq:
   - q: "Is the implicit flow still acceptable for mobile?"
     a: "No. The implicit flow returned tokens directly in the redirect, which exposed them to interception and left no way to prove client legitimacy. OAuth 2.0 Security Best Current Practice and OAuth 2.1 formally deprecate it. The authorization code flow with PKCE is now the required approach for mobile and single-page apps; there is no good reason to use implicit flow in a new app."
 ---
-
 Mobile login has a structural problem that web apps with a backend don't: there's nowhere safe to keep a secret. Your app ships to a million phones, any one of which can be rooted and decompiled, so an embedded client secret is a public secret. OAuth 2.0 PKCE — Proof Key for Code Exchange — is the fix. It secures the authorization code flow for these "public clients" by replacing the static secret with a fresh, per-login secret that never lives in the app binary and never crosses the network in the clear.
 
 I've reviewed mobile auth implementations that were technically "using OAuth" and still trivially interceptable because they skipped PKCE or, worse, clung to the long-dead implicit flow. If you're building mobile login in 2026, PKCE isn't optional — it's the baseline. Here's how it works and the mobile-specific traps that break it.
@@ -98,3 +97,22 @@ The bottom line from someone who's shipped this in production apps: get the four
 - [OAuth 2.1 draft specification](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1)
 - [AppAuth for Android](https://github.com/openid/AppAuth-Android)
 - [AppAuth for iOS](https://github.com/openid/AppAuth-iOS)
+
+
+## Production validation (1)
+
+Ship changes behind feature flags when behavior crosses route or service boundaries. Canary deploy with automatic rollback when error rate or p95 latency regresses beyond SLO budget. Document which metrics prove success—user-visible latency, error ratio, conversion—not only CPU graphs.
+
+When operating **OAuth pkce mobile** (`oauth-pkce-mobile`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Failure modes (2)
+
+Recurring incidents: missing idempotency on retried paths, connection pool exhaustion masquerading as slow queries, retry storms amplifying partial outages. Design explicit timeouts on every outbound call.
+
+When operating **OAuth pkce mobile** (`oauth-pkce-mobile`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Observability (3)
+
+Structured logs include trace_id and tenant_id on every error path. Metrics: request rate, error ratio, duration histogram, queue depth or pool wait. Traces: one span per dependency.
+
+When operating **OAuth pkce mobile** (`oauth-pkce-mobile`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.

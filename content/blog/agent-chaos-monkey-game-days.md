@@ -1,111 +1,200 @@
 ---
 title: "AI Agents: Chaos Monkey Game Days"
 slug: "agent-chaos-monkey-game-days"
-description: "Chaos Monkey Game Days: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Random prod failures teach little about agent systems—structured game days that kill LLM providers, vector indexes, and tool sandboxes in staging reveal retry storms and silent degradation before users do."
 datePublished: "2026-04-03"
 dateModified: "2026-04-03"
 tags: ["AI", "Agent", "Chaos"]
-keywords: "agent, chaos, monkey, game, days, ai, production, engineering, architecture"
+keywords: "chaos engineering, game day, LLM failure injection, agent resilience, fault injection, retry storms, graceful degradation, staging drills"
 faq:
-  - q: "What is Chaos Monkey Game Days?"
-    a: "Chaos Monkey Game Days covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Chaos Monkey Game Days?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Chaos Monkey Game Days?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Chaos Monkey Game Days fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Chaos Monkey Game Days should be observable in production and safe to change in small diffs."
+  - q: "How is a game day different from running Chaos Monkey in production?"
+    a: "Game days are scheduled, scoped exercises with explicit hypotheses, observers, and stop conditions. Chaos Monkey randomly terminates instances; game days inject domain-specific faults—429 bursts from the LLM API, empty retrieval results, tool timeout loops—and measure whether agents degrade gracefully."
+  - q: "Should we run agent chaos drills in production or staging?"
+    a: "Start in staging with production-shaped traffic replay and synthetic agent sessions. Graduate to limited production game days only after runbooks exist, blast radius is tenant-scoped, and you can abort via a central kill switch within seconds."
+  - q: "What faults matter most for LLM agent stacks?"
+    a: "Provider rate limits, embedding service saturation, vector DB partial outage, tool sandbox OOM, stale cache returning wrong chunks, and cascading retries that multiply token spend 10× while user-visible latency stays flat."
+  - q: "How do we score a successful game day?"
+    a: "Define pass criteria upfront: max error budget burn, no unbounded retry loops, fallback model engaged within N seconds, incident bot pages fired once (not 400 times), and post-drill action items with owners—not whether everything stayed green."
 ---
-Chaos Monkey Game Days is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The team had circuit breakers on paper and retries everywhere in code. During a game day nobody remembered to schedule, a staging inject killed the primary embedding endpoint for ninety seconds. Agent sessions did not fail—they **succeeded expensively**. Each retrieval miss triggered three alternate index queries, two reranker calls, and a fallback to a larger model. Spend graphs spiked while success rate stayed at 99.1%. Users would have noticed latency; finance would have noticed the invoice.
 
-When chaos monkey game days is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Chaos Monkey popularized random failure in microservices. Agent systems need **hypothesis-driven game days** because failure is rarely a dead pod—it is wrong context, runaway tool loops, and silent model substitution. This post covers how to design, run, and learn from chaos drills aimed at LLM orchestration—not just infrastructure.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What agent failures actually look like
 
-Solid AI engineering turns chaos monkey game days from a recurring argument into a documented pattern with tests and an owner.
+Traditional chaos experiments terminate instances and watch Kubernetes reschedule. Agent pipelines fail differently:
 
-## Design principles that survive production
+| Fault injected | User-visible symptom | Hidden damage |
+|----------------|---------------------|---------------|
+| LLM 429 burst | Slow replies | Retry storm, 5× token cost |
+| Vector DB read timeout | "I don't know" | Empty context, confident hallucination |
+| Tool sandbox hang | Spinner forever | Worker pool exhaustion |
+| Stale RAG cache | Wrong answer | High confidence, no error flag |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent chaos monkey game days bugs hide.
+Game day hypotheses should name the failure mode you fear, not the infrastructure knob you turn.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for chaos monkey game days, you do not yet understand the behavior you shipped.
+Example hypothesis: *When the reranker is unavailable for two minutes, the agent serves cached top-3 chunks and surfaces a low-confidence banner within five seconds, without more than two LLM round-trips per user message.*
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Scaffolding a safe game day
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent chaos monkey game days flows so duplicates are harmless or detectable.
+Before injecting faults, assemble four controls:
 
-## Implementation patterns
+1. **Kill switch** — single flag disables all injectors and restores baseline routes
+2. **Blast radius** — staging tenant, synthetic users, or 1% canary cohort only
+3. **Observers** — SRE, ML platform, and product on-call in a war room channel
+4. **Budget caps** — max spend and max concurrent sessions during the drill
 
-A practical baseline for chaos monkey game days in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent chaos monkey game days changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Chaos Monkey Game Days: typed boundary + structured errors
-export async function handleChaosMonkeyGameDays(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-chaos-monkey-game-days");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+# chaos/agent-game-day.yaml
+gameDay:
+  id: gd-2026-04-embedding-outage
+  environment: staging
+  durationMinutes: 45
+  abortOn:
+    - metric: agent.token_spend.rate
+      threshold: 3.0  # 3x baseline
+      window: 5m
+    - metric: agent.session.error_rate
+      threshold: 0.15
+  injectors:
+    - name: embedding-unavailable
+      target: embedding-service
+      fault: connection_refused
+      startAfterMinutes: 10
+      durationMinutes: 3
+    - name: llm-throttle
+      target: llm-gateway
+      fault: http_429
+      rate: 0.4
+      startAfterMinutes: 20
+      durationMinutes: 5
+  successCriteria:
+    - fallback_model_activated_within_seconds: 8
+    - max_llm_calls_per_session_p99: 6
+    - chatops_incident_created: exactly_once
 ```
 
+Store game day configs in git. Re-run the same injectors after refactors to detect resilience regressions.
 
-## Operational concerns
+## Injectors tailored to agent paths
 
-Alert on user-visible symptoms for chaos monkey game days — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Build injectors at **semantic boundaries**, not only network layers:
 
-Production agent chaos monkey game days work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Provider throttle.** Return 429 with `Retry-After` headers matching your largest vendor's behavior. Verify client respects backoff and does not fan out to three backup keys simultaneously.
 
-Rollouts for chaos monkey game days benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Retrieval empty set.** Force vector search to return zero rows. Assert the agent admits missing context rather than inventing policy answers.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Tool latency staircase.** Add 0s, 5s, 30s delays to sandboxed tool calls. Catch orchestrators that parallelize ten tools without a global deadline.
 
-## Security and compliance angles
+**Context truncation.** Silently drop middle chunks from assembled prompts. Tests whether citations still align with claims—many agents fail this silently.
 
-Even when chaos monkey game days is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```typescript
+// chaos/injectors/retrievalEmpty.ts
+import { FaultInjector } from "./types";
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent chaos monkey game days so security reviews do not rely on tribal knowledge.
+export const retrievalEmptyInjector: FaultInjector = {
+  name: "retrieval-empty",
+  matches: (ctx) => ctx.stage === "vector_search",
+  apply: async (ctx) => {
+    ctx.span.addEvent("chaos.retrieval_empty");
+    return { ...ctx, results: [], injected: true };
+  },
+  rollback: async (ctx) => ctx,
+};
+```
 
-## Testing strategy
+Wire injectors through a middleware layer so production code paths execute—avoid separate "chaos branch" binaries that never ship.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that chaos monkey game days depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Measuring retry storms
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+The deadliest agent incidents look healthy on success-rate dashboards. Instrument **work amplification**:
 
-## Migration and evolution
+```typescript
+// metrics/agentAmplification.ts
+metrics.createHistogram("agent.llm.calls_per_session");
+metrics.createCounter("agent.retry.reason", { description: "429|timeout|empty_context" });
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent chaos monkey game days functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+export function trackSession(sessionId: string) {
+  let llmCalls = 0;
+  return {
+    onLlmCall: () => {
+      llmCalls++;
+      if (llmCalls > 8) {
+        metrics.counter("agent.retry.storm_suspected").add(1, { sessionId });
+      }
+    },
+    flush: () => {
+      histogram.record(llmCalls, { sessionId });
+    },
+  };
+}
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where chaos monkey game days spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+During game days, plot LLM calls per session, tool invocations per turn, and dollars per synthetic user alongside latency percentiles. A pass with 2s p99 and 12× cost is a failure.
 
-## Related concepts
+## Game day runbook rhythm
 
-Chaos Monkey Game Days intersects with broader ai topics — see companion notes on [agent-chaos patterns](https://blog.michaelsam94.com/agent-chaos/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+A ninety-minute session beats an ad hoc afternoon:
 
-## The takeaway
+| Phase | Duration | Activity |
+|-------|----------|----------|
+| Brief | 10 min | Hypotheses, roles, abort criteria |
+| Baseline | 10 min | Normal load, confirm metrics |
+| Inject A | 15 min | Single fault, observe |
+| Recovery | 10 min | Rollback, verify clean state |
+| Inject B | 15 min | Compound fault (optional) |
+| Retro | 30 min | Timed findings, action items |
 
-Chaos Monkey Game Days rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent chaos monkey game days becomes a maintainable asset instead of incident fuel.
+Record timeline annotations on dashboards—`T+12m embedding fault start`—so postmortems align logs with injectors.
+
+ChatOps bots should announce inject state to the war room, not page production on-call unless abort thresholds fire. Train the bot during game days; it is part of the system under test.
+
+## From staging to controlled production
+
+Production game days require tighter contracts:
+
+- **Tenant allowlist** — internal dogfood or consenting design partners
+- **Synthetic traffic mix** — never experiment on unpaid conversion funnels during peak
+- **Financial guardrails** — hard session spend caps and automatic session kill
+- **Comms** — status page internal-only banner if user-visible latency shifts
+
+Start with read-path faults (retrieval degradation, cache poison) before write-path faults (tool mutations, billing side effects). The blast radius of a wrong agent action exceeds a slow response.
+
+## Compound faults and agent loop detection
+
+Single-fault drills teach baseline behavior; **compound faults** expose orchestration bugs. Pair embedding outage with LLM throttle—the worst production combo—only after single-fault passes. Watch for agent loops: tool call → empty result → replan → same tool call.
+
+```typescript
+// chaos/guards/loopDetector.ts
+export function trackToolLoop(sessionId: string, toolName: string): void {
+  const key = `${sessionId}:${toolName}`;
+  const count = (loopCounts.get(key) ?? 0) + 1;
+  loopCounts.set(key, count);
+  if (count >= 4) {
+    metrics.counter("chaos.agent_tool_loop").add(1, { sessionId, toolName });
+    throw new AgentLoopAbortError(sessionId);
+  }
+}
+```
+
+During compound injects, assert the loop detector fires before token spend exceeds 3× baseline. If it does not, your guard is cosmetic. Document expected degradation copy—users should see "search temporarily limited" not a hallucinated answer.
+
+Game day notes should capture **time-to-detect loop** separately from **time-to-recover dependency**. Teams often fix the provider first while loops continue burning budget in the background.
+
+Schedule the first game day before your next major model route change or retrieval index migration. Those deploys multiply failure modes; validating resilience the week after launch is too late to influence architecture decisions.
+
+## Closing the loop
+
+Every game day produces findings; without owners they become trivia. File tickets with severity tied to user impact: retry storm = P1, missing fallback banner = P2, chatops duplicate pages = P3.
+
+Re-run injectors in CI at reduced intensity—five-second embedding fault on each main merge—to catch regressions cheaper than quarterly drills alone.
+
+Chaos Monkey asked whether your instances survive termination. Agent game days ask whether your **orchestration survives intelligence**—ambiguous errors, partial context, and optimistic retries. Schedule the drill before the invoice teaches the lesson.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Principles of Chaos Engineering](https://principlesofchaos.org/) — hypothesis, blast radius, and production learning culture
+- [Netflix Chaos Monkey](https://github.com/Netflix/chaosmonkey) — origin of random instance termination; compare to scoped injectors
+- [Gremlin fault injection docs](https://www.gremlin.com/docs/) — scheduling, rollback, and game day tooling patterns
+- [Google SRE: Testing for reliability](https://sre.google/sre-book/testing-reliability/) — load tests, disaster drills, and success criteria
+- [OpenAI rate limit guidance](https://platform.openai.com/docs/guides/rate-limits) — realistic 429 behavior for provider injectors

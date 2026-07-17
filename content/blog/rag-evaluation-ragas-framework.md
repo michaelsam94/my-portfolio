@@ -3,7 +3,7 @@ title: "Evaluating RAG with RAGAS"
 slug: "rag-evaluation-ragas-framework"
 description: "Evaluate RAG pipelines with the RAGAS framework: faithfulness, answer relevancy, context precision, and context recall metrics with practical CI integration."
 datePublished: "2024-12-07"
-dateModified: "2024-12-07"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Evaluation", "RAGAS"]
 keywords: "RAGAS evaluation, RAG metrics, faithfulness score, context recall, answer relevancy, LLM evaluation framework"
 faq:
@@ -150,6 +150,24 @@ When evaluation ragas framework misbehaves in production, work top-down instead 
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Custom RAGAS metrics for agentic pipelines
+
+When RAG feeds tool-using agents, extend RAGAS with custom metrics: tool selection accuracy, parameter extraction fidelity, and multi-hop context completeness. Wrap agent trajectories into RAGAS dataset rows with `contexts` as all retrieved plus tool outputs.
+
+Compare faithfulness before and after adding agent loops — agents sometimes synthesize across tools in ways standard faithfulness judges flag incorrectly. Tune judge prompts on 20 hand-scored examples first.
+
+## Production sampling with RAGAS-lite
+
+Full RAGAS on every query is prohibitive. Sample 1% of production traffic into async eval queues running faithfulness-only checks. Alert when rolling 7-day faithfulness drops more than 5 points vs. baseline — faster than waiting for CSAT declines.
+
+## Stratified eval datasets
+
+Balance golden sets across product lines and languages. Over-represented FAQ categories inflate aggregate RAGAS scores while enterprise billing questions fail silently. Report per-stratum metrics in CI artifacts.
+
+## Measuring success for evaluation ragas framework
+
+Define two or three metrics tied to user outcomes before tuning implementation details. Review them weekly in a short run review: median and p95 latency, error or block rates where applicable, and a quality sample from production logs or golden eval sets. Store dashboard links and threshold values in the runbook so on-call engineers know what "healthy" means without reading source code. When metrics drift after a deploy, roll back first and compare traces with correlation IDs second — speed matters more than root cause during customer-visible regressions.
 
 ## Resources
 

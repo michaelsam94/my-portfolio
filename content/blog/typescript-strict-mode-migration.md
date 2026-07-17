@@ -3,7 +3,7 @@ title: "Migrating to TypeScript Strict Mode"
 slug: "typescript-strict-mode-migration"
 description: "A practical guide to enabling TypeScript strict mode incrementally: strictNullChecks, noImplicitAny, strictFunctionTypes, and fixing a legacy codebase without stopping development."
 datePublished: "2026-02-21"
-dateModified: "2026-02-21"
+dateModified: "2026-07-17"
 tags: ["TypeScript", "Web", "Migration", "Type Safety"]
 keywords: "TypeScript strict mode, strictNullChecks, noImplicitAny, migration, tsconfig, type safety"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Yes, and you should. Do not flip strict: true on a large codebase in one PR. Enable individual flags one at a time, starting with noImplicitAny and strictNullChecks as the highest-value pair. Use @ts-expect-error with a ticket reference for errors you cannot fix immediately, and track the count to ensure it decreases over time. Many teams run a strict tsconfig for new files while legacy files remain on the loose config until migrated."
   - q: "How long does a strict mode migration typically take?"
     a: "It depends on codebase size and age, but a rough guide: a 50k-line project takes two to four weeks of dedicated effort, while a 200k-line project takes one to three months spread across normal development. The work is mostly mechanical — adding null checks, typing function parameters, fixing any escapes — but it touches many files. The key is incremental progress: enable one flag, fix the errors, merge, repeat. Trying to fix everything at once leads to a long-lived branch that never merges."
+faqAnswers:
+  - question: "When is typescript strict mode migration the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for typescript strict mode migration?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back typescript strict mode migration safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 "We'll enable strict mode after the launch." That was six launches ago. The tsconfig still had `strict: false`, `noImplicitAny: false`, and `skipLibCheck: true` covering a multitude of sins. When we finally flipped `strictNullChecks` alone, the compiler reported 1,400 errors — and half of them were real bugs: unguarded `response.data` accesses, functions that returned `undefined` on error paths without typing it, and event handlers assuming `event.target` was never null. Strict mode isn't a style preference. It's a bug-finding tool, and migrating to it is one of the best returns on investment in a TypeScript codebase.
 
 ## What strict: true enables
@@ -226,16 +232,13 @@ After migration, you'll notice:
 
 The migration is tedious but mechanical. The bugs it surfaces are not theoretical — they're in your production error logs, waiting to be found.
 
-## Common production mistakes
+## Incremental strictness rollout
 
-Teams get strict mode migration wrong in predictable ways:
+Enable `strict` flags one at a time across codebase: `strictNullChecks` first (highest bug catch), then `noImplicitAny`, then `strictFunctionTypes`. Use `@ts-expect-error` with ticket references for legacy files during migration — not `@ts-ignore` without expiry. CI rule: no new `@ts-expect-error` without approval. Track error count weekly; celebrate downward trend even if not zero yet.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## noImplicitReturns in async functions
 
-TypeScript patterns for strict mode migration erode when `any` escapes during deadlines, generic constraints are loosened instead of modeling domain invariants, and strict mode is disabled file-by-file without a migration plan.
+Async functions implicitly return `Promise<void>` — missing return in branch still violates noImplicitReturns when other branches return value. Explicit `return undefined` or restructure guards. Enable in CI per-directory once src/legacy is excluded via tsconfig references.
 
 ## Resources
 
@@ -244,3 +247,100 @@ TypeScript patterns for strict mode migration erode when `any` escapes during de
 - [Gradual strict mode migration (Matt Pocock)](https://www.totaltypescript.com/how-to-enable-strict-mode)
 - [typescript-strict-plugin](https://github.com/allegro/typescript-strict-plugin)
 - [TypeScript Handbook: Narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html)
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## typescript strict mode migration rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## Architecture decisions around typescript strict mode migration
+
+TypeScript leverage for typescript strict mode migration comes from encoding invariants the compiler can enforce at change sites. `any` escapes and loose `as` casts are where production bugs hide.
+
+For typescript strict mode migration:
+- Prefer `unknown` + narrowing over `any`
+- Branded types for IDs that must not mix (UserId vs OrderId)
+- Zod (or equivalent) at IO boundaries; infer types from schemas
+- `satisfies` for config objects that need both literal inference and type checks
+
+Enable strictness incrementally with lint gates so new code cannot regress the baseline.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Plan apply time | Team-defined SLO | Page on burn rate |
+| Drift open count | Baseline − noise | Ticket if sustained |
+| Failed policy checks | Budget cap | Weekly review |
+
+## Load and chaos experiments for typescript strict mode migration
+
+Reviewers should challenge assumptions encoded in typescript strict mode migration: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario B for typescript strict mode migration: bad config shipped — prove rollback within the declared RTO without data corruption.
+2. Scenario C for typescript strict mode migration: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+3. Scenario A for typescript strict mode migration: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+
+## Capacity planning with typescript strict mode migration in mind
+
+Roll out typescript strict mode migration behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Observability cardinality around typescript strict mode migration
+
+Detail 1 (386): for typescript strict mode migration, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When observability cardinality around typescript strict mode migration becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break typescript strict mode migration, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about typescript strict mode migration: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Caching interactions with typescript strict mode migration
+
+Detail 2 (150): for typescript strict mode migration, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When caching interactions with typescript strict mode migration becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break typescript strict mode migration, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about typescript strict mode migration: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

@@ -3,7 +3,7 @@ title: "OpenTelemetry Collector Pipelines in Practice"
 slug: "opentelemetry-collector-pipelines"
 description: "A practical guide to OpenTelemetry Collector pipelines: receivers, processors, exporters, plus batching, tail sampling, and a topology that scales."
 datePublished: "2026-02-15"
-dateModified: "2026-02-15"
+dateModified: "2026-07-17"
 tags: ["Observability", "DevOps", "OpenTelemetry"]
 keywords: "OpenTelemetry Collector, otel pipelines, receivers processors exporters, tail sampling, telemetry pipeline"
 faq:
@@ -103,6 +103,36 @@ This is also the layer that complements kernel-level approaches like [eBPF obser
 A few hard-won operational notes. **Monitor the Collector itself** — it exposes its own metrics (queue sizes, dropped spans, export failures), and a Collector silently dropping data is worse than no Collector because you *think* you have coverage. **Configure exporter queues and retries** so a backend blip buffers rather than drops. **Set the `memory_limiter` conservatively** relative to the container limit; I've seen "80%" plus a bursty batch still OOM because the limiter checks periodically, not continuously. And **version your config in git** with the rest of your infra — a Collector config change is a production change and deserves the same review as code.
 
 The reason I lead with the Collector on every new platform is that it turns observability from a set of hardwired vendor integrations into a programmable pipeline you control. Instrument once in OTLP, and where the data goes, how it's sampled, what's redacted, and how it's enriched all become config you can evolve. That flexibility is worth the modest operational cost many times over — especially the first time you need to change backends, add redaction for a compliance audit, or cut telemetry spend by half without touching a line of application code.
+
+## Agent vs gateway collector topology
+
+Run **agents** as DaemonSet (one per node) for host metrics and local trace batching; run **gateway** collectors as Deployment behind load balancer for tail sampling and multi-tenant routing. Agents forward to gateway via `otlp` exporter — never expose every app's traces directly to SaaS backend (cost and cardinality explosion).
+
+## Processor ordering matters
+
+Wrong order breaks pipelines:
+
+```
+memory_limiter → resourcedetection → attributes → batch → tail_sampling → exporter
+```
+
+Put `memory_limiter` first to protect the collector process. Run `tail_sampling` after `batch` when using tail sampling processor — it needs complete trace batches. `attributes` processor adding `k8s.pod.name` should run after `resourcedetection` populates cloud/K8s resource attrs.
+
+## Cardinality control
+
+Drop high-cardinality labels before export:
+
+```yaml
+processors:
+  transform/dropurl:
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "http.url")
+          - set(attributes["http.route"], attributes["http.route"])
+```
+
+`http.url` with raw IDs can generate millions of metric series — Prometheus scrapes choke, bills spike.
 
 ## Resources
 

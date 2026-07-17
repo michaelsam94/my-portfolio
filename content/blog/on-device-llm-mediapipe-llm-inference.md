@@ -3,7 +3,7 @@ title: "On-Device LLM Inference with MediaPipe"
 slug: "on-device-llm-mediapipe-llm-inference"
 description: "Run LLMs on Android and iOS with MediaPipe LLM Inference API: model conversion, GPU acceleration, streaming, and integration patterns for production mobile apps."
 datePublished: "2025-08-23"
-dateModified: "2025-08-23"
+dateModified: "2026-07-17"
 tags: ["AI", "Mobile", "On-Device", "MediaPipe"]
 keywords: "MediaPipe LLM inference, on-device LLM Android, Google AI Edge, mobile LLM API, Gemma mobile"
 faq:
@@ -226,6 +226,32 @@ Teams get on device llm mediapipe llm inference wrong in predictable ways:
 - **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
 
 Production implementations of on device llm mediapipe llm inference fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+
+## MediaPipe LLM Inference API surface
+
+Google's MediaPipe LLM Inference wraps GPU/CPU backends with a consistent Kotlin/Swift API — useful when you want Google's runtime without full AICore dependency on older devices. Models ship as `.task` bundles with metadata for tokenizer vocab.
+
+Check `LlmInferenceSession` creation errors — unsupported ops in converted models fail at load, not first token. Validate on arm64-v8a and armeabi-v7a if you still ship 32-bit.
+
+## Conversion pipeline from HF to .task
+
+Typical flow: export ONNX → MediaPipe conversion tool → quantize INT8 → bundle assets. Document model card hash in app — reject hot-swapped model files from untrusted storage.
+
+## When MediaPipe beats raw llama.cpp
+
+Choose MediaPipe when you want Google's NPU delegation on Pixel without AICore feature gating, or when integrating with existing MediaPipe graphs (vision + language). Choose llama.cpp when you need latest GGUF quants day-zero from Hugging Face.
+
+## GPU delegate fallback chain
+
+Try GPU delegate → CPU XNNPACK → abort with user message. Log delegate chosen per device model — informs minimum spec documentation.
+
+## Session reset between users
+
+Shared tablet apps must call `session.close()` on logout — KV cache retains prior user context in multi-turn sessions (privacy leak across clinic kiosk users).
+
+## Thermal throttling backoff
+
+When `ProcessInfo.thermalState` serious on iOS, pause inference queue — resume when nominal. Prevents crash on sustained generation in summer outdoor field use.
 
 ## Resources
 

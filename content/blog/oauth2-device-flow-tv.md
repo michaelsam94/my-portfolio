@@ -3,7 +3,7 @@ title: "OAuth Device Flow for TVs"
 slug: "oauth2-device-flow-tv"
 description: "Implement OAuth 2.0 device authorization flow for TVs, CLI tools, and IoT devices: user codes, polling, token exchange, and UX patterns."
 datePublished: "2025-09-21"
-dateModified: "2025-09-21"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "IoT", "API"]
 keywords: "OAuth device flow, device authorization grant, OAuth TV login, user code flow, RFC 8628, smart TV authentication, input-constrained devices"
 faq:
@@ -222,6 +222,14 @@ Pair with [OAuth2 client credentials for M2M](https://blog.michaelsam94.com/oaut
 - [ ] Rate limiting on device authorization endpoint
 
 Device flow UX fails when codes expire silently — always show a visible countdown and auto-refresh the code 30 seconds before expiry without requiring the user to navigate back.
+
+## Federation and enterprise TVs
+
+Enterprise deployments may require device flow against a corporate IdP with conditional access. Surface MDM compliance status on the activation page and block token issuance when device posture fails. Document token lifetime policies for shared conference-room displays — shorter refresh TTL than living-room TVs.
+
+## Telemetry for product teams
+
+Funnel metrics: code displayed → activation page loaded → consent granted → token issued. Drop-off between steps indicates UX friction, not OAuth bugs. Segment by TV OEM and app version — firmware WebView differences cause disproportionate failures on older platforms.
 
 ## Resources
 

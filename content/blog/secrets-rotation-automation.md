@@ -3,20 +3,162 @@ title: "Automating Secret Rotation"
 slug: "secrets-rotation-automation"
 description: "Automate secret rotation for databases, API keys, and TLS: dual-credential windows, reload signals, and verification without downtime."
 datePublished: "2025-07-02"
-dateModified: "2025-07-02"
-tags: ["Security", "Secrets", "DevOps", "Automation"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "secret rotation automation, credential rotation, dual credential window, database password rotation, API key rotation schedule, zero downtime rotation"
 faq:
   - q: "How long should two valid credentials overlap during rotation?"
-    a: "Overlap until all running instances pick up the new secret and all sessions using the old credential expire. For hourly-rotated DB users, overlap might be 2 hours. For API keys, keep old key valid 24–72 hours after new key deploys so edge caches and partner configs update. Document overlap in runbooks to prevent premature revocation."
+    a: "Overlap until every running instance has loaded the new secret and every session tied to the old credential has expired. For hourly-rotated database users, two hours of overlap is typical. For partner API keys, keep the old key valid 24–72 hours after the new key ships so integrators and edge caches can update without midnight pages."
   - q: "Who initiates rotation—scheduler or leak?"
-    a: "Both. Scheduled rotation limits blast radius of undetected leaks and satisfies compliance (PCI, SOC2). Emergency rotation triggers on Gitleaks findings, employee offboarding, or vendor breach notification. Emergency path must be automated too—manual panic rotation at 2 AM skips verification steps."
+    a: "Both paths must exist. Scheduled rotation limits blast radius of undetected leaks and satisfies PCI and SOC2 evidence requirements. Emergency rotation triggers on scanner findings, employee offboarding, or vendor breach notifications. If emergency rotation requires manual SSH at 2 AM, people skip verification steps and revoke too early."
   - q: "How do applications pick up new secrets without restart?"
-    a: "Sidecars (Vault Agent) rewrite files and send SIGHUP; Kubernetes rolling updates mount new Secret version; apps poll secret manager with version check. Design for reload on file change or subscribe to rotation events. Long-lived connection pools may need staggered drain after credential swap."
+    a: "Vault Agent sidecars rewrite files and send SIGHUP; Kubernetes rolling updates mount new Secret versions; some apps poll the secret manager for version changes. Connection pools holding stale passwords need staggered drain after credential swap—design reload hooks before you automate the scheduler."
 ---
+The database password rotated quarterly through a ticket queue. Someone pasted the new value into the wrong environment variable, and production connection pools rejected auth for twelve minutes while on-call grep'd deployment manifests. That incident convinced leadership that rotation should be boring infrastructure—not a calendar reminder with human copy-paste in the loop.
+
+Automated rotation treats credentials as short-lived resources: generate, deploy, verify, revoke, repeat. The hard part is not random string generation. It is keeping traffic healthy while connection pools, CI pipelines, partner webhooks, and cron jobs still hold yesterday's key.
+
+## Why manual rotation fails at scale
+
+Manual rotation optimizes for the happy path documented in a wiki page. Production has long-lived pods that never restarted after deploy, staging databases that share credential names with production, and third-party SaaS dashboards where only one engineer knows how to update the webhook secret. Each manual cycle adds drift between what the secret manager stores and what actually authenticates.
+
+Compliance auditors ask for evidence: rotation interval, who triggered each event, and proof old credentials were revoked. Spreadsheet tracking does not survive acquisitions or team churn. Automated pipelines emit structured audit events with secret ARN and version IDs—never the secret value itself.
+
+## Rotation pipeline overview
+
+```
+Scheduler / Event ──▶ Secret Manager (version N+1)
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         App reload   CI sync    Partner notify
+              │            │            │
+              └────────────┼────────────┘
+                           ▼
+              Synthetic verify ──▶ Revoke version N
+```
+
+Publish `secret.rotated` events on a message bus so subscribers reload without polling. Database rotation Lambdas, Kubernetes operators, and custom sidecars should all subscribe to the same contract.
+
+## Dual-credential window for databases
+
+The safest database pattern keeps two valid users during overlap:
+
+1. Create `app_v3` with identical grants to `app_v2`
+2. Write `app_v3` as the primary in Vault or Secrets Manager
+3. Rolling restart applications or send SIGHUP to reload connection strings
+4. Monitor `pg_stat_activity` (or equivalent) for connections still using `app_v2`
+5. Drop `app_v2` only after overlap TTL and zero connections
+
+```sql
+SELECT usename, count(*) AS sessions
+FROM pg_stat_activity
+WHERE usename IN ('app_v2', 'app_v3')
+GROUP BY usename;
+```
+
+RDS and Cloud SQL managed rotation often create a shadow user, swap the secret pointer, then delete the old user. Understand your provider's steps before trusting the default Lambda—custom extensions and read replicas sometimes need extra grants.
+
+Connection poolers like PgBouncer cache credentials at pool creation. After rotation, set `pool_mode` transactions appropriately and recycle pools or use `DISCARD ALL` on borrowed connections. A green health check on one pod does not prove every pooler shard picked up the new password.
+
+## API key rotation with partner lead time
+
+Public API keys cannot flip instantly. Issue `sk_live_NEW`, register it in your auth middleware, deploy code that accepts both keys during overlap, then mark the old key `rotating` with `expires_at`:
+
+```python
+def authenticate(raw_key: str) -> Principal:
+    digest = hmac_sha256(raw_key)
+    record = db.lookup_key_hash(digest)
+    if record and record.status in ("active", "rotating"):
+        if record.status == "rotating" and record.expires_at < utcnow():
+            raise AuthError("key_expired")
+        return record.principal
+    raise AuthError("invalid_key")
+```
+
+Email integrators thirty days ahead for scheduled rotation. Emergency rotation compresses that window—maintain a contact list and status page template. Log which key ID authenticated each request during overlap so you know when old traffic dropped to zero.
+
+## TLS and mTLS certificates
+
+Public TLS is largely solved by ACME clients. Monitor expiry independently—automation fails when DNS validation breaks or rate limits hit during incident-driven reissues. For internal mTLS, rotate client certificates before fifty percent of lifetime consumed; short-lived certs reduce the value of stolen material.
+
+Store private keys in HSM or cloud KMS where policy allows. Rotation scripts that write PEM files to `/tmp` recreate the leakage path you are trying to eliminate.
+
+## AWS Secrets Manager rotation hooks
+
+AWS implements rotation as a four-step Lambda contract:
+
+```python
+# Conceptual steps inside rotation Lambda
+def handler(event, context):
+    step = event["Step"]
+    if step == "createSecret":
+        generate_new_password()
+    elif step == "setSecret":
+        apply_to_database(new_password)
+    elif step == "testSecret":
+        verify_connection(new_password)
+    elif step == "finishSecret":
+        mark_current_version()
+```
+
+`testSecret` must run a real query—not `SELECT 1` against a read replica that still accepts the old password on a lagging node. `finishSecret` moves the `AWSCURRENT` label; premature finish during a failed canary locks you out.
+
+## Kubernetes secret mounting
+
+Kubernetes Secrets mounted as volumes update files on disk when the Secret object changes—but applications must watch inotify or poll. Environment variable injection from Secrets does not update without pod restart. Prefer volume mounts plus reload hooks over env vars for rotatable credentials.
+
+External Secrets Operator syncs cloud secret versions into cluster Secrets on interval. Tune sync frequency against API rate limits and blast radius requirements.
+
+## Verification gates before revocation
+
+Never revoke the old credential because the scheduler finished. Require:
+
+- Synthetic transaction success against production-like path
+- Error rate flat versus baseline for fifteen minutes minimum
+- Zero connections or requests authenticated with old version
+- Explicit rollback path if canary fails—keep old version `AWSPENDING` until promoted
+
+Rollback means keeping version N active and deleting N+1 from the manager, not redeploying application code. Runbooks should name the exact CLI commands.
+
+## Emergency rotation playbook
+
+When Gitleaks fires or a laptop is stolen:
+
+1. Identify affected secret scope—one repo token vs organization root
+2. Generate and deploy new credential through automation, not manual paste
+3. Revoke old credential at provider immediately after deploy starts
+4. Scan audit logs for use of old credential after known compromise time
+5. Notify partners if their integrations break
+
+Panic manual rotation skips step four and leaves attackers with a longer window.
+
+## Observability and audit evidence
+
+Log rotation events with: trigger (scheduled vs emergency), actor service account, secret identifier, old and new version IDs, duration, and verification result. Ship logs to immutable storage—CloudTrail, Vault audit devices, or SIEM with tamper detection.
+
+Dashboards should show time-since-last-successful-rotation per secret class. Alert when rotation jobs fail twice consecutively or overlap windows exceed policy max.
+
+## Organizational habits that stick
+
+Rotation automation succeeds when application teams own reload behavior. Platform provides the scheduler and secret store; product teams implement SIGHUP handlers and pool recycling. Quarterly game days rotate a non-production secret end-to-end with engineers who did not write the original automation.
+
+Treat overlap TTL as a documented contract in runbooks, not tribal knowledge. The next on-call should not guess whether `app_v2` was dropped early during a previous incident.
+
+## Resources
+
+- [AWS Secrets Manager rotation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets.html)
+- [HashiCorp Vault database secrets](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-secrets)
+- [Google Cloud Secret Manager rotation](https://cloud.google.com/secret-manager/docs/creating-and-managing-secrets)
+- [NIST SP 800-57 key management](https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final)
+- [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+
+## Vault dynamic database credentials
+
+Vault database secrets engine issues short-lived users per lease — rotation becomes issuance, not password editing. Tune lease TTL against connection pool recycle; pools outliving lease hold dead passwords until recycle.
 
 The database password rotated quarterly—manually, via ticket, with a typo that locked out production for twelve minutes. Automated rotation turns credentials into short-lived resources: generate new, deploy, verify, revoke old, repeat on schedule. The hard part is not generating random strings but keeping zero-downtime while connection pools, CI pipelines, and partner webhooks still hold yesterday's key.
-
 
 ## Rotation architecture
 
@@ -27,97 +169,3 @@ Scheduler → Secret Manager → New version N+1
 ```
 
 Emit events (`secret.rotated`) for subscribers to reload.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## Dual-credential pattern
-
-Database user `app_v3` active while apps still hold `app_v2` connection strings:
-
-1. Create `app_v3` with identical grants
-2. Update Vault/Secrets Manager primary
-3. Rolling restart or SIGHUP reload apps
-4. Monitor error rate and connection counts on `app_v2`
-5. Drop `app_v2` after overlap TTL
-
-```sql
--- Verify no connections on old role
-SELECT usename, count(*) FROM pg_stat_activity
-WHERE usename = 'app_v2' GROUP BY usename;
-```
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## API key rotation
-
-Issue `sk_live_NEW`, document in developer portal, email integrators 30 days ahead for scheduled rotation. Accept both keys in auth middleware keyed by key ID:
-
-```python
-def authenticate(header: str) -> Principal:
-    key_hash = hmac_sha256(header)
-    record = db.lookup_key_hash(key_hash)
-    if record and record.status in ("active", "rotating"):
-        return record.principal
-    raise AuthError()
-```
-
-Mark old key `rotating` with `expires_at`.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## TLS certificate rotation
-
-ACME handles automatically—monitor expiry separately. For mTLS internal certs, rotate before 50% lifetime consumed.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## AWS Secrets Manager example
-
-```python
-import boto3
-
-client = boto3.client("secretsmanager")
-response = client.rotate_secret(
-    SecretId="prod/db/app",
-    RotationLambdaARN="arn:aws:lambda:...:function:RotateSecret",
-    RotationRules={"AutomaticallyAfterDays": 30},
-)
-```
-
-Lambda implements `createSecret`, `setSecret`, `testSecret`, `finishSecret` steps.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## Verification gates
-
-After deploy, synthetic transaction must succeed before revoking old credential. Rollback keeps old version active if canary fails. Never revoke until metrics green for defined window.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-
-Log rotation events with actor (scheduler vs human), secret ARN, and version IDs—not secret values. Prove rotation interval to auditors with CloudTrail or Vault audit devices.
-
-Synthetic transaction after deploy must succeed before revoking old credential. Rollback keeps old version active if canary fails.
-
-API key rotation: mark old key rotating with expires_at; accept both in middleware during overlap window documented to partners.
-
-CloudTrail or Vault audit proves rotation interval to auditors—log version IDs, never secret values.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-Document the decision, owner, and rollback path in your team wiki the same week you ship. Future you will not remember which environment variable toggled the behavior unless it is written next to the runbook entry and linked from the alert. That habit costs ten minutes per change and saves hours when pagination or auth misbehaves under a single large tenant.
-
-
-
-Run the change through your standard PR checklist: tests, observability, and a two-minute rollback drill in staging. Small operational habits accumulate into systems that survive on-call nights without heroics.
-
-
-Share a short write-up in your engineering channel after rollout: what shipped, what metric you watch, and who owns follow-up. That closes the loop for teammates who were not in the PR and surfaces gaps in docs before the next person repeats the same investigation.
-
-## Resources
-
-- [AWS Secrets Manager rotation](https://docs.aws.com/secretsmanager/latest/userguide/rotating-secrets.html)
-- [HashiCorp Vault rotate root credentials](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-secrets)
-- [Google Cloud Secret Manager rotation](https://cloud.google.com/secret-manager/docs/creating-and-managing-secrets)
-- [NIST SP 800-57 key management](https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final)
-- [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)

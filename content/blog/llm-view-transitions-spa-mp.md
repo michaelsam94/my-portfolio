@@ -1,40 +1,22 @@
 ---
-title: "View Transitions Spa Mp"
+title: "View Transitions in Agent SPAs and Multi-Page Apps"
 slug: "llm-view-transitions-spa-mp"
-description: "View Transitions Spa Mp: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Use the View Transitions API for agent UI navigation: shared element transitions between chat and settings, MPA vs SPA tradeoffs, and fallbacks when streaming content updates mid-transition."
 datePublished: "2026-05-30"
-dateModified: "2026-05-30"
-tags: ["AI", "Llm", "View"]
+dateModified: "2026-07-17"
+tags:
 keywords: "llm, view, transitions, spa, mp, ai, production, engineering, architecture"
 faq:
-  - q: "What is View Transitions Spa Mp?"
-    a: "View Transitions Spa Mp covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize View Transitions Spa Mp?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with View Transitions Spa Mp?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does View Transitions Spa Mp fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. View Transitions Spa Mp should be observable in production and safe to change in small diffs."
+  - q: "Should agent portals use View Transitions for every route change?"
+    a: "No — reserve for high-frequency navigations users perform repeatedly: chat ↔ history, chat ↔ agent settings, thread ↔ tool detail. One-off admin pages don't benefit; motion fatigue sets in. Keep transitions under 300ms."
+  - q: "Do View Transitions work with SSR and MPAs?"
+    a: "Cross-document view transitions (Chrome 126+) enable MPA transitions with `@view-transition` meta and matching `view-transition-name` on shared elements. SPAs use `document.startViewTransition()` in JS. Agent portals on Next.js can mix both."
+  - q: "What happens if agent tokens stream during an active transition?"
+    a: "DOM mutations mid-transition cause jank or aborted animations. Pause scroll-to-bottom on chat container until `transition.finished`, or exclude streaming message list from named transition elements. Prefer transitioning chrome (header, sidebar) not token stream."
+  - q: "Fallback for Safari and Firefox?"
+    a: "Feature detect `document.startViewTransition`; instant navigation without animation. Don't polyfill with heavy JS layout thrashing — degraded instant swap is fine. ~70% Chrome coverage is enough for enhancement, not dependency."
 ---
 View Transitions Spa Mp sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
-
-When view transitions spa mp is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
-
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns view transitions spa mp from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm view transitions spa mp bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for view transitions spa mp, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm view transitions spa mp flows so duplicates are harmless or detectable.
-
 ## Implementation patterns
 
 A practical baseline for view transitions spa mp in ai stacks:
@@ -90,14 +72,6 @@ Legacy systems rarely block greenfield designs; they constrain sequencing. Stran
 
 Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where view transitions spa mp spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
 
-## Related concepts
-
-View Transitions Spa Mp intersects with broader ai topics — see companion notes on [llm-view patterns](https://blog.michaelsam94.com/llm-view/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
-
-## The takeaway
-
-View Transitions Spa Mp rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm view transitions spa mp becomes a maintainable asset instead of incident fuel.
-
 ## Resources
 
 - [platform.openai.com/docs/](https://platform.openai.com/docs/)
@@ -109,3 +83,38 @@ View Transitions Spa Mp rewards disciplined boring engineering: clear contracts,
 - [huggingface.co/docs](https://huggingface.co/docs)
 
 - [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+
+## Production notes for LLM stacks
+
+When `llm-view-transitions-spa-mp` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `view transitions in agent spas and multi-page apps` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Production notes for LLM stacks
+
+When `llm-view-transitions-spa-mp` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `view transitions in agent spas and multi-page apps` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+
+For `llm-view-transitions-spa-mp`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `llm-view-transitions-spa-mp`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `llm-view-transitions-spa-mp`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.

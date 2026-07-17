@@ -3,7 +3,7 @@ title: "Bundle Splitting Strategies"
 slug: "web-performance-bundle-splitting"
 description: "Reduce initial load with code splitting: dynamic imports, route-based chunks, vendor separation, bundle analysis, and preload strategies for modern bundlers."
 datePublished: "2026-05-07"
-dateModified: "2026-05-07"
+dateModified: "2026-07-17"
 tags: ["Web", "Performance", "JavaScript", "Frontend"]
 keywords: "code splitting, bundle splitting, dynamic import, webpack chunks, Vite rollup, tree shaking, lazy loading"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Use static imports for code needed on every page — utilities, core components, polyfills. Use dynamic import() for route-specific pages, modal content, admin panels, chart libraries, and anything behind user interaction. The dynamic import creates a separate chunk fetched only when the import executes."
   - q: "How do I know if my bundles are too large?"
     a: "Analyze with webpack-bundle-analyzer, rollup-plugin-visualizer, or Vite's built-in stats. Flag any initial chunk over 200KB gzipped. Check Network tab for unused JavaScript in Lighthouse. Set performance budgets in CI — fail builds when main chunk exceeds your threshold."
+faqAnswers:
+  - question: "When is web performance bundle splitting the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for web performance bundle splitting?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back web performance bundle splitting safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Lighthouse flagged our app for shipping 890KB of JavaScript on the homepage. The bundle included an admin dashboard, a PDF renderer, and a charting library — none of which the homepage used. Route-based splitting and three dynamic imports dropped the initial payload to 142KB. First Contentful Paint improved by 1.8 seconds on a simulated 4G connection.
 
 ## Dynamic imports
@@ -192,25 +198,51 @@ Set `ssr: false` for browser-only libraries. The chart chunk loads only when the
 
 Add `@next/bundle-analyzer` or `rollup-plugin-visualizer` to your CI pipeline. Fail builds when the main chunk grows more than 10KB week-over-week. Track trends, not just absolute limits.
 
-## Measuring success in production
+## Module federation caveat
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Module Federation shares dependencies at runtime across micro-frontends—reduces duplicate React but adds runtime orchestration complexity. Measure LCP impact of federation bootstrap before adopting for performance reasons alone.
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+## Service worker precaching vs splitting
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Workbox precache main shell; runtime cache route chunks on first visit. Version precache manifest on deploy—stale SW serving old chunk hashes causes load failures; `skipWaiting` + `clientsClaim` strategy documented in SW migration runbook.
 
-## Additional production considerations
+## Dynamic import boundaries
 
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
+Split at route level first, then heavy components (charts, editors). `React.lazy` + Suspense needs error boundary — failed chunk load on CDN glitch should retry, not white screen.
 
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
+## Analyze duplicate packages
 
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
+`npm ls lodash` — multiple versions bloat chunks. Resolve with bundler alias or pnpm overrides. Module federation shares deps but adds runtime orchestration — measure LCP impact before adopting for perf alone.
 
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
+## Practical follow-through (1)
 
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 
@@ -219,3 +251,7 @@ Collaborate with backend teams on TTFB and API response times. Frontend optimiza
 - [webpack code splitting](https://webpack.js.org/guides/code-splitting/)
 - [rollup-plugin-visualizer](https://github.com/btd/rollup-plugin-visualizer)
 - [web.dev: Reduce JavaScript payloads](https://web.dev/articles/reduce-javascript-payloads-using-code-splitting)
+
+## Save-Data aware prefetch
+
+Skip hover prefetch when `navigator.connection.saveData` is true — mobile users on metered plans should not download route chunks speculatively.

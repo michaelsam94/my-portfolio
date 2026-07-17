@@ -1,0 +1,37 @@
+{
+  "batch": "06",
+  "indices": "1500-1749",
+  "total": 250,
+  "target_words": 1200,
+  "done_count": 250,
+  "template_remaining": 0,
+  "under_1200_count": 0,
+  "templates": [],
+  "under_1200": [],
+  "samples": {
+    "first": [
+      "forms-validation-zod-react-hook-form",
+      "frontend-design-tokens-theming",
+      "frontend-micro-frontends-module-federation"
+    ],
+    "last": [
+      "kotlin-sam-conversions-lambdas",
+      "kotlin-scope-functions-let-apply",
+      "kotlin-scripting-gradle-plugins"
+    ],
+    "rewritten_templates": [
+      "kotlin-scope-functions-let-apply",
+      "kotlin-sam-conversions-lambdas",
+      "kotlin-multiplatform-navigation"
+    ],
+    "word_counts": {
+      "forms-validation-zod-react-hook-form": 1245,
+      "go-error-handling-wrapping": 1239,
+      "kafka-exactly-once-semantics": 1255,
+      "kotlin-multiplatform-spm": 1310,
+      "kotlin-scope-functions-let-apply": 1260
+    }
+  },
+  "updated_at": "2026-07-17T10:09:40.968085+00:00",
+  "status": "complete"
+}

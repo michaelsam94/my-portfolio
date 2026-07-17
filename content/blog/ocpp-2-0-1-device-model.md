@@ -3,7 +3,7 @@ title: "The OCPP 2.0.1 Device Model"
 slug: "ocpp-2-0-1-device-model"
 description: "Understand the OCPP 2.0.1 Device Model: components, variables, monitoring, and how it replaces the OCPP 1.6 configuration key approach."
 datePublished: "2025-10-21"
-dateModified: "2025-10-21"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Protocols"]
 keywords: "OCPP 2.0.1 device model, OCPP components variables, EV charging protocol, OCPP configuration, charging station management, OCPP monitoring"
 faq:
@@ -252,16 +252,62 @@ Translate 1.6 GetConfiguration responses from 2.0.1 Device Model state — CSMS 
 - Dual-stack support during migration period
 - GetBaseReport on every station connect for inventory sync
 
-## Common production mistakes
+## Certification and interoperability testing
 
-Teams get ocpp 2 0 1 device model wrong in predictable ways:
+Open Charge Alliance conformance tests exercise GetVariables on required components, SetVariables rejection paths, and NotifyEvent severity. Failures cluster around:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+- **Required variables missing** — `Connector.AvailabilityState` not updated on plug events
+- **Unit mismatch** — reporting `kW` where spec expects `W`
+- **Partial NotifyReport** — CSMS times out before last chunk arrives
 
-Production implementations of ocpp 2 0 1 device model fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Run the OCA test toolkit against your firmware before field trials. When integrating a new vendor, compare their `FullInventory` export to the Appendix catalog — undocumented `CustomVendor` components are fine, but missing required variables block roaming and remote diagnostics.
+
+## GetBaseReport and inventory discovery
+
+When a charger connects, the CSMS should request a full Device Model inventory before assuming configuration paths exist. OCPP 2.0.1 offers `GetBaseReport` with report types that shape what you receive:
+
+| Report type | Contents | When to use |
+|-------------|----------|-------------|
+| `ConfigurationInventory` | Writable configuration variables | Day-one CSMS integration |
+| `FullInventory` | All components and variables | Diagnostics, monitoring setup |
+| `SummaryInventory` | High-level component list | Fleet dashboards |
+| `MonitoringInventory` | Variables with active monitors | Alert tuning |
+
+The charger responds with `NotifyReport` chunks — large inventories arrive across multiple messages keyed by `requestId` and `seqNo`. Your CSMS must buffer until `tbc` (to-be-continued) is false:
+
+```python
+def ingest_notify_report(state, msg):
+    state.chunks[msg.request_id].append(msg.report_data)
+    if msg.tbc:
+        return "pending"
+    full = flatten(state.chunks.pop(msg.request_id))
+    cache_device_model(msg.station_id, full)
+    return "complete"
+```
+
+Treat the cached model as the charger's self-description. When `SetVariables` returns `Rejected` or `UnknownVariable`, diff against the last inventory rather than guessing vendor paths.
+
+## Characteristics, monitoring types, and unit metadata
+
+Variables carry **characteristics** beyond raw values — `dataType` (decimal, string, boolean), `unit` (Wh, A, V), and `supportsMonitoring` flags. This metadata drives UI formatting and valid monitor configuration:
+
+```json
+{
+  "variable": {"name": "Power.Active.Import"},
+  "variableAttribute": [{"type": "Actual", "value": "11000"}],
+  "variableCharacteristics": {
+    "dataType": "decimal",
+    "unit": "W",
+    "supportsMonitoring": true
+  }
+}
+```
+
+OCPP 2.0.1 defines monitor types: `UpperThreshold`, `LowerThreshold`, `Delta`, `Periodic`, and `PeriodicClockAligned`. Pair `SetVariableMonitoring` with severity levels so a `Power.Active.Import` spike on one connector does not page on-call for a planned load test on another EVSE.
+
+## Variable persistence and reboot survival
+
+Firmware must persist Target values across reboot — users expect CSMS-set limits to survive power cycles. Store Targets in NV storage; refresh Actuals from hardware on boot. On `Reset` or firmware update, send `NotifyEvent` with `trigger: Alerting` if Actual diverges from Target beyond tolerance (e.g., contactor stuck open). Document which variables are volatile vs persisted in your implementation conformance statement — CSMS partners need that matrix during certification.
 
 ## Resources
 

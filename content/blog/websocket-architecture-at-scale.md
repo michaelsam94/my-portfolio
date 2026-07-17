@@ -3,7 +3,7 @@ title: "WebSocket Architecture at Scale"
 slug: "websocket-architecture-at-scale"
 description: "How to design WebSocket architecture that survives real traffic: connection management, horizontal scaling with pub/sub, backpressure, and the failure modes that bite."
 datePublished: "2026-06-14"
-dateModified: "2026-06-14"
+dateModified: "2026-07-17"
 tags: ["WebSockets", "Real-Time", "Backend", "Scalability"]
 keywords: "WebSocket, real-time architecture, WebSocket scaling, pub sub, connection management, horizontal scaling, backpressure"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Put a pub/sub layer (Redis, NATS, or Kafka) between your WebSocket nodes so a message published on one node reaches clients connected to any other node. Each node subscribes to the channels its connected clients care about, and connections are sticky to a node for their lifetime."
   - q: "What breaks first when WebSocket traffic grows?"
     a: "Fan-out and backpressure. A slow or dead client that never drains its socket causes memory to balloon on the server; a broadcast to millions of clients saturates the pub/sub bus. Both need explicit buffering limits and slow-consumer eviction long before you hit connection limits."
+faqAnswers:
+  - question: "When is websocket architecture at scale the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for websocket architecture at scale?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back websocket architecture at scale safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 The first time I ran a real-time system at scale — live match analytics pushing player and ball positions to tens of thousands of viewers — the connection count was never the thing that broke. What broke was one phone on a bad train connection that stopped reading its socket, and a fan-out loop that happily buffered megabytes of position updates for it until the node ran out of memory. That's the lesson that reframes WebSocket architecture at scale: holding connections is easy, and moving messages through them under pressure is where the engineering actually lives.
 
 This post is about the parts that matter once you're past a single server: connection management, horizontal scaling with pub/sub, backpressure, and the failure modes that only show up at load.

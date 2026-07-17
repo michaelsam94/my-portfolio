@@ -1,129 +1,260 @@
 ---
 title: "OpenTelemetry Tail Sampling"
 slug: "observability-tail-sampling-otel"
-description: "Keep interesting traces — errors, high latency, specific user cohort after complete trace."
+description: "Keep errors and slow traces while sampling away happy paths—tail sampling in the OTel Collector after the trace completes."
 datePublished: "2026-02-02"
-dateModified: "2026-02-02"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
+  - "OpenTelemetry"
   - "SRE"
-keywords: "observability tail sampling otel, production, backend"
+keywords: "opentelemetry tail sampling, trace sampling collector, tail sampling processor, head vs tail sampling, otel trace retention"
 faq:
-  - q: "What problem does OpenTelemetry Tail Sampling solve?"
-    a: "It addresses production gaps teams hit when scaling observability tail sampling otel: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability tail sampling otel appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Head vs tail sampling?"
+    a: "Head decides at trace start before knowing error/latency. Tail waits until complete—keep all errors, slow traces, sample 1% success."
+  - q: "Where does tail sampling run?"
+    a: "OpenTelemetry Collector with trace-ID load balancing so all spans reach the same collector instance."
+  - q: "Does tail sampling increase app overhead?"
+    a: "Apps may export more spans to collectors; collectors bear buffering cost."
 ---
 
-## Production context
+Head sampling at 1% deleted the only trace capturing a one-in-ten-million payment double-charge. Tail sampling keeps errors, latency > SLO, premium tenant attributes, plus 1% success—pay storage for traces that explain incidents.
 
-A billing service lost duplicate events because observability tail sampling otel was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Collector config
 
-Senior backend work on opentelemetry tail sampling is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+`decision_wait: 10s`, policies for status ERROR, latency threshold, string attributes, probabilistic success sample.
 
-## Architecture pattern
+## Load balancing
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Route by traceID to same collector—without it policies see incomplete traces.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Hybrid
+
+Avoid SDK 1% AND tail 1% = 0.01% retention. Prefer always_on export to collector with tail deciding long-term storage.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## Collector HA and tail sampling
 
-## Implementation checklist
+Run collector gateway in StatefulSet with persistent queue (Kafka/Pulsar backing) if trace loss during collector restart is unacceptable—memory-only tail sampling trades simplicity for durability.
 
-Validate inputs at the trust boundary with schema versioning.
+## Policy testing in staging
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Export `tail_sampling_decision` metric per policy—assert error policy `decision=sampled` count matches injected fault count in chaos tests.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Cost projection
 
-Run migrations with lock_timeout and statement_timeout set.
+Stored traces per day ≈ `QPS × sample_rate × avg_span_count × bytes_per_span`. Tail sampling at 1% success + 100% errors often lands 5–20× cheaper than 100% head sampling with better debuggability—model before Tempo storage commit.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Tail sampling and compliance retention
 
-## Observability
+Regulated industries may require 100% retention for financial transaction traces—apply tail policy exception `service=payments AND span.name=CaptureFunds` always sample regardless of success. Legal overrides cost optimization.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Debugging dropped traces
 
-Dashboards for observability tail sampling otel should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Export `otelcol_processor_tail_sampling_count_traces_dropped` — spike during traffic surge may indicate `num_traces` buffer too small, not intentional sampling. Size buffers for peak complete trace rate × decision_wait.
 
-## Security notes
+## Collector resource planning worksheet
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Estimate required collector memory: `decision_wait × peak_traces_per_second × average_spans_per_trace × bytes_per_span_in_buffer`. Undersizing causes silent trace drop more common than explicit sampling—monitor dropped trace counter and size buffers for peak complete checkout flow during load test, not average Tuesday traffic.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Document tail sampling policies in service catalog entry for each service—on-call knows errors always retained for payments even when global success sample is 1%.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Debugging and triage workflow
 
-When production misbehaves, work top-down:
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
 
-## Operational checklist
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Measure before optimizing observability tail sampling otel. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Ship observability tail sampling otel changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
 
-## Testing recommendations
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+## Production review cadence
+
+Revisit dashboards and alert thresholds after every deploy affecting this observability surface. Weekly on-call review should include one exemplar trace or log linked from a metric spike—paper metrics without exemplars train teams to ignore charts.

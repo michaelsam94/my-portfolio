@@ -3,7 +3,7 @@ title: "Offline Operation with a Local Controller"
 slug: "ocpp-local-controller-offline"
 description: "Design EV charging sites for offline operation with local controllers: authorization caching, transaction queuing, and CSMS reconnection sync."
 datePublished: "2025-10-30"
-dateModified: "2025-10-30"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Architecture"]
 keywords: "OCPP offline operation, local controller EV charging, charging station offline mode, OCPP transaction queue, edge controller EV, CSMS reconnection"
 faq:
@@ -217,6 +217,53 @@ Pair with [OCPP security profiles and TLS](https://blog.michaelsam94.com/ocpp-se
 - [ ] `sync_status` tracked per transaction for ops visibility
 
 Site power budgets should be configured locally with conservative defaults — when CSMS is unreachable, offline load balancing must assume the full site amperage envelope, not last-known CSMS limits.
+
+## Split-brain and WAN flap scenarios
+
+WAN links that flap every few minutes are worse than clean outages — partial syncs, duplicate `StartTransaction` attempts, and auth list version conflicts multiply. Configure **hysteresis** on reconnect:
+
+```python
+async def wan_monitor(controller):
+    if down_duration > timedelta(minutes=5):
+        controller.mode = "offline"
+    if up_duration > timedelta(minutes=2):
+        await sync_on_reconnect(controller)
+        controller.mode = "online"
+```
+
+During flap, stay in offline mode until connectivity is stable for two minutes. Batch sync once rather than sending five incomplete batches.
+
+## Local list versioning and differential updates
+
+`SendLocalList` with `updateType: Differential` reduces bandwidth but requires strict version matching. The controller must reject differentials if `listVersion` jumps unexpectedly:
+
+```python
+def apply_local_list_update(current, msg):
+    if msg.update_type == "Full":
+        return replace_list(msg)
+    if msg.list_version != current.version + 1:
+        request_full_resync()
+        return
+    return merge_differential(current, msg)
+```
+
+Log `listVersion` in every offline authorization audit record — disputes about "my RFID should work" resolve faster when you can prove list age.
+
+## Controller high availability
+
+Single Raspberry Pi controllers are common; they are also single points of failure. For sites with >4 chargers or revenue-critical uptime, deploy controller pairs with keepalived or Kubernetes at the edge. Only one controller speaks OCPP upstream; downstream chargers fail over on heartbeat loss.
+
+## Message queue backpressure
+
+When offline queue exceeds 80% disk, reject new authorizations with clear display message — better than silent data loss. Prioritize queue flush: StopTransaction before MeterValues before StartTransaction replay order preserved.
+
+## Time sync without WAN
+
+Controllers without NTP use GPS or GSM time when available; fallback RTC drifts. Attach `time_uncertainty_seconds` to synced transactions so CSMS can flag billing periods requiring manual review after extended outage.
+
+## Health monitoring for edge controllers
+
+Expose controller `/health` with queue depth, auth list version, WAN status, disk free %. CSMS or regional NOC polls every minute — alert when queue >1000 or disk <10%. Edge silence means site may be charging blind without cloud visibility.
 
 ## Resources
 

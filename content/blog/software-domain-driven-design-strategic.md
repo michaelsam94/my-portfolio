@@ -3,8 +3,9 @@ title: "Strategic DDD and Bounded Contexts"
 slug: "software-domain-driven-design-strategic"
 description: "Apply strategic Domain-Driven Design: bounded contexts, context maps, ubiquitous language, and aligning teams with subdomains."
 datePublished: "2025-08-15"
-dateModified: "2025-08-15"
-tags: ["DDD", "Architecture", "Team Design", "Bounded Context"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "strategic domain driven design, bounded context, context map, core subdomain, ubiquitous language, DDD team topology"
 faq:
   - q: "What is a bounded context in practice?"
@@ -15,19 +16,16 @@ faq:
     a: "Boxes for each bounded context and lines showing integration relationships: ACL, shared kernel, customer-supplier, conformist, open host service. The map is sociotechnical—who publishes language, who adapts, where translation happens. Update it when partnerships or org structure changes."
 ---
 
-Every team called it "the account" but Billing meant ledger identity, CRM meant sales prospect, and Auth meant login credential—one database table, three incompatible mental models. Strategic Domain-Driven Design does not start with entities and repositories; it starts with linguistics and boundaries. Bounded contexts delimit where terms mean one thing; context maps show how contexts relate without pretending one unified enterprise model exists.
-
+Every team called it "the account" but Billing meant ledger identity, CRM meant sales prospect, and Auth meant login credential — one database table, three incompatible mental models. Strategic Domain-Driven Design does not start with entities and repositories; it starts with linguistics and boundaries. Bounded contexts delimit where terms mean one thing; context maps show how contexts relate without pretending one unified enterprise model exists.
 
 ## Ubiquitous language
 
-Product, engineering, and experts share vocabulary in workshops:
+Product, engineering, and domain experts share vocabulary in workshops:
 
 - **Policy** (Insurance): contract terms, not IAM policy
 - **Quote** (Sales): priced offer, not string literal
 
-Code names match speech: `IssuePolicyCommand`, not `ProcessDataRequest`. Glossary wiki maintained by product.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+Code names match speech: `IssuePolicyCommand`, not `ProcessDataRequest`. Glossary wiki maintained by product — engineers propose PRs when terms shift.
 
 ## Subdomain classification
 
@@ -37,13 +35,11 @@ Supporting:  agent commission calculation
 Generic:     payment capture (Stripe)
 ```
 
-Invest modeling depth proportional to classification. Do not build custom payment kernel.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+Invest modeling depth proportional to classification. Do not build custom payment kernel when Stripe is generic subdomain — your competitive advantage lives in underwriting, not PCI scope.
 
 ## Drawing bounded contexts
 
-Start messy on whiteboard— refine to modules:
+Start messy on whiteboard — refine to modules:
 
 ```
 [Quoting] --ACL--> [Legacy Rating Engine]
@@ -51,58 +47,114 @@ Start messy on whiteboard— refine to modules:
 [Claims] customer-supplier [Policy Admin]
 ```
 
-Relationships dictate integration style from prior post on ACL.
+Relationships dictate integration style: Anti-Corruption Layer for legacy, published language for stable APIs, conformist when upstream owns the model and you adapt.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Context map workshops
 
-## Team alignment
+Run event storming quarterly with product and engineering. Orange stickies (domain events), blue (commands), yellow (aggregates). Pink stickies (conflicts) often mark context boundaries. Update context map when org restructures — stale maps mislead new architects more than no map.
 
-Conway's law applies: one team per context where possible. Two teams one context breeds model schism. Temporary shared ownership needs explicit governance and merge cadence for glossary.
+## Team alignment and Conway's law
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+One team per context where possible. Two teams one context breeds model schism — merge conflicts in ubiquitous language, incompatible shortcuts. Temporary shared ownership needs explicit governance and merge cadence for glossary.
 
 ## Evolution from monolith
 
-Modular monolith enforces package-private boundaries between contexts before network boundaries. `@Deprecated crossContext` lint for illegal imports.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+Modular monolith enforces package-private boundaries between contexts before network boundaries. ArchUnit or custom lint: `@Deprecated crossContext` for illegal imports from quoting into billing internals. Extract microservice when scaling or team boundary proves need — not as day-one default.
 
 ## Anti-pattern: unified canonical model
 
-Enterprise data model committees shipping XSD for all divisions move pain to integration without solving semantic mismatch. Prefer explicit translation at edges.
+Enterprise data model committees shipping XSD for all divisions move pain to integration without solving semantic mismatch. Prefer explicit translation at edges via ACL over one true `Customer` table with forty nullable columns.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Core vs supporting investment
 
+Core subdomain gets best engineers and rich models; supporting gets adequate quality; generic gets buy or thin adapter. Roadmap arguments reference subdomain map — "that feature is generic email, use SendGrid" ends debate.
 
-Small product with one clear domain—over-partitioning contexts adds meetings. Revisit when onboarding confusion or cross-team bugs spike.
+## When to skip heavy DDD
 
-Context map updated when partnerships or org structure changes. Shared kernel stays minimal—generic IDs and money, not dumping ground for shared business rules.
+Small product with one clear domain — over-partitioning contexts adds meetings without reducing bugs. Revisit when onboarding confusion or cross-team integration defects spike.
 
-Conway's law: two teams one context breeds model schism. Event storming before drawing microservice boundaries.
+## Context map in repo
 
-Small single-domain products skip over-partitioning—revisit when onboarding confusion spikes.
+Store `docs/context-map.md` or PNG from workshop with date and attendees. Link from README. New service proposals reference which contexts they touch — architecture review starts from map, not blank whiteboard.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+Strategic DDD aligns language, boundaries, and teams before tactical patterns — entities and repositories mean little if "customer" still means three different things in one standup.
 
-Document the decision, owner, and rollback path in your team wiki the same week you ship. Future you will not remember which environment variable toggled the behavior unless it is written next to the runbook entry and linked from the alert. That habit costs ten minutes per change and saves hours when pagination or auth misbehaves under a single large tenant.
+## Partnership patterns on context maps
 
+**Customer-supplier:** downstream context depends on upstream roadmap — negotiate SLAs for API changes. **Conformist:** downstream accepts upstream model wholesale — use when upstream is external vendor. **Open host service:** publish language with documentation — internal platform pattern.
 
+## Physical versus logical boundaries
 
-Run the change through your standard PR checklist: tests, observability, and a two-minute rollback drill in staging. Small operational habits accumulate into systems that survive on-call nights without heroics.
+Bounded contexts start logical — separate packages in monolith. Physical separation (services) comes later when scaling or team boundaries require independent deploy. Premature service extraction without context clarity multiplies translation bugs.
 
+## Event storming facilitation tips
 
-Share a short write-up in your engineering channel after rollout: what shipped, what metric you watch, and who owns follow-up. That closes the loop for teammates who were not in the PR and surfaces gaps in docs before the next person repeats the same investigation.
+Timebox 90 minutes; invite product owner and senior engineer minimum. Start with domain event stickies left-to-right timeline. Identify aggregates where commands attach. End with candidate context boundaries — do not force final map in one session.
 
+## Legacy system ACL placement
 
-Prefer boring, repeatable process over one heroic migration weekend.
+Every legacy integration gets Anti-Corruption Layer at boundary — never leak legacy field names (`CUST_NBR`) into core domain. ACL team owns translation tests when legacy releases change.
 
+## Measuring DDD adoption success
 
-Treat operational readiness as part of definition-of-done: dashboards, alerts, runbook links, and a named owner. Skipping those steps ships code that works in demo and fails quietly in production until a customer or auditor finds the gap.
+Fewer cross-team bugs on integration contracts. Faster onboarding when glossary answers "what is a policy." Reduced nullable-column tables — bounded contexts split schemas. Qualitative survey after six months.
 
-## Resources
+## Relationship to microservices
 
-- [Domain-Driven Design (Eric Evans)](https://www.domainlanguage.com/ddd/)
-- [Bounded Context (Martin Fowler)](https://martinfowler.com/bliki/BoundedContext.html)
-- [Context Map (DDD community)](https://github.com/ddd-crew/context-mapping)
-- [Team Topologies (Skelton & Pais)](https://teamtopologies.com/)
-- [Domain-Driven Design Distilled (Vaughn Vernon)](https://vaughnvernon.com/)
+Microservice per bounded context is idealized — practical systems share databases during migration. Context map still valuable when services share Postgres schema with schema-per-context naming discipline.
+
+Strategic DDD is a communication and alignment tool first — code structure follows once language and boundaries stabilize across product and engineering.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Glossary in repo
+
+Maintain `docs/glossary.md` beside code. PRs introducing domain terms update glossary in same merge.
+
+## Remote event storming tips
+
+Use FigJam timers and a dedicated facilitator — 90 minutes maximum. Export the context map PNG into `docs/` in the same PR as glossary updates so the map stays versioned with code.
+
+## Team topologies mapping
+
+Stream-aligned teams own one bounded context — complicated subgraphs get enabling teams for ACL tooling. Document in context map which squad answers PagerDuty for each integration edge.
+
+## Ubiquitous language glossary
+
+Glossary PRs required when introducing new domain term in API — product and engineering share review. Prevents `Policy` meaning insurance contract in one service and authorization rule in another.
+
+## Context map workshops
+
+Run event storming quarterly with product and engineering. Pink stickies (conflicts) often mark context boundaries. Update the context map when org restructures — stale maps mislead new architects more than no map.
+
+## Event storming quarterly
+
+Refresh context map after org restructure — stale boundaries mislead architects more than no map.

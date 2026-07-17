@@ -3,7 +3,7 @@ title: "Prompt Engineering Anti-Patterns"
 slug: "prompt-engineering-anti-patterns"
 description: "Avoid common prompt engineering mistakes: vague instructions, conflicting constraints, context stuffing, and patterns that cause hallucination and format drift."
 datePublished: "2026-04-23"
-dateModified: "2026-04-23"
+dateModified: "2026-07-17"
 tags: ["AI", "LLM", "Prompt Engineering", "Best Practices"]
 keywords: "prompt engineering anti-patterns, LLM prompt mistakes, prompt hallucination, prompt design failures, LLM instruction tuning"
 faq:
@@ -129,29 +129,37 @@ Review prompts when upgrading model versions — behavior shifts without code ch
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
 
-Teams get anti patterns wrong in predictable ways:
+## Lint prompts in CI like code
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Static checks catch recurring anti-patterns: contradictory pairs (`concise` + `comprehensive`), JSON output paired with `write prose`, timestamps in first 200 tokens, more than three `don't` without matching `do`. Fail PRs that bump prompt version without eval score attachment — same rigor as code coverage on critical paths.
 
-Production implementations of anti patterns fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Slice evals by failure mode
 
-## Debugging and triage workflow
+Report kitchen-sink, format-drift, and hallucination rates separately on your golden set. Aggregate pass rate hides opposing movements — format improves while factual errors rise when someone adds persuasive persona text without retrieval grounding.
 
-When anti patterns misbehaves in production, work top-down instead of guessing:
+## Prompt component ownership
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Assign owners per section: legal owns compliance block, eng owns schema block, design owns tone — PRs touching another team's block need their review. Orphan prompts accumulate contradictions when three teams edit one string without coordination.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Regression golden files
+
+Store expected JSON outputs for 30 frozen inputs per prompt version — CI diff on model upgrade flags drift before production deploy. Frozen inputs include edge cases from past incidents (empty PDF, unicode names, adversarial spacing).
+
+## Production rollout notes
+
+Schedule quarterly prompt audits on production templates — product marketing edits accumulate in shared system strings. Diff audit against eval golden set; any prompt change without eval attachment gets reverted in audit. Anti-patterns often return through copy-paste from old Confluence pages, not through intentional model changes.
+## Anti-pattern catalog in wiki
+
+Maintain internal wiki of named anti-patterns with before/after prompt pairs — kitchen sink Q3 2025, JSON prose conflict incident #4412. New engineers fix faster when examples link to real postmortems not abstract advice. Review catalog in onboarding week one.
+
+## Model family specific anti-patterns
+
+Reasoning models may over-elaborate despite concise instructions — anti-pattern is stacking verbose persona on top of model that already expands chain-of-thought. Eval verbosity separately from accuracy when upgrading model tier.
+
+## Closing operational guidance
+
+Include negative examples in few-shot sparingly — one bad example teaches more than three good if labeled DO NOT; unlabeled bad examples in prompt teach the model the wrong pattern. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

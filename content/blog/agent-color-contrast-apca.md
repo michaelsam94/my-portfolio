@@ -1,111 +1,292 @@
 ---
-title: "AI Agents: Color Contrast Apca"
+title: "APCA Color Contrast for Agent-Generated UIs"
 slug: "agent-color-contrast-apca"
-description: "Color Contrast Apca: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Replace WCAG 2.x ratio checks with APCA perceptual contrast for agent-built interfaces: Lc thresholds, polarity, CI gates, and accessible theme generation."
 datePublished: "2026-06-28"
 dateModified: "2026-06-28"
-tags: ["AI", "Agent", "Color"]
-keywords: "agent, color, contrast, apca, ai, production, engineering, architecture"
+tags: ["Accessibility", "Design Systems", "AI Agents", "CSS"]
+keywords: "APCA contrast, accessible perceptual contrast algorithm, agent UI generation, WCAG 3 contrast, color contrast CI"
 faq:
-  - q: "What is Color Contrast Apca?"
-    a: "Color Contrast Apca covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Color Contrast Apca?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Color Contrast Apca?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Color Contrast Apca fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Color Contrast Apca should be observable in production and safe to change in small diffs."
+  - q: "Why does APCA replace WCAG 2.x contrast ratio for agent-generated UIs?"
+    a: "WCAG 2.x uses a simple luminance ratio that mis-ranks many real color pairs — especially dark mode, thin text, and colored backgrounds. APCA models perceptual lightness and polarity (light-on-dark vs dark-on-light) separately, producing scores that correlate better with readability. Agents that auto-pick colors need a metric that matches human perception, not a 20-year-old formula."
+  - q: "What Lc score should body text target in APCA?"
+    a: "For fluent body text (≥16px regular weight), target Lc 75+ on the intended background. Large bold headings can pass at Lc 60. Non-text UI boundaries and icons often need Lc 45–60 depending on size. Always validate with the actual font size and weight — APCA is not font-size-agnostic."
+  - q: "Can I run APCA checks in CI for every agent-generated theme?"
+    a: "Yes. Parse computed CSS custom properties or design-token JSON, run APCA per text/background pair with declared font metadata, and fail the build on pairs below threshold. Cache token snapshots so agent theme diffs produce deterministic reports. Pair with axe-core for structural a11y; APCA covers the color leg."
+  - q: "Does APCA work for transparent overlays and gradients?"
+    a: "APCA expects a single effective background color. For alpha compositing, flatten foreground over background first (same as WCAG). Gradients need per-stop evaluation or worst-case sampling at text bounding boxes. Agents should prefer solid surfaces behind text rather than text directly on gradients."
 ---
-Color Contrast Apca is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When color contrast apca is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+LLM agents that generate dashboards, chat widgets, and inline forms increasingly pick their own color palettes. A theme that passes `contrast-ratio: 4.5:1` in DevTools can still fail real users — especially in dark mode, with thin weights, or on saturated brand backgrounds. **APCA** (Accessible Perceptual Contrast Algorithm), headed toward WCAG 3, measures contrast the way vision works: lightness perception, polarity, and font size all matter.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+If you gate agent UI output on WCAG 2.x alone, you will ship illegible combinations that technically pass. APCA fixes most of those false positives and false negatives — but only if you integrate it into token generation, not as a manual spot check after launch.
 
-Solid AI engineering turns color contrast apca from a recurring argument into a documented pattern with tests and an owner.
+## WCAG 2.x vs APCA in practice
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent color contrast apca bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for color contrast apca, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent color contrast apca flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for color contrast apca in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent color contrast apca changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Color Contrast Apca: typed boundary + structured errors
-export async function handleColorContrastApca(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-color-contrast-apca");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+WCAG 2.x contrast ratio compares relative luminance of two sRGB colors:
 
 ```
+ratio = (L1 + 0.05) / (L2 + 0.05)   where L1 > L2
+```
 
+APCA returns a signed **Lc** value (lightness contrast):
 
-## Operational concerns
+- **Positive Lc**: dark text on light background
+- **Negative Lc**: light text on dark background
+- **Magnitude**: higher absolute value = more readable
 
-Game-day exercises for color contrast apca beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+| Scenario | WCAG 2.x | APCA Lc | Human read |
+|----------|----------|---------|------------|
+| #777 on #fff body text | Pass 4.6:1 | Lc ~62 | Marginal — APCA flags caution |
+| #fff on #0080ff button | Pass 4.5:1 | Lc ~48 | Fail for small text |
+| 14px #aaa on #1a1a1a | Fail 4.5:1 | Lc ~-72 | Pass for large bold only |
 
-Production agent color contrast apca work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Agents optimising for "pass WCAG" will converge on mathematically valid but perceptually weak pairs. Switch the objective function to APCA Lc thresholds.
 
-Rollouts for color contrast apca benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+## Computing APCA in your pipeline
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Use the reference implementation via `apca-w3` (npm) or port the published coefficients. Core steps:
 
-## Security and compliance angles
+1. Convert sRGB to linear RGB
+2. Compute perceptual lightness (Y) for text and background
+3. Apply polarity-specific exponents and clamps
+4. Return signed Lc
 
-Even when color contrast apca is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```typescript
+import { calcAPCA, sRGBtoY, alphaBlend } from "apca-w3";
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent color contrast apca so security reviews do not rely on tribal knowledge.
+interface ContrastCheckInput {
+  foreground: string;       // hex or rgb
+  background: string;
+  fontSizePx: number;
+  fontWeight: number;       // 400, 600, 700
+  isLargeText?: boolean;
+}
 
-## Testing strategy
+interface ContrastResult {
+  lc: number;
+  passes: boolean;
+  requiredLc: number;
+  polarity: "dark-on-light" | "light-on-dark";
+}
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that color contrast apca depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+function requiredLc(fontSizePx: number, fontWeight: number): number {
+  const isBold = fontWeight >= 700 || (fontWeight >= 600 && fontSizePx >= 16);
+  const isLarge = fontSizePx >= 24 || (fontSizePx >= 18.66 && isBold);
+  if (isLarge) return 60;
+  return 75;  // fluent body text baseline
+}
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+export function checkApcaContrast(input: ContrastCheckInput): ContrastResult {
+  const fgY = sRGBtoY(input.foreground);
+  const bgY = sRGBtoY(input.background);
+  const lc = calcAPCA(fgY, bgY);
+  const required = requiredLc(input.fontSizePx, input.fontWeight);
 
-## Migration and evolution
+  return {
+    lc,
+    passes: Math.abs(lc) >= required,
+    requiredLc: required,
+    polarity: lc >= 0 ? "dark-on-light" : "light-on-dark",
+  };
+}
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent color contrast apca functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+// Alpha compositing before check
+export function checkOnSurface(
+  textColor: string,
+  overlayColor: string,
+  baseSurface: string,
+  fontSizePx: number,
+  fontWeight: number
+): ContrastResult {
+  const effectiveBg = alphaBlend(overlayColor, baseSurface);
+  return checkApcaContrast({
+    foreground: textColor,
+    background: effectiveBg,
+    fontSizePx,
+    fontWeight,
+  });
+}
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where color contrast apca spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Always pass **actual** font size and weight from the component spec. APCA thresholds vary; treating all text as "body" hides failures on captions and labels.
 
-## Related concepts
+## Design tokens agents should emit
 
-Color Contrast Apca intersects with broader ai topics — see companion notes on [agent-color patterns](https://blog.michaelsam94.com/agent-color/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Agent-generated themes should output structured tokens, not raw hex scattered in CSS:
+
+```json
+{
+  "color": {
+    "surface": {
+      "default": { "value": "#0f1419", "type": "color" },
+      "raised":  { "value": "#1a2332", "type": "color" }
+    },
+    "text": {
+      "primary":   { "value": "#e7ecf3", "type": "color", "on": "surface.default" },
+      "secondary": { "value": "#9aa8b8", "type": "color", "on": "surface.default" }
+    },
+    "accent": {
+      "primary": { "value": "#3d8bfd", "type": "color" }
+    }
+  },
+  "typography": {
+    "body":  { "fontSize": "16px", "fontWeight": 400 },
+    "label": { "fontSize": "13px", "fontWeight": 500 }
+  }
+}
+```
+
+Validation script walks `text.*.on` pairs:
+
+```typescript
+function validateThemeTokens(theme: ThemeTokens): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const [name, token] of Object.entries(theme.color.text)) {
+    const bgToken = theme.color.surface[token.on.replace("surface.", "")];
+    const typo = theme.typography[token.typoRef ?? "body"];
+    const result = checkApcaContrast({
+      foreground: token.value,
+      background: bgToken.value,
+      fontSizePx: parseFloat(typo.fontSize),
+      fontWeight: typo.fontWeight,
+    });
+    if (!result.passes) {
+      violations.push({ pair: `text.${name}/surface`, lc: result.lc, required: result.requiredLc });
+    }
+  }
+  return violations;
+}
+```
+
+## Auto-fix strategies for agents
+
+When an agent proposes a palette that fails APCA, repair before render — do not ask the user to pick different hex values manually.
+
+**Strategy 1 — adjust lightness only (preserve hue):**
+
+```typescript
+function nudgeToPassApca(
+  fg: string,
+  bg: string,
+  fontSizePx: number,
+  fontWeight: number,
+  maxSteps = 20
+): string {
+  let candidate = fg;
+  for (let i = 0; i < maxSteps; i++) {
+    const { passes } = checkApcaContrast({ foreground: candidate, background: bg, fontSizePx, fontWeight });
+    if (passes) return candidate;
+    candidate = adjustOkLchLightness(candidate, bg, +4); // move away from bg in OKLCH
+  }
+  throw new Error("Cannot reach APCA threshold without leaving brand gamut");
+}
+```
+
+**Strategy 2 — swap polarity**: if light-on-dark fails on a dark surface, try a raised surface token behind text instead of changing text color.
+
+**Strategy 3 — constrain agent prompt**: provide a pre-validated palette in the system prompt and forbid arbitrary hex. Agents are better at composing with tokens than inventing accessible colors from scratch.
+
+## CI integration
+
+Add a job that runs on every PR touching `tokens/` or agent theme output:
+
+```yaml
+# .github/workflows/apca-contrast.yml
+jobs:
+  apca:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm run tokens:build
+      - run: node scripts/validate-apca.mjs --strict
+      - run: node scripts/validate-apca.mjs --report=apca-violations.json
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: apca-violations
+          path: apca-violations.json
+```
+
+`--strict` fails on any sub-threshold pair. Upload artifacts on failure so designers see exact token pairs without reproducing locally.
+
+For Storybook-driven component libraries, add a test per story:
+
+```typescript
+// apca.stories.test.ts
+import { composeStories } from "@storybook/react";
+import * as stories from "./Button.stories";
+
+const composed = composeStories(stories);
+
+describe("APCA contrast", () => {
+  test.each(Object.entries(composed))("%s meets Lc thresholds", async (_name, Story) => {
+    const { container } = render(<Story />);
+    const violations = scanDomForApcaViolations(container);
+    expect(violations).toEqual([]);
+  });
+});
+```
+
+## Dark mode and forced colors
+
+Dark mode is where WCAG 2.x false passes cluster. Rules for agents:
+
+- Never reuse light-mode text tokens on dark surfaces without re-validation.
+- Prefer **surface elevation** (lighter layers stacked on darker base) over bright text on pure black — APCA handles mid-tone backgrounds more predictably.
+- Test `prefers-contrast: more` and Windows High Contrast: APCA does not replace system forced-colors media queries; provide `@media (forced-colors: active)` overrides.
+
+```css
+@media (forced-colors: active) {
+  .agent-card {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}
+```
+
+## Agent prompt guardrails
+
+System prompt excerpt for UI-generating agents:
+
+```
+COLOR RULES (mandatory):
+- Use only tokens from the provided theme JSON.
+- Do not invent hex colors.
+- Primary text must use color.text.primary on its declared surface.
+- If a combination fails APCA Lc 75 for body text, call adjust_theme_contrast tool before returning JSX.
+- For buttons: text on accent.primary must pass Lc 60 minimum at button font size (14px semibold).
+```
+
+Expose `adjust_theme_contrast` as a tool the agent calls programmatically — not a suggestion.
+
+## Monitoring in production
+
+Client-side sampling catches theme drift from A/B flags or tenant overrides:
+
+```typescript
+function sampleApcaAudit(sampleRate = 0.01) {
+  if (Math.random() > sampleRate) return;
+  const violations = scanDomForApcaViolations(document.body);
+  if (violations.length > 0) {
+    telemetry.send("apca_violation", { count: violations.length, samples: violations.slice(0, 5) });
+  }
+}
+```
+
+Alert when violation rate exceeds baseline — often indicates a bad theme deploy or agent override path bypassing token validation.
 
 ## The takeaway
 
-Color Contrast Apca rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent color contrast apca becomes a maintainable asset instead of incident fuel.
+Agent-generated UIs need perceptual contrast gates, not legacy ratio checkboxes. Integrate APCA at token validation, CI, and agent tool boundaries; preserve hue via OKLCH nudging when auto-fixing; and treat font metadata as part of the contrast contract. Users with low vision should not be the first testers of your agent's color choices.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [APCA Readability Criterion (WCAG 3 draft)](https://readtech.org/ARC/)
+- [apca-w3 npm package](https://www.npmjs.com/package/apca-w3)
+- [Inclusively Hidden — APCA introduction](https://www.myndex.com/APCA/)
+- [OKLCH color adjustments for accessible palettes](https://developer.chrome.com/docs/css-ui/accessibility-colors)
+- [W3C Silver Task Force contrast research](https://www.w3.org/WAI/GL/task-forces/silver/wiki/Contrast_Research)

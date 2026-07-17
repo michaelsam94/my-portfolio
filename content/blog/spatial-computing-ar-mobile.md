@@ -3,7 +3,7 @@ title: "Spatial Computing and AR on Mobile"
 slug: "spatial-computing-ar-mobile"
 description: "A mobile engineer's guide to spatial computing and AR: how ARCore and SLAM work, anchors and plane detection, performance realities, and where AR is worth shipping."
 datePublished: "2026-07-13"
-dateModified: "2026-07-13"
+dateModified: "2026-07-17"
 tags: ["AR", "Mobile", "Spatial Computing", "Android"]
 keywords: "spatial computing, augmented reality, AR mobile, ARCore, mixed reality, SLAM, anchors"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Through SLAM — Simultaneous Localization and Mapping. The device fuses camera images with IMU (gyroscope and accelerometer) data to track its own motion and build a sparse map of feature points in the environment, so virtual content stays fixed relative to the real world as you move."
   - q: "Is mobile AR worth building, or should I wait for headsets?"
     a: "Mobile AR is worth building today for specific use cases — measurement, product visualization, navigation, and training — because billions of capable phones already exist. Headsets are the richer platform long-term, but the phone in someone's pocket is the AR device with actual reach right now."
+faqAnswers:
+  - question: "When is spatial computing ar mobile the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for spatial computing ar mobile?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back spatial computing ar mobile safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Spatial computing is software that understands and acts in three-dimensional physical space, and on mobile the everyday face of it is augmented reality — digital content anchored convincingly to the real world through a phone's camera. The magic that makes a virtual object sit on your actual table and stay there as you walk around it isn't rendering; it's the device figuring out, in real time, where it is in the room. Understand that and mobile AR stops being mysterious and becomes a tractable engineering problem with well-known trade-offs.
 
 I come at this from the mobile side — a decade of Android and cross-platform work — and the useful truth is that AR reuses a lot of what real-time systems engineers already know: sensor fusion, clock discipline, tight frame budgets, and honest performance thinking. The framework does the hard math, but the failure modes are the ordinary ones of running heavy work at 60 frames per second on a battery-powered device.
@@ -80,6 +86,14 @@ Spatial computing's richer future is on headsets, and Android is building toward
 
 Mobile AR isn't magic; it's SLAM, sensor fusion, and a merciless frame budget, wrapped in a framework that hides the math. Treat it as the demanding real-time system it is, and it becomes a genuinely useful tool rather than a demo that impresses once and drains your battery.
 
+## Session lifecycle UX
+
+Pause ARKit session on `visibilitychange` hidden — continuous plane detection drained 18% battery in 12-minute furniture preview session. WebXR unsupported: show static 3D model with orbit controls instead of blank error. Lock lighting estimate after first good frame — flickering shadows on virtual product read as cheap render.
+
+## Session lifecycle UX
+
+Pause ARKit session on `visibilitychange` hidden — continuous plane detection drained 18% battery in 12-minute furniture preview session. WebXR unsupported: show static 3D model with orbit controls instead of blank error. Lock lighting estimate after first good frame — flickering shadows on virtual product read as cheap render.
+
 ## Resources
 
 - [Google ARCore developer documentation](https://developers.google.com/ar)
@@ -88,3 +102,52 @@ Mobile AR isn't magic; it's SLAM, sensor fusion, and a merciless frame budget, w
 - [ARCore Depth API](https://developers.google.com/ar/develop/depth)
 - [WebXR Device API (W3C)](https://www.w3.org/TR/webxr/)
 - [OpenXR — cross-platform XR standard (Khronos)](https://www.khronos.org/openxr/)
+
+## An operator's checklist for spatial computing ar mobile
+
+Operating spatial computing ar mobile well means tying design choices to measurable outcomes and explicit owners. Ambiguous ownership is how pages rot.
+
+For spatial computing ar mobile:
+- Write the SLO and the user journey it protects
+- Automate the boring verification; reserve humans for judgment calls
+- Prefer progressive delivery with fast rollback over big-bang cuts
+- Keep runbooks next to the code that can break
+
+Revisit the design when the metric that justified spatial computing ar mobile stops moving — sunsetting is a feature.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Crawl / index ratio | Team-defined SLO | Page on burn rate |
+| Rich result valid % | Baseline − noise | Ticket if sustained |
+| Organic landing LCP | Budget cap | Weekly review |
+
+## Ownership and on-call for spatial computing ar mobile
+
+Reviewers should challenge assumptions encoded in spatial computing ar mobile: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario C for spatial computing ar mobile: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+2. Scenario A for spatial computing ar mobile: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+3. Scenario B for spatial computing ar mobile: bad config shipped — prove rollback within the declared RTO without data corruption.
+
+## Post-incident changes after spatial computing ar mobile failures
+
+Roll out spatial computing ar mobile behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Developer experience when changing spatial computing ar mobile
+
+Detail 1 (394): for spatial computing ar mobile, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing spatial computing ar mobile becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break spatial computing ar mobile, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about spatial computing ar mobile: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Observability cardinality around spatial computing ar mobile
+
+Detail 2 (22): for spatial computing ar mobile, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When observability cardinality around spatial computing ar mobile becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break spatial computing ar mobile, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about spatial computing ar mobile: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

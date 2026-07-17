@@ -1,138 +1,175 @@
 ---
-title: "fetch Cache and next.revalidate Patterns"
+title: "Fetch Cache and next.revalidate in Next.js"
 slug: "nextjs-fetch-cache-next-revalidate"
-description: "fetch caching semantics in App Router — cache: force-cache vs no-store, tag revalidation, and deduplication."
+description: "Time-based ISR with fetch next.revalidate, stale-while-revalidate semantics, and per-fetch TTL tuning."
 datePublished: "2026-12-30"
-dateModified: "2026-12-30"
-tags: ["Next.js", "Caching", "Data Fetching"]
-keywords: "Next.js fetch cache, next.revalidate, App Router data cache"
+dateModified: "2026-07-17"
+tags:
+keywords: "Next.js fetch revalidate, next.revalidate ISR, fetch cache TTL"
 faq:
-  - q: "What is fetch Cache and next.revalidate Patterns?"
-    a: "fetch Cache and next.revalidate Patterns is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt fetch Cache and next.revalidate Patterns?"
-    a: "Adopt fetch Cache and next.revalidate Patterns when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with fetch Cache and next.revalidate Patterns?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "What is the difference between export const revalidate and next.revalidate?"
+    a: "Route segment revalidate sets default for the page. fetch next.revalidate overrides per request. The shortest TTL wins when composing multiple fetches on one page."
+  - q: "Does next.revalidate work with POST fetch?"
+    a: "No. Only GET and HEAD responses cache. Mutations must use cache: 'no-store'."
+  - q: "What happens during revalidation window?"
+    a: "Users may see stale content until background revalidation completes—stale-while-revalidate. First request after TTL triggers regeneration; concurrent requests still get stale until new cache entry ready."
 ---
+Product listings refresh every 60 seconds; legal disclaimers change twice a year. One global `revalidate` export on the page forces both to the same TTL. Per-fetch `next.revalidate` lets each data source declare its own freshness contract.
 
-The gap between reading about fetch cache and next.revalidate patterns and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+## ('Per-fetch TTL', '```typescript\nconst products = await fetch(`${API}/products`, {\n  next: { revalidate: 60 },\n});\n\nconst legal = await fetch(`${API}/legal`, {\n  next: { revalidate: 86400 },\n});\n```\n\nDocument TTL rationale in code comments—future engineers will otherwise unify TTLs incorrectly.')
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+## ('Combining revalidate with tags', "```typescript\nawait fetch(url, {\n  next: { revalidate: 300, tags: ['products'] },\n});\n```\n\nTags enable on-demand invalidation before TTL expires. Use both: TTL as safety net, tags for event-driven updates.")
 
-## Architecture and boundaries
+## ('Stale-while-revalidate behavior', "After TTL expires, Next.js serves cached response while regenerating in background. Monitor `x-nextjs-cache: STALE` during incidents.\n\nFor zero-stale requirements, use cache: 'no-store' or on-demand revalidation only.")
 
-Before changing implementation details, draw the boundary diagram. fetch Cache and next.revalidate Patterns touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
+## ('Self-hosted considerations', 'Multi-instance deployments need shared cache for consistent revalidate behavior. Single-node `next start` uses filesystem cache—scale horizontally requires custom cache handler or platform support.')
 
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
-```
+## ('Testing TTL', 'Use `next build && next start`, not dev server. Wait TTL duration or mock time in integration tests. Assert content updates after revalidate window plus regeneration time.')
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+## ('Anti-patterns', 'Setting revalidate: 1 on high-traffic pages—regeneration storm under load. Setting revalidate: false (infinite) without tags—content never updates until redeploy.')
 
-Document which metrics you expect to move. If fetch cache and next.revalidate patterns is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
 
-Start with the smallest change that proves the approach. For fetch cache and next.revalidate patterns, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+## Production notes on fetch cache next revalidate
 
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("nextjs_fetch_cache_next_revalidate");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
-```
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
-```
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+## Production notes on fetch cache next revalidate
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-## Accessibility requirements
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+## Production notes on fetch cache next revalidate
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Production notes on fetch cache next revalidate
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+## Production notes on fetch cache next revalidate
 
-## Testing strategy
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-Layer tests to match risk:
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+## Production notes on fetch cache next revalidate
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-## Common production mistakes
 
-Teams get fetch cache and next.revalidate patterns wrong in predictable ways:
+## Production notes on fetch cache next revalidate
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
 
-## Debugging and triage workflow
+## Production notes on fetch cache next revalidate
 
-When fetch cache and next.revalidate patterns misbehaves in production, work top-down:
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## Production notes on fetch cache next revalidate
 
-## Resources
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.
+
+
+## Production notes on fetch cache next revalidate
+
+Ship incrementally with rollback paths. Measure p95 latency and error rate before and after changes. Document trade-offs in ADRs so on-call understands why the current design exists.

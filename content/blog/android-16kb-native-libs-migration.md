@@ -152,6 +152,24 @@ When 16kb native libs migration misbehaves in production, work top-down instead 
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## NDK r28 and linker flags
+
+`-Wl,-z,max-page-size=16384` required for prebuilt `.so` from vendors not yet rebuilt. Audit transitive SDK AARs with `readelf -l libfoo.so | grep LOAD` in CI — fail build on 4KB-only prebuilts when targeting 16KB devices.
+
+## Emulator 16KB page image
+
+Android 15 system images with 16KB pages catch alignment bugs x86 misses — add dedicated CI job on 16KB emulator before Pixel 9 hardware lab.
+
+## 16Kb Native Libs Migration Supplement 0 on Samsung and Pixel divergence
+
+Exercise 16kb native libs migration supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching 16kb; regressions above 8% block release for `android-16kb-native-libs-migration-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "16Kb Native Libs Migration Supplement 0" should map to a single runbook section with known workarounds.
+
+## Migration regression gates for Play Vitals
+
+Before promoting `android-16kb-native-libs-migration-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android 16 KB page size guide](https://developer.android.com/guide/practices/page-sizes)

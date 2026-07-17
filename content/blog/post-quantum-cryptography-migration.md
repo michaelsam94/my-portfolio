@@ -4,7 +4,7 @@ seoTitle: "Post-Quantum Cryptography: Migrate Before It's Late"
 slug: "post-quantum-cryptography-migration"
 description: "Why post-quantum cryptography migration matters now: harvest-now-decrypt-later, the NIST PQC standards, ML-KEM, hybrid key exchange, and where to start."
 datePublished: "2026-07-06"
-dateModified: "2026-07-06"
+dateModified: "2026-07-17"
 tags: ["Cryptography", "Security", "Post-Quantum", "Infrastructure"]
 keywords: "post-quantum cryptography, PQC, harvest now decrypt later, ML-KEM, quantum-safe, NIST PQC, hybrid key exchange"
 faq:
@@ -86,6 +86,26 @@ That inventory is the unglamorous prerequisite. You cannot migrate what you can'
 The strongest advice: use vetted implementations — OpenSSL 3.5+, BoringSSL, the AWS/Cloudflare stacks, liboqs for experimentation — and let your TLS terminators and platform providers do the heavy lifting. PQC algorithms are new and subtle; hand-rolled lattice crypto is a great way to introduce a side-channel that undoes the point.
 
 The honest timeline: you don't need everything done this quarter, but if you handle data that must stay secret for a decade, hybrid key exchange on your sensitive endpoints is a this-year task, not a someday task. The data you're protecting is being harvested on the classical timeline, whatever the quantum one turns out to be.
+
+## Crypto inventory spreadsheet
+
+List every system using TLS, VPN, code signing, email S/MIME, database TDE, and backup encryption. Columns: algorithm, key size, data classification, retention years, owner. Prioritize rows where retention times sensitivity exceeds migration lead time.
+
+## Certificate authority roadmap
+
+Public CAs adding ML-DSA chains slowly. Plan internal CA hybrid issuance for mTLS east-west first — smaller blast radius than public web PKI migration.
+
+## HSM and key ceremony updates
+
+PQC keys larger — HSM firmware and PKCS#11 libraries need upgrade paths. Test ML-KEM key generation in staging HSM before promising compliance date.
+
+## Application-layer crypto beyond TLS
+
+JWT signed RS256, encrypted backups with RSA-OAEP, SSH host keys — inventory often misses these. Pin dependency versions in SBOM review.
+
+## Field notes on post quantum cryptography migration
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

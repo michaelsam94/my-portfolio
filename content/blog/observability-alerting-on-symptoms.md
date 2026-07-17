@@ -3,8 +3,8 @@ title: "Alert on Symptoms, Not Causes"
 slug: "observability-alerting-on-symptoms"
 description: "Design alerting on user-visible symptoms instead of internal causes: symptom-based SLOs, alert quality, runbook patterns, and reducing pager fatigue."
 datePublished: "2025-09-27"
-dateModified: "2025-09-27"
-tags: ["DevOps", "Observability", "SRE", "Operations"]
+dateModified: "2026-07-17"
+tags:
 keywords: "symptom-based alerting, alert fatigue, SLO alerting, on-call best practices, cause vs symptom alerts, pager duty reduction, monitoring alerts"
 faq:
   - q: "What is the difference between a symptom alert and a cause alert?"
@@ -14,7 +14,6 @@ faq:
   - q: "How many alerts should fire per on-call shift?"
     a: "Target zero pages for healthy systems. A well-tuned setup pages 1–3 times per week for genuine user-impacting issues. If on-call gets paged daily, you have too many cause-based alerts or thresholds set too low."
 ---
-
 On-call gets paged at 3 AM because CPU hit 82% on a staging server. Nobody checks staging at 3 AM. The alert auto-resolves in 10 minutes. Meanwhile, checkout errors spiked to 8% for 45 minutes last Tuesday and nobody noticed until customer support escalated. The fix is not more alerts—it is alerting on symptoms users feel, not causes engineers guess at. Google's SRE book calls this "monitoring symptoms, not causes." Most teams understand the concept and still page on disk usage.
 
 ## Symptom vs cause examples
@@ -153,30 +152,6 @@ Alert on user pain, not causes:
 
 Every alert needs runbook link and severity that maps to response time.
 
-## Common production mistakes
-
-Teams get alerting on symptoms wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Observability for alerting on symptoms fails when dashboards exist but nobody owns alert routing, high-cardinality labels explode metrics cost, and logs lack trace correlation so incidents become grep archaeology.
-
-## Debugging and triage workflow
-
-When alerting on symptoms misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
-
 ## Resources
 
 - [Google SRE Workbook — Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/) — multi-window burn rate methodology
@@ -184,3 +159,38 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Prometheus alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) — rule syntax and `for` duration
 - [Grafana OnCall alert routing](https://grafana.com/docs/oncall/latest/) — escalation and on-call scheduling
 - [PagerDuty event orchestration](https://support.pagerduty.com/docs/event-orchestration) — alert deduplication and routing
+
+## Production notes for LLM stacks
+
+When `observability-alerting-on-symptoms` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `alert on symptoms, not causes` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Instrumentation checklist
+
+Ensure every service emits consistent resource attributes: `service.name`, `service.version`, `deployment.environment`. Propagate W3C `traceparent` on outbound HTTP, gRPC metadata, and message headers. For ORM-heavy services, enable query tracing with statement timeouts logged as span events—not as raw SQL with bind parameters.
+
+## SLO wiring
+
+Define SLIs that map to user journeys: checkout success rate, inference completion rate, search results under 500ms. Multi-window burn-rate alerts (e.g., 1h and 6h) catch fast burns and slow leaks. Page on symptom-based alerts; ticket on cause-based logs after mitigation.
+
+## Cardinality and cost control
+
+Drop high-cardinality labels before they hit the metrics backend. Use exemplars to link traces to histogram buckets without labeling every user ID. For LLM gateways, aggregate token usage by model and route—not by end user—in the metrics layer; keep per-tenant billing in a warehouse.
+
+## Operational review cadence
+
+Weekly: review top noisy alerts and dashboards nobody opened. Monthly: game-day a dependency failure and verify runbooks. Quarterly: revalidate sampling and retention against compliance requirements—especially when prompts or PII might appear in debug spans.
+
+
+For `observability-alerting-on-symptoms`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `observability-alerting-on-symptoms`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.

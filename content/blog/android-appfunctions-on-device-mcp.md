@@ -80,6 +80,24 @@ The reliability lessons from server-side agents apply directly here; the same di
 
 AppFunctions is early, and the API surface is still settling, but the direction is clear: the apps that get invoked by the phone's agent will be the ones that exposed clean, safe, well-described functions. That's a design problem more than an AI problem, and it's squarely in the wheelhouse of engineers who already think in terms of APIs and contracts.
 
+## AppFunctions schema versioning
+
+On-device MCP surfaces require stable JSON schema for function params — breaking change needs new function id, not in-place edit. Google Play validates function declarations at upload; invalid schema blocks release.
+
+## Permission bridge to sensitive APIs
+
+Functions calling SMS or call log need runtime permission at invocation time, not only at install — return structured error to host agent when permission denied.
+
+## Appfunctions On Device Mcp Supplement 0 on Samsung and Pixel divergence
+
+Exercise appfunctions on device mcp supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching appfunctions; regressions above 8% block release for `android-appfunctions-on-device-mcp-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Appfunctions On Device Mcp Supplement 0" should map to a single runbook section with known workarounds.
+
+## Mcp regression gates for Play Vitals
+
+Before promoting `android-appfunctions-on-device-mcp-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [App Functions documentation](https://developer.android.com/guide/app-functions)

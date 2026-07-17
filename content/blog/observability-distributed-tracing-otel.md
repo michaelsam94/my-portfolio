@@ -3,7 +3,7 @@ title: "Distributed Tracing with OpenTelemetry"
 slug: "observability-distributed-tracing-otel"
 description: "Implement distributed tracing with OpenTelemetry: instrumentation, context propagation, span attributes, collectors, and debugging microservices."
 datePublished: "2025-10-03"
-dateModified: "2025-10-03"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Observability", "Backend", "Architecture"]
 keywords: "OpenTelemetry tracing, distributed tracing, OTel SDK, trace context propagation, Jaeger tracing, span attributes, microservices debugging"
 faq:

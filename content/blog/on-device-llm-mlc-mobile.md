@@ -3,7 +3,7 @@ title: "On-Device Models with MLC LLM"
 slug: "on-device-llm-mlc-mobile"
 description: "Run LLMs on phones and edge devices with MLC LLM: model compilation, memory budgets, Metal/Vulkan backends, and what actually works in production mobile apps."
 datePublished: "2025-12-16"
-dateModified: "2025-12-16"
+dateModified: "2026-07-17"
 tags: ["AI", "Mobile", "MLC LLM", "On-Device"]
 keywords: "MLC LLM mobile, on-device LLM, llama mobile inference, MLC compile, edge AI"
 faq:
@@ -107,6 +107,34 @@ When on device llm mlc mobile misbehaves in production, work top-down instead of
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## MLC compile targets and TVM artifacts
+
+MLC compiles models per device family — iPhone 15 and iPhone 12 get different `.mlc` bundles. CI must build matrix artifacts or use runtime JIT compile (slow first launch). Ship smallest bundle for broad support; offer "high quality model" download like games ship HD textures.
+
+## Memory pool configuration
+
+MLC exposes `memory_usage` and prefill chunk settings. Tuning `prefill_chunk_size` trades time-to-first-token against peak RAM — profile with Instruments Allocations on oldest supported iPhone.
+
+## Unified API across platforms
+
+MLC's ChatModule API is consistent Python/Swift/Kotlin — good for teams sharing inference code. Downside: compile pipeline learning curve. Budget a week for engineer training before production commitments.
+
+## App Store size limits
+
+Multiple MLC bundles blow cellular download limits — use on-demand resources (iOS) or Play Feature Delivery (Android) for >150MB model artifacts. Show Wi-Fi-only download toggle default on.
+
+## Quantization artifacts per SKU
+
+Maintain spreadsheet: device model → recommended bundle → max context. Support reads sheet from remote config — engineering updates without app release when new iPhone launches.
+
+## Model license click-through
+
+First run show license acceptance for bundled weights — required for some Hugging Face gated models packaged in app.
+
+## Xcode build settings for MLC
+
+Embed MLC bundle in Copy Bundle Resources — CI must verify bundle present; missing bundle fails silently at runtime with obscure TVM error.
 
 ## Resources
 

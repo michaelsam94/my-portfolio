@@ -3,8 +3,8 @@ title: "Speculative Decoding with Draft Models"
 slug: "llm-serving-speculative-decoding-draft"
 description: "Speed up LLM token generation with speculative decoding: how draft models propose tokens and target models verify them in parallel for 2-3× throughput gains."
 datePublished: "2025-03-05"
-dateModified: "2025-03-05"
-tags: ["AI", "LLM", "Inference", "Performance"]
+dateModified: "2026-07-17"
+tags:
 keywords: "speculative decoding, draft model LLM, Medusa speculative decoding, EAGLE draft model, LLM inference acceleration, token verification"
 faq:
   - q: "How much faster is speculative decoding in practice?"
@@ -14,7 +14,6 @@ faq:
   - q: "Does speculative decoding change the output distribution?"
     a: "Standard speculative decoding with rejection sampling produces tokens from the exact same distribution as autoregressive decoding from the target model alone. It is mathematically equivalent — just faster. Approximate methods that skip rejection sampling may introduce slight distribution shifts."
 ---
-
 Autoregressive LLM inference generates one token at a time. Each step requires a full forward pass through billions of parameters, and most of that time is spent waiting on memory bandwidth, not compute. Speculative decoding breaks the one-token-at-a-time bottleneck by having a small, fast draft model guess several tokens ahead, then asking the large target model to verify all guesses in a single parallel forward pass.
 
 When the draft model agrees with what the target would have produced, you advance multiple tokens for the cost of one verification step. When it disagrees, you reject from the first mismatch and resume. Done correctly, the output distribution is identical to plain autoregressive decoding — just produced faster.

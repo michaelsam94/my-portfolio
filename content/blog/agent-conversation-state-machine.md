@@ -1,111 +1,331 @@
 ---
-title: "AI Agents: Conversation State Machine"
+title: "Conversation State Machines for Production Agents"
 slug: "agent-conversation-state-machine"
-description: "Conversation State Machine: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Model agent dialogues as explicit finite state machines — slot filling, tool-gated transitions, interrupt handling, persistence, and recovery from LLM non-determinism."
 datePublished: "2025-04-23"
 dateModified: "2025-04-23"
-tags: ["AI", "Agent", "Conversation"]
-keywords: "agent, conversation, state, machine, ai, production, engineering, architecture"
+tags: ["AI Agents", "Dialogue", "State Machine", "Architecture"]
+keywords: "conversation state machine agent, dialogue management LLM, slot filling FSM, agent session state, multi-turn agent architecture"
 faq:
-  - q: "What is Conversation State Machine?"
-    a: "Conversation State Machine covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Conversation State Machine?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Conversation State Machine?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Conversation State Machine fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Conversation State Machine should be observable in production and safe to change in small diffs."
+  - q: "When should an agent use a state machine vs free-form LLM dialogue?"
+    a: "Use a state machine when the task has ordered steps, legal confirmations, slot requirements, or side effects (payments, deletes). Free-form dialogue works for open Q&A; FSMs work for workflows where skipping a step creates liability or bad data."
+  - q: "Where does the LLM sit relative to the state machine?"
+    a: "The FSM owns transitions and guards; the LLM fills slots, generates natural language, and proposes intents. Never let the model directly commit state transitions without validation — parse structured output and let the FSM decide."
+  - q: "How do you persist state across server restarts and tab closes?"
+    a: "Serialize FSM state (current state, filled slots, pending confirmations) to durable storage keyed by session ID. Version the schema. On resume, hydrate the FSM and inject a compact state summary into the LLM context — not the full transition log."
+  - q: "How do you handle user interrupts like 'actually cancel that' mid-flow?"
+    a: "Define global interrupt transitions from any state to CANCELLED or CLARIFY_INTENT. Run intent detection on every turn before applying state-specific handlers. Log interrupt frequency per flow to find UX friction points."
 ---
-Conversation State Machine sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When conversation state machine is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Free-form agent loops feel elegant until a user confirms a $2,000 refund, the model forgets it already collected the order ID, and support finds three duplicate API calls in the audit log. **Conversation state machines** bring structure to multi-turn agents: explicit states, guarded transitions, slot validation, and recovery paths that do not depend on the model remembering where the dialogue left off.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+The LLM remains the voice and the parser. The FSM is the source of truth for what step you are on and what is allowed next. That separation is what makes agent workflows auditable, testable, and safe under non-deterministic generation.
 
-Solid AI engineering turns conversation state machine from a recurring argument into a documented pattern with tests and an owner.
+## FSM vs ReAct loop
 
-## Design principles that survive production
+| Aspect | ReAct / tool loop | Conversation FSM |
+|--------|-------------------|------------------|
+| Control flow | Implicit in prompt | Explicit states and edges |
+| Side effects | Any turn | Guarded transitions only |
+| Testability | Scenario prompts | State table unit tests |
+| Recovery | Re-prompt and hope | Defined rollback states |
+| UX predictability | Variable | Consistent step order |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent conversation state machine bugs hide.
+Most production agents combine both: an outer FSM for workflow phase, an inner ReAct loop for retrieval and reasoning within a state.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for conversation state machine, you do not yet understand the behavior you shipped.
+## Anatomy of an agent conversation FSM
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent conversation state machine flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for conversation state machine in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent conversation state machine changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Conversation State Machine: typed boundary + structured errors
-export async function handleConversationStateMachine(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-conversation-state-machine");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+States represent ** phases**, not individual messages:
 
 ```
+                    ┌─────────────┐
+         start ───► │   GREETING  │
+                    └──────┬──────┘
+                           │ intent=refund
+                           ▼
+                    ┌─────────────┐
+              ┌──── │ COLLECT_ID  │ ◄─────┐
+              │     └──────┬──────┘       │ invalid_id
+              │            │ valid_id     │
+              │            ▼              │
+              │     ┌─────────────┐       │
+              │     │ VERIFY_ELIG │───────┘
+              │     └──────┬──────┘
+              │            │ eligible
+              │            ▼
+              │     ┌─────────────┐
+              │     │ CONFIRM_AMT │──► CANCELLED (interrupt)
+              │     └──────┬──────┘
+              │            │ user_confirmed
+              │            ▼
+              │     ┌─────────────┐
+              └──── │  EXECUTE    │
+                    └──────┬──────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │  COMPLETE   │
+                    └─────────────┘
+```
 
+Each state defines:
 
-## Operational concerns
+- **Required slots** — data that must exist before exiting
+- **Allowed tools** — subset available in this phase
+- **Prompt template** — system instructions scoped to the state
+- **Transitions** — events that move to the next state
+- **On-enter / on-exit hooks** — side effects, analytics, idempotency keys
 
-Alert on user-visible symptoms for conversation state machine — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Implementation with typed states and events
 
-Production agent conversation state machine work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+# dialogue/fsm.py
+from enum import Enum, auto
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
-Rollouts for conversation state machine benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+class State(Enum):
+    GREETING = auto()
+    COLLECT_ORDER_ID = auto()
+    VERIFY_ELIGIBILITY = auto()
+    CONFIRM_AMOUNT = auto()
+    EXECUTE_REFUND = auto()
+    COMPLETE = auto()
+    CANCELLED = auto()
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+class Event(Enum):
+    INTENT_REFUND = auto()
+    SLOT_ORDER_ID = auto()
+    ELIGIBLE = auto()
+    INELIGIBLE = auto()
+    USER_CONFIRMED = auto()
+    USER_DECLINED = auto()
+    INTERRUPT_CANCEL = auto()
 
-## Security and compliance angles
+@dataclass
+class SessionSlots:
+    order_id: Optional[str] = None
+    amount_cents: Optional[int] = None
+    eligibility_checked: bool = False
 
-Even when conversation state machine is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+@dataclass
+class Transition:
+    target: State
+    guard: Callable[["SessionContext"], bool] = lambda _: True
+    action: Callable[["SessionContext"], None] = lambda _: None
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent conversation state machine so security reviews do not rely on tribal knowledge.
+@dataclass
+class SessionContext:
+    state: State = State.GREETING
+    slots: SessionSlots = field(default_factory=SessionSlots)
+    session_id: str = ""
+    idempotency_key: str = ""
+
+TRANSITIONS: dict[tuple[State, Event], Transition] = {
+    (State.GREETING, Event.INTENT_REFUND): Transition(State.COLLECT_ORDER_ID),
+    (State.COLLECT_ORDER_ID, Event.SLOT_ORDER_ID): Transition(
+        State.VERIFY_ELIGIBILITY,
+        guard=lambda ctx: ctx.slots.order_id is not None,
+    ),
+    (State.VERIFY_ELIGIBILITY, Event.ELIGIBLE): Transition(State.CONFIRM_AMOUNT),
+    (State.VERIFY_ELIGIBILITY, Event.INELIGIBLE): Transition(State.COMPLETE),
+    (State.CONFIRM_AMOUNT, Event.USER_CONFIRMED): Transition(
+        State.EXECUTE_REFUND,
+        action=lambda ctx: setattr(ctx, "idempotency_key", f"refund-{ctx.slots.order_id}"),
+    ),
+    (State.EXECUTE_REFUND, Event.USER_CONFIRMED): Transition(State.COMPLETE),
+}
+
+# Global interrupts
+for state in State:
+    if state not in (State.COMPLETE, State.CANCELLED):
+        TRANSITIONS[(state, Event.INTERRUPT_CANCEL)] = Transition(State.CANCELLED)
+
+def apply_event(ctx: SessionContext, event: Event) -> bool:
+    key = (ctx.state, event)
+    if key not in TRANSITIONS:
+        return False
+    t = TRANSITIONS[key]
+    if not t.guard(ctx):
+        return False
+    t.action(ctx)
+    ctx.state = t.target
+    return True
+```
+
+Unit test every `(state, event)` pair. FSM bugs are cheaper to fix in Python than in prompt prose.
+
+## LLM integration: parse, don't trust
+
+Each turn, the LLM produces **structured output** alongside natural language:
+
+```python
+from pydantic import BaseModel
+from typing import Literal
+
+class TurnParse(BaseModel):
+    detected_event: Optional[str]  # maps to Event enum
+    slot_updates: dict[str, str] = {}
+    user_message: str
+    confidence: float
+
+async def handle_turn(ctx: SessionContext, user_text: str) -> str:
+    parse = await llm_parse(user_text, current_state=ctx.state.name, schema=TurnParse)
+
+    # Global interrupt check first
+    if parse.detected_event == "INTERRUPT_CANCEL":
+        apply_event(ctx, Event.INTERRUPT_CANCEL)
+        return "Understood — I've cancelled that. How else can I help?"
+
+    # Apply slot updates before state events
+    if "order_id" in parse.slot_updates:
+        ctx.slots.order_id = validate_order_id(parse.slot_updates["order_id"])
+        if ctx.slots.order_id:
+            apply_event(ctx, Event.SLOT_ORDER_ID)
+
+    # State-specific event handling
+    if ctx.state == State.CONFIRM_AMOUNT and parse.detected_event == "USER_CONFIRMED":
+        if parse.confidence < 0.85:
+            return "Just to confirm — should I proceed with the refund? Reply yes or no."
+        apply_event(ctx, Event.USER_CONFIRMED)
+        await execute_refund(ctx)  # side effect ONLY after transition
+
+    return await llm_respond(ctx, user_text, parse)
+```
+
+Low-confidence confirmations get a clarification turn — never execute side effects on ambiguous "sure" / "ok" without state-appropriate guardrails.
+
+## Persistence and hydration
+
+Serialize minimal state:
+
+```json
+{
+  "schema_version": 2,
+  "state": "CONFIRM_AMOUNT",
+  "slots": {
+    "order_id": "ORD-8842",
+    "amount_cents": 5000,
+    "eligibility_checked": true
+  },
+  "idempotency_key": "",
+  "updated_at": "2025-04-23T14:22:00Z"
+}
+```
+
+On session resume, inject into LLM context:
+
+```
+[SESSION STATE]
+Workflow: refund
+Phase: awaiting user confirmation
+Order ID: ORD-8842
+Amount: $50.00
+Do not re-collect filled slots unless user explicitly corrects them.
+```
+
+Schema versioning matters. Migrations on load:
+
+```python
+def hydrate(raw: dict) -> SessionContext:
+    version = raw.get("schema_version", 1)
+    if version == 1:
+        raw = migrate_v1_to_v2(raw)
+    return SessionContext(
+        state=State[raw["state"]],
+        slots=SessionSlots(**raw["slots"]),
+        session_id=raw["session_id"],
+        idempotency_key=raw.get("idempotency_key", ""),
+    )
+```
+
+## Side effects and idempotency
+
+Side effects belong in **on-enter hooks** of states like EXECUTE_REFUND, not in LLM tool handlers that the model can invoke arbitrarily.
+
+```python
+async def execute_refund(ctx: SessionContext) -> None:
+    if not ctx.idempotency_key:
+        raise WorkflowError("missing idempotency key")
+    result = await payments_api.refund(
+        order_id=ctx.slots.order_id,
+        amount_cents=ctx.slots.amount_cents,
+        idempotency_key=ctx.idempotency_key,
+    )
+    if result.already_processed:
+        metrics.increment("refund.idempotent_replay")
+```
+
+If the user double-sends "yes confirm," the FSM may fire twice — idempotency keys prevent duplicate charges.
+
+## Tool availability per state
+
+Restrict tools to reduce model error surface:
+
+```python
+TOOLS_BY_STATE = {
+    State.COLLECT_ORDER_ID: ["lookup_order"],
+    State.VERIFY_ELIGIBILITY: ["check_refund_policy"],
+    State.CONFIRM_AMOUNT: [],  # no tools — conversation only
+    State.EXECUTE_REFUND: ["process_refund"],
+}
+```
+
+Pass only allowed tool schemas in the API call for the current state. Models invoke fewer wrong tools when they cannot see irrelevant ones.
+
+## Handling LLM non-determinism
+
+Models go off-script. Defenses:
+
+1. **Invalid event ignored** — if `(state, event)` not in transition table, stay in state and re-prompt with state-specific instructions
+2. **Slot validation** — regex, API lookup, or type check before accepting slot updates
+3. **Max turns per state** — after N failed collection attempts, transition to HANDOFF_HUMAN
+4. **State timeout** — sessions in CONFIRM_AMOUNT >24h auto-expire to GREETING with apology message
+
+Log `fsm.invalid_transition_attempts` and `fsm.stuck_state_timeouts` — high rates mean prompt or parse schema needs work.
+
+## Observability
+
+Track funnel metrics per workflow:
+
+- `fsm.entered_state` counts by state
+- `fsm.transition` counts by `(from, event, to)`
+- `fsm.time_in_state` histogram
+- `fsm.dropoff_rate` — sessions that never reach COMPLETE
+- `fsm.interrupt_rate` by state
+
+Product reads funnels; engineering reads stuck states. A cliff at VERIFY_ELIGIBILITY means policy API latency or confusing copy — not "the model is dumb."
 
 ## Testing strategy
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that conversation state machine depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Table tests** for transitions — every row in `TRANSITIONS` gets a pytest case.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**Simulation tests** — scripted user messages through the full FSM with mocked LLM parse responses.
 
-## Migration and evolution
+**Property tests** — no path from EXECUTE_REFUND to COLLECT_ORDER_ID without explicit reset event.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent conversation state machine functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Chaos** — random invalid events never cause side effects; assert invariants on idempotency key presence before refund.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where conversation state machine spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Anti-patterns
 
-## Related concepts
+**States per message** ("turn 3 state") — too granular; states become unmanageable.
 
-Conversation State Machine intersects with broader ai topics — see companion notes on [agent-conversation patterns](https://blog.michaelsam94.com/agent-conversation/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**LLM chooses next state via free text** — parse structured events only.
+
+**Side effects in tool definitions the model controls** — move to FSM-guarded hooks.
+
+**No global cancel** — users always need an escape hatch; trapping them in slot collection destroys trust.
+
+**Duplicating state in prompt and FSM** — one source of truth; prompt reflects FSM, not vice versa.
 
 ## The takeaway
 
-Conversation State Machine rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent conversation state machine becomes a maintainable asset instead of incident fuel.
+Conversation state machines make agent workflows reliable by separating dialogue control from language generation. Model the happy path and interrupts explicitly, parse structured events from LLM output, guard side effects with idempotency keys, and persist versioned state for resume. The FSM is boring code — that is the point. Boring control flow with an eloquent LLM front end beats an eloquent model winging your refund policy.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Rasa — Dialogue Policies and Stories](https://rasa.com/docs/rasa/policies/)
+- [AWS — Step Functions for human-in-the-loop workflows](https://docs.aws.amazon.com/step-functions/latest/dg/concepts-amazon-states-language.html)
+- [XState — State machine concepts](https://xstate.js.org/docs/about/concepts.html)
+- [OpenAI — Structured outputs](https://platform.openai.com/docs/guides/structured-outputs)
+- [Google — Dialogflow CX state handlers](https://cloud.google.com/dialogflow/cx/docs/concept/handler)

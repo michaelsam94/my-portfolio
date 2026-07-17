@@ -3,7 +3,7 @@ title: "Self-Service Infrastructure"
 slug: "platform-engineering-self-service-infra"
 description: "Enable self-service infrastructure without chaos: Internal Developer Platforms, Terraform modules, policy guardrails, and approval workflows that scale platform teams."
 datePublished: "2026-02-27"
-dateModified: "2026-02-27"
+dateModified: "2026-07-17"
 tags: ["Platform Engineering", "DevOps", "Infrastructure", "IDP"]
 keywords: "self-service infrastructure, internal developer platform, platform engineering IDP, Terraform self service, infrastructure portal"
 faq:
@@ -159,29 +159,60 @@ Developers get:
 
 Platform team reviews module PRs, not every infra PR from 40 teams.
 
-## Common production mistakes
 
-Teams get self service infra wrong in predictable ways:
+## Quota and rate limits per team
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Self-service without quotas becomes cost incident. Enforce max RDS instances and CPU cores per team namespace in Terraform policy. Soft quota warns in Slack; hard quota blocks apply.
 
-Production implementations of self service infra fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## GitOps request flow
 
-## Debugging and triage workflow
+Developer PR to infra-requests repo triggers terraform plan comment. Merge applies. Audit trail in Git beats console clicks.
 
-When self service infra misbehaves in production, work top-down instead of guessing:
+## Environment lifecycle automation
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Ephemeral preview environments TTL 72 hours — CronJob deletes orphaned namespaces without active PR. Self-service create must include expires_at label.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Drift detection
+
+Scheduled Terraform plan against prod detects manual console changes. Drift report to service owner with import or destroy choices.
+
+## Crossplane vs Terraform Cloud choice
+
+Terraform Cloud excels when modules mature and state management is central pain. Crossplane fits Kubernetes-native teams wanting CRD-based claims (`PostgresClaim`) reconciled continuously. Hybrid common: Crossplane for K8s-adjacent, TFC for VPC and IAM — document boundary so developers know which portal to open.
+
+## Cost anomaly detection on self-service tags
+
+Tag every provisioned resource with `team`, `cost-center`, `created-by-scaffolder:true`. AWS Cost Anomaly Detection on team dimension — alert when staging RDS left on db.r6g.2xlarge after demo. Self-service without cost feedback repeats orphan resource story.
+
+## Break-glass procedures
+
+When Terraform state lock stuck or Crossplane claim wedged, documented break-glass: who can force-unlock, who approves, max duration before audit review. Self-service without break-glass leads to platform engineers becoming human unlock buttons; with break-glass, audit trail preserves accountability.
+
+## Multi-cloud module interfaces
+
+Abstract variables: `database_class`, `backup_retention_days`, `network_isolation_level`. AWS module maps to RDS; GCP to Cloud SQL — developer portal shows same form. Divergence in capability (read replica lag monitoring) documented in template output README, not hidden until deploy fails.
+
+## Audit trail retention
+
+CloudTrail plus Terraform Cloud run logs retained seven years for SOC2 — self-service apply events include actor GitHub username, module version, and resource ARNs created. Auditor asks who provisioned public S3 bucket — git blame on infra-requests PR answers in minutes.
+
+## Self-service database provisioning tiers
+
+Dev: auto Postgres small instance, destroy after 7 days. Staging: auto with backup disabled, max 100GB. Prod: plan-only in PR, apply after DBA approval annotation on PR. Developer sees same form; policy engine branches on environment field — reduces prod ticket volume without blocking dev velocity.
+
+## Closing notes
+
+Terraform plan output attached to every self-service PR gives reviewers diff without console access — transparency replaces tribal knowledge about what will change in AWS.
+
+## Additional guidance
+
+Policy-as-code rejects public S3 ACLs and missing encryption at plan time — developer sees Terraform error in PR comment, not audit finding weeks later. Guardrails encode compromise between speed and compliance; exceptions require ticket linked in PR description for auditor sampling.
+
+Run game day deleting random Terraform-managed resource in staging — verify self-service recreate path works and drift detection alerts — quarterly exercise prevents discovered broken recreate workflow during real prod incident when someone manually deleted RDS thinking clone.
+
+Publish monthly self-service usage report: resources created, average time-to-provision, top modules — proves platform ROI to finance.
+
+Measure median minutes from merged infra PR to resource ready — SLO under fifteen minutes for dev databases keeps developers choosing self-service over local docker postgres calling it staging.
 
 ## Resources
 

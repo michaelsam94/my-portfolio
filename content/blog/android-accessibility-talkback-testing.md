@@ -119,6 +119,28 @@ Automated checks are a floor. The practice that raises the ceiling is the boring
 
 Ship accessibility fixes in the same PR as the feature — retrofitting TalkBack support after launch costs 3× and still misses stateful interactions tested only visually.
 
+## Custom actions and gesture alternatives
+
+Complex gestures (drag-to-reorder, pinch-zoom) need custom accessibility actions so TalkBack users are not locked out. Expose "Move up" / "Move down" on list rows via `customActions` semantics. Verify each custom action has spoken feedback and does not duplicate focus stops.
+
+## Regression suite for reading order
+
+Snapshot semantics tree order in Compose UI tests for critical flows (checkout, login). Fail CI when node order changes without explicit review — visual layout tweaks often reorder semantics unintentionally when using `Modifier.offset` or z-index stacking.
+
+## Accessibility Talkback Testing Supplement 0 on Samsung and Pixel divergence
+
+Exercise accessibility talkback testing supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching accessibility; regressions above 8% block release for `android-accessibility-talkback-testing-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Accessibility Talkback Testing Supplement 0" should map to a single runbook section with known workarounds.
+
+## Testing regression gates for Play Vitals
+
+Before promoting `android-accessibility-talkback-testing-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing accessibility with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing accessibility talkback testing supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Test your app's accessibility (Android)](https://developer.android.com/guide/topics/ui/accessibility/testing)

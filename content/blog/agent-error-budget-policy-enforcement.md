@@ -7,105 +7,223 @@ dateModified: "2026-03-18"
 tags: ["AI", "Agent", "Error"]
 keywords: "agent, error, budget, policy, enforcement, ai, production, engineering, architecture"
 faq:
-  - q: "What is Error Budget Policy Enforcement?"
-    a: "Error Budget Policy Enforcement covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Error Budget Policy Enforcement?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Error Budget Policy Enforcement?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Error Budget Policy Enforcement fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Error Budget Policy Enforcement should be observable in production and safe to change in small diffs."
+  - q: "What is an error budget for an agent service?"
+    a: "An error budget is the allowable unreliability over a window, derived from your SLO. If the agent completion SLO is 99.5% monthly, the budget is ~3.6 hours of bad responses per month. Burn comes from timeouts, tool failures, hallucination-triggering errors, and retrieval misses—not just HTTP 500s. When budget exhausts, policy should slow or block risky changes until reliability recovers."
+  - q: "How is error budget enforcement different from a generic error rate alert?"
+    a: "Alerts fire on symptoms; budgets govern process. A 2% error spike alert pages on-call. Budget enforcement blocks the next deploy, freezes prompt experiments, or requires executive exception. It connects reliability metrics to release velocity—the core SRE bargain—so teams cannot ship features while silently eroding user trust."
+  - q: "Which SLIs matter most for LLM agent pipelines?"
+    a: "Track end-to-end task success (user got a correct, complete answer), p95 time-to-first-token, tool invocation success rate, and retrieval hit rate. Model-provider 429s and context-length overflows are budget burners. Separate 'hard failures' (5xx, timeout) from 'soft failures' (wrong answer flagged by eval harness)—both consume budget if your SLO includes quality."
+  - q: "Can error budget policy coexist with rapid prompt iteration?"
+    a: "Yes, with tiered budgets. Production traffic uses the strict monthly SLO. Prompt A/B tests run in a sandbox cohort with its own micro-budget or excluded from production burn if traffic is <1%. When production budget is below 25% remaining, freeze all non-critical experiments automatically via CI gate."
 ---
-Error Budget Policy Enforcement sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Engineering had shipped twelve prompt changes in two weeks. Dashboards showed green—availability was 99.97%. Then support opened a ticket cluster: the agent had started confirming destructive actions without waiting for user approval. Root cause was a prompt regression introduced nine deploys ago. No alert fired because every request returned HTTP 200. The model answered confidently; it was just wrong in a way that violated the product's safety SLO.
 
-When error budget policy enforcement is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Availability metrics lie about agent systems. Error budget policy enforcement exists to connect what users experience to what engineering is allowed to ship. Without automated enforcement, budgets become slide-deck decoration; with it, they become the throttle that keeps experimentation from outrunning reliability.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## From SLO to enforceable budget
 
-Solid AI engineering turns error budget policy enforcement from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent error budget policy enforcement bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for error budget policy enforcement, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent error budget policy enforcement flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for error budget policy enforcement in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent error budget policy enforcement changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Error Budget Policy Enforcement: typed boundary + structured errors
-export async function handleErrorBudgetPolicyEnforcement(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-error-budget-policy-enforcement");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+An SLO is a target (e.g., 99.5% of agent sessions complete successfully within 60 seconds). The error budget is everything left on the table:
 
 ```
+monthly_budget_fraction = 1 - SLO_target
+monthly_budget_minutes  = monthly_budget_fraction × 43,200 min (30-day month)
+```
+
+For 99.5%: budget = 0.5% × 43,200 ≈ **216 minutes** (~3.6 hours) of allowed bad sessions per month.
+
+**Burn rate** measures how fast you consume that budget:
+
+```
+burn_rate = (errors_in_window / total_in_window) / (1 - SLO_target)
+```
+
+A burn rate of 14.4 over one hour means you will exhaust a 30-day budget in one hour if it continues. Multi-window burn alerts (Google SRE workbook) catch both sudden spikes and slow leaks.
+
+For agents, define **session success** precisely in the SLO doc:
+
+- User received a response (not hung or cancelled)
+- No unrecoverable tool error aborted the workflow
+- Safety classifier did not block for policy violation attributable to service fault
+- Optional: automated eval score above threshold on sampled traffic
+
+Ambiguity here undermines every downstream policy gate.
+
+## Policy tiers: what happens when budget burns
+
+Enforcement is a graduated response, not a single kill switch.
+
+| Budget remaining | Policy action |
+|------------------|---------------|
+| 50–100% | Normal velocity; experiments allowed |
+| 25–50% | Require extra reviewer for deploys touching agent core |
+| 10–25% | Block non-critical deploys; freeze prompt A/B tests |
+| 0–10% | Incident posture; only reliability fixes ship |
+| Exhausted | Executive exception required; postmortem before feature resume |
+
+Automate these gates in CI/CD. A human can override with audit trail, but the default should be mechanical—willpower fails at 11 PM before a launch deadline.
+
+```yaml
+# .github/workflows/deploy-gate.yml (conceptual)
+jobs:
+  error-budget-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query burn from monitoring API
+        id: budget
+        run: |
+          REMAINING=$(curl -s "$BUDGET_API/agent-completion/remaining_pct")
+          echo "remaining=$REMAINING" >> $GITHUB_OUTPUT
+
+      - name: Block deploy if budget critical
+        if: steps.budget.outputs.remaining < 10
+        run: |
+          echo "Error budget below 10%. Deploy blocked by policy."
+          echo "Override: set label 'budget-exception-approved' on PR"
+          exit 1
+```
+
+Pair deploy gates with **release windows**: risky changes (new tool integrations, prompt overhauls) only ship when budget is above 50%.
+
+## Implementing burn-rate math in code
+
+Whether you use Datadog, Prometheus, or a custom store, the computation is the same:
+
+```typescript
+// slo/burn-rate.ts
+type BurnRateWindow = { windowMinutes: number; burnRate: number };
+
+export function computeBurnRate(
+  successes: number,
+  failures: number,
+  sloTarget: number, // e.g. 0.995
+): number {
+  const total = successes + failures;
+  if (total === 0) return 0;
+  const errorRate = failures / total;
+  const errorBudgetFraction = 1 - sloTarget;
+  return errorRate / errorBudgetFraction;
+}
+
+export function budgetRemainingPct(
+  successes: number,
+  failures: number,
+  sloTarget: number,
+): number {
+  const total = successes + failures;
+  const allowedErrors = total * (1 - sloTarget);
+  const consumed = failures;
+  if (allowedErrors === 0) return failures === 0 ? 100 : 0;
+  const remaining = Math.max(0, allowedErrors - consumed);
+  return (remaining / allowedErrors) * 100;
+}
+
+// Multi-window alert: 1h AND 6h burn both elevated → page
+export function shouldPage(windows: BurnRateWindow[]): boolean {
+  const SHORT = windows.find((w) => w.windowMinutes === 60);
+  const LONG = windows.find((w) => w.windowMinutes === 360);
+  return (SHORT?.burnRate ?? 0) > 14.4 && (LONG?.burnRate ?? 0) > 6;
+}
+```
+
+Instrument **failures** with labels: `failure_reason=tool_timeout`, `model_429`, `retrieval_empty`, `safety_block`. Budget dashboards slice burn by cause so postmortems start with data, not guesses.
+
+## Agent-specific SLI instrumentation
+
+HTTP middleware is insufficient. Agent sessions span multiple internal steps:
+
+```python
+# observability/agent_session.py
+from dataclasses import dataclass, field
+from enum import Enum
+import time
 
 
-## Operational concerns
+class StepOutcome(Enum):
+    OK = "ok"
+    RETRYABLE = "retryable"
+    FATAL = "fatal"
 
-Runbooks for error budget policy enforcement should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
 
-Production agent error budget policy enforcement work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+@dataclass
+class AgentSessionRecorder:
+    session_id: str
+    started_at: float = field(default_factory=time.time)
+    steps: list[dict] = field(default_factory=list)
+    terminal_outcome: str | None = None
 
-Rollouts for error budget policy enforcement benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+    def record_step(self, name: str, outcome: StepOutcome, latency_ms: float):
+        self.steps.append({
+            "name": name,
+            "outcome": outcome.value,
+            "latency_ms": latency_ms,
+        })
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+    def finish(self, success: bool, failure_reason: str | None = None):
+        self.terminal_outcome = "success" if success else failure_reason
+        # Emit single event for SLO counting
+        metrics.increment(
+            "agent_session_total",
+            tags={"outcome": self.terminal_outcome},
+        )
+        metrics.histogram(
+            "agent_session_duration_ms",
+            (time.time() - self.started_at) * 1000,
+        )
+```
 
-## Security and compliance angles
+Count **one session outcome per user task**, not per LLM call. A session with three retried tool calls that eventually succeeds is a success—unless your SLO includes latency, in which case late success still burns latency budget.
 
-Even when error budget policy enforcement is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Quality-aware budgets
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent error budget policy enforcement so security reviews do not rely on tribal knowledge.
+Hard errors are easy to count. Wrong answers are not. Options:
 
-## Testing strategy
+**Automated eval sampling.** Route 5% of production traffic through a lightweight judge model or rule harness. Failed evals increment a `quality_failure` counter that consumes a separate quality budget—or a weighted fraction of the main budget.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that error budget policy enforcement depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**User feedback signals.** Thumbs-down and regeneration requests are lagging but real. Weight them lower than hard failures to avoid noise from subjective dislike.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**Safety SLO as hard gate.** Policy violations attributable to service misconfiguration (wrong tool enabled, approval step skipped) burn budget at 2× rate—these are existential risk, not UX nitpicks.
 
-## Migration and evolution
+Document weighting in the SLO spec so teams do not argue about math during incidents.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent error budget policy enforcement functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Organizational enforcement
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where error budget policy enforcement spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Tools enforce policy; culture makes it stick.
 
-## Related concepts
+**Error budget review in sprint planning.** If budget is at 30%, the team allocates capacity to reliability work before new features. Product accepts this because the alternative is silent degradation.
 
-Error Budget Policy Enforcement intersects with broader ai topics — see companion notes on [agent-error patterns](https://blog.michaelsam94.com/agent-error/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**Blameless postmortems on budget exhaustion.** When budget hits zero, the question is systemic—missing eval, bad deploy gate, provider without fallback—not which engineer merged the PR.
+
+**Shared ownership.** Agent reliability spans platform (orchestration), ML (prompts), and infra (GPU quotas). Budget dashboards are visible to all three; enforcement applies to all deploy pipelines.
+
+## Testing policy before you need it
+
+Game-day exercises validate enforcement:
+
+1. Inject 5% synthetic failures into staging agent sessions for one hour.
+2. Verify burn-rate alerts fire at expected thresholds.
+3. Confirm deploy pipeline blocks when simulated remaining budget drops below 10%.
+4. Practice exception workflow: who approves, what gets logged.
+
+Run tabletop scenarios with product: "Budget is at 15%, marketing wants a prompt change for a campaign—what happens?" The answer should be in policy docs, not invented under pressure.
+
+## Anti-patterns that hollow out budgets
+
+**Vanity SLOs at 99.99% with no enforcement.** Teams ignore impossible targets; real regressions hide in the gap between aspirational and enforced SLO.
+
+**Counting only 5xx.** Agent returns 200 with an empty answer—users churn; budget looks fine.
+
+**Per-team budgets without a global cap.** Retrieval team has budget; orchestration team has budget; combined user experience fails while both dashboards are green.
+
+**Manual freeze decisions.** Without CI gates, someone always ships "just this once."
 
 ## The takeaway
 
-Error Budget Policy Enforcement rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent error budget policy enforcement becomes a maintainable asset instead of incident fuel.
+Error budget policy enforcement turns SRE theory into release discipline for agent systems. Define session-level success, compute burn with multi-window alerts, automate deploy and experiment gates at budget thresholds, and include quality—not just availability—in what counts as failure. The goal is not zero errors; it is predictable tradeoffs between velocity and trust, enforced by machinery rather than memory.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Google SRE Workbook — Alerting on SLOs (multi-burn-rate)](https://sre.google/workbook/alerting-on-slos/)
+- [Google SRE Book — Embracing Risk (error budgets)](https://sre.google/sre-book/embracing-risk/)
+- [OpenSLO specification](https://openslo.com/)
+- [Datadog Service Level Objectives](https://docs.datadoghq.com/service_management/service_level_objectives/)
+- [Prometheus SLI/SLO recording rules patterns](https://prometheus.io/docs/practices/rules/)

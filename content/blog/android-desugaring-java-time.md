@@ -194,6 +194,28 @@ Teams get desugaring java time wrong in predictable ways:
 
 Shipping desugaring java time on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## API level minSdk 21 pitfalls
+
+`java.time` desugaring adds method count — monitor dex size after enabling. `Duration` serialization across Gson without module adapters breaks release builds — add explicit TypeAdapter for temporal types in API models.
+
+## ZoneId in offline apps
+
+Ship `tzdata` updates via desugaring library version bumps. Stale zone rules mis-schedule alarms around DST — pin desugar libs version in catalog and upgrade with OS release QA.
+
+## Desugaring Java Time Supplement 0 on Samsung and Pixel divergence
+
+Exercise desugaring java time supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching desugaring; regressions above 8% block release for `android-desugaring-java-time-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Desugaring Java Time Supplement 0" should map to a single runbook section with known workarounds.
+
+## Time regression gates for Play Vitals
+
+Before promoting `android-desugaring-java-time-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing desugaring with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing desugaring java time supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Java 8+ API desugaring support (Android)](https://developer.android.com/studio/write/java8-support-table)

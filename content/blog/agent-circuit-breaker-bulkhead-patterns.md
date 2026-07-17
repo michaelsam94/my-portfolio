@@ -1,115 +1,267 @@
 ---
 title: "AI Agents: Circuit Breaker Bulkhead Patterns"
 slug: "agent-circuit-breaker-bulkhead-patterns"
-description: "Circuit Breaker Bulkhead Patterns: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Retries and parallel tool calls turn one slow LLM into a fleet-wide outage—circuit breakers stop hammering dead dependencies while bulkheads cap concurrency per route, tenant, and tool pool."
 datePublished: "2024-10-30"
 dateModified: "2024-10-30"
 tags: ["AI", "Agent", "Circuit"]
-keywords: "agent, circuit, breaker, bulkhead, patterns, ai, production, engineering, architecture"
+keywords: "circuit breaker, bulkhead, resilience patterns, agent orchestration, LLM timeout, concurrency limits, fallback model, failure isolation"
 faq:
-  - q: "What is Circuit Breaker Bulkhead Patterns?"
-    a: "Circuit Breaker Bulkhead Patterns covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Circuit Breaker Bulkhead Patterns?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Circuit Breaker Bulkhead Patterns?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Circuit Breaker Bulkhead Patterns fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Circuit Breaker Bulkhead Patterns should be observable in production and safe to change in small diffs."
+  - q: "Where should circuit breakers sit in an agent pipeline?"
+    a: "At every outbound dependency boundary: LLM gateway, embedding service, vector DB, reranker, and external tool HTTP clients. Breakers track failure rate per dependency name—not per agent session—so one bad route opens while others stay closed."
+  - q: "What is the difference between a circuit breaker and a bulkhead for agents?"
+    a: "A circuit breaker stops calls after errors exceed a threshold, giving the dependency time to recover. A bulkhead limits concurrent in-flight calls (semaphore per pool) so one tenant's tool storm cannot exhaust workers shared by everyone else."
+  - q: "How do breakers interact with LLM streaming?"
+    a: "Open the breaker on sustained timeouts, connection errors, and 5xx—not on single slow tokens mid-stream. Track TTFB separately from stream duration; half-open probes use small non-streaming health checks to avoid tying up long connections."
+  - q: "What fallback should run when the primary model breaker opens?"
+    a: "Pre-declare an ordered fallback chain (cheaper model, cached response, templated apology with retry-after). Never silently switch models without logging—downstream eval assumptions and cost accounting depend on knowing which route served the reply."
 ---
-Most teams encounter circuit breaker bulkhead patterns after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+One degraded embedding cluster should not take down customer-facing agents. Without isolation, it does exactly that: sessions pile up waiting on retrieval, thread pools fill, health checks time out, and Kubernetes replaces healthy pods while the root cause is still a single dependency refusing connections. Circuit breakers and bulkheads are the difference between **failing one feature** and **failing the fleet**.
 
-When circuit breaker bulkhead patterns is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Microservices literature popularized these patterns for HTTP APIs. Agent orchestration adds fan-out—multiple retrievals, parallel tools, streaming completions—so defaults from a Spring Boot tutorial rarely fit. This post covers breakers and bulkheads sized for LLM agent workloads.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Circuit breaker states for agent dependencies
 
-Solid AI engineering turns circuit breaker bulkhead patterns from a recurring argument into a documented pattern with tests and an owner.
+Classic three-state breakers apply:
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent circuit breaker bulkhead patterns bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for circuit breaker bulkhead patterns, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent circuit breaker bulkhead patterns flows so duplicates are harmless or detectable.
-
-## Key terms
-
-**circuit breaker** — A circuit breaker stops calling a failing dependency after error thresholds, giving it time to recover instead of drowning it in retry traffic.
-
-## Implementation patterns
-
-A practical baseline for circuit breaker bulkhead patterns in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent circuit breaker bulkhead patterns changes safer because business rules stay isolated from transport details.
+| State | Behavior | Agent nuance |
+|-------|----------|--------------|
+| Closed | Calls pass; failures counted | Count 429 as failure if sustained; single 429 may be normal |
+| Open | Fail fast; no calls | Return fallback before acquiring bulkhead slot |
+| Half-open | Limited probes | Use cheap probe (mini embed, HEAD request) not full agent turn |
 
 ```typescript
-// Circuit Breaker Bulkhead Patterns: typed boundary + structured errors
-export async function handleCircuitBreakerBulkheadPatterns(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-circuit-breaker-bulkhead-patterns");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+// resilience/circuitBreaker.ts
+type State = "closed" | "open" | "half_open";
+
+export class CircuitBreaker {
+  private state: State = "closed";
+  private failures = 0;
+  private lastOpenedAt = 0;
+
+  constructor(
+    private readonly name: string,
+    private readonly failureThreshold: number,
+    private readonly openDurationMs: number,
+    private readonly halfOpenPermits: number,
+  ) {}
+
+  async execute<T>(fn: () => Promise<T>, fallback: () => T): Promise<T> {
+    if (this.state === "open") {
+      if (Date.now() - this.lastOpenedAt > this.openDurationMs) {
+        this.state = "half_open";
+        this.failures = 0;
+      } else {
+        metrics.counter("breaker.short_circuit").add(1, { dep: this.name });
+        return fallback();
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (err) {
+      this.onFailure(err);
+      if (this.state === "open") return fallback();
+      throw err;
+    }
+  }
+
+  private onFailure(err: unknown) {
+    this.failures++;
+    if (this.failures >= this.failureThreshold) {
+      this.state = "open";
+      this.lastOpenedAt = Date.now();
+      metrics.counter("breaker.opened").add(1, { dep: this.name });
+    }
+  }
+
+  private onSuccess() {
+    if (this.state === "half_open") this.state = "closed";
+    this.failures = 0;
   }
 }
-
 ```
 
+Tune thresholds per dependency class. Embedding batch APIs tolerate brief spikes; payment tool calls should open quickly after consecutive errors.
 
-## Operational concerns
+## Bulkheads: concurrency pools that match work
 
-Alert on user-visible symptoms for circuit breaker bulkhead patterns — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Bulkheads implement **maximum parallel in-flight calls** per pool. Without them, one orchestrator instance accepts unlimited concurrent tool HTTP calls and exhausts file descriptors or upstream connection limits.
 
-Production agent circuit breaker bulkhead patterns work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Partition pools by:
 
-Rollouts for circuit breaker bulkhead patterns benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+- **Dependency** — embed, vector, rerank, tools
+- **Tenant tier** — enterprise vs free shares floor, not ceiling
+- **Route** — GPT-4 class vs flash model separate semaphores
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```typescript
+// resilience/bulkhead.ts
+export class Bulkhead {
+  private inFlight = 0;
+  private queue: Array<() => void> = [];
 
-## Security and compliance angles
+  constructor(
+    private readonly name: string,
+    private readonly maxConcurrent: number,
+    private readonly maxWaitMs: number,
+  ) {}
 
-Even when circuit breaker bulkhead patterns is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent circuit breaker bulkhead patterns so security reviews do not rely on tribal knowledge.
+  private acquire(): Promise<void> {
+    if (this.inFlight < this.maxConcurrent) {
+      this.inFlight++;
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        metrics.counter("bulkhead.rejected").add(1, { pool: this.name });
+        reject(new BulkheadRejectedError(this.name));
+      }, this.maxWaitMs);
 
-## Testing strategy
+      this.queue.push(() => {
+        clearTimeout(timer);
+        this.inFlight++;
+        resolve();
+      });
+    });
+  }
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that circuit breaker bulkhead patterns depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+  private release() {
+    this.inFlight--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+}
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Order matters: **check breaker before acquiring bulkhead**. Holding a bulkhead slot while returning fallback wastes capacity other sessions need.
 
-## Migration and evolution
+## Composing breaker + bulkhead at the LLM gateway
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent circuit breaker bulkhead patterns functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```typescript
+// gateway/llmCall.ts
+const breakers = {
+  "gpt-4o": new CircuitBreaker("gpt-4o", 5, 30_000, 2),
+  "gpt-4o-mini": new CircuitBreaker("gpt-4o-mini", 8, 20_000, 3),
+};
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where circuit breaker bulkhead patterns spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+const bulkheads = {
+  "gpt-4o": new Bulkhead("gpt-4o", 40, 500),
+  "gpt-4o-mini": new Bulkhead("gpt-4o-mini", 120, 300),
+};
 
-## Related concepts
+export async function complete(
+  route: string,
+  request: LlmRequest,
+): Promise<LlmResponse> {
+  const breaker = breakers[route]!;
+  const bulkhead = bulkheads[route]!;
 
-Circuit Breaker Bulkhead Patterns intersects with broader ai topics — see companion notes on [agent-circuit patterns](https://blog.michaelsam94.com/agent-circuit/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  return breaker.execute(
+    () =>
+      bulkhead.run(() => upstreamClient.complete(route, request)),
+    () => fallbackChain(request, route),
+  );
+}
 
-## The takeaway
+function fallbackChain(req: LlmRequest, failedRoute: string): LlmResponse {
+  audit.log({ event: "breaker_fallback", from: failedRoute, to: "gpt-4o-mini" });
+  return complete("gpt-4o-mini", { ...req, maxTokens: Math.min(req.maxTokens, 512) });
+}
+```
 
-Circuit Breaker Bulkhead Patterns rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent circuit breaker bulkhead patterns becomes a maintainable asset instead of incident fuel.
+Expose breaker state on metrics dashboards: `breaker_state{dep="gpt-4o"}` gauge 0/1/2 for closed/open/half-open. Page when open persists beyond expected provider incidents.
+
+## Tool fan-out and nested bulkheads
+
+A single user message may invoke five tools. Global orchestrator concurrency is insufficient—nest bulkheads:
+
+```
+Session semaphore (per user): max 2 concurrent agent turns
+  └── Tool pool bulkhead: max 10 parallel HTTP tools globally
+        └── Per-host bulkhead: max 3 to same API origin
+```
+
+Prevents one agent from opening fifty connections to a fragile partner API while still allowing other tenants' retrieval to proceed.
+
+## Streaming-specific breaker signals
+
+Do not treat slow token delivery as failure mid-stream unless bytes stall beyond `idleTimeoutMs`. Structure:
+
+1. Breaker closed → acquire bulkhead → open stream
+2. If TTFB > threshold → cancel stream, record failure toward breaker
+3. If stream idle > threshold → cancel, partial response policy (truncate vs error)
+4. Successful stream end → success for breaker
+
+Half-open probes use `maxTokens: 1` completion or provider `/models` health—not full user prompts.
+
+## Testing breakers and bulkheads
+
+Unit tests alone miss timing bugs. Add:
+
+- **Fault injection** — force N consecutive 503s, assert breaker opens and fallback serves
+- **Concurrency test** — 200 parallel calls, bulkhead max 20 → exactly 20 in flight, rest reject or queue per policy
+- **Recovery test** — after open window, half-open probe succeeds, breaker closes
+
+Load tests should verify **reject rate** under saturation matches SLO—not that every request eventually completes.
+
+## Observability and alerting
+
+Minimum metrics:
+
+- `breaker_state`, `breaker_opened_total`, `breaker_short_circuit_total`
+- `bulkhead_in_flight`, `bulkhead_rejected_total`, `bulkhead_wait_seconds`
+- `fallback_route_total{from,to}`
+
+Alert on:
+
+- Breaker open > 5 minutes for tier-1 routes
+- Bulkhead reject rate > 5% sustained (capacity mismatch)
+- Fallback rate spike without declared provider incident (config regression)
+
+Trace attributes: `breaker.decision`, `bulkhead.pool`, `fallback.route` on every agent span.
+
+## Anti-patterns
+
+- **Shared breaker across unrelated APIs** — opens embed breaker and blocks LLM incorrectly
+- **Retry inside open breaker** — defeats fail-fast; retries belong in closed state only with jitter caps
+- **Unbounded queue on bulkhead** — converts rejections into latency bombs; prefer fast fail + user-visible retry-after
+- **Silent model fallback** — breaks cost controls and compliance disclosures
+
+## Tenant fairness and priority bulkheads
+
+Free-tier tenants and internal health checks should not share the same bulkhead pool as paid production traffic. Partition semaphores:
+
+```typescript
+const pools = {
+  "gpt-4o:enterprise": new Bulkhead("gpt-4o:enterprise", 80, 800),
+  "gpt-4o:standard": new Bulkhead("gpt-4o:standard", 30, 400),
+  "gpt-4o:internal": new Bulkhead("gpt-4o:internal", 5, 100),
+};
+```
+
+When a pool saturates, reject with **Retry-After** scoped to tier—enterprise gets shorter backoff hints because their SLO pays for reserved capacity. Avoid stealing slots across tiers; that converts a bulkhead into a hidden priority inversion.
+
+Priority does not mean starvation: reserve a minimum `floor` of slots per tier so a enterprise flood cannot consume 100% of provider quota and block health probes. Probes use the `internal` pool with the tightest breaker thresholds so orchestrators fail fast before user pools degrade.
+
+## Closing
+
+Circuit breakers stop agents from drowning sick dependencies in optimistic retries. Bulkheads stop one session's parallel fan-out from consuming the whole worker pool. Compose them at every outbound edge—breaker first, bulkhead second, declared fallbacks third—and instrument state so on-call sees **which pool is on fire**, not just that pods are restarts.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Release It! (Michael Nygard)](https://pragprog.com/titles/mnee2/release-it-second-edition/) — circuit breaker and bulkhead foundations
+- [Polly .NET resilience](https://www.thepollyproject.org/) — reference implementations adaptable to TypeScript gateways
+- [resilience4j](https://resilience4j.readme.io/docs/circuitbreaker) — state machine and configuration knobs
+- [Google SRE: Addressing cascading failures](https://sre.google/sre-book/addressing-cascading-failures/) — overload, retries, and graceful degradation
+- [Envoy outlier detection](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier) — edge breakers before traffic hits agent orchestrators

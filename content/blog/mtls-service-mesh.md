@@ -3,8 +3,8 @@ title: "mTLS in a Service Mesh"
 slug: "mtls-service-mesh"
 description: "How mTLS in a service mesh gives every workload an identity: mutual TLS, SPIFFE identities, sidecar proxies, and automatic certificate rotation for zero-trust networking."
 datePublished: "2026-04-26"
-dateModified: "2026-04-26"
-tags: ["Security", "Kubernetes", "Networking"]
+dateModified: "2026-07-17"
+tags:
 keywords: "mTLS, service mesh, mutual TLS, Istio Linkerd, SPIFFE, zero trust networking, workload identity"
 faq:
   - q: "What is mTLS in a service mesh?"
@@ -14,7 +14,6 @@ faq:
   - q: "Does a service mesh handle certificate rotation automatically?"
     a: "Yes, and that's a major reason to use one. The mesh's control plane acts as a certificate authority, issuing short-lived certificates to each workload's sidecar and rotating them automatically — often every 24 hours or less. Applications never see or manage these certificates. Short-lived, auto-rotated certs dramatically shrink the window a stolen credential is useful and remove the operational burden of manual rotation."
 ---
-
 Inside most Kubernetes clusters, service-to-service traffic is a trust free-for-all: if a pod can reach another pod's IP, it can talk to it, usually in plaintext, with no proof of who's actually calling. mTLS in a service mesh replaces that with cryptographic identity. Every workload gets a certificate, every connection between services is mutually authenticated and encrypted, and a service can prove *which* workload is on the other end of a call rather than trusting a routable IP address. Crucially, the mesh does this transparently — your application code doesn't change.
 
 I've watched teams try to bolt service-to-service auth onto application code by hand, threading certificates and TLS config through dozens of services, and it's a maintenance nightmare that's always half-done. Pushing it into the mesh is one of those rare cases where the platform genuinely does it better than every team doing it individually. Here's how it works and where the sharp edges are.

@@ -1,111 +1,265 @@
 ---
 title: "AI Agents: Behavioral Anomaly Login"
 slug: "agent-behavioral-anomaly-login"
-description: "Behavioral Anomaly Login: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Credential checks miss compromised sessions—behavioral anomaly scoring on device, geo, velocity, and typing patterns triggers step-up auth before agents execute high-risk tools."
 datePublished: "2025-12-10"
 dateModified: "2025-12-10"
 tags: ["AI", "Agent", "Behavioral"]
-keywords: "agent, behavioral, anomaly, login, ai, production, engineering, architecture"
+keywords: "behavioral biometrics, login anomaly detection, risk-based authentication, step-up auth, device fingerprint, impossible travel, agent security, UEBA"
 faq:
-  - q: "What is Behavioral Anomaly Login?"
-    a: "Behavioral Anomaly Login covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Behavioral Anomaly Login?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Behavioral Anomaly Login?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Behavioral Anomaly Login fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Behavioral Anomaly Login should be observable in production and safe to change in small diffs."
+  - q: "How is behavioral anomaly login different from credential stuffing detection?"
+    a: "Credential stuffing catches known-bad passwords and IP reputation hits. Behavioral anomaly scoring evaluates whether this login *pattern* matches the user's history—device, geo velocity, session timing, input cadence—even when credentials are valid."
+  - q: "What signals work best for agent admin portals versus end-user chat?"
+    a: "Admin portals benefit from device stability, IP ASN changes, and off-hours access. End-user agent apps add mobile sensor entropy, app attestation, and per-tenant baselines. Avoid over-weighting signals that punish VPN users without tiered response."
+  - q: "Should anomaly scores block login or trigger step-up authentication?"
+    a: "Default to step-up—WebAuthn, OTP, or push approval—when score exceeds a challenge threshold. Hard block only at extreme scores with multiple independent signals, to limit account lockout abuse and false positives."
+  - q: "How do you prevent behavioral models from discriminating against legitimate travel?"
+    a: "Use velocity windows with grace periods, allowlist known travel from calendar integration, and require corroborating signals before escalating. Single geo jumps without device or credential anomalies should challenge, not block."
 ---
-Behavioral Anomaly Login sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The credentials were valid. MFA had passed twelve hours earlier on a trusted device. Yet at 3:14 AM, someone in a datacenter ASN opened the agent admin console, exported tenant API keys, and invoked bulk-delete on conversation history. The SIEM rule for "failed login spike" never fired—there were zero failed logins.
 
-When behavioral anomaly login is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Behavioral anomaly detection at login closes the gap between **authentication** (who you claim to be) and **trust** (whether this session fits who you usually are). For agent platforms, login is the gate before tool execution, prompt injection to internal configs, and cross-tenant data access. A stolen refresh token or session cookie bypasses password rules entirely.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Threat model: what credential checks miss
 
-Solid AI engineering turns behavioral anomaly login from a recurring argument into a documented pattern with tests and an owner.
+Traditional login stacks verify:
 
-## Design principles that survive production
+- Password or passkey
+- MFA on initial device enrollment
+- Optional IP allowlists
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent behavioral anomaly login bugs hide.
+Attackers increasingly arrive with **valid tokens**—phished OAuth consents, malware exfiltrating refresh tokens, insider misuse. Behavioral scoring asks: does this session resemble prior sessions for `user_id`?
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for behavioral anomaly login, you do not yet understand the behavior you shipped.
+High-value anomalies for agent systems:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+| Signal | Anomaly example | Risk |
+|--------|-----------------|------|
+| Geo velocity | NYC then Bucharest in 20 min | Session hijack |
+| Device fingerprint drift | New canvas hash, same cookie | Cookie replay on new host |
+| ASN / hosting provider | First login from cloud VPS | Automated abuse |
+| Time-of-day | Admin never active 02:00–05:00 local | Account takeover |
+| Input dynamics | Paste-only password field | Bot |
+| Agent API scope | First use of bulk-export tool | Lateral movement |
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent behavioral anomaly login flows so duplicates are harmless or detectable.
+No single signal is definitive. Scoring combines weighted features into a risk tier.
 
-## Implementation patterns
+## Feature vectors that discriminate without punishing everyone
 
-A practical baseline for behavioral anomaly login in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent behavioral anomaly login changes safer because business rules stay isolated from transport details.
+Start with **stable, low-PII features** computable at login edge:
 
 ```typescript
-// Behavioral Anomaly Login: typed boundary + structured errors
-export async function handleBehavioralAnomalyLogin(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-behavioral-anomaly-login");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+// auth/behaviorFeatures.ts
+export type LoginContext = {
+  userId: string;
+  ip: string;
+  asn: string;
+  geo: { country: string; lat: number; lon: number };
+  deviceId: string;          // first-party cookie or platform ID
+  userAgent: string;
+  authMethod: "passkey" | "password" | "sso";
+  timestamp: Date;
+};
 
+export type UserBaseline = {
+  commonCountries: Set<string>;
+  commonAsns: Set<string>;
+  knownDeviceIds: Set<string>;
+  typicalHoursUtc: number[]; // histogram buckets
+  lastLoginGeo?: { lat: number; lon: number; at: Date };
+};
+
+export function buildFeatureVector(
+  ctx: LoginContext,
+  baseline: UserBaseline,
+): Record<string, number> {
+  const hour = ctx.timestamp.getUTCHours();
+  const hourFreq = baseline.typicalHoursUtc[hour] ?? 0;
+
+  let geoVelocityKmH = 0;
+  if (baseline.lastLoginGeo) {
+    const dtHours =
+      (ctx.timestamp.getTime() - baseline.lastLoginGeo.at.getTime()) / 3_600_000;
+    const dist = haversineKm(baseline.lastLoginGeo, ctx.geo);
+    geoVelocityKmH = dtHours > 0 ? dist / dtHours : 9999;
+  }
+
+  return {
+    is_new_device: baseline.knownDeviceIds.has(ctx.deviceId) ? 0 : 1,
+    is_new_country: baseline.commonCountries.has(ctx.geo.country) ? 0 : 1,
+    is_hosting_asn: /HOSTING|CLOUD|DATACENTER/i.test(ctx.asn) ? 1 : 0,
+    hour_rarity: 1 - hourFreq, // 0 = typical hour, 1 = rare
+    geo_velocity_norm: Math.min(geoVelocityKmH / 1000, 1), // cap at 1000 km/h
+    auth_downgrade: ctx.authMethod === "password" ? 0.3 : 0, // SSO/passkey lower risk
+  };
+}
 ```
 
+Store baselines per user with exponential decay—recent behavior weighs more. Cold-start users get population priors until ten sessions accumulate.
 
-## Operational concerns
+Avoid collecting keystroke dynamics on login forms unless legal and accessibility reviews approve; they create ADA friction and regional privacy risk.
 
-Alert on user-visible symptoms for behavioral anomaly login — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Scoring pipeline architecture
 
-Production agent behavioral anomaly login work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Compute scores at the **authentication edge** before issuing session tokens with agent scopes:
 
-Rollouts for behavioral anomaly login benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```
+Login request → Credential verify → Behavioral scorer → Risk tier → Token mint / Step-up
+                                         ↓
+                                   Feature store (Redis)
+                                         ↓
+                                   Audit + metrics
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```python
+# auth/risk_scorer.py
+from dataclasses import dataclass
 
-## Security and compliance angles
+@dataclass
+class RiskDecision:
+    score: float
+    tier: str  # allow | challenge | block
+    reasons: list[str]
 
-Even when behavioral anomaly login is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+WEIGHTS = {
+    "is_new_device": 0.25,
+    "is_new_country": 0.20,
+    "is_hosting_asn": 0.30,
+    "hour_rarity": 0.10,
+    "geo_velocity_norm": 0.35,
+    "auth_downgrade": 0.15,
+}
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent behavioral anomaly login so security reviews do not rely on tribal knowledge.
+THRESHOLD_CHALLENGE = 0.45
+THRESHOLD_BLOCK = 0.85
 
-## Testing strategy
+def score_login(features: dict[str, float]) -> RiskDecision:
+    raw = sum(WEIGHTS.get(k, 0) * v for k, v in features.items())
+    score = min(1.0, raw)
+    reasons = [k for k, v in features.items() if v > 0.5 and k in WEIGHTS]
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that behavioral anomaly login depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+    if score >= THRESHOLD_BLOCK and len(reasons) >= 2:
+        tier = "block"
+    elif score >= THRESHOLD_CHALLENGE:
+        tier = "challenge"
+    else:
+        tier = "allow"
+    return RiskDecision(score=score, tier=tier, reasons=reasons)
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Start with interpretable linear weights; graduate to logistic regression or gradient boosting when labeled incident data exceeds ten thousand events. Always keep reason codes for support and audit.
 
-## Migration and evolution
+## Step-up auth integration
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent behavioral anomaly login functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Challenge** tier should narrow agent token scopes until step-up completes:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where behavioral anomaly login spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```typescript
+// auth/tokenMint.ts
+async function mintAgentSession(
+  userId: string,
+  decision: RiskDecision,
+): Promise<SessionToken> {
+  if (decision.tier === "block") {
+    audit.log({ userId, decision, outcome: "blocked" });
+    throw new AuthError("LOGIN_BLOCKED", { retryable: false });
+  }
 
-## Related concepts
+  const scopes =
+    decision.tier === "challenge"
+      ? ["agent:read", "agent:chat"] // no tool:write, no admin
+      : ["agent:read", "agent:chat", "agent:tools", "agent:admin"];
 
-Behavioral Anomaly Login intersects with broader ai topics — see companion notes on [agent-behavioral patterns](https://blog.michaelsam94.com/agent-behavioral/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  const token = await tokens.issue({
+    sub: userId,
+    scopes,
+    riskScore: decision.score,
+    stepUpRequired: decision.tier === "challenge",
+    ttlSeconds: decision.tier === "challenge" ? 900 : 86400,
+  });
 
-## The takeaway
+  if (decision.tier === "challenge") {
+    await stepUp.enqueue(userId, methods: ["webauthn", "push"]);
+  }
+  return token;
+}
+```
 
-Behavioral Anomaly Login rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent behavioral anomaly login becomes a maintainable asset instead of incident fuel.
+After WebAuthn step-up, re-mint full scopes. Agent runtimes must enforce scope at tool invocation—not just UI hiding.
+
+## False positives and user experience
+
+Aggressive models burn trust. Mitigations:
+
+- **Tiered response** — challenge before block
+- **Self-service unlock** — passkey step-up faster than support ticket
+- **Feedback loop** — "Was this you?" on push notification trains baseline
+- **Population caps** — alert if challenge rate exceeds 8% daily
+
+Track precision/recall on labeled incidents monthly. Adjust weights, not just thresholds—raising threshold alone hides weak features.
+
+Support needs a dashboard: risk score, reason codes, baseline snapshot at decision time. "Your model flagged me" tickets without context destroy security team credibility.
+
+## Agent-specific post-login monitoring
+
+Login anomaly is necessary; **session anomaly** extends trust. After login, monitor:
+
+- Sudden spike in tool calls per minute
+- First-time access to cross-tenant admin APIs
+- Embedding export volume anomalies
+- Prompt template edits from new device mid-session
+
+Re-score session mid-flight when step-up completes or when high-risk tools requested. OAuth refresh token reuse from new IP should re-trigger behavioral scoring even without full re-login.
+
+```python
+def on_tool_invocation(event: ToolEvent, session: Session) -> None:
+    if event.tool in HIGH_RISK_TOOLS and session.step_up_age_seconds > 3600:
+        decision = rescore_session(session)
+        if decision.tier != "allow":
+            raise StepUpRequired(decision.reasons)
+```
+
+## Privacy, retention, and compliance
+
+Behavioral data is sensitive. Guidelines:
+
+- Store feature vectors, not raw IP addresses, past 30 days where GDPR applies
+- Document lawful basis and retention in privacy policy
+- Offer enterprise tenants configurable strictness tiers
+- Never sell behavioral fingerprints
+
+Regional deployment: score within same jurisdiction as user profile when data residency requires.
+
+## Model drift and baseline poisoning
+
+Baselines drift legitimately—user moves, new phone, corporate VPN rollout. Attackers **slow-roll** account takeover by behaving slightly anomalous until baseline shifts (credential stuffing → password change → gradual geo shift).
+
+Defenses:
+
+- Separate **long-term** and **short-term** baselines; large deviations from long-term always challenge
+- Alert on baseline update velocity (too many new devices in 72h)
+- Corroborate with threat intel on ASN and credential breach lists
+
+Retrain scoring models quarterly; sudden feature importance shifts may indicate adversarial adaptation.
+
+## Incident response playbook
+
+When behavioral login flags correlate with abuse:
+
+1. **Revoke** active sessions for affected users (force re-auth)
+2. **Rotate** agent API keys accessible during suspicious sessions
+3. **Export** audit trail: logins, tool calls, data egress
+4. **Notify** tenant admins with session metadata (not raw scores)
+5. **Post-mortem** false negative— which signals missed?
+
+Run tabletop exercises with red-team valid-token scenarios, not just password sprays.
+
+## Closing
+
+Valid credentials are insufficient for agent platforms where one session can invoke destructive tools. Behavioral anomaly scoring at login—device stability, geo velocity, time patterns, hosting ASN—buys early warning before agents execute. Pair scores with step-up auth, scoped tokens, and operable false-positive handling. The goal is friction for attackers, not for every traveler with a new laptop.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [NIST SP 800-63B Digital Identity Guidelines](https://pages.nist.gov/800-63-3/sp800-63b.html) — authentication assurance levels and session management
+- [FIDO Alliance: passkeys and phishing resistance](https://fidoalliance.org/passkeys/) — step-up auth that behavioral scoring should prefer over SMS OTP
+- [OWASP Credential Stuffing Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html) — complementary controls to behavioral layers
+- [Google BeyondCorp zero trust overview](https://cloud.google.com/beyondcorp) — continuous verification model extending past login
+- [Microsoft Entra ID Identity Protection](https://learn.microsoft.com/en-us/entra/id-protection/overview-identity-protection) — reference UX patterns for risk-based conditional access

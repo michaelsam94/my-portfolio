@@ -1,112 +1,142 @@
 ---
-title: "BLE Scanning Patterns on Android"
+title: "Bluetooth LE Scanning on Android"
 slug: "android-bluetooth-le-scanning"
-description: "BLE Scanning Patterns on Android: production patterns for android teams — design, implementation, testing, security, and operations."
+description: "ScanSettings batching, BLUETOOTH_SCAN permissions, PendingIntent scans, and background throttle limits."
 datePublished: "2024-09-12"
-dateModified: "2024-09-12"
-tags: ["Android", "Bluetooth"]
-keywords: "android, bluetooth, le, scanning, production, engineering, architecture"
+dateModified: "2026-07-17"
+tags:
+  - "Android"
+  - "Bluetooth"
+  - "BLE"
+  - "Hardware"
+keywords: "BLE scanning Android, ScanFilter, BLUETOOTH_SCAN neverForLocation"
 faq:
-  - q: "What is BLE Scanning Patterns on Android?"
-    a: "BLE Scanning Patterns on Android covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production Android app. It is not a single library call — it is how the module behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize BLE Scanning Patterns on Android?"
-    a: "Prioritize it when ANRs, cold start, and Play Vitals show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with BLE Scanning Patterns on Android?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does BLE Scanning Patterns on Android fit a modern Android stack?"
-    a: "Modern tooling (Android app) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. BLE Scanning Patterns on Android should be observable in production and safe to change in small diffs."
+  - q: "When should teams prioritize Bluetooth LE Scanning on Android?"
+    a: "When discovering peripherals without burning radio budget."
+  - q: "What is the most common mistake with BLE scan lifecycle?"
+    a: "Broad scans without filters and without stopping on onStop."
+  - q: "How do we know Bluetooth LE Scanning on Android is working?"
+    a: "Define a leading metric for BLE scan lifecycle (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
 ---
-BLE Scanning Patterns on Android sits in the boring center of reliable android delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Warehouse app scanned beacons every second in LOW_LATENCY mode in background — battery reports killed adoption.
 
-When ble scanning patterns on android is underspecified, every module team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually ANRs, cold start, and Play Vitals, but the root cause is missing shared patterns.
+ScanSettings batching, BLUETOOTH_SCAN permissions, PendingIntent scans, and background throttle limits.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The production story behind BLE scan lifecycle
 
-Solid Android engineering turns ble scanning patterns on android from a recurring argument into a documented pattern with tests and an owner.
+Broad scans without filters and without stopping on onStop. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Bluetooth LE Scanning on Android is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
 
-## Design principles that survive production
+The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Ble Scan Lifecycle is how you convert that chaos into an invariant someone can operate.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where android bluetooth le scanning bugs hide.
+## Designing bluetooth le scanning on android for real constraints
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for ble scanning patterns on android, you do not yet understand the behavior you shipped.
+Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For BLE scan lifecycle, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design android bluetooth le scanning flows so duplicates are harmless or detectable.
+Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
 
-## Implementation patterns
+## Implementation walkthrough
 
-A practical baseline for ble scanning patterns on android in android stacks:
+Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits BLE scan lifecycle during an incident.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes android bluetooth le scanning changes safer because business rules stay isolated from transport details.
-
-```kotlin
-// Isolate android bluetooth le scanning logic for testability
-interface BLEScanningPatternsonAndroidGateway {
-  suspend fun execute(input: Request): Result<Response>
-}
-
-class DefaultBLEScanningPatternsonAndroidGateway(
-  private val client: HttpClient,
-  private val metrics: Metrics,
-) : BLEScanningPatternsonAndroidGateway {
-  override suspend fun execute(input: Request): Result<Response> = runCatching {
-    metrics.count(" android-bluetooth-le-scanning.attempt")
-    client.post("/v1/le-scanning") {
-      setBody(input)
-      timeout { request = 2_000 }
-    }.body()
-  }.onFailure { metrics.count("android-bluetooth-le-scanning.error") }
-}
+```python
+# Operational hook — BLE scan lifecycle
+def apply_bluetooth_le_scanning(ctx):
+    validate_preconditions(ctx)
+    result = execute(ctx)
+    emit_metrics(result)
+    return result
 ```
 
+## Platform depth
 
-## Operational concerns
+Platform teams own defaults and libraries; product teams own domain config. Document interfaces where BLE scan lifecycle gates handoffs to downstream owners.
+Review after every magnitude change in traffic or model swap — assumptions drift silently.
 
-Alert on user-visible symptoms for ble scanning patterns on android — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Failure modes worth rehearsing
 
-Production android bluetooth le scanning work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+- Missing idempotency when clients retry.
+- Implicit defaults that differ between staging and production.
+- Dashboards green while user-visible SLO burns.
+- Credential or metadata rotation without overlap window.
+- Schema or index change without blue-green validation.
 
-Rollouts for ble scanning patterns on android benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Metrics and alerts
 
-## Security and compliance angles
+Leading indicators: error rate on BLE scan lifecycle, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
 
-Even when ble scanning patterns on android is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Day-two operations
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for android bluetooth le scanning so security reviews do not rely on tribal knowledge.
+Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; BLE scan lifecycle regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
 
-## Testing strategy
+## Production hardening
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that ble scanning patterns on android depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Pin versions affecting BLE scan lifecycle. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
 
-For critical android paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Handoff and ownership
 
-## Migration and evolution
+Bluetooth LE Scanning on Android touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle android bluetooth le scanning functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Further reading
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where ble scanning patterns on android spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+- [OpenTelemetry docs](https://opentelemetry.io/docs/)
+- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
 
-## Related concepts
+## Operating BLE scan lifecycle after scale events (review 1)
 
-BLE Scanning Patterns on Android intersects with broader android topics — see companion notes on [android-bluetooth patterns](https://blog.michaelsam94.com/android-bluetooth/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
 
-## The takeaway
+When bluetooth le scanning on android touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
 
-BLE Scanning Patterns on Android rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how android bluetooth le scanning becomes a maintainable asset instead of incident fuel.
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
 
-## Resources
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
 
-- [developer.android.com](https://developer.android.com/)
 
-- [developer.android.com/about/versions](https://developer.android.com/about/versions)
+## Operating BLE scan lifecycle after scale events (review 2)
 
-- [source.android.com/docs](https://source.android.com/docs)
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When bluetooth le scanning on android touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating BLE scan lifecycle after scale events (review 3)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When bluetooth le scanning on android touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating BLE scan lifecycle after scale events (review 4)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When bluetooth le scanning on android touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+
+
+## Operating BLE scan lifecycle after scale events (review 5)
+
+Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+
+When bluetooth le scanning on android touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+
+Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+
+Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.

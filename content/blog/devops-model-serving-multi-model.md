@@ -3,115 +3,186 @@ title: "Multi-Model Single GPU Multiplexing"
 slug: "devops-model-serving-multi-model"
 description: "Multiplex multiple small models on one GPU with memory profiling and MPS."
 datePublished: "2026-08-18"
-dateModified: "2026-08-18"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Model Serving"
   - "Cost Optimization"
 keywords: "multi-model GPU"
 faq:
-  - q: "What is Multi-Model Single GPU Multiplexing?"
-    a: "Multi-Model Single GPU Multiplexing covers operational practices for multi-model serving in production model serving environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Multi-Model Single GPU Multiplexing?"
-    a: "When many small models each underutilize GPU."
-  - q: "What mistakes break Multi-Model Single GPU Multiplexing?"
-    a: "Models without memory isolation—OOM takes down neighbor models."
+  - q: "When multiplex models on one GPU?"
+    a: "Many small models each under 10–15% GPU memory—Triton raises duty cycle if traffic peaks are uncorrelated."
+  - q: "MPS vs MIG for isolation?"
+    a: "MPS shares SM for throughput; MIG hard-partitions for compliance or noisy-neighbor SLO on mixed tiers."
+  - q: "OOM risk on shared GPU?"
+    a: "Profile peak memory sum with overlap load test—one model spike kills neighbors without memory limits."
+  - q: "Escape hatch to dedicated pool?"
+    a: "Auto-ticket when model exceeds 70% shared memory peak or p99 SLO breaches after multiplexing."
 ---
+Ten GPUs at eight percent memory each after one-model-per-deployment policy; Triton multiplex raised duty cycle to sixty-four percent until one OOM killed four models sharing a node.
 
-Ten GPU nodes for ten tiny models—multiplexing fit all on two.
+## Multiplex economics
 
-This post walks through **Multi-Model Single GPU Multiplexing** for platform and SRE teams shipping reliable infrastructure. Multiplex multiple small models on one GPU with memory profiling and MPS. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+Cloud bills GPU-hours not utilization—pack when peak traffic uncorrelated and memory headroom verified.
 
-## Problem framing: Multi-Model Single GPU Multiplexing
+Production teams running model serving multi model learned that multiplex economics regressions
+appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
+replay used production timestamps.
 
-Ten GPU nodes for ten tiny models—multiplexing fit all on two.
+Runbook for multiplex economics: confirm blast radius, identify last config change, execute single-
+step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument multiplex economics with low-cardinality metrics tied to user-visible SLIs—error rate,
+tail latency, freshness—not vanity gauges that never correlated with past pages.
 
-Platform teams treat **multi-model serving** as solved after the first successful deploy. Production disagrees: edge cases around model serving multi model, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day for multiplex economics: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
-## Design principles for multi-model serving
+Ownership for multiplex economics belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-Explicit contracts beat tribal knowledge. Document who owns multi-model serving configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in multiplex economics configs.
 
+Capacity note: estimate peak concurrency for multiplex economics, apply 1.5–2× headroom against
+cloud quotas before launch week—not during first outage.
 
-A common failure mode: Models without memory isolation—OOM takes down neighbor models. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Security review for model serving multi model: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
+FinOps tie-in for multiplex economics: attribute cloud spend to owning team via tags; monthly review
+of cost drivers prevents silent bill growth after config drift.
 
-```yaml
-apiVersion: serving.kserve.io/v1beta1
-kind: InferenceService
-metadata:
-  name: model_serving_multi_model
-spec:
-  predictor:
-    model:
-      modelFormat:
-        name: sklearn
-      storageUri: s3://models/model-serving-multi-model/v1
-```
+## Memory profiling
 
-## Implementation walkthrough
+model-analyzer peak sum under overlap load test—size shared pool for worst-case concurrent peaks.
 
-Start with the smallest production-safe slice of **Multi-Model Single GPU Multiplexing**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Production teams running model serving multi model learned that memory profiling regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
+Runbook for memory profiling: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for multi-model serving.
+Instrument memory profiling with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Operational concerns in production
+Game day for memory profiling: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Day-two operations for model serving work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Ownership for memory profiling belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in memory profiling configs.
 
-Run game days or fault injection in staging quarterly for model serving multi model. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Capacity note: estimate peak concurrency for memory profiling, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-## Security and compliance angles
+Security review for model serving multi model: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-Even when Multi-Model Single GPU Multiplexing is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when multi-model serving accepts configuration from multiple teams.
+FinOps tie-in for memory profiling: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
+## Isolation options
 
-For regulated workloads, maintain an immutable audit trail: who changed multi-model serving settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+MPS for throughput sharing; MIG for hard isolation on A100/H100 when compliance requires separation.
 
-## Integration with platform standards
+Production teams running model serving multi model learned that isolation options regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-Align multi-model serving with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Runbook for isolation options: confirm blast radius, identify last config change, execute single-
+step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument isolation options with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Game day for isolation options: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
+Ownership for isolation options belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## What to measure after rollout
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in isolation options configs.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Capacity note: estimate peak concurrency for isolation options, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Security review for model serving multi model: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Documentation your team should maintain
+FinOps tie-in for isolation options: attribute cloud spend to owning team via tags; monthly review
+of cost drivers prevents silent bill growth after config drift.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+## Noisy neighbor alerts
 
-## Pre-production checklist
+GPU memory and SM utilization per model via Triton metrics—auto-ticket dedicated pool on breach.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Production teams running model serving multi model learned that noisy neighbor alerts regressions
+appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
+replay used production timestamps.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+Runbook for noisy neighbor alerts: confirm blast radius, identify last config change, execute
+single-step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during
+Sev-1.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Instrument noisy neighbor alerts with low-cardinality metrics tied to user-visible SLIs—error rate,
+tail latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Common questions from reviewers
+Game day for noisy neighbor alerts: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Ownership for noisy neighbor alerts belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## Version and compatibility notes
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in noisy neighbor alerts configs.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Capacity note: estimate peak concurrency for noisy neighbor alerts, apply 1.5–2× headroom against
+cloud quotas before launch week—not during first outage.
 
+Security review for model serving multi model: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Resources
+FinOps tie-in for noisy neighbor alerts: attribute cloud spend to owning team via tags; monthly
+review of cost drivers prevents silent bill growth after config drift.
 
-- https://kubernetes.io/docs/home/
-- https://opentelemetry.io/docs/
-- https://developer.hashicorp.com/terraform/docs
+## Rollout
+
+Canary one multiplex host; compare p99 per model against dedicated baseline before fleet cutover.
+
+Production teams running model serving multi model learned that rollout regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
+
+Runbook for rollout: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+
+Instrument rollout with low-cardinality metrics tied to user-visible SLIs—error rate, tail latency,
+freshness—not vanity gauges that never correlated with past pages.
+
+Game day for rollout: quarterly staging injection with rollback under fifteen minutes using linked
+runbook only—update runbook with what broke.
+
+Ownership for rollout belongs in the service catalog with named rotation, last drill date, and known
+sharp edges—new engineers deploy safe canary within one week using that doc.
+
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in rollout configs.
+
+Capacity note: estimate peak concurrency for rollout, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
+
+Security review for model serving multi model: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
+
+FinOps tie-in for rollout: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.

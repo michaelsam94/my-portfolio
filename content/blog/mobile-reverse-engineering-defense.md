@@ -3,8 +3,8 @@ title: "Defending Against Reverse Engineering"
 slug: "mobile-reverse-engineering-defense"
 description: "Harden mobile apps against reverse engineering: root detection, certificate pinning, obfuscation, anti-tampering, and runtime integrity checks without breaking legitimate users."
 datePublished: "2025-07-09"
-dateModified: "2025-07-09"
-tags: ["Security", "Mobile", "Android", "iOS"]
+dateModified: "2026-07-17"
+tags:
 keywords: "mobile reverse engineering defense, app tampering detection, certificate pinning, R8 obfuscation, root detection"
 faq:
   - q: "Can you fully prevent mobile app reverse engineering?"
@@ -14,7 +14,6 @@ faq:
   - q: "Does certificate pinning replace server-side authorization?"
     a: "Never. Pinning protects the TLS channel from MITM on compromised networks. Authorization, rate limits, and business logic must still run on the server. A modified client can skip pinning entirely if an attacker patches the binary."
 ---
-
 A competitor's APK appeared on a forum within 48 hours of our beta launch. Same package name, stripped SSL pinning, and a patched `isPremium()` that always returned true. We had R8 enabled but no integrity checks — the attacker didn't need sophisticated tools, just apktool and patience. Mobile reverse engineering defense is not about making your app unbreakable; it's about making casual tampering expensive enough that attackers move on, while your server treats every client as untrusted.
 
 ## Threat model: what attackers actually do
@@ -131,3 +130,17 @@ Document your threat model per release: which assets (API keys, premium flags, P
 - [Apple App Attest overview](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity)
 - [OkHttp CertificatePinner guide](https://square.github.io/okhttp/features/certificate_pinning/)
 - [Frida — dynamic instrumentation toolkit](https://frida.re/docs/home/)
+
+## Production notes for LLM stacks
+
+When `mobile-reverse-engineering-defense` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `defending against reverse engineering` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

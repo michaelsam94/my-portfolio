@@ -3,8 +3,8 @@ title: "Mobile App Security with MASVS"
 slug: "mobile-app-security-owasp-masvs"
 description: "Secure Android and iOS apps with OWASP MASVS: storage, cryptography, authentication, network, platform interaction, and code quality requirements."
 datePublished: "2025-06-29"
-dateModified: "2025-06-29"
-tags: ["SEC", "Mobile", "Android", "iOS"]
+dateModified: "2026-07-17"
+tags:
 keywords: "OWASP MASVS, mobile app security verification, MASVS L1 L2, mobile security standard, MSTG mobile testing guide, Android iOS security checklist"
 faq:
   - q: "What is the difference between MASVS L1 and L2?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I test my app against MASVS?"
     a: "Use the OWASP Mobile Application Security Testing Guide (MASTG) — it maps test cases to each MASVS requirement. Combine automated tools (MobSF for static analysis, Frida for dynamic analysis) with manual testing for logic flaws, authentication bypass, and business logic vulnerabilities."
 ---
-
 Your app stores the auth token in SharedPreferences. API keys are in the APK strings.xml. Certificate pinning was planned but never implemented. The backend team assumes the mobile client is trustworthy. A security researcher downloads your APK, extracts credentials in five minutes, and intercepts API traffic with a proxy.
 
 OWASP Mobile Application Security Verification Standard (MASVS) defines what "secure enough" means for mobile apps. It is organized into seven control groups covering storage, cryptography, authentication, network communication, platform interaction, code quality, and resilience. MASVS Level 1 (L1) is the baseline every app should meet. Level 2 (L2) adds requirements for apps handling high-value data.
@@ -209,17 +208,6 @@ Track findings in security backlog with severity — L1 apps fix critical before
 
 Pair with [Android certificate pinning OkHttp](https://blog.michaelsam94.com/android-certificate-pinning-okhttp/) for network layer MASVS compliance.
 
-## Common production mistakes
-
-Teams get mobile app security owasp masvs wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of mobile app security owasp masvs fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [OWASP MASVS standard](https://mas.owasp.org/MASVS/)
@@ -227,3 +215,17 @@ Production implementations of mobile app security owasp masvs fail when staging 
 - [MobSF mobile security framework](https://github.com/MobSF/Mobile-Security-Framework-MobSF)
 - [Android security best practices](https://developer.android.com/privacy-and-security/security-best-practices)
 - [Apple Platform Security guide](https://support.apple.com/guide/security/welcome/web)
+
+## Production notes for LLM stacks
+
+When `mobile-app-security-owasp-masvs` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `mobile app security with masvs` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

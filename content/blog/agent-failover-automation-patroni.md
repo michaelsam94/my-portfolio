@@ -7,105 +7,239 @@ dateModified: "2024-12-12"
 tags: ["AI", "Agent", "Failover"]
 keywords: "agent, failover, automation, patroni, ai, production, engineering, architecture"
 faq:
-  - q: "What is Failover Automation Patroni?"
-    a: "Failover Automation Patroni covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Failover Automation Patroni?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Failover Automation Patroni?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Failover Automation Patroni fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Failover Automation Patroni should be observable in production and safe to change in small diffs."
+  - q: "Why is Patroni a better fit than manual failover for agent PostgreSQL clusters?"
+    a: "Agent workloads write continuously — conversation turns, tool audit rows, embedding metadata — and sessions span minutes to hours. Manual promotion after a primary failure loses uncommitted writes, leaves replicas in ambiguous states, and burns incident time while agents retry into a dead endpoint. Patroni automates leader election via DCS (etcd, Consul, or Kubernetes), promotes the most advanced replica, and reconfigures streaming replication without human SSH."
+  - q: "What DCS settings matter most for Patroni with agent traffic?"
+    a: "Tune ttl, loop_wait, and retry_timeout so failover completes before agent connection pools exhaust retries — typically ttl 30s, loop_wait 10s for small clusters. Use synchronous replication (synchronous_mode: true with at least one sync standby) when you cannot tolerate lost commits on tool-result writes. Never run Patroni without a stable DCS; agent platforms treat Postgres as the system of record for session state."
+  - q: "How do you test Patroni failover without corrupting live agent sessions?"
+    a: "Run game days in staging with production-shaped connection pool settings and long-running mock sessions. Kill the primary with SIGKILL, measure time-to-new-leader, and verify PgBouncer or application pools reconnect to the new primary. In production, schedule failovers during low-traffic windows first, then inject chaos during business hours once runbooks are proven."
+  - q: "What is the most common Patroni misconfiguration in AI stacks?"
+    a: "Applications connect directly to the primary DNS name instead of Patroni's REST API or a proxy like HAProxy/PgBouncer that watches cluster state. After promotion, apps keep hammering the dead node until pool timeout. Fix with patronictl-aware service discovery, health-checked VIPs, or Kubernetes endpoints that Patroni updates on role change."
 ---
-Failover Automation Patroni sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The primary PostgreSQL node hosting agent conversation history died at 2:14 AM. On-call ran `pg_ctl promote` on a replica that was thirty seconds behind on WAL replay. Agents that had just persisted tool results read stale thread state on the new primary; duplicate tool calls fired because idempotency keys lived on the old leader. Patroni would have picked the replica with the highest timeline, fenced the old primary, and updated the cluster endpoint — but the team had installed Patroni without wiring applications to its discovery layer.
 
-When failover automation patroni is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent platforms treat PostgreSQL as durable memory: sessions, RAG cursors, human-in-the-loop approvals, and eval traces all land in relational storage. Failover is not a quarterly DR exercise — it is a weekly operational concern when you run multi-AZ clusters under continuous write load. Patroni automates high availability for PostgreSQL by combining streaming replication with distributed consensus for leader election. This piece covers how to deploy, configure, and operate Patroni specifically for AI agent workloads where connection churn, long transactions, and write-heavy audit tables change the failure calculus.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why agent stacks need automated failover
 
-Solid AI engineering turns failover automation patroni from a recurring argument into a documented pattern with tests and an owner.
+Stateless inference APIs can retry against any healthy pod. Agent orchestrators cannot — they assume **read-your-writes** on session rows and **serializable tool side effects** backed by database constraints. A thirty-second promotion gap means:
 
-## Design principles that survive production
+- In-flight agent runs lose the latest turn and restart from an older checkpoint.
+- Tool idempotency keys written on the dead primary never replicate; retries double-charge external APIs.
+- Embedding metadata pointers reference rows that exist only on the fenced primary.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent failover automation patroni bugs hide.
+Manual runbooks fail under sleep-deprived incident response. Patroni encodes promotion logic: detect primary failure via DCS lease expiry, elect a candidate replica, run `pg_promote()`, reconfigure remaining standbys, and expose role changes through a REST API every node runs locally.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for failover automation patroni, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent failover automation patroni flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for failover automation patroni in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent failover automation patroni changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Failover Automation Patroni: typed boundary + structured errors
-export async function handleFailoverAutomationPatroni(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-failover-automation-patroni");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Patroni architecture for production
 
 ```
+                    ┌─────────────┐
+   Agent workers ──►│  PgBouncer  │──► current PRIMARY (Patroni member)
+                    │  or HAProxy │
+                    └──────┬──────┘
+                           │ health checks patroni REST :8008
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         [node A]     [node B]     [node C]
+         leader       replica      replica
+              └────────────┬────────────┘
+                           ▼
+                    etcd / Consul / K8s
+                    (Distributed Config Store)
+```
 
+**Distributed Configuration Store (DCS).** Patroni stores cluster state — who is leader, replication slots, custom tags — in etcd, Consul, ZooKeeper, or Kubernetes API. Pick one DCS and run it in odd-numbered quorum across failure domains. Agent teams on Kubernetes often use the native backend; bare-metal shops prefer a dedicated etcd cluster isolated from the database nodes.
 
-## Operational concerns
+**Patroni REST API.** Each PostgreSQL host runs a Patroni sidecar on port 8008 exposing `/master`, `/replica`, `/health`, and `/patroni`. Load balancers and connection poolers poll these endpoints instead of guessing which IP is primary.
 
-Game-day exercises for failover automation patroni beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Replication topology.** Use asynchronous replication for cross-region DR; use synchronous replication within the primary region when losing the last committed tool result is unacceptable. Patroni supports `synchronous_mode` and `synchronous_mode_strict` — the latter blocks writes if no sync standby is available, which protects correctness at the cost of availability during partial outages.
 
-Production agent failover automation patroni work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Configuration that survives agent write bursts
 
-Rollouts for failover automation patroni benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+A starter `patroni.yml` tuned for agent session storage:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+scope: agent-platform
+namespace: /service/
+name: pg-node-1
 
-## Security and compliance angles
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: 10.0.1.11:8008
 
-Even when failover automation patroni is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+etcd3:
+  hosts: 10.0.0.1:2379,10.0.0.2:2379,10.0.0.3:2379
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent failover automation patroni so security reviews do not rely on tribal knowledge.
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576  # 1MB WAL — tighten for sync workloads
+    synchronous_mode: true
+    synchronous_mode_strict: false
+    postgresql:
+      use_pg_rewind: true
+      parameters:
+        max_connections: 300
+        shared_buffers: 8GB
+        wal_level: replica
+        hot_standby: on
+        max_wal_senders: 10
+        max_replication_slots: 10
 
-## Testing strategy
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: 10.0.1.11:5432
+  data_dir: /var/lib/postgresql/16/main
+  authentication:
+    replication:
+      username: replicator
+      password: "${REPL_PASSWORD}"
+    superuser:
+      username: postgres
+      password: "${PG_SUPERUSER_PASSWORD}"
+  parameters:
+    archive_mode: on
+    archive_command: 'wal-g wal-push %p'
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that failover automation patroni depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Key knobs for agent platforms:
 
-## Migration and evolution
+| Parameter | Agent workload guidance |
+|-----------|-------------------------|
+| `maximum_lag_on_failover` | Lower (256KB–1MB) when sessions must not resume on stale state |
+| `synchronous_mode` | Enable for tool-audit and billing tables |
+| `use_pg_rewind` | Essential when old primary rejoins as replica after split-brain |
+| `max_connections` | Size for agent worker pools × pods + admin overhead |
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent failover automation patroni functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Application integration: the part teams skip
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where failover automation patroni spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Patroni automates database promotion; it does **not** automatically retarget your application connection strings. Three production patterns:
 
-## Related concepts
+**PgBouncer with Patroni-aware checks.** HAProxy or Consul Template watches `/master` and points the write pool at the current leader. Agent workers connect to `agent-db-write.internal:6432` — never to a node IP.
 
-Failover Automation Patroni intersects with broader ai topics — see companion notes on [agent-failover patterns](https://blog.michaelsam94.com/agent-failover/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**Kubernetes Endpoints.** The Zalando Postgres Operator and Crunchy PGO both wrap Patroni; Services named `*-primary` and `*-replica` update on failover. Agent deployments should use the primary Service for writes and replica Service for analytics queries only.
+
+**Application-level retry.** Even with perfect routing, failovers cause brief connection resets. Wrap database access with retry on `57P01` (admin shutdown) and `08006` (connection failure):
+
+```typescript
+import { Pool } from "pg";
+
+const WRITE_POOL = new Pool({
+  host: process.env.AGENT_DB_WRITE_HOST, // Patroni-managed VIP
+  port: 6432,
+  database: "agent_platform",
+  max: 20,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
+});
+
+export async function withDbRetry<T>(
+  fn: (client: Pool) => Promise<T>,
+  maxAttempts = 5,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn(WRITE_POOL);
+    } catch (err: unknown) {
+      lastError = err;
+      const code = (err as { code?: string }).code;
+      if (code === "57P01" || code === "08006" || code === "08001") {
+        await sleep(Math.min(1000 * 2 ** attempt, 8000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+export async function persistAgentTurn(
+  sessionId: string,
+  turn: AgentTurn,
+): Promise<void> {
+  await withDbRetry(async (pool) => {
+    await pool.query(
+      `INSERT INTO agent_turns (session_id, seq, role, content, tool_calls)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (session_id, seq) DO NOTHING`,
+      [sessionId, turn.seq, turn.role, turn.content, JSON.stringify(turn.toolCalls)],
+    );
+  });
+}
+```
+
+Use `ON CONFLICT DO NOTHING` or explicit idempotency keys so agent retries during failover do not duplicate turns.
+
+## Operational runbook
+
+**Planned switchover** (patching the primary host):
+
+```bash
+# Verify cluster health
+patronictl -c /etc/patroni/patroni.yml list
+
+# Graceful switchover — demote current leader, promote chosen standby
+patronictl -c /etc/patroni/patroni.yml switchover --master pg-node-1 --candidate pg-node-2 --force
+
+# Confirm new leader
+patronictl -c /etc/patroni/patroni.yml list
+curl -s http://pg-node-2:8008/patroni | jq .role
+```
+
+**Unplanned failover validation:**
+
+1. Alert fires on primary `/health` failure or replication lag SLO burn.
+2. Patroni promotes standby within `ttl + loop_wait` seconds (~40s default).
+3. PgBouncer drains dead connections and routes to new primary.
+4. Agent error rate may spike briefly — watch `agent_turn_write_errors` not just HTTP 5xx.
+5. Post-incident: run `pg_rewind` on old primary if it survived; rejoin as replica.
+
+**Metrics to dashboard:**
+
+- `patroni_postgres_running` per node
+- Replication lag bytes and seconds (`pg_stat_replication`)
+- Failover count and duration (custom alert on DCS leader change)
+- Agent session write latency p95 during failover windows
+
+## Split-brain and fencing
+
+Network partitions can leave two nodes believing they are primary. Patroni prevents this by requiring DCS lease renewal — only one leader holds the key. Still, configure **STONITH** semantics: old primary must stop accepting writes when it loses the lease. On cloud VMs, combine Patroni with metadata-tag-aware shutdown scripts or rely on `pg_rewind` after partition heals.
+
+Never set `nofailover: true` on your only synchronous standby. Never run agents against a read replica for session writes "temporarily" during an incident — you will merge divergent histories.
+
+## Testing and game days
+
+Quarterly failover drills are minimum. Script:
+
+1. Start synthetic agent sessions writing turns every 2s for 10 minutes.
+2. `kill -9` postgres on the primary.
+3. Measure: time to new leader, count of failed writes, duplicate turns after recovery.
+4. Repeat during peak simulated traffic with connection pools at production `max`.
+
+Automate checks in CI with a docker-compose stack: Patroni + etcd + three PostgreSQL containers. Run `patronictl failover` in integration tests before every platform release.
+
+## Security and compliance
+
+Patroni REST API exposes cluster control — restrict `:8008` to admin networks. Rotate replication and superuser passwords through Vault; Patroni supports dynamic credential templates. Encrypt replication traffic with `sslmode=verify-full` between nodes. Audit logs for `patronictl` operations satisfy change-control requirements in regulated agent deployments (financial advice bots, healthcare triage assistants).
 
 ## The takeaway
 
-Failover Automation Patroni rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent failover automation patroni becomes a maintainable asset instead of incident fuel.
+Patroni removes manual promotion from the critical path, but agent platforms only benefit when connection routing, application retries, and idempotent writes are designed together with the HA layer. Treat failover as a product feature with measured RTO/RPO targets — not as infrastructure someone else handles. Wire discovery, run game days, tighten `maximum_lag_on_failover` to match your session consistency needs, and document the exact commands on-call runs when the primary disappears.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Patroni documentation — GitHub](https://github.com/zalando/patroni)
+- [Patroni REST API reference](https://patroni.readthedocs.io/en/latest/rest_api.html)
+- [Zalando Postgres Operator (Patroni on Kubernetes)](https://postgres-operator.readthedocs.io/)
+- [Crunchy PostgreSQL for Kubernetes (PGO)](https://access.crunchydata.com/documentation/postgres-operator/latest/)
+- [PgBouncer connection pooling guide](https://www.pgbouncer.org/usage.html)
+- [PostgreSQL synchronous replication](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION)

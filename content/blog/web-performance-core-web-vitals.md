@@ -3,7 +3,7 @@ title: "Optimizing Core Web Vitals"
 slug: "web-performance-core-web-vitals"
 description: "Improve LCP, INP, and CLS with targeted Core Web Vitals optimization: measurement, field data, common bottlenecks, and a prioritized fix checklist."
 datePublished: "2026-05-08"
-dateModified: "2026-05-08"
+dateModified: "2026-07-17"
 tags: ["Web", "Performance", "Core Web Vitals", "Frontend"]
 keywords: "Core Web Vitals, LCP, INP, CLS, web performance, CrUX, PageSpeed Insights, field data"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Prioritize field data from real users via Chrome User Experience Report (CrUX) or your RUM provider. Lab data from Lighthouse runs in controlled conditions and may not reflect real device and network diversity. Use lab data for debugging specific issues; use field data to measure whether fixes help actual users. A page can pass Lighthouse and fail CrUX."
   - q: "What are the threshold values for passing Core Web Vitals?"
     a: "At the 75th percentile of page loads: LCP under 2.5 seconds (good), INP under 200 milliseconds (good), CLS under 0.1 (good). Values between good and poor thresholds need improvement. Google Search Console reports pass/fail at the URL group level based on 28-day CrUX aggregation."
+faqAnswers:
+  - question: "When is web performance core web vitals the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for web performance core web vitals?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back web performance core web vitals safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Search Console flagged 40% of our product pages as "Needs Improvement" on LCP. The hero image loaded from a third-party CDN with no priority hint, the web font blocked rendering for 800ms, and a cookie banner injected above the fold pushed content down after paint. Three targeted fixes — preload, font-display swap, and reserved banner space — moved 85% of URLs to "Good" within two weeks.
 
 ## The three metrics
@@ -169,25 +175,56 @@ Ship attribution to your analytics platform to prioritize fixes by impact — wh
 
 A page scoring 95 in Lighthouse can fail CrUX if real users hit it on slow devices, with extensions installed, or from distant geographies. Always validate fixes against field data after deployment — CrUX updates on a 28-day rolling window.
 
-## Measuring success in production
+## Setting team SLOs
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Example internal SLOs tied to CrUX:
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+- Marketing origin: LCP p75 < 2.0s, CLS < 0.05, INP < 150ms
+- App authenticated shell: INP p75 < 200ms (LCP less SEO-critical)
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Error budget: two consecutive weeks failing CrUX "Good" threshold triggers perf sprint before new feature work on affected templates.
 
-## Additional production considerations
+## Competitive benchmarking
 
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
+PageSpeed Insights compares origin to similar sites—use for stakeholder communication, not absolute targets. Retail peers with heavier images may have worse LCP; beat your own baseline week-over-week first.
 
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
+## CrUX vs RUM cohort mismatch
 
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
+Search Console CrUX is 28-day rolling origin-level — your RUM can slice by route today. Do not panic on CrUX lag after fix; verify RUM p75 first. Lab Lighthouse is regression gate only — not SLO.
 
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
+## INP interaction targets
 
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
+Prioritize CTA buttons, menus, comboboxes — fix accessibility keyboard path and INP together. Soft navigations in SPA need custom INP instrumentation — default web-vitals library may miss client routes.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

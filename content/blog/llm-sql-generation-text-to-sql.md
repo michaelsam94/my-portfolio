@@ -3,8 +3,8 @@ title: "Text-to-SQL That Actually Works"
 slug: "llm-sql-generation-text-to-sql"
 description: "Build reliable text-to-SQL pipelines with schema grounding, few-shot examples, execution feedback, and validation — not just prompt engineering."
 datePublished: "2025-03-21"
-dateModified: "2025-03-21"
-tags: ["AI", "LLM", "SQL", "Data"]
+dateModified: "2026-07-17"
+tags:
 keywords: "text to SQL LLM, natural language to SQL, SQL generation accuracy, schema grounding, Vanna AI, SQL validation LLM"
 faq:
   - q: "Why do LLMs hallucinate columns and tables in SQL generation?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I prevent the LLM from running destructive SQL?"
     a: "Never execute LLM-generated SQL directly against production. Use a read-only database role, parse and validate the AST before execution (allow only SELECT), set query timeouts, and require human approval for anything that modifies data."
 ---
-
 Every text-to-SQL demo works perfectly on the conference stage. Then you deploy it against your actual database — with 47 tables, abbreviated column names, and three schemas merged from acquisitions — and accuracy drops from 90% to 40%. The model confidently joins `orders` to `customers` on a column that does not exist and selects `total_amount` when the field is called `order_total_cents`.
 
 Text-to-SQL that works in production is not a prompt trick. It is a pipeline: schema grounding, example selection, generation, validation, execution, and error recovery.

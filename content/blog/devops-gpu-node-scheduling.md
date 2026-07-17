@@ -3,128 +3,138 @@ title: "GPU Node Scheduling and Fractional GPUs"
 slug: "devops-gpu-node-scheduling"
 description: "Schedule ML workloads on GPU nodes with device plugins, taints, and MIG."
 datePublished: "2026-03-12"
-dateModified: "2026-03-12"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Kubernetes"
   - "MLOps"
 keywords: "GPU scheduling, device plugin"
 faq:
-  - q: "What is GPU Node Scheduling and Fractional GPUs?"
-    a: "GPU Node Scheduling and Fractional GPUs covers operational practices for GPU device plugin in production kubernetes environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
   - q: "When should teams prioritize GPU Node Scheduling and Fractional GPUs?"
     a: "Before production ML training or inference on Kubernetes."
-  - q: "What mistakes break GPU Node Scheduling and Fractional GPUs?"
+  - q: "What is the most common mistake with GPU device plugin?"
     a: "Missing taints let non-GPU workloads consume expensive GPU nodes."
+  - q: "Fractional GPUs or dedicated nodes?"
+    a: "Dedicated nodes with taints for training; time-slicing or MIG for inference when utilization is low. Mixing without quotas lets batch training starve latency-sensitive inference."
+  - q: "How do we know GPU Node Scheduling and Fractional GPUs is working?"
+    a: "Define a leading metric for GPU device plugin health and a lagging metric tied to incidents. If you only measure after outages, the control is decorative."
 ---
+Training jobs pending-scheduled for hours because GPU nodes ran default workloads. This post is about making gpu node scheduling and fractional gpus boring in the best way — predictable under load, auditable under review, and reversible under stress.
+
+## What broke first on dashboards
+
 
 Training jobs pending-scheduled for hours because GPU nodes ran default workloads.
 
-This post walks through **GPU Node Scheduling and Fractional GPUs** for platform and SRE teams shipping reliable infrastructure. Schedule ML workloads on GPU nodes with device plugins, taints, and MIG. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+On-call sees green infrastructure metrics while business KPIs diverge — classic sign the gate is not on the critical path.
 
-## Problem framing: GPU Node Scheduling and Fractional GPUs
-
-Training jobs pending-scheduled for hours because GPU nodes ran default workloads.
+## Root cause — not the obvious answer
 
 
-Platform teams treat **GPU device plugin** as solved after the first successful deploy. Production disagrees: edge cases around gpu node scheduling, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Root cause tied to missing taints let non-gpu workloads consume expensive gpu nodes.
 
-## Design principles for GPU device plugin
+GPU device plugin was treated as a one-time setup task instead of an operational contract with owners and SLOs.
 
-Explicit contracts beat tribal knowledge. Document who owns GPU device plugin configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+## Fix path we kept
 
 
-A common failure mode: Missing taints let non-GPU workloads consume expensive GPU nodes. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Move GPU device plugin into the promote path with explicit failure semantics. Add partition-level coverage, not sample-only checks.
+
+Add CI enforcement so misconfigurations cannot merge.
+
+## Reference configuration
 
 
 ```yaml
-# devops-gpu-node-scheduling
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Node
 metadata:
-  name: gpu_node_scheduling
+  name: gpu-node-1
   labels:
-    app.kubernetes.io/part-of: devops-gpu-node-scheduling
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: gpu_node_scheduling
-  template:
-    metadata:
-      labels:
-        app: gpu_node_scheduling
-    spec:
-      containers:
-        - name: app
-          image: app:1.0.0
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
+    nvidia.com/gpu.present: "true"
+  taints:
+    - key: nvidia.com/gpu
+      value: "true"
+      effect: NoSchedule
+
 ```
 
-## Implementation walkthrough
-
-Start with the smallest production-safe slice of **GPU Node Scheduling and Fractional GPUs**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+## Day-two ownership
 
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for GPU device plugin.
+Assign a named owner team, review thresholds quarterly, and rehearse rollback.
 
-## Operational concerns in production
+New hires should execute a safe canary using only the runbook within their first week.
 
-Day-two operations for kubernetes work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
-
-
-Run game days or fault injection in staging quarterly for gpu node scheduling. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
-
-## Security and compliance angles
-
-Even when GPU Node Scheduling and Fractional GPUs is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when GPU device plugin accepts configuration from multiple teams.
+## What to do this week
 
 
-For regulated workloads, maintain an immutable audit trail: who changed GPU device plugin settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+If you only do one thing this week: put GPU device plugin on the critical path for one tier-1 workflow and measure what it catches.
 
-## Integration with platform standards
+## Scheduling latency vs utilization
 
-Align GPU device plugin with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+GPU nodes are expensive idle. Track pending pod duration for `nvidia.com/gpu` requests, node occupancy, and preemption events. Right-size MIG profiles from inference batch shapes — wrong profile wastes silicon.
 
+## Node pool design
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Label GPU nodes with instance type, driver version, and MIG profile. Use `nvidia.com/gpu` resource requests explicitly — limits alone do not schedule. Separate pools for training (large memory) and inference (low latency).
 
+## Quotas and fairness
 
-## What to measure after rollout
+ResourceQuota per namespace on GPU requests prevents one team from monopolizing the pool. PriorityClass lets inference preempt best-effort training when SLO burn accelerates — document preemption policy for ML leads.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+## Observability
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Scrape DCGM metrics: utilization, memory used, temperature, XID errors. Correlate with pod pending time and scheduler events. A node with zero utilization but full allocation often indicates stuck GPU contexts.
 
-## Documentation your team should maintain
+## When GPU device plugin becomes load-bearing
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Before production ML training or inference on Kubernetes. At that point gpu node scheduling and fractional gpus stops being a platform nice-to-have and becomes part of the release contract. Teams that defer instrumentation until after the first GitOps or Helm incident usually rebuild dashboards under pager pressure — metrics added during calm weeks have sane cardinality and alert text.
 
-## Pre-production checklist
+## What the incident looked like
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Training jobs pending-scheduled for hours because GPU nodes ran default workloads. On-call infrastructure graphs stayed green because the failure mode lived in the gap between declared state and user-visible behavior. Schedule ML workloads on GPU nodes with device plugins, taints, and MIG. The fix was not another controller restart — it was making GPU device plugin observable on the same timeline as application deploys.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+## The mistake to design against
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Missing taints let non-GPU workloads consume expensive GPU nodes. Platform reviews should treat that failure as a design requirement, not a footnote. Encode the guard in CI, admission, or plan-time policy so the bad change fails before merge. Document the exception process for break-glass — who approves, how long it lasts, and how Git catches up afterward.
 
-## Common questions from reviewers
+## How Kubernetes teams operationalize GPU device plugin
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Name primary and secondary owners. Link dashboards from the service runbook index on-call already opens. Run a quarterly drill: break GPU device plugin safely in staging, confirm alerts route to the right rotation, and verify rollback restores the previous known-good state without manual cluster surgery.
 
-## Version and compatibility notes
+## Rollout and evidence
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Wave changes: internal consumers, small canary cohort, 48-hour soak, then full promote. Keep the prior artifact revision hot-swappable for one release cycle. Store CI artifacts — rendered manifests, policy reports, simulator output — so incident review can answer what changed without reconstructing history from memory.
 
+## Cross-team interfaces
 
-## Resources
+Application, security, and finance teams consume outcomes from GPU device plugin differently. Publish a short interface doc: what the control blocks, what it logs, and who to ping when a false positive stops a legitimate deploy. Ambiguous ownership is how configs drift until the next audit or customer-visible outage.
 
-- https://kubernetes.io/docs/home/
-- https://github.com/kubernetes/community/tree/master/contributors/devel/sig-architecture
+## Capacity and cost angles
+
+Even when gpu node scheduling and fractional gpus is primarily about correctness, it affects cost: retries, idle GPU nodes, oversized autoscale max, or LB flapping all show up on the invoice after a misconfigured gate. Review GPU device plugin settings when traffic doubles or when finance flags a new line item — not only after hard outages.
+
+Runbooks for GPU device plugin should fit on one printed page: prerequisites, rollback, and the three metrics on-call checks first. Link that page from alert annotations so nobody searches Confluence during a SEV. Update the runbook after every incident where GPU device plugin was involved — even if the root cause was elsewhere.
+
+Staging must exercise the same GPU device plugin code paths as production, including failure modes you expect to handle. A green staging deploy without negative tests gives false confidence. Inject faults quarterly: expired credentials, slow dependencies, and partial outages shaped like your last postmortem.
+
+Training jobs pending-scheduled for hours because GPU nodes ran default workloads. Capture that story in the team onboarding doc so new engineers understand why gpu node scheduling and fractional gpus exists. Architecture diagrams age quickly; incident narratives and concrete guardrails stay memorable. Prefer automated enforcement over reviewer vigilance — humans miss typos at 5 p.m. on Fridays.
+
+Security and compliance reviews increasingly ask for evidence, not assertions. Export audit logs showing who changed GPU device plugin settings, which CI job validated the change, and when the last game day passed. OIDC-federated deploy roles beat long-lived keys stored in CI secrets.
+
+FinOps partners care when misconfigured GPU device plugin causes retry storms, idle GPU nodes, or runaway autoscale. Add a quarterly joint review with finance when this control touches capacity: right-size max replicas, GPU quotas, and LB pools using production metrics — not spreadsheet guesses.
+
+Runbooks for GPU device plugin should fit on one printed page: prerequisites, rollback, and the three metrics on-call checks first. Link that page from alert annotations so nobody searches Confluence during a SEV. Update the runbook after every incident where GPU device plugin was involved — even if the root cause was elsewhere.
+
+Staging must exercise the same GPU device plugin code paths as production, including failure modes you expect to handle. A green staging deploy without negative tests gives false confidence. Inject faults quarterly: expired credentials, slow dependencies, and partial outages shaped like your last postmortem.
+
+Training jobs pending-scheduled for hours because GPU nodes ran default workloads. Capture that story in the team onboarding doc so new engineers understand why gpu node scheduling and fractional gpus exists. Architecture diagrams age quickly; incident narratives and concrete guardrails stay memorable. Prefer automated enforcement over reviewer vigilance — humans miss typos at 5 p.m. on Fridays.
+
+Security and compliance reviews increasingly ask for evidence, not assertions. Export audit logs showing who changed GPU device plugin settings, which CI job validated the change, and when the last game day passed. OIDC-federated deploy roles beat long-lived keys stored in CI secrets.
+
+FinOps partners care when misconfigured GPU device plugin causes retry storms, idle GPU nodes, or runaway autoscale. Add a quarterly joint review with finance when this control touches capacity: right-size max replicas, GPU quotas, and LB pools using production metrics — not spreadsheet guesses.
+
+## Further reading
+
+- https://opentelemetry.io/docs/

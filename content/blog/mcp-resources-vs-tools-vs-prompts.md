@@ -3,8 +3,8 @@ title: "MCP Resources, Tools, and Prompts"
 slug: "mcp-resources-vs-tools-vs-prompts"
 description: "Understand the three MCP server capabilities — resources, tools, and prompts — and when to use each in agent and IDE integrations."
 datePublished: "2025-04-26"
-dateModified: "2025-04-26"
-tags: ["AI", "MCP", "Architecture", "Agents"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP resources tools prompts, Model Context Protocol capabilities, MCP server design, MCP tool vs resource, MCP prompt templates"
 faq:
   - q: "What is the difference between an MCP tool and an MCP resource?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can a single MCP server expose all three capability types?"
     a: "Yes, and most production servers should. A database MCP server might expose tools (run_query), resources (schema definitions, table descriptions), and prompts (SQL generation template). The client discovers all three during initialization and the model decides which to use based on the user's request."
 ---
-
 You are building an MCP server for your project management system. Should "get task details" be a tool or a resource? Should "create a sprint plan" be a tool or a prompt? Should the API documentation be a resource or embedded in the system prompt?
 
 MCP defines three distinct capability types — resources, tools, and prompts — and picking the wrong one creates awkward agent behavior. Tools that should be resources get invoked repeatedly with side effects. Resources that should be tools cannot trigger actions. Prompts that should be tools produce text instead of executing.

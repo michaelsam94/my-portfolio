@@ -3,8 +3,8 @@ title: "Mixture-of-Experts Models Explained for Engineers"
 slug: "mixture-of-experts-explained"
 description: "A mixture-of-experts model activates only a few parameters per token via a router. What MoE means for cost, memory, and serving, for engineers."
 datePublished: "2026-03-25"
-dateModified: "2026-03-25"
-tags: ["LLM", "Machine Learning", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "mixture of experts, MoE, sparse models, expert routing, active parameters, Mixtral"
 faq:
   - q: "What is a mixture-of-experts (MoE) model?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why are MoE models harder to serve than dense models?"
     a: "Because you pay dense-model memory costs to store all experts but must handle uneven, dynamic routing at runtime. Some experts get more tokens than others, which complicates batching and load balancing across GPUs. Expert-parallel deployments also add cross-device communication that dense models don't need, so the systems engineering is meaningfully more involved."
 ---
-
 A mixture-of-experts (MoE) model is a transformer that cheats the usual "bigger means slower" rule. Instead of running every parameter for every token, it splits its feed-forward layers into many parallel experts and uses a small router to pick just a few of them per token. So the model can hold hundreds of billions of parameters worth of knowledge while only doing the compute of a model a fraction of that size. That gap — big capacity, small per-token cost — is the entire reason MoE has taken over the frontier.
 
 The confusion I see from engineers is treating MoE as a pure win. It buys you compute efficiency, but it hands you a memory bill and a serving-complexity bill in return. Understanding that trade is the difference between deploying one successfully and being surprised by your GPU invoice.

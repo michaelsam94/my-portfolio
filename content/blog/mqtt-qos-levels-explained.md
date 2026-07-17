@@ -3,8 +3,8 @@ title: "MQTT QoS Levels, Explained"
 slug: "mqtt-qos-levels-explained"
 description: "Understand MQTT QoS 0, 1, and 2: delivery guarantees, handshake flows, when each level fits IoT workloads, and common misconfigurations that waste bandwidth."
 datePublished: "2025-07-24"
-dateModified: "2025-07-24"
-tags: ["IoT", "MQTT", "Messaging", "Protocol"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MQTT QoS levels, QoS 0 1 2, MQTT delivery guarantee, at most once, exactly once, IoT messaging"
 faq:
   - q: "Which MQTT QoS level should I use for sensor telemetry?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why does QoS 1 sometimes deliver duplicates?"
     a: "The publisher or broker may retry PUBLISH if PUBACK is lost. Subscribers that don't deduplicate by message ID or application sequence will process the same payload twice. QoS 1 is at-least-once, not exactly-once."
 ---
-
 A temperature sensor publishing every second at QoS 2 generated four MQTT control packets per reading. Across 2,000 devices, the broker spent more CPU on handshakes than on payload delivery — and we still saw duplicate furnace shutoff commands because the PLC app didn't idempotently handle replays. MQTT QoS isn't a quality slider you max out; it's a contract with bandwidth and latency costs that most IoT teams misread.
 
 ## The three QoS levels at a glance
@@ -165,3 +164,17 @@ Load-test QoS choices with reconnect storms, not steady publish rates alone. Per
 - [HiveMQ MQTT essentials — QoS](https://www.hivemq.com/mqtt/mqtt-qos/)
 - [EMQX QoS design and tuning](https://www.emqx.io/docs/en/latest/design/qos.html)
 - [MQTT 5.0 features overview (MQTT.org)](https://mqtt.org/mqtt-specification/)
+
+## Production notes for LLM stacks
+
+When `mqtt-qos-levels-explained` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `mqtt qos levels, explained` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

@@ -3,8 +3,8 @@ title: "Navigation 3 in Jetpack Compose: Back Stack as State"
 slug: "navigation-3-jetpack-compose"
 description: "Navigation 3 (Nav3) makes the back stack ordinary Compose state you own. How it differs from Navigation Compose, deep links, and adaptive multi-pane navigation."
 datePublished: "2026-03-18"
-dateModified: "2026-03-18"
-tags: ["Android", "Jetpack Compose", "Navigation", "Kotlin"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Navigation 3, Compose navigation, Nav3, back stack as state, Compose navigation library, deep links"
 faq:
   - q: "What is Navigation 3 for Jetpack Compose?"
@@ -14,7 +14,6 @@ faq:
   - q: "Does Navigation 3 support deep links and multi-pane layouts?"
     a: "Yes. Because the back stack is just a list, a deep link becomes 'construct this list of destinations,' and multi-pane layouts become 'render the top N entries side by side.' Both are far more natural than in controller-based navigation."
 ---
-
 For years, Android navigation meant handing your back stack to a controller and poking it through an imperative API — `navigate("route")`, `popBackStack()` — while the actual stack stayed hidden inside the framework. It worked, but it fought Compose's core idea that UI is a function of state you own. Navigation 3 flips this: **the back stack is just a list you hold in your own state**, and the library renders it. Navigate by adding to the list; go back by removing from it. That's the whole model, and it's a much better fit for how Compose actually thinks.
 
 I've shipped apps on Navigation Compose and its predecessors, and the recurring pain was always that navigation state lived somewhere I couldn't easily read, test, or restore. Nav3 puts it back in my hands. Here's what changes and why it matters.

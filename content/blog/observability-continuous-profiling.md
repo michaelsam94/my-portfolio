@@ -3,7 +3,7 @@ title: "Continuous Profiling in Production"
 slug: "observability-continuous-profiling"
 description: "Deploy continuous profiling in production with Pyroscope, Parca, and eBPF: flame graphs, overhead control, and turning profiles into performance fixes."
 datePublished: "2025-09-30"
-dateModified: "2025-09-30"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Observability", "Performance", "Backend"]
 keywords: "continuous profiling, production profiling, flame graphs, Pyroscope, Parca profiling, eBPF profiling, CPU profiling production"
 faq:
@@ -234,6 +234,52 @@ Run CPU profiling continuously. Trigger inuse_space profiling when heap metrics 
 - Flame graph review in post-incident process for latency incidents
 
 Profile production at 1–5% sample rate continuously — episodic profiling during incidents captures the wrong code path because traffic patterns differ under stress.
+
+## Pairing profiles with LLM gateways
+
+Inference gateways spend CPU on JSON parsing, tokenizer calls, and streaming flushes — not model matmul. Continuous profiling reveals when “slow LLM” is actually slow middleware. Compare flame graphs between canary and baseline deploys when p95 shifts without GPU utilization changes.
+
+## Storage profiling for JVM and Node
+
+Heap profiles complement CPU: LLM gateways buffering streaming responses may show allocation hotspots invisible in CPU-only views. Schedule weekly automated profile diff jobs in CI against a recorded baseline — regressions in `JSON.parse` or gzip middleware show up before customers notice.
+
+## Flame graph reading for on-call
+
+Train on-call to read icicle charts top-down:
+
+1. **Width** — percentage of samples in that frame
+2. **Self vs total** — hover for self time vs cumulative child time
+3. **Plateau** — wide flat frames are optimization targets
+
+Runbook snippet: "If `runtime.systemstack` or `syscall` dominates, suspect IO not CPU—switch to trace and pool metrics before optimizing Go code."
+
+## Allocation profiling for GC pressure
+
+CPU profiles miss services spending 40% in GC because allocations are hot. Enable alloc profiling on canary when:
+
+- `go_gc_duration_seconds` spikes correlate with latency
+- JVM `jvm.gc.pause` alerts fire without CPU saturation
+
+Parca/Pyroscope heap profiles show `make([]byte)` or JSON marshal paths—fix allocation before tuning `GOGC`.
+
+## Profiling multi-tenant SaaS
+
+Noisy neighbor tenants may dominate profiles without attribution. Label profiles with `tenant_tier` not `tenant_id`—sample pod metadata at scrape time. Enterprise tier latency incident → filter profiles to pods handling enterprise traffic via deployment shard labels.
+
+## Relationship to eBPF network observability
+
+Profiles show CPU in HTTP handler; eBPF flows show retransmit storms. Combined timeline: network packet loss spike → retry loop in handler → CPU profile shows `io.ReadAll` hot. Use both pillars before blaming application algorithm.
+
+## Vendor vs self-hosted decision matrix
+
+| Factor | Self-hosted Parca/Pyroscope | Datadog CP |
+|--------|----------------------------|------------|
+| Ops burden | You run object storage + agents | Vendor |
+| Data residency | Full control | Vendor region |
+| Trace correlation | DIY Tempo linking | Integrated APM |
+| Cost at 500 pods | Infra + eng time | Per-host fee |
+
+Document decision in ADR when adopting continuous profiling—revisit when pod count 10×.
 
 ## Resources
 

@@ -1,115 +1,187 @@
 ---
-title: "Migrating Helm Charts to OCI Registries"
+title: "Helm OCI Registry Migration"
 slug: "devops-helm-oci-registry-migration"
-description: "Publish and consume Helm charts from OCI instead of HTTP chart repos."
-datePublished: "2026-03-31"
-dateModified: "2026-03-31"
+description: "Migrate Helm charts from HTTP chart museums to OCI registries with cosign signing, CI updates, and consumer cutover without breaking deploy pipelines."
+datePublished: "2026-11-10"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Helm"
   - "Supply Chain"
-keywords: "Helm OCI, chart registry"
+keywords: "Helm OCI, chart registry migration, helm push, OCI artifacts, chart museum deprecation"
 faq:
-  - q: "What is Migrating Helm Charts to OCI Registries?"
-    a: "Migrating Helm Charts to OCI Registries covers operational practices for Helm OCI registry in production helm environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Migrating Helm Charts to OCI Registries?"
-    a: "During chart repo consolidation."
-  - q: "What mistakes break Migrating Helm Charts to OCI Registries?"
-    a: "OCI push without immutability—tags overwritten."
+  - q: "Why OCI for charts?"
+    a: "Same registry as container images—unified auth, cosign sign charts like images."
+  - q: "helm push migration?"
+    a: "Re-publish semver charts to oci://registry; update helm repo URLs in CI and Argo."
+  - q: "Helm 3 OCI gotchas?"
+    a: "Chart version in tag and metadata must match; avoid mutable tags for prod."
+  - q: "Air-gapped mirror?"
+    a: "oras copy charts between registries—document sync job in DR runbook."
 ---
+Classic helm repo index lagged behind OCI push; migration to oci:// unified auth with container registry and enabled cosign sign on chart layers.
 
-HTTP chart repo outage blocked all deploys for four hours.
+## Push workflow
 
-This post walks through **Migrating Helm Charts to OCI Registries** for platform and SRE teams shipping reliable infrastructure. Publish and consume Helm charts from OCI instead of HTTP chart repos. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+helm package; helm push oci://registry/chart; semver tag immutable.
 
-## Problem framing: Migrating Helm Charts to OCI Registries
+Production teams running helm oci registry migration learned that push workflow regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-HTTP chart repo outage blocked all deploys for four hours.
+Runbook for push workflow: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument push workflow with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Platform teams treat **Helm OCI registry** as solved after the first successful deploy. Production disagrees: edge cases around helm oci registry migration, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day for push workflow: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-## Design principles for Helm OCI registry
+Ownership for push workflow belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-Explicit contracts beat tribal knowledge. Document who owns Helm OCI registry configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in push workflow configs.
 
+Capacity note: estimate peak concurrency for push workflow, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-A common failure mode: OCI push without immutability—tags overwritten. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Security review for helm oci registry migration: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
+FinOps tie-in for push workflow: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-```yaml
-# values fragment for Helm OCI registry
-replicaCount: 3
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 2
-```
+## Consumer update
 
-## Implementation walkthrough
+Chart.yaml repository oci URL; Argo repo type oci; CI login same as docker.
 
-Start with the smallest production-safe slice of **Migrating Helm Charts to OCI Registries**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Production teams running helm oci registry migration learned that consumer update regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
+Runbook for consumer update: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for Helm OCI registry.
+Instrument consumer update with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Operational concerns in production
+Game day for consumer update: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Day-two operations for helm work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Ownership for consumer update belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in consumer update configs.
 
-Run game days or fault injection in staging quarterly for helm oci registry migration. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Capacity note: estimate peak concurrency for consumer update, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-## Security and compliance angles
+Security review for helm oci registry migration: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-Even when Migrating Helm Charts to OCI Registries is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when Helm OCI registry accepts configuration from multiple teams.
+FinOps tie-in for consumer update: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
+## Gotchas
 
-For regulated workloads, maintain an immutable audit trail: who changed Helm OCI registry settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Chart version in artifact must match tag; avoid mutable latest for prod.
 
-## Integration with platform standards
+Production teams running helm oci registry migration learned that gotchas regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-Align Helm OCI registry with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Runbook for gotchas: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument gotchas with low-cardinality metrics tied to user-visible SLIs—error rate, tail latency,
+freshness—not vanity gauges that never correlated with past pages.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Game day for gotchas: quarterly staging injection with rollback under fifteen minutes using linked
+runbook only—update runbook with what broke.
 
+Ownership for gotchas belongs in the service catalog with named rotation, last drill date, and known
+sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## What to measure after rollout
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in gotchas configs.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Capacity note: estimate peak concurrency for gotchas, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Security review for helm oci registry migration: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Documentation your team should maintain
+FinOps tie-in for gotchas: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+## Mirror DR
 
-## Pre-production checklist
+oras copy charts to DR registry; sync job in runbook.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Production teams running helm oci registry migration learned that mirror dr regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+Runbook for mirror dr: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Instrument mirror dr with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Common questions from reviewers
+Game day for mirror dr: quarterly staging injection with rollback under fifteen minutes using linked
+runbook only—update runbook with what broke.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Ownership for mirror dr belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## Version and compatibility notes
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in mirror dr configs.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Capacity note: estimate peak concurrency for mirror dr, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
 
+Security review for helm oci registry migration: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Resources
+FinOps tie-in for mirror dr: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.
 
-- https://helm.sh/docs/
-- https://github.com/helm/chart-testing
+## Legacy coexist
+
+Dual publish during migration window; deprecate http index with deadline.
+
+Production teams running helm oci registry migration learned that legacy coexist regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
+
+Runbook for legacy coexist: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+
+Instrument legacy coexist with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
+
+Game day for legacy coexist: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
+
+Ownership for legacy coexist belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
+
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in legacy coexist configs.
+
+Capacity note: estimate peak concurrency for legacy coexist, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
+
+Security review for helm oci registry migration: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
+
+FinOps tie-in for legacy coexist: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.

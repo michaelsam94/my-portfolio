@@ -1,111 +1,212 @@
 ---
 title: "RAG: Egress Filtering Dns"
 slug: "rag-egress-filtering-dns"
-description: "Egress Filtering Dns: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Egress filtering and DNS controls for RAG pipelines — allowlisted embedding APIs, blocking data exfiltration, and network policy for ingestion workers."
 datePublished: "2026-02-04"
-dateModified: "2026-02-04"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Egress"]
 keywords: "rag, egress, filtering, dns, ai, production, engineering, architecture"
 faq:
-  - q: "What is Egress Filtering Dns?"
-    a: "Egress Filtering Dns covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Egress Filtering Dns?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Egress Filtering Dns?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Egress Filtering Dns fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Egress Filtering Dns should be observable in production and safe to change in small diffs."
+  - q: "Why do RAG ingestion pods need egress filtering?"
+    a: "Ingestion workers read untrusted documents and run parsers that historically suffer RCE vulnerabilities. Unrestricted egress lets compromised pods exfiltrate corpus content, scrape credentials from metadata services, or join botnets. Allowlists limiting destinations to S3, embedding APIs, and internal services shrink blast radius."
+  - q: "Should egress control happen at DNS, network policy, or both?"
+    a: "Use both for defense in depth. DNS filtering (Policy DNS, CoreDNS plugins) blocks resolution of unknown domains early with clear logs. Kubernetes NetworkPolicy or Cilium policies enforce IP/port allowlists even when malware uses hard-coded IPs. DNS alone fails against IP literals; network policy alone misses domain-level audit trails."
+  - q: "How do you allowlist SaaS embedding providers that use CDNs?"
+    a: "Prefer provider-documented domain lists and stable API hostnames over wildcard CDNs where possible. For dynamic IPs, use provider-published IP range JSON (AWS, Cloudflare) synced to policy weekly, or route outbound through a proxy that terminates TLS and validates SNI against allowlist."
 ---
-Egress Filtering Dns is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+After a parser CVE shipped unpatched for eleven days, a security researcher demonstrated outbound DNS queries from ingestion pods to `paste.ee` and `185.220.x.x`—neither on any architecture diagram. The pods needed S3 read, an internal chunk queue, and HTTPS to the embedding vendor. They had unrestricted egress because "debugging was easier." Compromised workers could have exfiltrated pre-redaction legal documents; luck and a researcher email prevented it.
 
-When egress filtering dns is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+RAG pipelines combine **untrusted input** with **high-value outbound access**—cloud storage, paid LLM APIs, internal databases. **Egress filtering** restricts where workloads can connect. **DNS filtering** is the first choke point: if a pod cannot resolve attacker domains, many exfil paths never start; combined with L4/L7 network policy, you get enforceable allowlists instead of hope.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Threat model for RAG worker egress
 
-Solid AI engineering turns egress filtering dns from a recurring argument into a documented pattern with tests and an owner.
+Expected legitimate destinations:
 
-## Design principles that survive production
+| Destination | Port | Purpose |
+|-------------|------|---------|
+| `s3.{region}.amazonaws.com` | 443 | Source documents |
+| `api.openai.com` (example) | 443 | Embeddings |
+| Internal `chunk-queue.rag.svc` | 443/9092 | Pipeline messaging |
+| `sts.amazonaws.com` | 443 | IAM credentials |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag egress filtering dns bugs hide.
+Everything else is suspicious by default—including `metadata.google.internal`, public DNS resolvers misused for tunneling, and crypto pool domains.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for egress filtering dns, you do not yet understand the behavior you shipped.
+Attack paths egress filtering blocks:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+- DNS exfiltration encoding data in subdomain queries
+- HTTPS POST to attacker-controlled servers
+- SSRF via parser fetching arbitrary URLs from document hyperlinks (handle separately with URL fetch proxy)
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag egress filtering dns flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for egress filtering dns in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag egress filtering dns changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Egress Filtering Dns: typed boundary + structured errors
-export async function handleEgressFilteringDns(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-egress-filtering-dns");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## DNS filtering architecture
 
 ```
+[Pod] → CoreDNS / NodeLocal DNSCache
+           ↓
+    [Policy plugin / external DNS firewall]
+           ↓ allow / deny / log
+    [Upstream resolver 1.1.1.1 or VPC resolver]
+```
 
+**CoreDNS** `policy` or `firewall` plugins, **Cloudflare Gateway**, **Infoblox**, or cloud **Route53 Resolver DNS Firewall** evaluate queries against rules:
 
-## Operational concerns
+```yaml
+# Example rule intent
+allow:
+  - suffix: amazonaws.com
+  - suffix: api.openai.com
+  - suffix: rag.internal.example.com
+deny:
+  - suffix: .
+    log: true
+    message: "RAG ingest namespace blocked DNS"
+```
 
-Game-day exercises for egress filtering dns beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Log denied queries with pod identity (via k8s metadata) for SOC review.
 
-Production rag egress filtering dns work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+### Bypass risks
 
-Rollouts for egress filtering dns benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Malware using **hard-coded IPs** bypasses DNS—complement with NetworkPolicy:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rag-ingest-egress
+  namespace: rag-ingest
+spec:
+  podSelector:
+    matchLabels:
+      app: document-parser
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8   # internal services
+    - ports:
+        - protocol: TCP
+          port: 443
+      to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+```
 
-## Security and compliance angles
+Broad 443 to public internet still allows IP-literal exfil—**Cilium FQDN policy** or **egress gateway** with TLS SNI inspection is tighter.
 
-Even when egress filtering dns is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Egress gateway pattern for SaaS APIs
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag egress filtering dns so security reviews do not rely on tribal knowledge.
+Centralize outbound HTTPS through **squid/envoy egress proxy**:
 
-## Testing strategy
+1. Pods only reach proxy on 3128/443
+2. Proxy validates `:authority` / SNI against allowlist
+3. TLS intercept optional for corporate compliance (careful with embedding API cert pinning)
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that egress filtering dns depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```yaml
+# Envoy ext_authz or route match
+domains:
+  - "api.openai.com"
+  - "*.amazonaws.com"
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Embedding providers rotating CDN edges complicate IP allowlists—domain-based proxy rules age better. Automate sync of vendor IP ranges where domain pinning insufficient.
 
-## Migration and evolution
+## Hyperlink fetching is not pod egress
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag egress filtering dns functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Documents contain URLs. **Never** let parsers fetch arbitrary links directly from ingestion pods with full egress.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where egress filtering dns spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Dedicated **URL fetch service**:
 
-## Related concepts
+- Resolves DNS through same filtering
+- Blocks RFC1918, link-local, cloud metadata IPs
+- Rate limited, size capped, content-type allowlist
+- Returns sanitized bytes to parser over internal RPC
 
-Egress Filtering Dns intersects with broader ai topics — see companion notes on [rag-egress patterns](https://blog.michaelsam94.com/rag-egress/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Parser pod egress then excludes general internet entirely—only fetch service reaches external URLs.
 
-## The takeaway
+## Operational workflow for allowlist changes
 
-Egress Filtering Dns rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag egress filtering dns becomes a maintainable asset instead of incident fuel.
+New embedding vendor or S3 bucket region requires ticket:
 
-## Resources
+1. Security review destination necessity
+2. PR to DNS policy + NetworkPolicy + proxy config
+3. Staging validation with `dig`/`curl` from test pod
+4. Deploy with 24h enhanced logging before enforce mode
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+Emergency break-glass: time-limited policy exception with manager approval—auto-expire.
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Observability
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Dashboards:
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+- Top denied DNS queries by pod deployment
+- Egress bytes by destination category
+- New unique domains attempted (weekly report)
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Alert on any `rag-ingest` pod resolving non-allowlisted domain—page severity lower than shell spawn (eBPF) but investigate same day.
+
+Correlate DNS deny logs with document IDs being processed—identifies malicious file vs policy gap.
+
+## Compliance mapping
+
+SOC2 CC6.6, ISO 27001 A.13.1.1 expect network segregation. Document RAG egress architecture in security packet: diagrams showing default-deny, allowlist maintenance owner, break-glass procedure.
+
+GDPR: egress to US SaaS from EU ingest requires transfer mechanism—geo routing separate concern but DNS logs prove traffic stayed in approved endpoints.
+
+## Testing
+
+CI **network policy tests** (https://github.com/appvia/kompose examples, Cilium policy verifier):
+
+```bash
+kubectl exec -n rag-ingest test-pod -- curl -m 5 https://evil.example.com
+# expect timeout or connection refused
+kubectl exec -n rag-ingest test-pod -- curl -m 5 https://s3.eu-west-1.amazonaws.com
+# expect success
+```
+
+Quarterly red team: drop test binary in staging parser attempting DNS tunnel—verify deny + alert.
+
+Egress filtering and DNS controls turn "compromised parser" from full corpus leak into failed connection attempts logged to SOC. Default-deny outbound from ingestion namespaces, allowlist embedding and storage domains explicitly, and never conflate document hyperlink fetching with unrestricted pod internet access.
+
+## IPv6 and dual-stack considerations
+
+Egress policies written for IPv4-only miss **IPv6 exfil** paths. Enable IPv6 on nodes only with symmetric network policies, or disable IPv6 in pod network if unsupported—document choice. DNS filtering must handle AAAA records; malware resolving dual-stack domains bypasses IPv4-only blocks.
+
+## Incident response for egress violations
+
+Runbook: on denied DNS alert for production ingest pod, **isolate pod** (NetworkPolicy deny all egress except SIEM), snapshot memory if forensics requires, rotate secrets mounted to pod, preserve DNS query log with timestamp correlation to document being processed. Do not delete pod immediately—lose evidence.
+
+Post-incident: add denied domain pattern to threat intel feed; scan other pods for same query history via centralized DNS logs.
+
+## Break-glass egress procedures
+
+Document **time-limited egress exception** process: security approves 4-hour widen to specific domain for vendor support session; auto-revert via Terraform TTL or scheduled policy rollback. Post-exception review mandatory—did we patch parser instead of permanent hole?
+
+Break-glass usage metrics dashboard—frequent exceptions indicate allowlist maintenance neglected or tooling friction driving unsafe workarounds.
+
+## Shared services and platform egress
+
+Central **egress gateway** shared by RAG and non-RAG workloads simplifies allowlist maintenance—platform team owns proxy, application teams request FQDN additions via ticket. RAG-specific sensitive namespaces still default-deny direct egress even to gateway unless authenticated mTLS identity presented.
+
+Log retention for DNS denials balances SOC needs vs storage cost—90 days hot, 1 year cold archive for regulated customers requesting proof of egress controls during audits.
+
+## Wrapping up egress posture
+
+Default-deny egress from RAG ingest namespaces is baseline hygiene in 2026, not paranoia. The paste.ee incident class—compromised parser, unrestricted outbound—ends when DNS and network policy block resolution and connection before data leaves the cluster. Pair technical controls with procurement: parser vendors must disclose outbound network requirements during security review so allowlists are complete on day one, not discovered during incident response.
+
+Include egress allowlist diffs in pull request templates for any parser or OCR dependency upgrade—new libraries often introduce unexpected CDN or telemetry domains that default-deny policies catch only if reviewers know to look.
+
+Egress posture reviews belong in every parser upgrade security checklist—new dependencies are the most common reason allowlists need expansion before production deploy, not zero-day exploits.
+
+## Common regressions around egress filtering dns
+
+Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to egress filtering dns and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.

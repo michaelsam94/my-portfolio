@@ -181,6 +181,28 @@ When app shortcuts dynamic misbehaves in production, work top-down instead of gu
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Shortcut pin rate limits
+
+Launchers cap pinned shortcuts (~4). Rank dynamic shortcuts by recency and intent confidence; evict LRU when publishing fifth. `ShortcutManager.setDynamicShortcuts` full replace — race between workers can drop shortcuts; serialize updates via single worker.
+
+## Back stack for shortcut intents
+
+Deep link shortcuts must use `FLAG_ACTIVITY_CLEAR_TOP` thoughtfully — wrong flags strand users without back navigation to home Activity.
+
+## App Shortcuts Dynamic Supplement 0 on Samsung and Pixel divergence
+
+Exercise app shortcuts dynamic supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching app; regressions above 8% block release for `android-app-shortcuts-dynamic-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "App Shortcuts Dynamic Supplement 0" should map to a single runbook section with known workarounds.
+
+## Dynamic regression gates for Play Vitals
+
+Before promoting `android-app-shortcuts-dynamic-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing app with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing app shortcuts dynamic supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [App shortcuts overview (Android)](https://developer.android.com/develop/ui/views/launch/shortcuts)

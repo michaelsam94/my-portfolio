@@ -208,6 +208,24 @@ When deeplink attribution install misbehaves in production, work top-down instea
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Play Install Referrer latency
+
+Referrer available seconds after first open — defer attribution callback until `InstallReferrerClient` success or timeout. Deferred deep link without referrer still routes via Firebase Dynamic Links successor APIs — verify 2025+ Play Install Referrer migration path.
+
+## Intent filter priority collisions
+
+Multiple activities handling same https host — disambiguation dialog kills conversion. Use single entry Activity dispatching internally; `android:autoVerify` per host once.
+
+## Deeplink Attribution Install Supplement 0 on Samsung and Pixel divergence
+
+Exercise deeplink attribution install supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching deeplink; regressions above 8% block release for `android-deeplink-attribution-install-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Deeplink Attribution Install Supplement 0" should map to a single runbook section with known workarounds.
+
+## Install regression gates for Play Vitals
+
+Before promoting `android-deeplink-attribution-install-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android App Links documentation](https://developer.android.com/training/app-links)

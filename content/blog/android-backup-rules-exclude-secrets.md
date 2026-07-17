@@ -140,6 +140,16 @@ Before enabling `android-backup-rules-exclude-secrets` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Backup Rules Exclude Secrets on Samsung and Pixel divergence
+
+Exercise backup rules exclude secrets on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching backup; regressions above 8% block release for `android-backup-rules-exclude-secrets`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Backup Rules Exclude Secrets" should map to a single runbook section with known workarounds.
+
+## Exclude regression gates for Play Vitals
+
+Before promoting `android-backup-rules-exclude-secrets` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if secrets path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

@@ -3,7 +3,7 @@ title: "Safe Rollback Strategies"
 slug: "ops-rollback-strategies-safe"
 description: "Plan rollbacks before you deploy: artifact immutability, database rollback limits, feature-flag kill switches, and runbooks that work when adrenaline is high."
 datePublished: "2026-01-16"
-dateModified: "2026-01-16"
+dateModified: "2026-07-17"
 tags: ["DevOps", "SRE", "Deployment", "Incident Response"]
 keywords: "safe rollback strategy, deployment rollback, Kubernetes rollback, database rollback CI CD, incident rollback runbook"
 faq:
@@ -154,6 +154,41 @@ When rollback strategies safe misbehaves in production, work top-down instead of
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Rollback decision matrix
+
+| Symptom | Roll back app | Roll forward fix | Data migration? |
+|---------|---------------|------------------|-----------------|
+| 5xx spike | Yes | If fix <15 min | No |
+| Schema bug | Maybe | Often | Yes — careful |
+| Bad config only | Redeploy prev config | — | No |
+| Corrupt batch job | Pause job | Fix + replay | Idempotent replay |
+
+**Roll forward** when rollback reintroduces known CVE or incompatible schema — but have runbook.
+
+## Artifact immutability
+
+Rollback requires previous container image tags still in registry. Retention policy must keep last N deploy artifacts 30+ days. Helm release history `max` too low — `helm rollback` fails with "release not found".
+
+## Stateful service rollback
+
+Kafka topic schema changes, DB migrations — rollback app without reversing migration leaves newer schema + older code = crash loop. Pair every migration deploy with tested `down` migration or forward-fix-only policy documented.
+
+## Database restore vs roll forward
+
+Point-in-time restore loses subsequent good writes — business chooses RPO. Document decision tree including legal hold on logs before restore. Roll-forward hotfix often beats restore for single bad migration.
+
+## Helm rollback and CRDs
+
+Helm rollback skips CRD schema changes — apps referencing new CRD fields crash after rollback. Pin CRD upgrades to separate release pipeline with compatibility window.
+
+## Config-only rollback
+
+Sometimes app image fine but ConfigMap bad — rollback Helm release revision without new image build. Track ConfigMap checksum in deployment annotation.
+
+## Runbook link in deployment PR
+
+Every prod deploy PR template links rollback command — `kubectl rollout undo` or `helm rollback`. Reviewer confirms rollback tested in staging this sprint.
 
 ## Resources
 

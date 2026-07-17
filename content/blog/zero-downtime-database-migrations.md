@@ -4,7 +4,7 @@ seoTitle: "Zero-Downtime Database Migrations: Expand-Contract Pattern"
 slug: "zero-downtime-database-migrations"
 description: "Zero-downtime migrations use expand-contract: add the new shape, dual-write, backfill, switch reads, then drop the old — no maintenance window required."
 datePublished: "2026-05-20"
-dateModified: "2026-05-22"
+dateModified: "2026-07-17"
 tags: ["Database", "Migrations", "DevOps", "Backend"]
 keywords: "zero downtime migration, expand contract pattern, database migration, blue green deployment, schema migration, backwards compatible migration, online DDL"
 faq:
@@ -172,3 +172,27 @@ Save expand-contract for tables where downtime has a cost — session state, bil
 - [GitHub — Rails migrations at scale (patterns apply broadly)](https://github.blog/engineering/infrastructure-migrations/)
 - [PostgreSQL — CREATE INDEX CONCURRENTLY](https://www.postgresql.org/docs/current/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)
 - [Flyway documentation](https://flywaydb.org/documentation/)
+
+## Operational checklist (1)
+
+Before promoting Zero Downtime Database Migrations changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Zero Downtime Database Migrations after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Zero Downtime Database Migrations touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Zero Downtime Database Migrations changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Zero Downtime Database Migrations after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Zero Downtime Database Migrations touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.

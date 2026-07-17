@@ -1,19 +1,19 @@
 ---
 title: "Sensor Fusion and Clock Sync in Real-Time Systems"
-seoTitle: "Sensor Fusion and Clock Sync in Real-Time Systems"
 slug: "sensor-fusion-clock-sync-real-time"
 description: "Why clock synchronization decides whether sensor fusion works: PTP vs NTP, timestamping strategy, Kalman filtering, and the alignment bugs that ruin real-time data."
 datePublished: "2026-07-15"
-dateModified: "2026-07-15"
-tags: ["Real-Time Systems", "Sensor Fusion", "IoT", "Robotics"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "sensor fusion, clock synchronization, real-time systems, PTP time sync, data fusion, Kalman filter, NTP"
 faq:
-  - q: "Why is clock synchronization critical for sensor fusion?"
-    a: "Sensor fusion combines readings from multiple sources by their timestamps. If the clocks disagree by even a few milliseconds, you fuse a camera frame with an IMU reading from a different moment, and the result is wrong. Accurate, common time is the foundation everything else builds on."
-  - q: "What's the difference between NTP and PTP?"
-    a: "NTP synchronizes clocks over a network to roughly millisecond accuracy, good enough for logs and most applications. PTP (IEEE 1588) achieves sub-microsecond accuracy using hardware timestamping, which is what high-rate sensor fusion, robotics, and industrial control need."
-  - q: "Do I always need a Kalman filter for sensor fusion?"
-    a: "No. A Kalman filter is the right tool when you're fusing noisy, continuous measurements of a dynamic system, like position from GPS and IMU. For simpler cases — picking the freshest reliable reading, or averaging redundant sensors — a well-chosen heuristic is often enough and far easier to debug."
+  - q: "PTP vs NTP?"
+    a: "PTP gives sub-ms sync on supported hardware; NTP jitter breaks tight fusion."
+  - q: "What to log?"
+    a: "Per-sensor offset estimates; alert when drift exceeds filter tolerance."
+  - q: "Simulation?"
+    a: "Replay with injected clock skew to test fusion robustness before field deploy."
 ---
 
 The bug that taught me to respect clocks looked like a physics violation: an object appearing to move backward for a single frame before continuing forward. Nothing was wrong with the tracking math. The problem was that two data streams were timestamped by two devices whose clocks drifted a few milliseconds apart, so fusing them by time occasionally interleaved readings out of order. Sensor fusion is only ever as good as the clock that timestamps the inputs — get the time wrong and no amount of clever filtering saves you.
@@ -86,6 +86,14 @@ If I were setting up a real-time fusion pipeline from scratch, the priority orde
 
 Almost everyone does this in reverse — they tune the filter first and fight mysterious glitches for weeks before discovering a clock offset. Respect the clock, and the rest of sensor fusion becomes tractable engineering rather than chasing ghosts.
 
+## Operational notes for sensor fusion clock sync real time
+
+Calibrate sensors in factory or lab before field deploy; log temperature-driven clock drift on outdoor units. Fusion filters should degrade gracefully when one sensor drops — never extrapolate positions without explicit uncertainty growth. Replay recorded sensor bags in CI when fusion algorithm changes.
+
+## Notes on sensor fusion clock sync real time
+
+Calibrate sensors in factory or lab before field deploy; log temperature-driven clock drift on outdoor units. Fusion filters should degrade gracefully when one sensor drops — never extrapolate positions without explicit uncertainty growth. Replay recorded sensor bags in CI when fusion algorithm changes.
+
 ## Resources
 
 - [IEEE 1588 — Precision Time Protocol (PTP)](https://standards.ieee.org/ieee/1588/6825/)
@@ -94,3 +102,11 @@ Almost everyone does this in reverse — they tune the filter first and fight my
 - [NIST — Time and Frequency Division](https://www.nist.gov/pml/time-and-frequency-division)
 - [An Introduction to the Kalman Filter (Welch & Bishop, UNC)](https://www.cs.unc.edu/~welch/kalman/)
 - [ROS 2 — time and clock concepts](https://docs.ros.org/en/rolling/Concepts/About-Time.html)
+
+Log per-sensor clock offset in fusion metrics; alert when drift exceeds Kalman filter tolerance.
+
+Review sensor fusion clock sync real time metrics after the next release train on mid-tier mobile devices — regressions that pass lab Lighthouse often fail CrUX field data.
+
+## PTP vs NTP for fusion
+
+Sensor fusion with sub-millisecond alignment needs PTP on supported hardware; NTP jitter breaks lidar-camera calibration. Log per-sensor offset estimates and alert when drift exceeds fusion filter tolerance.

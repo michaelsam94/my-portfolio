@@ -159,6 +159,44 @@ def test_invalid_phase_transition_raises():
 
 Pair with [deterministic replay tests](https://blog.michaelsam94.com/agent-deterministic-replay-testing/) for full-turn integration coverage.
 
+## Context budget and summarization without losing state
+
+When `step_count` or estimated tokens exceed a threshold, agents summarize older turns — but summarization must not replace structured state. The anti-pattern: compress the last twenty messages into a paragraph and drop the order ID. The fix: summarize *narrative* history while keeping `state.entities`, `state.tool_results` (archived), and `state.phase` intact:
+
+```python
+def trim_context(state: SessionState) -> SessionState:
+    if estimate_tokens(state) > TOKEN_BUDGET:
+        state.conversation_summary = llm.summarize(state.recent_history(limit=20))
+        state.trimmed_message_ids = [m.id for m in state.messages[:-5]]
+    return state
+```
+
+Render context as: summary block + last five messages + structured entity block. The model gets continuity; the orchestrator keeps canonical IDs for tool calls and tests. Log when summarization fires — frequent firing means the workflow is too chatty or the budget is too tight.
+
+## Entity resolution across turns
+
+Users say "that order" at turn 6 referring to order 4521 from turn 2. Chat history may still mention 4521, but models lose coreference under pressure. Maintain an **entity registry** in session state with types, IDs, and last-mentioned turn:
+
+```python
+state.entities["order"] = {"id": "4521", "turn": 2, "confidence": 1.0}
+```
+
+Update from tool results (authoritative) and from NLU extraction (provisional). When the user says "cancel it," resolve against the most recent entity of matching type above a confidence threshold; if ambiguous, ask — do not guess. Export resolved entities in traces for debugging "wrong order cancelled" incidents.
+
+## Schema evolution for long-lived sessions
+
+Sessions span hours or days in async approval flows. When you add `approval_status` to `SessionState`, old Redis blobs deserialize without it. Use explicit schema versions and migration on read:
+
+```python
+def load_session(raw: dict) -> SessionState:
+    version = raw.get("schema_version", 1)
+    if version < CURRENT_SCHEMA:
+        raw = migrate_session(raw, version, CURRENT_SCHEMA)
+    return SessionState(**raw)
+```
+
+Bump version when fields are renamed or semantics change. [Graph checkpoints](https://blog.michaelsam94.com/agent-graph-workflows-langgraph/) need the same discipline — stale checkpoint shape plus new node code equals production exceptions mid-workflow.
+
 ## Common production mistakes
 
 Teams get multi turn state management wrong in predictable ways:

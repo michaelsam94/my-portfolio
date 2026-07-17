@@ -84,6 +84,28 @@ It does **nothing** against an attacker who owns the device. Frida can hook `Cer
 
 Pin the SPKI hash of a stable intermediate, always ship a backup pin whose key is pre-provisioned, and treat rotation as a rolling, overlapping process rather than a swap. Keep a remote kill switch for emergencies, relax pinning only in debug builds, and remember that pinning secures the wire, not the device. Get the rotation discipline right and pinning is a quiet, effective control. Get it wrong and it's the reason your app can't reach the internet for a week.
 
+## Pin rotation with backup pins
+
+Ship two SPKI pins (production + next cert) before cert renewal — apps without backup pin brick until store update. OkHttp `CertificatePinner` failure messages must not leak pin hashes to user-visible error text.
+
+## Debug vs release pin sets
+
+Never ship debug pins in release manifest flavor — use `network_security_config` product flavor merge. Charles proxy for QA uses debug-only cleartext config, not pin disable in release.
+
+## Certificate Pinning Okhttp Supplement 0 on Samsung and Pixel divergence
+
+Exercise certificate pinning okhttp supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching certificate; regressions above 8% block release for `android-certificate-pinning-okhttp-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Certificate Pinning Okhttp Supplement 0" should map to a single runbook section with known workarounds.
+
+## Okhttp regression gates for Play Vitals
+
+Before promoting `android-certificate-pinning-okhttp-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing certificate with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing certificate pinning okhttp supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [OkHttp CertificatePinner documentation](https://square.github.io/okhttp/features/https/)

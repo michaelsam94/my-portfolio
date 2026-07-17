@@ -7,105 +7,300 @@ dateModified: "2025-07-04"
 tags: ["AI", "Agent", "Inverted"]
 keywords: "agent, inverted, index, analyzers, ai, production, engineering, architecture"
 faq:
-  - q: "What is Inverted Index Analyzers?"
-    a: "Inverted Index Analyzers covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Inverted Index Analyzers?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Inverted Index Analyzers?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Inverted Index Analyzers fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Inverted Index Analyzers should be observable in production and safe to change in small diffs."
+  - q: "Why do inverted index analyzers matter for agent RAG pipelines?"
+    a: "Analyzers determine which terms enter the inverted index at index time and which tokens the query expands to at search time. Mismatch between index and query analyzers is the top cause of zero-hit retrieval for agents—especially on SKUs, error codes, and dotted API paths that users paste verbatim."
+  - q: "Should agents use the same analyzer for indexing and querying?"
+    a: "Usually yes for the same field, but agents often need dual paths: a stemmed analyzer for natural language questions and a keyword or whitespace analyzer for exact identifiers. Use multi-fields so one document supports both without duplicate storage of full text."
+  - q: "How do you test analyzer choices before shipping to production agents?"
+    a: "Build an analyzer unit test harness with golden strings—product IDs, stack traces, non-English queries—and assert token output. Then run retrieval evals on real agent session queries. Token tests catch 80% of issues before expensive end-to-end LLM evals."
+  - q: "What analyzer settings break hybrid vector + BM25 agent search?"
+    a: "Over-aggressive stemming and stopword removal on code fields, synonym graphs that collapse distinct policy terms, and n-grams on full body text that inflate index size and dilute BM25 precision. Keep n-grams scoped to title or autocomplete fields only."
 ---
-Inverted Index Analyzers sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The support agent searched for `ERR_PAYMENT_402` and got nothing. The document contained the exact string, but the index analyzer lowercased and stemmed `payment` while splitting on underscores inconsistently. The query analyzer used a keyword path the mapping never defined. Vector search returned a vaguely related billing FAQ. The user received a confident wrong answer.
 
-When inverted index analyzers is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Inverted indexes power lexical retrieval in nearly every agent knowledge stack—Elasticsearch, OpenSearch, Lucene, Meilisearch, Typesense. **Analyzers** are the tokenizer + filter pipeline that converts raw text into indexed terms. Get them wrong and BM25, filters, and hybrid fusion all fail silently. This deep dive covers analyzer design for agent corpora, index-query symmetry, multi-field patterns, and eval workflows that catch tokenization bugs before users do.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Inverted index refresher
 
-Solid AI engineering turns inverted index analyzers from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent inverted index analyzers bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for inverted index analyzers, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent inverted index analyzers flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for inverted index analyzers in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent inverted index analyzers changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Inverted Index Analyzers: typed boundary + structured errors
-export async function handleInvertedIndexAnalyzers(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-inverted-index-analyzers");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+An inverted index maps each term → list of document IDs (with positions, payloads, norms). Analyzers run **before** terms hit that map:
 
 ```
+"API v2.createCharge failed" 
+    ──▶ tokenizer ──▶ filters ──▶ ["api", "v2", "createcharg", "fail"]
+                                              │
+                                              ▼
+                                    inverted index postings
+```
+
+At query time, the same (or compatible) analyzer transforms the user's text. If index emits `createcharg` but query emits `createcharge`, recall drops.
+
+Agents amplify this because users paste logs, JSON paths, legal clause numbers, and informal paraphrases in the same session.
+
+## Index-time vs search-time analyzers
+
+Elasticsearch and OpenSearch allow separate `analyzer` (index) and `search_analyzer` (query) on a field. Use asymmetry deliberately:
+
+| Pattern | Index analyzer | Search analyzer | When |
+|---------|----------------|-----------------|------|
+| Symmetric standard | english | english | General prose KB |
+| Search-time synonyms only | english | english_synonyms | Avoid index bloat |
+| Exact codes | keyword | keyword | Error codes, UUIDs |
+| Edge n-gram autocomplete | edge_ngram | english | Title typeahead only |
+
+**Search-time synonyms** expand queries without rewriting every document at index time—easier to update synonym lists without reindex.
+
+```json
+PUT /agent_kb
+{
+  "settings": {
+    "analysis": {
+      "filter": {
+        "agent_synonyms": {
+          "type": "synonym_graph",
+          "synonyms": [
+            "sso, single sign-on, saml",
+            "po, purchase order, requisition"
+          ]
+        },
+        "english_stop": {
+          "type": "stop",
+          "stopwords": "_english_"
+        }
+      },
+      "analyzer": {
+        "english_agent": {
+          "tokenizer": "standard",
+          "filter": ["lowercase", "english_stop", "porter_stem"]
+        },
+        "english_agent_search": {
+          "tokenizer": "standard",
+          "filter": ["lowercase", "english_stop", "porter_stem", "agent_synonyms"]
+        },
+        "code_whitespace": {
+          "tokenizer": "whitespace",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "title": {
+        "type": "text",
+        "analyzer": "english_agent",
+        "search_analyzer": "english_agent_search",
+        "fields": {
+          "keyword": { "type": "keyword", "ignore_above": 256 }
+        }
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "english_agent",
+        "search_analyzer": "english_agent_search"
+      },
+      "error_code": {
+        "type": "text",
+        "analyzer": "code_whitespace",
+        "fields": {
+          "exact": { "type": "keyword" }
+        }
+      },
+      "api_path": {
+        "type": "text",
+        "analyzer": "code_whitespace"
+      }
+    }
+  }
+}
+```
+
+## Multi-fields for agent query routing
+
+Agent tools should route query shape to the right subfield:
+
+```python
+from dataclasses import dataclass
+import re
 
 
-## Operational concerns
+CODE_PATTERN = re.compile(r"^[A-Z0-9_]{4,}$|^[a-z]+(\.[a-z]+){2,}$")
 
-Alert on user-visible symptoms for inverted index analyzers — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
 
-Production agent inverted index analyzers work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+@dataclass
+class AgentSearchPlan:
+    primary_fields: list[str]
+    filters: dict[str, str]
+    query_text: str
 
-Rollouts for inverted index analyzers benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+def plan_lexical_search(user_query: str, slots: dict) -> AgentSearchPlan:
+    """Choose fields/analyzers implicitly via Elasticsearch field selection."""
+    q = user_query.strip()
+    filters = {k: v for k, v in slots.items() if k in ("jurisdiction", "product")}
 
-## Security and compliance angles
+    if CODE_PATTERN.match(q):
+        return AgentSearchPlan(
+            primary_fields=["error_code.exact^10", "api_path^5"],
+            filters=filters,
+            query_text=q,
+        )
 
-Even when inverted index analyzers is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+    return AgentSearchPlan(
+        primary_fields=["title^3", "content", "title.keyword^2"],
+        filters=filters,
+        query_text=q,
+    )
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent inverted index analyzers so security reviews do not rely on tribal knowledge.
+When NLU extracts `error_code=ERR_PAYMENT_402`, prefer a `term` filter on `error_code.exact`—do not rely on analyzed text match alone.
 
-## Testing strategy
+## Character filters and ICU considerations
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that inverted index analyzers depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Logs and markdown introduce noise. Character filters run before tokenization:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+- **html_strip** — wiki and Confluence exports
+- **pattern_replace** — normalize `–` vs `-`, collapse repeated slashes
+- **mapping** — `&` → `and` only if eval proves benefit
 
-## Migration and evolution
+For multilingual agent deployments, **ICU tokenizer** with locale-specific folding beats naive lowercase for Turkish and German compound words. Maintain per-locale analyzer aliases; do not assume English stemmer on localized KBs.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent inverted index analyzers functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```json
+"analyzer": {
+  "german_agent": {
+    "tokenizer": "icu_tokenizer",
+    "filter": ["icu_folding", "german_normalization", "german_stop", "german_stem"]
+  }
+}
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where inverted index analyzers spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## N-grams: surgical use only
 
-## Related concepts
+Edge n-grams (`quick` → `q`, `qu`, `qui`, `quick`) power typeahead UIs. Applied to full document bodies they:
 
-Inverted Index Analyzers intersects with broader ai topics — see companion notes on [agent-inverted patterns](https://blog.michaelsam94.com/agent-inverted/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+- Multiply index size 5–20×
+- Degrade BM25 precision (every partial token matches)
+- Slow agent retrieval under load
+
+Scope n-grams to `title.suggest` subfields with `index_options: docs` and omit norms where possible.
+
+## Analyzer testing harness
+
+Test analyzers before mapping changes ship:
+
+```python
+def analyze(es, index: str, analyzer: str, text: str) -> list[str]:
+    body = {"analyzer": analyzer, "text": text}
+    resp = es.indices.analyze(index=index, body=body)
+    return [t["token"] for t in resp["tokens"]]
+
+
+GOLDEN = [
+    ("ERR_PAYMENT_402", "code_whitespace", ["err_payment_402"]),
+    ("API v2.createCharge", "code_whitespace", ["api", "v2.createcharge"]),
+    ("running refunds", "english_agent", ["run", "refund"]),  # stemmed
+]
+
+def test_analyzers(es, index: str):
+    for text, analyzer, expected in GOLDEN:
+        tokens = analyze(es, index, analyzer, text)
+        assert tokens == expected, f"{text}: {tokens} != {expected}"
+```
+
+Run in CI on every mapping PR. Pair with `_analyze` API snapshots checked into the repo.
+
+## Reindex and analyzer migration
+
+Changing analyzers requires reindex—search-time-only synonym updates excepted. Safe rollout:
+
+1. Build `agent_kb_v2` with new analyzers
+2. Reindex from source or snapshot
+3. Run golden retrieval eval (nDCG@10, zero-hit rate)
+4. Alias swap `agent_kb_active` atomically
+5. Keep v1 index 24h for rollback
+
+Agents must query aliases, never pinned index names—see companion BM25 tuning notes.
+
+## Hybrid retrieval and analyzer consistency
+
+Vector embeddings often come from a different tokenization (model subword BPE). Lexical and vector branches are **intentionally asymmetric**—but within the lexical branch, index/query symmetry is mandatory.
+
+When fusing with RRF, a zero-hit BM25 branch still hurts if the vector branch retrieves wrong jurisdiction chunks. Combine hard filters with analyzer-aware routing.
+
+## Operational monitoring
+
+Dashboards for agent search health:
+
+- **Zero-hit rate** by query length bucket
+- **Top zero-hit queries** — synonym gaps or analyzer bugs
+- **Analyze diff** — sample production queries where index vs search analyzer diverge (custom admin tool)
+- **Index size growth** after n-gram or synonym changes
+
+Alert when zero-hit rate spikes after corpus ingest—often a new content source bypassed the standard analyzer pipeline.
+
+## Security considerations
+
+Analyzers are not a security boundary. Malicious corpus injection can plant tokens that match admin queries. Sanitize ingested HTML; restrict who can publish to agent KB indices.
+
+Custom analyzers with `script` tokenizers are RCE risk surfaces—disable in multi-tenant clusters.
+
+## Stemming pitfalls in agent corpora
+
+English Porter stemmer collapses words agents must keep distinct:
+
+- `policy` / `policies` — often fine
+- `running` / `runner` / `runbook` — can collide incorrectly
+- Product names that look like English words — stem to unrelated roots
+
+Mitigation: maintain a **protected terms** list in a `keyword_marker` filter before stemming, or route product names through a `keyword` subfield only. When agents search for branded feature names (`QuickPay`, `SmartRefund`), eval zero-hit rates before blaming embedding models—check stemmer output first.
+
+```json
+"filter": {
+  "agent_protected": {
+    "type": "keyword_marker",
+    "keywords": ["QuickPay", "SmartRefund", "ERR_PAYMENT_402"]
+  }
+},
+"analyzer": {
+  "english_agent": {
+    "tokenizer": "standard",
+    "filter": ["lowercase", "agent_protected", "english_stop", "porter_stem"]
+  }
+}
+```
+
+Review protected terms quarterly from zero-hit query logs.
+
+## Agent ingestion pipeline alignment
+
+Analyzers fail when ingestion bypasses the mapping. Common breaks:
+
+- **Direct `_bulk` from scripts** using wrong pipeline
+- **Attachment processors** extracting PDF text without `html_strip`
+- **Duplicate chunk IDs** re-indexed with different normalizers after mapping change
+
+Enforce an ingest pipeline in Elasticsearch/OpenSearch that routes fields through the same analyzers defined in the index template. CI should reject bulk jobs that target raw index names instead of the active alias.
+
+```json
+PUT _ingest/pipeline/agent_kb_default
+{
+  "processors": [
+    { "set": { "field": "_ingest_timestamp", "value": "{{_ingest.timestamp}}" } },
+    { "remove": { "field": ["raw_html_script"], "ignore_missing": true } }
+  ]
+}
+```
+
+Pair pipeline version with mapping version in your agent KB release notes so on-call knows which combination is live.
 
 ## The takeaway
 
-Inverted Index Analyzers rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent inverted index analyzers becomes a maintainable asset instead of incident fuel.
+Inverted index analyzers are the hidden contract between agent user language and lexical retrieval. Design multi-fields for codes vs prose, keep index/query pipelines aligned, test tokens with golden strings in CI, and migrate analyzers via alias swaps with retrieval evals. When `ERR_PAYMENT_402` misses, fix analyzers before tuning embedding models—the bug is usually tokenization, not vectors.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Elasticsearch Analyzers reference](https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-analyzers.html)
+- [OpenSearch index analyzers](https://opensearch.org/docs/latest/analyzers/supported-analyzers/index/)
+- [Apache Lucene analysis overview](https://lucene.apache.org/core/documentation.html)
+- [Companion: BM25 Elasticsearch Tuning](/agent-bm25-elasticsearch-tuning/)
+- [Companion: Faceted Navigation Filters](/agent-faceted-navigation-filters/)
+- [Unicode TR35 — locale-aware tokenization](https://unicode.org/reports/tr35/)

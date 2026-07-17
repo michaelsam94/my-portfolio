@@ -3,8 +3,8 @@ title: "MCP vs Plain Function Calling"
 slug: "model-context-protocol-vs-function-calling"
 description: "Compare Model Context Protocol to native LLM function calling: when MCP's tool servers beat inline schemas, transport trade-offs, and hybrid architectures for production agents."
 datePublished: "2025-07-12"
-dateModified: "2025-07-12"
-tags: ["AI", "MCP", "LLM", "Agents"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP vs function calling, Model Context Protocol, OpenAI tools API, agent tool integration, LLM tool routing"
 faq:
   - q: "Does MCP replace OpenAI or Anthropic function calling?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are MCP's main operational costs?"
     a: "Process management for stdio servers, auth for remote HTTP/SSE transports, versioning across server and client, and debugging distributed failures. Function calling in one process is simpler to trace but harder to reuse across teams."
 ---
-
 Our agent had fourteen `@tool` decorators in one Python file. Marketing wanted the same Salesforce lookup in Claude Desktop, the support bot, and a GitHub Action — so we copied the function schemas three times and watched them drift within a month. Model Context Protocol (MCP) didn't replace the LLM's function-calling API; it replaced the copy-paste layer between hosts and tool implementations. Understanding where each layer stops saves you from bolting MCP onto problems a simple tools array already solves.
 
 ## Two layers, not two competitors
@@ -167,3 +166,17 @@ Use MCP when tools span multiple hosts and teams — function calling suffices f
 - [Anthropic tool use documentation](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
 - [MCP servers repository (official examples)](https://github.com/modelcontextprotocol/servers)
 - [Cursor MCP documentation](https://docs.cursor.com/context/model-context-protocol)
+
+## Production notes for LLM stacks
+
+When `model-context-protocol-vs-function-calling` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `mcp vs plain function calling` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

@@ -3,8 +3,8 @@ title: "Testing MCP Servers with the Inspector"
 slug: "mcp-server-testing-inspector"
 description: "Debug and test MCP servers with the MCP Inspector: tool invocation, resource fetching, prompt testing, and protocol compliance verification."
 datePublished: "2025-05-12"
-dateModified: "2025-05-12"
-tags: ["AI", "MCP", "Testing", "Developer Tools"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP Inspector, MCP server testing, Model Context Protocol debug, MCP tool testing, MCP Inspector CLI, MCP protocol testing"
 faq:
   - q: "What is the MCP Inspector?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I test an MCP server that requires authentication?"
     a: "For stdio servers, pass credentials via environment variables in the Inspector's server config. For remote HTTP servers, configure the Authorization header in the Inspector's connection settings. The Inspector supports Bearer token auth for testing OAuth-protected servers."
 ---
-
 You built an MCP server with twelve tools, eight resources, and three prompts. It connects in Cursor without errors. But when the model calls `search_tickets`, it returns empty results. When it calls `create_ticket`, the required fields error message is confusing. You need to test each tool in isolation, inspect the raw protocol messages, and verify your schemas before the model ever sees them.
 
 The MCP Inspector is the official debugging tool for this. It connects to your server, exposes every capability in a testable UI, and shows the JSON-RPC wire protocol so you can see exactly what the client and server exchange.
@@ -200,17 +199,6 @@ Run in CI on every pull request that modifies the MCP server.
 
 **Resource URI mismatch:** template URIs registered but fetch handler does not parse parameters correctly.
 
-## Common production mistakes
-
-Teams get server testing inspector wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of server testing inspector fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [MCP Inspector GitHub repository](https://github.com/modelcontextprotocol/inspector)
@@ -218,3 +206,17 @@ Production implementations of server testing inspector fail when staging mirrors
 - [MCP TypeScript SDK client documentation](https://github.com/modelcontextprotocol/typescript-sdk)
 - [MCP specification: protocol messages](https://spec.modelcontextprotocol.io/specification/2025-03-26/basic/transports/)
 - [MCP server examples for testing reference](https://github.com/modelcontextprotocol/servers)
+
+## Production notes for LLM stacks
+
+When `mcp-server-testing-inspector` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `testing mcp servers with the inspector` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

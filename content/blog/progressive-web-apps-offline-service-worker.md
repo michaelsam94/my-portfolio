@@ -3,7 +3,7 @@ title: "Offline PWAs with Service Workers"
 slug: "progressive-web-apps-offline-service-worker"
 description: "Build offline-capable PWAs with service workers: caching strategies, Workbox, background sync, and update flows that don't strand users on stale bundles."
 datePublished: "2026-04-16"
-dateModified: "2026-04-16"
+dateModified: "2026-07-17"
 tags: ["Web", "PWA", "Service Workers", "Frontend"]
 keywords: "PWA offline service worker, Workbox caching strategies, service worker cache, offline first PWA, progressive web app"
 faq:
@@ -179,29 +179,51 @@ self.addEventListener('activate', (event) => {
 
 Bump cache name on every deploy. Stale-while-revalidate for API JSON; cache-first for hashed static assets.
 
-## Common production mistakes
 
-Teams get offline service worker wrong in predictable ways:
+## Navigation preload under real latency
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Navigation Preload starts fetching HTML while the service worker thread spins up — on repeat visits this shaves 100–300ms on mid-tier Android. Enable in `activate`, call `event.preloadResponse` in your navigation handler, and fall back to cache when preload fails. Without fallback, flaky preload errors surface as blank pages.
 
-Production implementations of offline service worker fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+```javascript
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(async function() {
+    try {
+      const preload = await event.preloadResponse;
+      if (preload) return preload;
+    } catch (_) {}
+    const cached = await caches.match('/shell.html');
+    return cached || fetch(event.request);
+  }());
+});
+```
 
-## Debugging and triage workflow
+## IndexedDB migration when schema changes
 
-When offline service worker misbehaves in production, work top-down instead of guessing:
+Offline queues stored in IndexedDB need versioned upgrades — bump `onupgradeneeded` when adding indexes, never delete stores silently. Migration failures brick offline submit for users who skip app updates for weeks. Log IDB errors to RUM; they rarely throw to UI unless you wrap every read.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Cross-origin isolation and SW
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Some advanced APIs need COOP/COEP headers — service worker cached responses must include same headers or isolation breaks on repeat visit. Document header requirements in precache manifest review checklist.
+
+## Third-party script offline behavior
+
+Analytics and chat widgets often fail offline — wrap in try/catch and degrade silently; uncaught promise rejections in SW-controlled pages confuse error monitoring. Consider deferring third-party load until online probe succeeds.
+
+## Production rollout notes
+
+Offline PWAs fail in production when teams treat DevTools offline toggle as sufficient validation. Run throttled 3G profiles with packet loss during QA. Field users on construction sites lose connectivity mid-upload; your service worker must resume partial uploads or queue idempotently. Document maximum offline duration before cache staleness warnings appear. Pair service worker metrics with RUM: track cache hit ratio, sync queue depth, and failed flush count separately from page views.
+## Field testing checklist
+
+Before shipping offline mode, run through this checklist on physical devices: enable airplane mode mid-form-submit, kill app during background sync, deny storage quota then retry upload, update service worker with pending outbox items, and open two tabs with different cache generations. Each scenario should leave user data intact or show explicit recoverable error — never silent loss. Record videos of failures for QA tickets; service worker bugs reproduce poorly from text steps alone.
+
+## Workbox runtime diagnostics
+
+Enable `workbox-core` development logging in staging builds only — log cache strategy decisions with request URL and outcome. Forward aggregated cache hit/miss ratio to analytics weekly. Sudden miss spike after deploy often means cache name typo in registerRoute callback, not network outage.
+
+## Closing operational guidance
+
+Document service worker scope carefully — `/sw.js` scoped to `/` controls entire origin including admin subpaths you did not intend to cache. Narrow scope or split origins for admin vs customer PWA. Register scope review in security checklist alongside CSP updates. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

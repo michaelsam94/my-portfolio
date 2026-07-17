@@ -140,6 +140,16 @@ Before enabling `android-boot-completed-receiver-limits` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Boot Completed Receiver Limits on Samsung and Pixel divergence
+
+Exercise boot completed receiver limits on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching boot; regressions above 8% block release for `android-boot-completed-receiver-limits`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Boot Completed Receiver Limits" should map to a single runbook section with known workarounds.
+
+## Receiver regression gates for Play Vitals
+
+Before promoting `android-boot-completed-receiver-limits` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if limits path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

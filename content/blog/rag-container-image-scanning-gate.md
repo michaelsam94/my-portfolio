@@ -1,111 +1,226 @@
 ---
-title: "RAG: Container Image Scanning Gate"
+title: "Container Image Scanning Gates in CI/CD"
 slug: "rag-container-image-scanning-gate"
-description: "Container Image Scanning Gate: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Gate agent deployments with container image scanning—CVE policy tiers, SBOM-aware exceptions, admission control, and CI pipelines that block bad images without blocking model iteration."
 datePublished: "2025-11-10"
-dateModified: "2025-11-10"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Container"]
-keywords: "rag, container, image, scanning, gate, ai, production, engineering, architecture"
+keywords: "container image scanning, CVE gate, admission controller, Trivy, agent Docker security, SBOM policy, supply chain"
 faq:
-  - q: "What is Container Image Scanning Gate?"
-    a: "Container Image Scanning Gate covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Container Image Scanning Gate?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Container Image Scanning Gate?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Container Image Scanning Gate fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Container Image Scanning Gate should be observable in production and safe to change in small diffs."
+  - q: "Where should image scanning run for agent workloads—CI, registry, or cluster admission?"
+    a: "All three, with different jobs. CI fails builds on critical CVEs in base layers you control. Registry scanning catches images promoted from untrusted paths and rescan when vulnerability databases update. Admission control is the last line—it blocks pull even if someone bypasses CI with a manual tag push."
+  - q: "How do scanning gates handle ML base images with many transitive CVEs?"
+    a: "Use tiered policies: block critical and high with known fixes in your base image lineage; ticket medium on SLA; allowlist only with expiry, owner, and compensating controls. Scan the full filesystem including Python wheels and CUDA libs—agent images are fatter than typical microservices and accumulate silent debt."
+  - q: "Should agent images be rebuilt when only the vulnerability DB changes?"
+    a: "Yes for production promotion paths. A clean scan yesterday does not mean clean today. Rescan on deploy and nightly; trigger rebuilds when upstream base images publish patches. Pin digests in manifests, not mutable latest tags."
 ---
-Most teams encounter container image scanning gate after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The security review asked a reasonable question: "How do you know the agent inference image running in production does not contain a critical OpenSSL CVE?" Engineering answered "we use Docker." That was not an answer—it was a category error. Building a container and scanning a container are different controls. Agent teams ship large images fast; without a scanning gate, every deploy is a supply-chain bet.
 
-When container image scanning gate is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Container image scanning gates turn "trust me, I ran apt upgrade" into an enforceable policy: no workload schedules unless the image digest passes vulnerability thresholds, provenance checks, and optional SBOM attestation. For AI agent platforms—where images bundle orchestration code, tool runtimes, and sometimes local model weights—the gate is as important as network policy.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns container image scanning gate from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag container image scanning gate bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for container image scanning gate, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag container image scanning gate flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for container image scanning gate in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag container image scanning gate changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Container Image Scanning Gate: typed boundary + structured errors
-export async function handleContainerImageScanningGate(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-container-image-scanning-gate");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Defense in depth: three enforcement points
 
 ```
+Developer push → CI scan (build fail) → Registry scan (quarantine) → Deploy → Admission webhook (reject)
+```
 
+| Stage | Catches | Agent-specific note |
+|-------|---------|---------------------|
+| CI | Bad Dockerfile layers before merge | Cache-heavy builds may skip rescan without explicit step |
+| Registry | Re-scan on DB update, rogue tags | Model-serving images re-tagged across envs |
+| Admission | Manual bypass, stale promotions | Last chance before GPU nodes pull |
 
-## Operational concerns
+Each stage should emit the same **policy result schema** so teams do not reconcile three different severities for the same CVE.
 
-Alert on user-visible symptoms for container image scanning gate — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Policy design that teams can live with
 
-Production rag container image scanning gate work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Naive "zero CVEs" policies fail on day one. Agent images inherit CUDA, PyTorch, and distro packages with hundreds of findings. Effective policies combine:
 
-Rollouts for container image scanning gate benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Severity thresholds** — block `CRITICAL` with fix available; warn on `HIGH`; track `MEDIUM` with 30-day SLA.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Fix availability** — ignore unfixed upstream issues only with documented risk acceptance, not silent suppression.
 
-## Security and compliance angles
+**Scope by image class** — stricter on `agent-worker` (network egress, tool access) than on offline batch eval images.
 
-Even when container image scanning gate is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+**Time-bounded exceptions** — exception records include CVE id, owner, expiry, compensating control (WAF rule, network deny).
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag container image scanning gate so security reviews do not rely on tribal knowledge.
+```yaml
+# policy/agent-images.rego (OPA-style example)
+deny[msg] {
+  input.image.class == "agent-worker"
+  some vuln in input.scan.vulnerabilities
+  vuln.severity == "CRITICAL"
+  vuln.fix_available == true
+  not exception_valid(vuln.id, input.image.digest)
+  msg := sprintf("critical fixed CVE %s in %s", [vuln.id, input.image.name])
+}
+```
 
-## Testing strategy
+Review exceptions weekly; agents change fast and yesterday's compensating control may no longer apply.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that container image scanning gate depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## CI integration with Trivy or Grype
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Scan in the pipeline after `docker build` and before push:
 
-## Migration and evolution
+```yaml
+# .github/workflows/agent-image.yml (excerpt)
+- name: Build agent worker
+  run: docker build -t ghcr.io/acme/agent-worker:${{ github.sha }} .
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag container image scanning gate functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+- name: Scan image
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ghcr.io/acme/agent-worker:${{ github.sha }}
+    format: sarif
+    severity: CRITICAL,HIGH
+    exit-code: 1
+    ignore-unfixed: true
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where container image scanning gate spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+- name: Upload SARIF
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: trivy-results.sarif
+```
+
+Pin scanner versions. Vulnerability matching changes between Trivy releases; unpinned scanners create flaky CI.
+
+Generate SBOM alongside scan:
+
+```bash
+trivy image --format spdx-json -o sbom.spdx.json ghcr.io/acme/agent-worker:${SHA}
+cosign attest --predicate sbom.spdx.json --type spdx ghcr.io/acme/agent-worker:${SHA}
+```
+
+Attach SBOM attestations so admission can verify package inventory matches scan subject.
+
+## Registry scanning and digest promotion
+
+Tags lie; digests do not. Promotion flow:
+
+1. CI pushes `agent-worker:sha-abc123` and scan passes.
+2. Staging deploy references digest `sha256:def...`.
+3. Production promotion copies digest, not retag of `latest`.
+4. Registry webhook rescan on CVE DB bump; if policy fails, mark digest quarantined and alert.
+
+Quarantined digests still run until replaced—that is intentional. Gates stop **new** schedules; rolling replacement is a deploy concern, not a scanner toggle.
+
+For agent platforms with frequent hotfixes, maintain a **fast lane** with tighter scope (single-service patch) but identical scan rigor—no lane skips scanning.
+
+## Kubernetes admission control
+
+Deploy a validating webhook (Kyverno, OPA Gatekeeper, or cloud-native policy) that rejects pods whose image digest lacks a passing scan record:
+
+```yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-agent-image-scan
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: check-scan-annotation
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: agent-worker
+      validate:
+        message: "Image missing valid scan attestation"
+        pattern:
+          metadata:
+            annotations:
+              scan.acme.com/result: "pass"
+              scan.acme.com/digest: "?*"
+```
+
+Your CI/CD pipeline writes annotations or signs images with Cosign predicates consumed by policy. Manual `kubectl run` with unscanned images should fail closed.
+
+## Agent image composition risks
+
+Agent Dockerfiles often:
+
+- `pip install` fifty packages from PyPI without hash pinning
+- Copy local tool binaries from unverified sources
+- Bundle Hugging Face weights via curl without checksum verify
+- Run as root for convenience
+
+Scanning gates surface CVEs, but **preventive Dockerfile review** reduces noise:
+
+```dockerfile
+FROM python:3.12-slim-bookworm@sha256:...
+
+RUN pip install --no-cache-dir -r requirements.txt \
+    --require-hashes
+
+USER 65532:65532
+COPY --chown=65532:65532 agent/ /app/agent/
+```
+
+Multi-stage builds drop compiler toolchains from runtime layers—fewer packages, smaller attack surface, faster scans.
+
+## Handling false positives and scanner disagreement
+
+Different scanners disagree on severity and fix status. Pick a **primary scanner** for gating and ingest others as advisory. When developers dispute findings:
+
+1. Verify CVE applies to actually installed version (not phantom DB match).
+2. Check if vulnerable code path is reachable in runtime.
+3. If false positive, file upstream scanner issue and add time-boxed ignore with CVE justification.
+
+Document ignores in version-controlled policy files—never only in SaaS UI.
+
+## Operational metrics
+
+Track:
+
+- `scan_fail_rate` by image class
+- `mean_time_to_remediate` critical CVEs
+- `exception_count` and `exception_expired`
+- `admission_reject_rate`
+- `deployments_blocked` (should correlate with scan failures, not webhook outages)
+
+Alert on webhook availability—if admission is down, clusters often fail open or halt all deploys. Both are bad; prefer fail closed for production workers with egress.
+
+## Incident response when a critical CVE lands mid-week
+
+1. Registry rescan flags running digests.
+2. Identify workloads via image digest index, not tag.
+3. Build patched image from updated base; emergency scan lane.
+4. Roll workers with surge capacity; drain long agent runs gracefully.
+5. Postmortem: why was package in image—direct dep or transitive bloat?
+
+Keep a runbook that names who can grant exceptions and maximum exception duration without VP approval.
+
+## Signing, provenance, and trusted base images
+
+Scanning answers "what vulnerabilities exist?" Provenance answers "who built this and from what sources?" For agent images, chain both:
+
+- Build in CI from tagged Dockerfiles in your org repo—no manual `docker commit`.
+- Sign images with Cosign or Notary v2; admission verifies signature before scan annotation check.
+- Prefer hardened base images (distroless, slim LTS) maintained by your platform team over ad-hoc `python:latest`.
+
+```bash
+# Verify before deploy
+cosign verify --certificate-identity-regexp '.*@acme.com' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/acme/agent-worker@${DIGEST}
+```
+
+Distroless reduces CVE surface but complicates debugging—maintain a debug variant tagged separately and blocked from production admission. Agent on-call engineers need a documented path to shell into troubleshooting images without bypassing scan gates in prod.
 
 ## Related concepts
 
-Container Image Scanning Gate intersects with broader ai topics — see companion notes on [rag-container patterns](https://blog.michaelsam94.com/rag-container/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Image scanning connects to [SBOM generation in CI](https://blog.michaelsam94.com/agent-sbom-generation-ci/) and [pod security standards](https://blog.michaelsam94.com/agent-pod-security-standards/). Gates enforce what those practices produce.
 
 ## The takeaway
 
-Container Image Scanning Gate rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag container image scanning gate becomes a maintainable asset instead of incident fuel.
+A container image scanning gate is enforceable supply-chain hygiene—not a checkbox scan in CI that everyone ignores when deadlines loom. Layer CI, registry, and admission enforcement; use severity-plus-fix-available policies suited to fat agent images; pin digests and SBOM attestations. When security asks how you know the image is safe, you show policy results tied to the digest running on the cluster—not a Dockerfile from last quarter.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Trivy documentation](https://aquasecurity.github.io/trivy/) — filesystem and image scanning
+- [Anchore Grype](https://github.com/anchore/grype) — alternative vulnerability matcher
+- [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) — sign and verify scan attestations
+- [Kyverno verifyImages policies](https://kyverno.io/docs/writing-policies/verify-images/) — admission based on signatures
+- [NSA Kubernetes Hardening Guidance](https://www.nsa.gov/Press-Room/News-Highlights/Article/Article/2716980/nsa-cisa-release-kubernetes-hardening-guidance/) — container supply chain context

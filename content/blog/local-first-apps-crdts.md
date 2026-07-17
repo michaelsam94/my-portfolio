@@ -3,8 +3,8 @@ title: "Local-First Apps with CRDTs"
 slug: "local-first-apps-crdts"
 description: "How to build local-first apps with CRDTs: conflict-free offline sync, why CRDTs beat last-write-wins, and using Automerge or Yjs in production without the sharp edges."
 datePublished: "2026-06-18"
-dateModified: "2026-06-18"
-tags: ["Local-First", "CRDTs", "Offline Sync", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "local-first, CRDT, offline sync, Automerge, conflict-free replicated data types, Yjs, collaboration"
 faq:
   - q: "What is a local-first app?"
@@ -14,7 +14,6 @@ faq:
   - q: "When should you not use CRDTs?"
     a: "CRDTs carry metadata overhead and don't enforce global invariants like uniqueness or 'balance must not go negative.' For strong-consistency needs — payments, inventory, anything requiring a single source of truth at write time — a server-authoritative model with transactions is the right tool, not a CRDT."
 ---
-
 The pitch for local-first is easy to want: an app that opens instantly, works on a plane, and syncs across devices without ever showing a spinner or a merge-conflict dialog. The hard part is the last clause. Two devices edit the same document offline, both come back online — what happens? Last-write-wins silently throws away someone's work. CRDTs are the data structures that make that merge automatic and lossless, and they're the reason local-first is now a practical architecture rather than a research topic.
 
 I've built offline-heavy mobile apps where sync correctness was the entire ballgame, so I want to be concrete about what CRDTs buy you, what they cost, and when *not* to reach for them.

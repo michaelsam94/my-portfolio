@@ -1,111 +1,214 @@
 ---
-title: "RAG: Csrf Double Submit Cookie"
+title: "CSRF Protection with the Double Submit Cookie Pattern"
 slug: "rag-csrf-double-submit-cookie"
-description: "Csrf Double Submit Cookie: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Double-submit cookie CSRF defense for agent admin consoles and state-changing APIs—SameSite, token rotation, SPA fetch patterns, and why synchronizer tokens still matter for OAuth callbacks."
 datePublished: "2025-09-28"
-dateModified: "2025-09-28"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Csrf"]
-keywords: "rag, csrf, double, submit, cookie, ai, production, engineering, architecture"
+keywords: "csrf, double submit cookie, synchronizer token, SameSite, agent admin, OAuth state, SPA security, cookie security"
 faq:
-  - q: "What is Csrf Double Submit Cookie?"
-    a: "Csrf Double Submit Cookie covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Csrf Double Submit Cookie?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Csrf Double Submit Cookie?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Csrf Double Submit Cookie fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Csrf Double Submit Cookie should be observable in production and safe to change in small diffs."
+  - q: "When is the double-submit cookie pattern sufficient for agent APIs?"
+    a: "It works when your app sets a non-HttpOnly CSRF cookie and requires the same value in a header or form field on state-changing requests, and when attackers cannot read that cookie cross-site. It is not sufficient alone if you have XSS (attacker reads the cookie), subdomain takeover, or clients that strip custom headers on cross-origin requests."
+  - q: "Why do agent dashboards need CSRF protection if they use Bearer tokens?"
+    a: "Many agent stacks mix cookie sessions for the admin UI with API keys for programmatic access. OAuth callbacks, webhook replay forms, and legacy endpoints often still use cookie auth. CSRF targets the browser's automatic cookie attachment—Bearer tokens in Authorization headers are not sent cross-site by default, but session cookies are."
+  - q: "Should the CSRF token cookie be HttpOnly?"
+    a: "For double-submit, the cookie must be readable by JavaScript so the SPA can copy it into X-CSRF-Token. That tradeoff means XSS becomes a CSRF bypass vector. Mitigate with strict CSP, short session TTL, and HttpOnly session cookies separate from the CSRF cookie. Some teams use a synchronizer token stored server-side instead when XSS risk is high."
 ---
-Most teams encounter csrf double submit cookie after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The security review paused on slide seven: the agent ops console let administrators rotate API keys, approve tool permissions, and purge conversation logs—all via cookie-authenticated POST requests with no CSRF token. The team assumed SameSite=Lax was enough. It was not. A malicious page on another origin could still trigger some cross-site POST flows in older Safari builds, and a compromised subdomain could read non-HttpOnly CSRF cookies if they ever added the double-submit pattern incorrectly.
 
-When csrf double submit cookie is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Cross-Site Request Forgery (CSRF) remains relevant in agent platforms because human operators use browser-based consoles while agents themselves use service credentials. The double-submit cookie pattern is a pragmatic defense when you cannot embed synchronizer tokens in every form: you set a cookie and require the same value in a request header or body field. The server compares them without server-side session storage for the token. This post walks through production-grade implementation for production admin surfaces, where the failure mode is not a stolen password but an silently executed configuration change.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## How CSRF attacks agent admin surfaces
 
-Solid AI engineering turns csrf double submit cookie from a recurring argument into a documented pattern with tests and an owner.
+CSRF exploits the browser's behavior: when a user is logged into `admin.agents.example`, their session cookie rides along on requests to that origin—even if the request was initiated by JavaScript on `evil.example`.
 
-## Design principles that survive production
+Agent admin consoles are high-value targets:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag csrf double submit cookie bugs hide.
+- **API key rotation** — Attacker triggers rotation; legitimate integrations fail until someone notices.
+- **Tool allowlist changes** — A newly approved shell-exec tool becomes available to all tenant agents.
+- **Prompt template edits** — Subtle injection into system prompts propagates to every session.
+- **Data export triggers** — Bulk export of conversation logs to attacker-controlled webhooks.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for csrf double submit cookie, you do not yet understand the behavior you shipped.
+These are state-changing operations, typically `POST`, `PUT`, or `DELETE`. Safe methods (`GET`, `HEAD`) should never mutate state; that is table stakes before any CSRF layer.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+The double-submit pattern works on the observation that while an attacker can cause the browser to *send* cookies cross-site (within SameSite rules), they cannot *read* cookie values from another origin due to the same-origin policy—unless XSS or a sibling subdomain compromise exists.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag csrf double submit cookie flows so duplicates are harmless or detectable.
+## Double-submit cookie mechanics
 
-## Implementation patterns
-
-A practical baseline for csrf double submit cookie in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag csrf double submit cookie changes safer because business rules stay isolated from transport details.
+1. Server generates a cryptographically random token (128+ bits).
+2. Server sets `Set-Cookie: csrf-token=<value>; Path=/; Secure; SameSite=Strict` (or Lax if OAuth redirects require it).
+3. Client JavaScript reads `csrf-token` and sends it in `X-CSRF-Token` header (or a form field) on mutating requests.
+4. Server compares cookie value to header/body value using constant-time comparison. Mismatch → `403 Forbidden`.
 
 ```typescript
-// Csrf Double Submit Cookie: typed boundary + structured errors
-export async function handleCsrfDoubleSubmitCookie(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-csrf-double-submit-cookie");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+// middleware/csrfDoubleSubmit.ts
+import { randomBytes, timingSafeEqual } from "crypto";
+import type { Request, Response, NextFunction } from "express";
+
+const CSRF_COOKIE = "csrf-token";
+const CSRF_HEADER = "x-csrf-token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export function issueCsrfToken(_req: Request, res: Response, next: NextFunction) {
+  if (!res.locals.csrfIssued) {
+    const token = randomBytes(32).toString("base64url");
+    res.cookie(CSRF_COOKIE, token, {
+      httpOnly: false, // SPA must read for double-submit
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 8 * 60 * 60 * 1000,
+    });
+    res.locals.csrfIssued = true;
   }
+  next();
 }
 
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+export function verifyCsrfDoubleSubmit(req: Request, res: Response, next: NextFunction) {
+  if (SAFE_METHODS.has(req.method)) return next();
+
+  const cookieToken = req.cookies[CSRF_COOKIE];
+  const headerToken = req.get(CSRF_HEADER) ?? req.body?._csrf;
+
+  if (!cookieToken || !headerToken || !safeEqual(cookieToken, headerToken)) {
+    return res.status(403).json({ error: "csrf_validation_failed" });
+  }
+  next();
+}
 ```
 
+Wire `issueCsrfToken` on responses that render the admin SPA shell, and `verifyCsrfDoubleSubmit` on all `/api/admin/*` mutating routes—including GraphQL mutations if your agent console uses Apollo.
 
-## Operational concerns
+## SPA integration for production consoles
 
-Runbooks for csrf double submit cookie should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+React and Next.js admin panels typically attach the token in a global fetch wrapper:
 
-Production rag csrf double submit cookie work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```typescript
+// lib/adminFetch.ts
+function getCsrfFromCookie(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
-Rollouts for csrf double submit cookie benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+export async function adminFetch(input: string, init: RequestInit = {}) {
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers = new Headers(init.headers);
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrf = getCsrfFromCookie();
+    if (!csrf) throw new Error("Missing CSRF token — reload admin console");
+    headers.set("X-CSRF-Token", csrf);
+  }
 
-## Security and compliance angles
+  headers.set("Content-Type", "application/json");
+  return fetch(input, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+}
 
-Even when csrf double submit cookie is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+// Usage: approve a new tool
+await adminFetch("/api/admin/tools/shell-exec/approve", {
+  method: "POST",
+  body: JSON.stringify({ tenantId: "t_abc", approved: true }),
+});
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag csrf double submit cookie so security reviews do not rely on tribal knowledge.
+Fetch with `credentials: "include"` is mandatory; without it the session cookie—and CSRF cookie—will not be sent.
 
-## Testing strategy
+## SameSite, OAuth, and agent SSO flows
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that csrf double submit cookie depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Agent platforms often integrate SSO for enterprise tenants. OAuth authorization redirects are cross-site navigations. `SameSite=Strict` CSRF cookies will not be sent on the return hop from the identity provider, breaking double-submit until the SPA re-fetches a fresh token.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Practical policy:
 
-## Migration and evolution
+| Cookie | SameSite | HttpOnly | Purpose |
+|--------|----------|----------|---------|
+| `session` | Lax | true | Operator authentication |
+| `csrf-token` | Strict | false | Double-submit value |
+| `oauth-state` | Lax | true | OAuth CSRF (separate concern) |
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag csrf double submit cookie functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+OAuth **state** parameter prevents login CSRF; double-submit prevents **session-riding** CSRF on subsequent admin actions. You need both.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where csrf double submit cookie spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+When embedding the agent console in iframes (rare but seen in partner portals), `SameSite=None; Secure` may be required. That increases exposure—avoid iframe embedding for admin surfaces or use token-based auth instead of cookies.
 
-## Related concepts
+## When double-submit is not enough
 
-Csrf Double Submit Cookie intersects with broader ai topics — see companion notes on [rag-csrf patterns](https://blog.michaelsam94.com/rag-csrf/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**XSS on the admin origin.** If an attacker injects script on `admin.agents.example`, they read `csrf-token` from `document.cookie` and forge requests. Double-submit does not replace XSS prevention: CSP, sanitization, and Subresource Integrity on admin bundles.
 
-## The takeaway
+**Subdomain takeover.** A cookie set with `Domain=.agents.example` is visible to all subdomains. An abandoned `staging.agents.example` CNAME can become an attacker's origin. Scope CSRF cookies to the exact admin host; never use wildcard domain unless every subdomain is equally trusted.
 
-Csrf Double Submit Cookie rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag csrf double submit cookie becomes a maintainable asset instead of incident fuel.
+**Content-Type bypass history.** Older browsers executed JSON as script in some configurations. Always validate `Content-Type: application/json` on API routes and reject unexpected types before CSRF checks.
+
+**Service-to-service paths.** Agent runtime workers calling admin APIs with mTLS or signed JWTs should not use double-submit at all—they should use separate auth with no browser cookies involved.
+
+For high-risk mutations (delete all tenant data, export PII), add a **step-up** confirmation: re-enter password, WebAuthn tap, or time-limited signed intent token generated server-side—not merely double-submit.
+
+## Synchronizer token vs double-submit
+
+| Approach | Server storage | XSS impact | Complexity |
+|----------|---------------|------------|------------|
+| Synchronizer (session-bound) | Yes | CSRF token not in JS if HttpOnly session | Higher |
+| Double-submit cookie | No | CSRF cookie readable by XSS | Lower |
+
+Teams with strict XSS requirements often store a synchronizer token in the server session and expose only a hash to the client. Double-submit wins when you run stateless API replicas and want CSRF without Redis session affinity.
+
+Hybrid pattern used in several agent platforms: store token in Redis keyed by session ID (synchronizer), expose to SPA via a `/api/admin/csrf` GET that sets a fresh header value—still validate on mutating calls, but the authoritative copy lives server-side.
+
+## Testing and observability
+
+```python
+# tests/test_csrf_admin.py
+import pytest
+
+@pytest.mark.parametrize("headers,cookies,expected", [
+    ({}, {}, 403),
+    ({"X-CSRF-Token": "wrong"}, {"csrf-token": "right"}, 403),
+    ({"X-CSRF-Token": "tok"}, {"csrf-token": "tok"}, 200),
+])
+def test_double_submit(client, headers, cookies, expected):
+    for k, v in cookies.items():
+        client.set_cookie(k, v)
+    r = client.post("/api/admin/keys/rotate", json={"keyId": "k1"}, headers=headers)
+    assert r.status_code == expected
+```
+
+Log CSRF failures with `user_id`, `route`, and `origin` header—never log token values. Alert on CSRF failure rate spikes; they may indicate an active attack or a broken deploy that stopped issuing tokens.
+
+Penetration test checklist:
+
+1. Mutating request with session cookie but no CSRF header → 403.
+2. CSRF header from attacker origin without cookie → 403.
+3. Valid pair from authenticated session → success.
+4. Replay of captured valid request after logout → 401/403.
+5. Cross-origin form POST with `Content-Type: text/plain` → rejected.
+
+## Agent-specific edge cases
+
+**Webhook configuration UI.** Operators paste URLs that receive agent event payloads. CSRF-protected POST to add webhooks prevents attackers from pointing your agents at their sink—but validate URL allowlists server-side anyway.
+
+**Multi-tab admin sessions.** Rotating CSRF token on every request breaks parallel tabs. Rotate on login and privilege elevation only; accept the current cookie value until session expiry.
+
+**GraphQL batch mutations.** A single HTTP request may carry multiple mutations. Apply CSRF verification once per HTTP request at the middleware layer, not per GraphQL field.
+
+**Local dev proxies.** Vite and webpack dev servers proxy `/api` to backend; ensure CSRF cookies set by the API share the path the browser sees, or local testing will falsely pass while production fails.
+
+## Closing
+
+Double-submit cookie CSRF defense is a proportionate layer for browser-based agent admin consoles: low server-state overhead, straightforward SPA wiring, and clear failure semantics. It is not a substitute for SameSite cookies, OAuth state validation, XSS hardening, or separate credentials for programmatic runtime. Treat CSRF as one gate in a chain—when an operator approves a destructive action, the chain should be strong enough that a forged click from another tab on the internet cannot silently reconfigure production agents.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- [RFC 6265bis: SameSite cookies](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis)
+- [MDN: Cross-Site Request Forgery (CSRF)](https://developer.mozilla.org/en-US/docs/Glossary/CSRF)
+- [Express csurf deprecation notes and alternatives](https://github.com/expressjs/csurf)
+- [PortSwigger Web Security Academy: CSRF labs](https://portswigger.net/web-security/csrf)

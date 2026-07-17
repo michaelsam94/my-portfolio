@@ -3,8 +3,8 @@ title: "Image Optimization in Next.js"
 slug: "nextjs-image-optimization"
 description: "Optimize images in Next.js with next/image: responsive sizing, format negotiation, remote patterns, placeholders, and Core Web Vitals impact."
 datePublished: "2025-08-28"
-dateModified: "2025-08-28"
-tags: ["Web", "Next.js", "Performance", "Frontend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js Image component, next/image optimization, responsive images Next.js, WebP AVIF Next.js, LCP optimization, image loader"
 faq:
   - q: "Should I use next/image or a regular img tag?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why is my LCP image loading slowly?"
     a: "LCP images need priority={true} to skip lazy loading and preload early. Set explicit width and height to prevent layout shift. Serve appropriately sized images—an 800px display does not need a 4000px source file."
 ---
-
 Your Lighthouse score shows LCP at 4.2 seconds. The hero image is a 3.2 MB PNG loaded at full resolution on a 390px mobile screen. The `next/image` component exists specifically to prevent this: it generates responsive srcsets, serves modern formats, reserves layout space, and lazy-loads below-the-fold content. Misconfiguring it—wrong `sizes`, missing `priority`, unlisted remote domains—leaves most of the benefit on the table.
 
 ## Basic usage
@@ -265,3 +264,34 @@ Preload hint added automatically with `priority`. Combine with `fetchPriority="h
 - [Web.dev LCP guide](https://web.dev/articles/lcp) — Largest Contentful Paint optimization
 - [Responsive images (MDN)](https://developer.mozilla.org/en-US/docs/Web/HTML/Responsive_images) — srcset and sizes fundamentals
 - [plaiceholder library](https://plaiceholder.co/) — generating blur placeholders
+
+
+## Production validation (1)
+
+Ship changes behind feature flags when behavior crosses route or service boundaries. Canary deploy with automatic rollback when error rate or p95 latency regresses beyond SLO budget. Document which metrics prove success—user-visible latency, error ratio, conversion—not only CPU graphs.
+
+When operating **Next.js image optimization** (`nextjs-image-optimization`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Failure modes (2)
+
+Recurring incidents: missing idempotency on retried paths, connection pool exhaustion masquerading as slow queries, retry storms amplifying partial outages. Design explicit timeouts on every outbound call.
+
+When operating **Next.js image optimization** (`nextjs-image-optimization`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Observability (3)
+
+Structured logs include trace_id and tenant_id on every error path. Metrics: request rate, error ratio, duration histogram, queue depth or pool wait. Traces: one span per dependency.
+
+When operating **Next.js image optimization** (`nextjs-image-optimization`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Security review (4)
+
+Least-privilege credentials, no PII in logs, fail-closed auth defaults. Secrets rotate without redeploy where possible. Never log raw tokens or authorization headers.
+
+When operating **Next.js image optimization** (`nextjs-image-optimization`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Testing strategy (5)
+
+Integration tests against real Postgres/Redis in CI with Testcontainers. Load test at 2× peak with production-like payloads. Chaos: inject dependency latency and verify degradation matches runbooks.
+
+When operating **Next.js image optimization** (`nextjs-image-optimization`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.

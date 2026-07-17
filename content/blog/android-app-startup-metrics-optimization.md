@@ -211,6 +211,28 @@ When app startup metrics optimization misbehaves in production, work top-down in
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Tracing beyond first frame
+
+`FullyDrawn` reporting should include RecyclerView first scroll readiness when home feed is critical path. Firebase Performance custom trace from `Application.onCreate` to `reportFullyDrawn()` segmented by initializer name surfaces rogue SDK init.
+
+## App Startup library ordering
+
+Initializer dependency cycles fail at runtime — graph init in unit test with fake `Context`. Disable unused SDK initializers via manifest merge remove in release where possible.
+
+## App Startup Metrics Optimization Supplement 0 on Samsung and Pixel divergence
+
+Exercise app startup metrics optimization supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching app; regressions above 8% block release for `android-app-startup-metrics-optimization-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "App Startup Metrics Optimization Supplement 0" should map to a single runbook section with known workarounds.
+
+## Optimization regression gates for Play Vitals
+
+Before promoting `android-app-startup-metrics-optimization-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing app with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing app startup metrics optimization supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [App startup time (Android vitals)](https://developer.android.com/topic/performance/vitals/launch-time)

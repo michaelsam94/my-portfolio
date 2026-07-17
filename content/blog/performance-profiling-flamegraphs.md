@@ -3,7 +3,7 @@ title: "Reading Flame Graphs"
 slug: "performance-profiling-flamegraphs"
 description: "Interpret CPU flame graphs for performance debugging: stack frames, width meaning, plateau patterns, and tooling with perf, py-spy, and async-profiler."
 datePublished: "2026-02-16"
-dateModified: "2026-02-16"
+dateModified: "2026-07-17"
 tags: ["Performance", "Profiling", "Observability", "Debugging"]
 keywords: "flame graph profiling, CPU flame graph, perf record, py-spy, async profiler Java"
 faq:
@@ -122,29 +122,54 @@ Width = time in function. Look for:
 
 Compare flame graphs before/after optimization — verify plateaus shrink, not just shift.
 
-## Common production mistakes
 
-Teams get profiling flamegraphs wrong in predictable ways:
+## Differential flame graphs
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Subtract baseline profile from canary profile to highlight new hot frames after deploy. Wide bar appearing only in v2.4 is your regression.
 
-Performance work on profiling flamegraphs regresses when optimizations target p50 only, benchmarks run on laptops not production hardware, and flamegraphs are captured once then never compared after refactors.
+## Allocation profiling separate from CPU
 
-## Debugging and triage workflow
+Java async-profiler with alloc event shows where objects allocate, driving GC tail latency. CPU clean but p99 bad — switch to alloc profile.
 
-When profiling flamegraphs misbehaves in production, work top-down instead of guessing:
+## Kernel vs user space
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Wide syscall or read frames mean I/O bound — profile wait not CPU. Misidentifying I/O as CPU leads to futile micro-optimizations.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## CI regression: profile on benchmark suite
+
+Run 60s py-spy during integration benchmark in nightly CI. Store SVG artifact; diff against main. Fails when new frame exceeds 5% CPU.
+
+## Zoom discipline
+
+Click widest frame in your code, not libc. Read upward for caller (middleware?) and downward for callee (loop? library?). Re-profile after fix to confirm bar shrunk.
+
+## Sampling rate tradeoffs
+
+99 Hz sampling is standard for production — roughly 1% overhead. Doubling to 199 Hz improves rare-path visibility but costs more CPU on hot services. During incidents, temporarily increase rate on canary pods only; revert after capture. py-spy `--rate 50` on overloaded CPU may itself distort results — profile from external observer process when possible.
+
+## Merging profiles across pods
+
+Kubernetes deployment with 20 replicas — single-pod profile may hit unlucky pod on noisy neighbor node. Merge profiles with `pprof -proto` or speedscope multi-upload. Look for frames appearing in >30% of pod samples — those are systemic, not pod-specific noise.
+
+## Comparing CPU vs wall-clock profiles
+
+A request spending 200ms wall time with 5ms CPU time is I/O bound — CPU flame graph looks idle while users wait on Postgres. Pair py-spy with OpenTelemetry span waterfall: wide span under narrow CPU bar means await network or disk. Profile `sched:sched_switch` for off-CPU stacks when CPU graph is flat but latency SLO burns.
+
+## Inlining and compiler artifacts
+
+C++ and Rust release builds inline aggressively — flame graph shows shallow wide bars at call site, not deep into library. Compare `-g` debug symbols profile vs release when hunting regression; symbolization settings in perf affect frame names. JVM `-XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining` for hot methods when async-profiler shows anonymous frames.
+
+## Recording profiles during deploy windows
+
+Capture profile 60s before deploy, 60s during canary at 10% traffic, 60s after full promote. Three-way diff in speedscope highlights frames appearing only in canary — faster than guessing which commit added regex catastrophe. Tag artifacts with git SHA in filename: `profile-abc123.svg`.
+
+## Interactive viewer workflow in speedscope
+
+Import merged profile JSON, switch to "Left Heavy" view to sort by total time, search for function name substring. Zoom into plateau, copy stack trace to Jira ticket — communication shortcut between perf investigation and fix PR. Export subset profile after zoom for before/after attach to PR description.
+
+## Closing notes
+
+Production profiling etiquette includes notifying on-call before capturing on production pods, storing profiles with deploy SHA labels, and comparing canary versus stable flame graphs after every latency regression deploy.
 
 ## Resources
 

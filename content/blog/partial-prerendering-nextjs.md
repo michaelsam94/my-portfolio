@@ -3,7 +3,7 @@ title: "Partial Prerendering: Static Speed, Dynamic Content"
 slug: "partial-prerendering-nextjs"
 description: "Partial Prerendering in Next.js explained: serve a static shell instantly from the edge, stream the dynamic holes, and stop choosing between fast and fresh."
 datePublished: "2026-06-22"
-dateModified: "2026-06-22"
+dateModified: "2026-07-17"
 tags: ["Next.js", "Performance", "React", "Rendering"]
 keywords: "Partial Prerendering, PPR, Next.js, static shell, streaming, edge caching, dynamic content"
 faq:
@@ -87,6 +87,38 @@ One practical note: PPR has been an experimental/incremental feature in Next.js,
 ## The takeaway
 
 Partial Prerendering ends the false choice between fast and fresh. Structure your page so the unchanging majority prerenders into a static shell that serves instantly from cache, and let the genuinely dynamic minority stream in through Suspense boundaries. The engineering work is deciding what's static versus dynamic and keeping the dynamic surface small — do that, and you get static-page first paint with server-page freshness on the same route. That combination used to require awkward workarounds; PPR makes it the default shape of a well-built Next.js page.
+
+## CDN cache keys and personalization
+
+PPR shells cache at edge; dynamic holes must not poison cache keys. Ensure `Vary` headers and Next.js `cache` directives exclude cookies from static shell keys unless hole components explicitly opt into personalized caching.
+
+```tsx
+export const dynamic = 'force-static'; // shell
+// Inside LiveInventory:
+export const dynamic = 'force-dynamic';
+```
+
+Misconfigured `cookies()` in layout components forces entire page dynamic — the anti-pattern PPR is meant to fix.
+
+## Fallback UI and CLS
+
+Skeleton components for Suspense fallbacks must match final layout dimensions — inventory widget jumping from 40px to 200px tanks CLS. Reserve min-height in shell CSS.
+
+## Measuring PPR success
+
+Compare **TTFB** (shell) vs **LCP element** (often dynamic hole). Success: TTFB drops toward static baseline while LCP element still fresh. RUM split by `x-nextjs-ppr` debug header in staging before enabling in production.
+
+## `experimental_ppr` rollout
+
+Enable per layout segment — root marketing layout PPR-on, `/admin` dynamic-off. Misconfigured segment boundaries propagate PPR unexpectedly; integration test asserts `x-nextjs-cache` headers per route class.
+
+## Streaming errors inside Suspense holes
+
+Dynamic hole throws — error boundary inside Suspense shows fallback, not whole page 500. User still sees static product shell with "inventory unavailable" chip — better than blank document.
+
+## Edge vs Node hole rendering
+
+Holes hitting regional DB should run Node runtime if edge lacks DB driver — mixing runtime in same route tree needs explicit `export const runtime = 'nodejs'` on dynamic child components.
 
 ## Resources
 

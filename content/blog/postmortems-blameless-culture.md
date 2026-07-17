@@ -3,7 +3,7 @@ title: "Writing Blameless Postmortems"
 slug: "postmortems-blameless-culture"
 description: "Write postmortems that improve systems: blameless culture, timeline construction, action items that stick, and templates that engineering teams actually use."
 datePublished: "2026-04-09"
-dateModified: "2026-04-09"
+dateModified: "2026-07-17"
 tags: ["DevOps", "SRE", "Incident Response", "Culture"]
 keywords: "blameless postmortem, incident postmortem template, SRE postmortem, incident review culture, action items postmortem"
 faq:
@@ -185,16 +185,54 @@ Pair with [career running effective meetings](https://blog.michaelsam94.com/care
 - [ ] Near-miss incidents documented, not only outages
 - [ ] Executive summary attached for customer-facing SEV1
 
-## Common production mistakes
 
-Teams get postmortems blameless culture wrong in predictable ways:
+## Timeline-first document structure
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Start postmortem with UTC timeline: detection, escalation, mitigation, recovery, customer impact window. Root cause section comes after shared understanding.
 
-Production implementations of postmortems blameless culture fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Action item quality bar
+
+Each action: owner, due date, priority, verification method. Be more careful rejected. Add integration test asserting rate limit accepted.
+
+## Blameless does not mean unaccountable
+
+Individuals not blamed; systems and processes are. Postmortem focuses on technical and procedural fixes.
+
+## Customer communication linkage
+
+Link status page incident to internal postmortem ID. Support macros reference fixed root cause after publish.
+
+## Facilitator role and ground rules
+
+Neutral facilitator not involved in incident — prevents defensive narrative. Ground rules posted at start: no finger-pointing, assume good intent, focus on systems. Executives attend listen-only unless asked — presence changes honesty.
+
+## Publishing externally
+
+Customer-facing postmortem summary redacts internal hostnames and employee names — legal review before publish. Transparency builds trust when paired with concrete remediation timeline.
+
+## Incident severity alignment
+
+SEV1 postmortem within 5 business days; SEV3 within 30 — calendar slack prevents postmortem fatigue during outage cluster week. Template asks: what detected, what mitigated, what prevented faster detection — three questions minimum before five whys depth.
+
+## Sharing learnings across org
+
+Monthly postmortem review meeting — 3 teams present anonymized learnings. Cross-pollination catches "we fixed that pattern in payments" unknown to logistics team building same Redis lock anti-pattern.
+
+## Timeline tooling
+
+Incident.io or PagerDuty post-incident timeline export pasted into postmortem doc — manual timestamp reconstruction errors avoided. Link deploy events and feature flag flips automatically when integrated with observability annotations.
+
+## Readers group review
+
+Before publishing, invite engineers not in incident to read draft — catches jargon and missing context for company-wide email version. Two reader minimum rule prevents insular postmortem understandable only to on-call team that lived it.
+
+## Closing notes
+
+Publish postmortem internally within ten days; redacted customer summary within fifteen — predictable timeline sets expectations for account managers handling enterprise client inquiries after incident.
+
+## Additional guidance
+
+Rotate postmortem facilitator role across senior engineers — prevents facilitator burnout and spreads facilitation skill. Template sections fixed: impact, timeline, root cause, contributing factors, what went well, action items — five whys optional appendix not substitute for systemic contributing factors like missing alert or untested rollback path.
 
 ## Resources
 

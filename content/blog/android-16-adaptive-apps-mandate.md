@@ -79,6 +79,24 @@ A few things teams over-worry about. You don't have to support *phones* in lands
 
 Android 16's adaptive apps mandate removes the ability to lock orientation and resizing on large screens, and it does so to end the era of stretched phone UIs on tablets and foldables. If your app is already adaptive — layout branched on window size class, state preserved with `rememberSaveable` and `SavedStateHandle` — you're done. If it leaned on orientation locks as a layout crutch, the work is to make layout a function of window size and to survive configuration changes cleanly. Audit the manifest, test in a resizable emulator, and verify state across every rotate and resize. The mandate isn't asking for a rewrite; it's asking you to stop pretending the window can't change size.
 
+## Tablet layout rejection criteria
+
+Android 16 adaptive mandate requires resizable activities — locked portrait without resizeMode exception risks visibility downgrade on large screens. Test `WindowSizeClass.COMPACT` vs EXPANDED with same navigation graph.
+
+## Fixed orientation exceptions
+
+Games and camera may qualify — document in Play Console declaration. Banking apps often do not qualify; implement list-detail scaffolds instead of seeking exception.
+
+## 16 Adaptive Apps Mandate Supplement 0 on Samsung and Pixel divergence
+
+Exercise 16 adaptive apps mandate supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching 16; regressions above 8% block release for `android-16-adaptive-apps-mandate-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "16 Adaptive Apps Mandate Supplement 0" should map to a single runbook section with known workarounds.
+
+## Mandate regression gates for Play Vitals
+
+Before promoting `android-16-adaptive-apps-mandate-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Large screen app quality (Android developers)](https://developer.android.com/develop/ui/compose/layouts/adaptive)

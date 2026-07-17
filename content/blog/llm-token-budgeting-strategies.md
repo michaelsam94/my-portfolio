@@ -3,8 +3,8 @@ title: "Token Budgeting for Production LLM Apps"
 slug: "llm-token-budgeting-strategies"
 description: "Control LLM costs and latency with token budgets: context allocation, prompt compression, output limits, and per-user rate limiting in production."
 datePublished: "2025-04-06"
-dateModified: "2025-04-06"
-tags: ["AI", "LLM", "Cost Optimization", "Production"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM token budgeting, context window management, LLM cost control, prompt compression, token limit production, LLM rate limiting"
 faq:
   - q: "How do I calculate the right token budget for my application?"
@@ -14,7 +14,6 @@ faq:
   - q: "Should I limit output tokens or input tokens?"
     a: "Both, but output tokens cost more per token on most APIs and take longer to generate. Set max_tokens aggressively for structured tasks (200–500) and use streaming with early stopping for open-ended generation. Input limits prevent context stuffing attacks and runaway RAG retrieval."
 ---
-
 Your LLM bill climbed from $200 to $4,000 per month without a traffic spike. The culprit: an agent loop that appends full tool results to context, a system prompt that grew to 2,500 tokens over six sprints, and no max_tokens limit on user-facing completions. Users ask vague questions and get 2,000-token answers they never read.
 
 Token budgeting is how you keep LLM applications predictable in cost, latency, and quality. It is not about being cheap — it is about allocating a finite context window deliberately instead of letting every component consume as much as it wants.

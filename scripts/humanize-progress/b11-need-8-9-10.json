@@ -1,0 +1,22 @@
+{
+  "done": 35,
+  "total": 35,
+  "check": [],
+  "samples": [
+    {
+      "slug": "web-performance-core-web-vitals",
+      "status": "done",
+      "words": 1296
+    },
+    {
+      "slug": "web-performance-command-palette-keyboard",
+      "status": "done",
+      "words": 1293
+    },
+    {
+      "slug": "web-performance-document-visibility-api",
+      "status": "done",
+      "words": 1290
+    }
+  ]
+}

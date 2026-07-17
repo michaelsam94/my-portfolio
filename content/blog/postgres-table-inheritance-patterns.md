@@ -1,129 +1,254 @@
 ---
 title: "Postgres Table Inheritance Patterns"
 slug: "postgres-table-inheritance-patterns"
-description: "Use table inheritance for partitioned-like schemas, constraint exclusion, and legacy patterns — and know when declarative partitioning replaces it."
+description: "Choose between legacy table inheritance and declarative partitioning for time-series, multi-tenant layouts, and constraint exclusion."
 datePublished: "2026-03-06"
-dateModified: "2026-03-06"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres table inheritance patterns, production, backend"
+keywords: "postgres table inheritance, declarative partitioning, constraint exclusion, ONLY keyword, partition migration"
 faq:
-  - q: "What problem does Postgres Table Inheritance Patterns solve?"
-    a: "It addresses production gaps teams hit when scaling postgres table inheritance patterns: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres table inheritance patterns appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is the difference between table inheritance and declarative partitioning?"
+    a: "Legacy inheritance links child tables via INHERITS; queries against parent include all children unless ONLY is specified. Declarative partitioning (PG 10+) is native with PARTITION BY RANGE/LIST/HASH, better planner integration, partition pruning, and automatic INSERT routing. New designs should use declarative partitioning."
+  - q: "When does legacy inheritance still make sense?"
+    a: "Maintaining existing inheritance hierarchies predating declarative partitioning. Greenfield should not start with INHERITS."
+  - q: "How does constraint exclusion work with inherited tables?"
+    a: "When constraint_exclusion is on, Postgres skips child tables whose CHECK constraints prove they cannot contain matching rows. Child tables need CHECK constraints on partition key columns. Without them, every child scans."
+  - q: "Why must I use ONLY when updating the parent table?"
+    a: "UPDATE/DELETE on parent without ONLY can cascade to all inheritors. ONLY targets the parent table alone. Declarative partitioning routes inserts automatically via bound definitions."
 ---
 
-## Production context
+Before **`PARTITION BY`**, Postgres had **`INHERITS`**: child tables structurally extend a parent, queries against the parent logically union all descendants, and **`CHECK`** constraints on children enable **constraint exclusion** to skip irrelevant tables.
 
-A billing service lost duplicate events because postgres table inheritance patterns was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+Declarative partitioning superseded most use cases in Postgres 10+, but inheritance still appears in decade-old schemas—and confusing **`ONLY`** behavior still burns teams during migrations.
 
-Senior backend work on postgres table inheritance patterns is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
-
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+## Legacy inheritance mechanics
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
+CREATE TABLE events (
+  id         bigint,
+  created_at timestamptz NOT NULL,
+  payload    jsonb
 );
+
+CREATE TABLE events_2026_01 () INHERITS (events);
+CREATE TABLE events_2026_02 () INHERITS (events);
+
+ALTER TABLE events_2026_01 ADD CONSTRAINT chk
+  CHECK (created_at >= '2026-01-01' AND created_at < '2026-02-01');
 ```
 
-## Implementation checklist
+Query parent:
 
-Validate inputs at the trust boundary with schema versioning.
+```sql
+SELECT count(*) FROM events WHERE created_at >= '2026-02-10';
+```
 
-Use timeouts and cancellation on every outbound call; propagate context.
+**`ONLY`** keyword:
 
-Store idempotency keys with TTL; return cached responses on replay.
+```sql
+SELECT * FROM ONLY events;
+UPDATE ONLY events SET payload = NULL WHERE id = 1;
+```
 
-Run migrations with lock_timeout and statement_timeout set.
+Without **`ONLY`**, **`UPDATE events`** hits parent **and** all inheritors.
 
-Load test at 2× expected peak with production-like payload sizes.
+**No automatic INSERT routing** into monthly child unless triggers exist. Declarative partitioning fixes this.
 
-## Observability
+## Declarative partitioning (preferred today)
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+```sql
+CREATE TABLE events (
+  id         bigint,
+  created_at timestamptz NOT NULL,
+  payload    jsonb
+) PARTITION BY RANGE (created_at);
 
-Dashboards for postgres table inheritance patterns should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+CREATE TABLE events_2026_01 PARTITION OF events
+  FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+```
 
-## Security notes
+Benefits: partition pruning, automatic INSERT routing, **`ATTACH`/`DETACH`**, partition-wise join.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+```sql
+CREATE TABLE events_default PARTITION OF events DEFAULT;
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Side-by-side behavior
 
-## Common production mistakes
+| Concern | INHERITS | PARTITION BY |
+| --- | --- | --- |
+| Insert routing | Manual / triggers | Automatic |
+| Unique PK across hierarchy | Not global across children | Must include partition key |
+| FK referencing parent | Complex | Supported on partitioned table (PG 12+) |
+| Drop old data | DROP TABLE child | DETACH + DROP |
+| Planner support | Legacy exclusion | Native pruning |
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## Unique constraints pain
 
-## Debugging and triage workflow
+**`PRIMARY KEY (id)`** on parent **does not** enforce uniqueness across children—duplicate **`id`** in two months possible.
 
-When production misbehaves, work top-down:
+Declarative: **`PRIMARY KEY (id, created_at)`** including partition key.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+## Multi-tenant patterns
 
-## Operational checklist
+**Anti-pattern:** **`INHERITS`** per tenant—thousands of children explode catalog size.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+**Better:** row-level **`tenant_id`** + RLS, or LIST partition for large isolated tenants only.
 
-## Performance tuning notes
+## Time-series rolling window
 
-Measure before optimizing postgres table inheritance patterns. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+```sql
+CREATE OR REPLACE PROCEDURE create_next_month_partition()
+LANGUAGE plpgsql AS $$
+DECLARE
+  start date := date_trunc('month', now()) + interval '1 month';
+  end date := start + interval '1 month';
+  part text := 'events_' || to_char(start, 'YYYY_MM');
+BEGIN
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS %I PARTITION OF events FOR VALUES FROM (%L) TO (%L)',
+    part, start, end
+  );
+END;
+$$;
+```
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Schedule via pg_cron. Detach old partitions to cold storage.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+## Migrating INHERITS → PARTITION BY
 
-## Rollout and migration
+1. Create new partitioned parent
+2. ATTACH or copy data during maintenance window
+3. Rename swap
+4. Recreate indexes, FKs, triggers
+5. Drop old hierarchy
 
-Ship postgres table inheritance patterns changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Test on clone—inheritance FK graphs are messy.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## Catalog bloat from too many children
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+500+ monthly children slow planning even with exclusion—migrate to declarative with bounded partitions plus archive DETACH.
 
-## Testing recommendations
+## Foreign keys into inherited parents
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+**`REFERENCES parent(id)`** does not enforce against rows only in children—migration driver to declarative.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## Query patterns and ONLY
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Verify plans:
 
-## Incident patterns we see
+```sql
+EXPLAIN SELECT * FROM events WHERE created_at = '2026-02-15';
+```
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Look for partition pruning or Append with subplans removed.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+## Index inheritance
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+Indexes on parent **are not automatically on children** in legacy inheritance—create per child. Declarative: **`CREATE INDEX ON events (...)`** propagates to partitions.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+## Partition-wise operations
+
+**`enable_partitionwise_aggregate`** helps grouped aggregates on declarative partitions at scale.
+
+Table inheritance taught Postgres how partitioned data should behave; declarative partitioning is the implementation for new time-series and large fact tables. Understand **`INHERITS`** to maintain legacy systems and migrate deliberately.
+
+
+
+## Trigger-based routing in legacy inheritance
+
+Before declarative partitioning, teams used **`BEFORE INSERT`** triggers on parent inspecting **`NEW.created_at`** and redirecting to child via **`EXECUTE format('INSERT INTO %I ...')`**—fragile, hard to test, breaks **`RETURNING`** semantics. Document these triggers before migration; grep codebase for **`ONLY`** usage and parent table inserts.
+
+## Partition pruning vs constraint exclusion EXPLAIN output
+
+Declarative plans show **`Partition Prune`** nodes; inheritance shows **`Append`** with **`Subplans Removed`**. Operators familiar with one syntax misread the other during incident triage—include example **`EXPLAIN`** snippets in runbooks for each schema generation.
+
+## Default partition operational smell
+
+High insert rate into **`DEFAULT`** partition signals missing monthly maintenance job—alert on row count in default partition > 0 for time-series schemas. **`DEFAULT`** prevents insert failures but hides operational debt until scan performance collapses.
+
+## pg_partman extension
+
+**`pg_partman`** automates declarative partition creation and retention—prefer extension over hand-rolled procedures for new systems. Migration from inheritance: **`partman`** scripts exist for some conversions—evaluate against hand migration for your FK graph complexity.
+
+
+
+
+## Tuple routing and constraint exclusion legacy GUC
+
+**`constraint_exclusion = on`** scans all children—use **`partition`** default. Legacy **`on`** hurts inheritance performance at scale. Confirm **`SHOW constraint_exclusion`** during inheritance maintenance.
+
+## Inheritance in pg_dump restore order
+
+**`pg_dump`** emits child tables after parent; FK between children requires careful restore order. Declarative partitioning dump order cleaner—another migration incentive.
+
+
+
+
+## Time zone and partition bounds
+
+Monthly partition **`FOR VALUES FROM ('2026-02-01') TO ('2026-03-01')`** uses timestamp without time zone—define whether bounds UTC or local; inheritance CHECK constraints same ambiguity caused off-by-one-month bugs in global apps.
+
+## Testing ONLY semantics in CI
+
+Automated test: insert into child, update parent without ONLY expecting child unchanged—fails if ONLY omitted. Guards regression when ORM raw SQL touches parent table name.
+
+
+
+
+## Hash partitioning migration note
+
+When migrating inheritance time-series to **`PARTITION BY HASH`**, pruning differs from range—queries without hash key scan all partitions. Inheritance monthly range maps naturally to declarative range; do not choose hash unless equality on partition key dominates access patterns.
+
+
+
+
+## Row movement between partitions
+
+Declarative **`ATTACH/DETACH`** replaces inheritance manual child create/drop for archival—**`DETACH CONCURRENTLY`** (PG 14+) reduces locking during archive. Plan archive pipeline on declarative even if current state inheritance—migration payoff includes online detach.
+
+## Executor Append vs MergeAppend
+
+Partitioned plans may use **`MergeAppend`** when partition key ordered—inheritance typically **`Append`**. Sort requirements differ; ORM **`ORDER BY created_at`** on inherited parent may sort after append—inherits higher cost than declarative merge append optimization.
+
+
+
+## Migration communication template
+
+Tell application teams: parent table inserts will route automatically after declarative migration; remove manual child table names from INSERT statements. Provide list of ONLY-qualified maintenance scripts requiring audit. Schedule migration when partition creation job disabled to avoid race creating inheritance child and declarative partition same month.
+
+## Performance testing inherited vs partitioned
+
+Benchmark identical row count: time SELECT with range filter on partition key. Expect declarative win on planning time and insert path—quantify win for migration ROI slide deck to engineering leadership.
+
+
+## Documentation for ONLY semantics
+
+Add SQLFluff or lint rule flagging UPDATE/DELETE on inherited parent without ONLY keyword in migration scripts—human review misses during fast releases.
+
+
+
+
+## Constraint naming for exclusion
+
+Child check constraints on inherited tables need distinct names—duplicate constraint names across children break pg_dump restore. Prefix constraint names with child table name in migration generators.
+
+## Global temporary migration flag
+
+Feature flag routes inserts to new partitioned table dual-write period—compare row counts inheritance vs partition before cutover read path. Dual-write complexity buys zero-downtime for large tables.
+
+## Read path cutover checklist
+
+After migration to declarative partitioning, grep application SQL for child table names used in FROM clause—legacy read paths bypass parent pruning and miss new partitions if hardcoded to old child names.
+
+Schema review should reject new INHERITS usage for partitioning; point authors at declarative PARTITION BY with a short example in the contributing guide.
+
+Write the failure mode you accept for postgres table inheritance patterns into the runbook next to the config that enforces it — configuration without narrative decays into cargo cult.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- [Table inheritance](https://www.postgresql.org/docs/current/ddl-inherit.html)
+- [Declarative partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)

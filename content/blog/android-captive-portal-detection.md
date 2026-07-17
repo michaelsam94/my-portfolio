@@ -140,6 +140,16 @@ Before enabling `android-captive-portal-detection` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Captive Portal Detection on Samsung and Pixel divergence
+
+Exercise captive portal detection on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching captive; regressions above 8% block release for `android-captive-portal-detection`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Captive Portal Detection" should map to a single runbook section with known workarounds.
+
+## Portal regression gates for Play Vitals
+
+Before promoting `android-captive-portal-detection` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if detection path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

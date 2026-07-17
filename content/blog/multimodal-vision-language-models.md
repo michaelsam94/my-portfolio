@@ -3,8 +3,8 @@ title: "Vision-Language Models in Production"
 slug: "multimodal-vision-language-models"
 description: "Deploy vision-language models in production: model selection, image preprocessing, prompt patterns, latency optimization, and evaluation frameworks."
 datePublished: "2025-08-19"
-dateModified: "2025-08-19"
-tags: ["AI", "Machine Learning", "Computer Vision", "Backend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "vision language models, VLM production, multimodal AI, GPT-4o vision, LLaVA deployment, image understanding API"
 faq:
   - q: "How do I choose between GPT-4o, Claude, and open-source VLMs?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I evaluate VLM accuracy before launch?"
     a: "Build a golden set of 200+ image-question pairs with human-verified answers. Measure exact match, fuzzy match for text fields, and LLM-as-judge for open-ended responses. Track regression on every model or prompt change."
 ---
-
 A warehouse app needs to identify damaged packages from phone photos. A generic image classifier trained on ImageNet confuses "crushed corner" with "normal shadow." Vision-language models answer natural questions about images—"Is the shipping label torn? Is there liquid damage?"—without training a custom classifier per defect type. Getting VLMs into production means handling image tokens, latency, cost, and hallucination risk on visual claims.
 
 ## Architecture patterns
@@ -179,17 +178,6 @@ Run moderation API on user-uploaded images before VLM processing — prevents po
 
 Pair with [multimodal document understanding](https://blog.michaelsam94.com/multimodal-document-understanding/) for structured extraction from PDFs and scans.
 
-## Common production mistakes
-
-Teams get multimodal vision language models wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of multimodal vision language models fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [GPT-4o vision capabilities](https://platform.openai.com/docs/guides/vision) — image input limits and token counting
@@ -197,3 +185,31 @@ Production implementations of multimodal vision language models fail when stagin
 - [LLaVA project page](https://llava-vl.github.io/) — academic VLM benchmark leader
 - [vLLM multimodal docs](https://docs.vllm.ai/en/latest/models/multimodal.html) — self-hosted VLM serving
 - [CLIP benchmark (LAION)](https://laion.ai/blog/laion-400-open-dataset/) — understanding vision encoder training data
+
+## Production notes for LLM stacks
+
+When `multimodal-vision-language-models` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `vision-language models in production` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Production notes for LLM stacks
+
+When `multimodal-vision-language-models` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `vision-language models in production` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

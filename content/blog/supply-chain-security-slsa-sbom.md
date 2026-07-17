@@ -4,7 +4,7 @@ seoTitle: "Supply Chain Security: SLSA and SBOMs in Practice"
 slug: "supply-chain-security-slsa-sbom"
 description: "A practical guide to software supply chain security using SLSA provenance and SBOMs — how to generate them, sign artifacts with Sigstore, and verify at deploy."
 datePublished: "2026-07-09"
-dateModified: "2026-07-09"
+dateModified: "2026-07-17"
 tags: ["Security", "Supply Chain", "DevSecOps", "CI/CD"]
 keywords: "supply chain security, SLSA, SBOM, dependency security, provenance, sigstore, artifact signing"
 faq:
@@ -14,8 +14,14 @@ faq:
     a: "Aim for SLSA Build Level 2 or 3, which require a hosted build service that generates signed, non-falsifiable provenance. Level 1 (provenance exists) is easy but weak; Level 3 (hardened, isolated builds) is the meaningful bar for most production teams."
   - q: "How do I verify a build's provenance at deploy time?"
     a: "Use a policy engine like Sigstore's cosign with a verification policy, or Kyverno/OPA in Kubernetes, to check that the artifact's signature and SLSA provenance match your expected builder identity and source repo before the image is allowed to run."
+faqAnswers:
+  - question: "When is supply chain security slsa sbom the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for supply chain security slsa sbom?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back supply chain security slsa sbom safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 The fastest way to compromise a thousand companies is to compromise one dependency they all trust. That's why software supply chain security stopped being a niche concern after SolarWinds, Codecov, and the xz backdoor — the attacks target the build, not the running app. Two artifacts do most of the heavy lifting in a defensible supply chain: an **SBOM** (Software Bill of Materials) that inventories what's inside your build, and **SLSA** (Supply-chain Levels for Software Artifacts) provenance that proves how the build happened and that nobody tampered with it.
 
 I've wired this into CI for mobile and backend projects, and the useful framing is: the SBOM answers "what am I shipping?" and SLSA answers "can I trust how it got built?" You want both, generated automatically, and — this is the part teams skip — actually *verified* before an artifact deploys. An SBOM that sits in a build log nobody reads is theater.
@@ -100,6 +106,18 @@ Steps 1–2 are an afternoon. Steps 3–5 are a sprint. The reason to bother is 
 
 Supply chain security isn't one tool. It's making "what did we ship and how was it built" a queryable, enforced fact rather than an act of faith.
 
+## VEX-aware triage queue
+
+Sort CVEs by reachable path × severity × runtime exposure. Attach VEX when component not in deployed artifact (wrong arch). Block merge on critical reachable; waivers expire 30 days with named owner — security team rejected permanent waivers after Equifax-class fatigue.
+
+## VEX-aware triage queue
+
+Sort CVEs by reachable path × severity × runtime exposure. Attach VEX when component not in deployed artifact (wrong arch). Block merge on critical reachable; waivers expire 30 days with named owner — security team rejected permanent waivers after Equifax-class fatigue.
+
+## Field metrics and rollback
+
+Capture baseline p75 error rate and latency on tier-1 routes before merge. Compare seven days post-deploy sliced by mobile and region. Document rollback in PR and runbook.
+
 ## Resources
 
 - [SLSA — Supply-chain Levels for Software Artifacts](https://slsa.dev/)
@@ -109,3 +127,52 @@ Supply chain security isn't one tool. It's making "what did we ship and how was 
 - [CISA — Software Bill of Materials guidance](https://www.cisa.gov/sbom)
 - [NIST Secure Software Development Framework (SSDF)](https://csrc.nist.gov/projects/ssdf)
 - [Syft and Grype (Anchore)](https://github.com/anchore/syft)
+
+## Trade-offs I keep revisiting for supply chain security slsa sbom
+
+Supply-chain controls for supply chain security slsa sbom only work when attestations are verified in the deploy path, not merely generated for auditors.
+
+For supply chain security slsa sbom:
+- Pin dependencies; verify checksums; prefer lockfiles committed
+- Sign images keylessly (Fulcio) and verify with policy in admission
+- SBOMs stored beside artifacts; VEX documents suppressions with expiry
+- Block deploys on unknown provenance, not only on scanner CVEs
+
+Tabletop a compromised builder scenario — detection time and revoke path matter more than tool logos.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Coverage % | Team-defined SLO | Page on burn rate |
+| Mean time to detect | Baseline − noise | Ticket if sustained |
+| Escapes to prod | Budget cap | Weekly review |
+
+## Ownership and on-call for supply chain security slsa sbom
+
+Reviewers should challenge assumptions encoded in supply chain security slsa sbom: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario C for supply chain security slsa sbom: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+2. Scenario A for supply chain security slsa sbom: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+3. Scenario B for supply chain security slsa sbom: bad config shipped — prove rollback within the declared RTO without data corruption.
+
+## Cross-team contracts for supply chain security slsa sbom
+
+Roll out supply chain security slsa sbom behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Multi-tenant concerns in supply chain security slsa sbom
+
+Detail 1 (259): for supply chain security slsa sbom, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When multi-tenant concerns in supply chain security slsa sbom becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break supply chain security slsa sbom, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about supply chain security slsa sbom: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Compliance evidence for supply chain security slsa sbom
+
+Detail 2 (398): for supply chain security slsa sbom, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for supply chain security slsa sbom becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break supply chain security slsa sbom, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about supply chain security slsa sbom: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

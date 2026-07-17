@@ -4,7 +4,7 @@ seoTitle: "Privacy Engineering for Mobile: GDPR in Practice"
 slug: "privacy-engineering-mobile-gdpr"
 description: "How to build GDPR-compliant mobile apps in practice: data minimization, consent that actually works, PII handling, deletion, and the SDK traps that leak data."
 datePublished: "2026-07-12"
-dateModified: "2026-07-12"
+dateModified: "2026-07-17"
 tags: ["Privacy", "Mobile", "GDPR", "Android"]
 keywords: "privacy engineering, GDPR, mobile privacy, data minimization, consent management, PII, data subject rights"
 faq:
@@ -96,6 +96,34 @@ For a team retrofitting privacy into an existing app:
 5. Set retention limits and automate the deletion of expired data.
 
 Done well, privacy engineering isn't a tax on the product — it's a forcing function toward a leaner, more secure system. You end up storing less, understanding your data flows, and being able to answer a regulator's or a user's question in minutes. That's a better-engineered app by any measure, not just a compliant one.
+
+## On-device vs server consent
+
+GDPR consent for push and analytics — record timestamp and policy version server-side even when banner shown on device. Client-only consent log lost on uninstall.
+
+## App Store privacy nutrition labels
+
+Engineering owns accuracy of data linked to user vs not — mismatch between label and SDK behavior triggers store rejection.
+
+## Right to erasure on mobile
+
+Delete account flow must wipe Keychain tokens, cached SQLite PII, and request server deletion — local wipe without server leaves resurrectable account.
+
+## SDK audit cadence
+
+Quarterly review third-party SDK network calls in staging with mitmproxy — marketing SDK silently adding location permission is recurring finding.
+
+## ATT and GAID on Android
+
+Google Advertising ID restrictions parallel iOS ATT — declare in Data safety form, respect opt-out flag before analytics SDK init. Failure mode: SDK reads GAID before consent — Play rejection and GDPR complaint risk.
+
+## Background location separation
+
+Feature requiring background location documents separate consent step with persistent notification on Android — bundling into general ToS fails store policy and GDPR purpose limitation.
+
+## Consent receipt storage
+
+Server stores consent receipt JSON: {version, timestamp, categories[], device_id hash} — proves lawful basis if regulator asks. Mobile sends receipt after CMP callback; do not rely on CMP vendor dashboard alone for audit trail retention beyond vendor contract.
 
 ## Resources
 

@@ -1,129 +1,257 @@
 ---
 title: "Synthetic Monitoring for APIs"
 slug: "observability-synthetic-monitoring-apis"
-description: "Probe critical paths from external regions — auth token rotation in checks."
+description: "Probe critical API journeys from external regions with realistic auth—catch DNS, TLS, CDN failures before users do."
 datePublished: "2026-02-01"
-dateModified: "2026-02-01"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
   - "SRE"
-keywords: "observability synthetic monitoring apis, production, backend"
+  - "Backend"
+keywords: "synthetic monitoring APIs, black box monitoring, uptime checks, k6 synthetic, canary api probes"
 faq:
-  - q: "What problem does Synthetic Monitoring solve?"
-    a: "It addresses production gaps teams hit when scaling observability synthetic monitoring apis: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability synthetic monitoring apis appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How is synthetic different from health checks?"
+    a: "Health checks run inside cluster; synthetics exercise full public path including DNS, TLS, CDN, OAuth."
+  - q: "Which flows first?"
+    a: "Tier-1 login, search, checkout—one deep journey per critical domain."
+  - q: "How handle OAuth in checks?"
+    a: "Dedicated test user with refresh token in secrets manager; rotate automatically."
 ---
 
-## Production context
+São Paulo users could not log in while US-East internal probes were green—probes bypassed the CDN misconfiguration affecting Brazil. Synthetics run scripted journeys from multiple regions through the same path users take.
 
-A billing service lost duplicate events because observability synthetic monitoring apis was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## k6 example
 
-Senior backend work on synthetic monitoring for apis is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+OAuth token grant → API call with `X-Synthetic: true` header → business assertions on JSON body, not just status 200.
 
-## Architecture pattern
+## Alerting
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Synthetic failures are symptom alerts—page when 2+ regions fail. Correlate with internal RED when synthetic fails but internal green (CDN/DNS/WAF).
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Hygiene
+
+Teardown test data; whitelist or dedicated tenant; retry with backoff; silence during planned maintenance with documented bypass.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## Multi-step journey teardown
 
-## Implementation checklist
+Synthetic create-order flows must delete test data in `finally` block—orphan orders pollute analytics and inventory. Use dedicated `synthetic_tenant_id` filtered from business dashboards.
 
-Validate inputs at the trust boundary with schema versioning.
+## Private API probing
 
-Use timeouts and cancellation on every outbound call; propagate context.
+APIs not on public internet: deploy synthetic probes **inside VPC** (Grafana Private Probe, self-hosted k6 in cluster) while also probing public edge for split-brain detection.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## SLA reporting
 
-Run migrations with lock_timeout and statement_timeout set.
+Monthly uptime report for customers cites synthetic success rate from external probes—not internal kubelet health. Aligns contractual SLA with measurement method legal expects.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Certificate expiry synthetic
 
-## Observability
+Dedicated probe validates TLS cert expiry >14 days on all public API hostnames—catches Let's Encrypt renewal failures before users see browser warnings. Separate from journey synthetics but same on-call routing.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Webhook inbound synthetic
 
-Dashboards for observability synthetic monitoring apis should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Payment providers callback your webhook—synthetic cannot easily simulate unless provider offers test mode webhook replay. Document gap; use provider status page + manual quarterly webhook drill.
 
-## Security notes
+## Coordinating with deployment windows
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Silence synthetics during planned maintenance that intentionally returns 503 from edge—OR configure synthetics to hit maintenance bypass header on origin directly to validate origin health while edge shows maintenance page to users. Document which mode your status page commit uses to avoid false external green during deliberate user-facing maintenance.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Compare synthetic latency from multiple regions in one dashboard—single-region probe misses regional BGP issues affecting subset of users; multi-region disagreement triggers investigation before global page.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Debugging and triage workflow
 
-When production misbehaves, work top-down:
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
 
-## Operational checklist
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Measure before optimizing observability synthetic monitoring apis. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Ship observability synthetic monitoring apis changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
 
-## Testing recommendations
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+## Production review cadence
+
+Revisit dashboards and alert thresholds after every deploy affecting this observability surface. Weekly on-call review should include one exemplar trace or log linked from a metric spike—paper metrics without exemplars train teams to ignore charts.

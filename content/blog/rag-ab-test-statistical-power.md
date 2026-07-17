@@ -1,111 +1,136 @@
 ---
-title: "RAG: Ab Test Statistical Power"
+title: "Statistical Power in A/B Tests: Sample Size and Early Stopping"
 slug: "rag-ab-test-statistical-power"
-description: "Ab Test Statistical Power: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-03-28"
-dateModified: "2025-03-28"
-tags: ["AI", "Rag"]
-keywords: "rag, ab, test, statistical, power, ai, production, engineering, architecture"
+description: "How to compute power, choose minimum detectable effect, and avoid peeking bias when running product experiments."
+datePublished: "2025-09-14"
+dateModified: "2026-07-17"
+tags:
+  - "Experimentation"
+  - "Statistics"
+  - "Product"
+keywords: "ab test, statistical power, sample size, mde, experimentation"
 faq:
-  - q: "What is Ab Test Statistical Power?"
-    a: "Ab Test Statistical Power covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Ab Test Statistical Power?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Ab Test Statistical Power?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Ab Test Statistical Power fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Ab Test Statistical Power should be observable in production and safe to change in small diffs."
+  - q: "What power level should product teams target?"
+    a: "80% is the usual default — meaning an real effect of your chosen MDE is detected 80% of the time; raise to 90% for high-stakes pricing or trust changes where false negatives are costly."
+  - q: "How does baseline conversion affect required sample?"
+    a: "Lower baseline rates need larger absolute sample sizes for the same relative lift because variance p(1-p) is smaller near extremes but relative MDEs translate to tiny absolute differences."
+  - q: "Can I stop early when results look significant?"
+    a: "Naive peeking inflates false positive rate — use sequential testing methods, fixed horizon, or pre-registered stopping rules with alpha spending if you must monitor continuously."
 ---
-Most teams encounter ab test statistical power after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Product teams ship A/B tests hoping to detect a one-point lift in conversion, then wonder why the experiment runs for six weeks and still reads inconclusive. Statistical power is the probability that a test will reject the null when a real effect of a specified size exists — and most underpowered experiments were doomed at design time, not at analysis. This article walks through minimum detectable effect choice, sample size formulas, variance reduction, and the peeking traps that make dashboards lie.
 
-When ab test statistical power is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Power, alpha, and MDE defined without jargon
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Fix significance level alpha (typically 0.05 two-sided). Choose minimum detectable effect (MDE) delta — the smallest lift that would change the ship decision. Power (1-beta) is then the chance you detect that delta if it is real.
 
-Solid AI engineering turns ab test statistical power from a recurring argument into a documented pattern with tests and an owner.
+Underpowered tests waste traffic: they look inconclusive when effects exist. Overpowered tests with microscopic MDEs detect trivial lifts that are statistically significant but economically meaningless — a 0.01% relative change on checkout button color with ten million users.
 
-## Design principles that survive production
+Before writing code, write the decision rule: We will ship if lift >= 2% relative with 95% confidence at 80% power. That sentence drives sample size more than any calculator defaults.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag ab test statistical power bugs hide.
+## Sample size for conversion rate metrics
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for ab test statistical power, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag ab test statistical power flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for ab test statistical power in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag ab test statistical power changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Ab Test Statistical Power: typed boundary + structured errors
-export async function handleAbTestStatisticalPower(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-ab-test-statistical-power");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+For two-proportion z-test with equal allocation, approximate per-variant sample n:
 
 ```
+n ≈ 2 * (z_{1-α/2} + z_{1-β})^2 * p̄(1-p̄) / δ^2
+```
 
+where p̄ is pooled baseline rate and delta is absolute difference in proportions.
 
-## Operational concerns
+Example: baseline 4%, MDE absolute +0.4 percentage points (10% relative), alpha 0.05, power 0.80 yields roughly 19,000 users per variant. Halving MDE to 0.2 points quadruples required n.
 
-Alert on user-visible symptoms for ab test statistical power — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Use pre-experiment data to estimate baseline and daily eligible traffic; divide n by daily volume for runtime. If runtime exceeds product patience, widen MDE or accept lower power explicitly in the experiment charter.
 
-Production rag ab test statistical power work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Ratio metrics and delta methods
 
-Rollouts for ab test statistical power benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Revenue per user, session length, and order value are ratio or heavy-tailed metrics — normal approximations fail. Options:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+- **Bootstrap confidence intervals** on user-level aggregates with cluster assignment at user ID.
+- **CUPED** variance reduction using pre-period covariates — often cuts required sample 20–40% when covariate correlates with outcome.
+- **Linearization** for ratio metrics in large samples with careful delta-method standard errors.
 
-## Security and compliance angles
+Never analyze ratio metrics by averaging daily ratios across days without weighting — Simpson's paradox lurks in weekly experiment readouts.
 
-Even when ab test statistical power is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Multiple comparisons and metric families
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag ab test statistical power so security reviews do not rely on tribal knowledge.
+Primary metric should be one per test. Guardrail metrics (latency, support tickets, refund rate) need correction or hierarchical testing: primary must win before interpreting secondary wins.
 
-## Testing strategy
+When testing multiple variants (A/B/C/n), use Dunnett or false discovery control if exploring; for confirmatory winner selection, pre-register pairwise contrasts or use hierarchical gatekeeping.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that ab test statistical power depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Dashboards showing twelve metrics with uncorrected p-values will always show one green cell by chance.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Peeking, sequential tests, and optional stopping
 
-## Migration and evolution
+Checking p-values daily and stopping at first p<0.05 inflates false positives dramatically — a 5% test behaves like 20%+ effective alpha under continuous monitoring.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag ab test statistical power functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Mitigations:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where ab test statistical power spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+1. **Fixed horizon** — decide sample n upfront; analyze once.
+2. **Group sequential boundaries** — O'Brien-Fleming spending functions allow interim looks with adjusted thresholds.
+3. **Sequential probability ratio tests** — popular in tech via mSPRT implementations with clear stopping boundaries.
 
-## Related concepts
+If leadership demands mid-flight reads, show confidence intervals and projected runtime, not raw p-values with ship buttons.
 
-Ab Test Statistical Power intersects with broader ai topics — see companion notes on [rag-ab patterns](https://blog.michaelsam94.com/rag-ab/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Variance reduction with CUPED and stratification
 
-## The takeaway
+CUPED adjusts outcome Y using pre-experiment covariate X:
 
-Ab Test Statistical Power rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag ab test statistical power becomes a maintainable asset instead of incident fuel.
+Y_cuped = Y - theta * (X - E[X])
 
-## Resources
+Choose theta to minimize variance; often session count pre-period for conversion tests. Stratified randomization by country or platform ensures balance and enables post-stratified estimation with lower variance.
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+Document covariates in the experiment spec — post-hoc CUPED on the metric that moved most is p-hacking with extra steps.
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist before launch
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+- Pre-register hypothesis, primary metric, MDE, runtime, and stopping rule in experiment ticket.
+- Verify assignment salt stable across deploys; broken bucketing invalidates n.
+- Expose sample ratio mismatch (SRM) checks — chi-square on assignment counts flags broken flags early.
+- Log exposure events with timestamp; analyze on exposed population, not intent-to-treat leakage from cache.
+- Archive variant definitions — retroactive relabeling destroys reproducibility.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+## Communicating results to stakeholders
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Ship/no-ship memos should lead with confidence interval on primary metric, runtime achieved versus planned, and guardrail status — not p-value alone. When inconclusive, state what MDE was powered for and how many more days would reach 80% power at current traffic — that reframes we need more data as a planning miss, not experimental failure.
+
+## Power calculators and tooling in practice
+
+Use Evan Miller's sample size calculator or Statsig planning tools as starting points — then adjust for cluster assignment if users not independent. Document assumed baseline conversion and MDE in experiment ticket; retroactive changing MDE after peeking invalidates analysis. Export power curve showing probability of detecting 50%, 75%, and 100% of target MDE at planned runtime.
+
+## Org process for experiment registry
+
+Central registry lists active experiments, primary metric, powered MDE, owner, and stop date — prevents overlapping tests polluting same metric. Data science office hours review underpowered designs before launch. Archive losing variants with confidence interval, not just p-value, for institutional learning.
+
+Power is not a statistics homework problem — it is a planning tool that prevents six-week inconclusive tests. Pick an MDE tied to business value, compute n before launch, guard against peeking, and use CUPED when you have pre-period signal. Experiments that end with we need more data usually needed more power on day zero.
+
+Design review checklist item 1 for A/B test statistical power: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 1 in A/B test statistical power often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 1 for A/B test statistical power should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 1 for A/B test statistical power documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 2 for A/B test statistical power: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 2 in A/B test statistical power often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 2 for A/B test statistical power should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 2 for A/B test statistical power documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 3 for A/B test statistical power: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 3 in A/B test statistical power often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 3 for A/B test statistical power should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 3 for A/B test statistical power documents escalation when primary and secondary on-call roles are unreachable.
+
+Design review checklist item 4 for A/B test statistical power: validate failure modes, owner, and rollback before merge to main.
+
+Observability gap 4 in A/B test statistical power often appears as missing correlation IDs across async boundaries — fix before peak.
+
+Regression test 4 for A/B test statistical power should assert behavior under duplicate requests and slow dependencies.
+
+Runbook section 4 for A/B test statistical power documents escalation when primary and secondary on-call roles are unreachable.

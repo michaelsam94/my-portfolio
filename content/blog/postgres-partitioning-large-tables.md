@@ -3,7 +3,7 @@ title: "Partitioning Large Postgres Tables"
 slug: "postgres-partitioning-large-tables"
 description: "Partition large PostgreSQL tables by range, list, or hash: declarative partitioning, partition pruning, maintenance, and migration strategies without downtime."
 datePublished: "2026-03-26"
-dateModified: "2026-03-26"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Performance"]
 keywords: "PostgreSQL table partitioning, declarative partitioning, partition pruning, range partition Postgres, partition large table"
 faq:
@@ -168,29 +168,62 @@ CREATE TABLE events_2026_01 PARTITION OF events
 
 Partition pruning requires `created_at` in WHERE clause. Drop old partitions instead of DELETE for retention.
 
-## Common production mistakes
 
-Teams get partitioning large tables wrong in predictable ways:
+## Range vs list vs hash
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Time-series events use RANGE on created_at. Multi-tenant isolation use LIST on tenant_id or HASH when evenly distributed. Wrong strategy — cross-partition scans negate benefit.
 
-Postgres work on partitioning large tables causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Partition pruning verification
 
-## Debugging and triage workflow
+EXPLAIN must show Append with subset of partitions — if all partitions scanned, predicate not aligned to partition key or wrong types.
 
-When partitioning large tables misbehaves in production, work top-down instead of guessing:
+## DEFAULT partition trap
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Catch-all DEFAULT partition receives orphan rows — becomes largest over time. Alert when DEFAULT over 5% of total.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Detach for archival
+
+DETACH PARTITION CONCURRENTLY moves old month to archive without long ACCESS EXCLUSIVE lock. Export to Parquet before drop.
+
+## Automatic partition creation
+
+pg_partman extension creates future monthly partitions — cron maintenance prevents INSERT failure when March arrives and February was last created partition. Without automation, on-call gets paged at midnight UTC on month boundary.
+
+## Foreign key across partitions
+
+Postgres 12+ FK referencing partitioned table supported — verify ON DELETE behavior propagates to all partitions. Legacy design with trigger-maintained child tables may differ — document during migration from manual to declarative partitioning.
+
+## Partition-wise join
+
+PG14+ partition-wise join when two partitioned tables share partition key — join per partition parallelizable. Requires compatible partition bounds — planning benefit lost if one table monthly other daily.
+
+## Global indexes unavailable
+
+Unique constraint must include partition key — no global unique on email alone unless email included in partition key or use unique index on non-partitioned lookup table. Architectural constraint drives email uniqueness table separate from events partition.
+
+## ATTACH PARTITION workflow
+
+CREATE TABLE events_2026_07 PARTITION OF events FOR VALUES FROM ('2026-07-01') TO ('2026-08-01') — pre-create next month partition automated; INSERT failure on first day of month if forgotten is classic ops incident preventable by pg_partman cron.
+
+## Constraint exclusion constraint
+
+CHECK constraint on parent enforcing partition key range matches child bounds — mistake in ATTACH PARTITION caught at attach time not at silent wrong-partition insert. Script automated attach validates bounds against pg_get_partition_constraintdef output.
+
+## Closing notes
+
+Archive detached partitions to S3 via COPY before DROP — compliance retention requires provable export even when partition dropped from primary; lifecycle policy moves cold parquet to glacier.
+
+## Additional guidance
+
+Query planner partition pruning requires explicit partition key in WHERE — ORM lazy query without date filter scans all partitions silently. Add linter on SQL strings in repository layer flagging SELECT on partitioned table missing partition key predicate in code review checklist for data access PRs.
+
+Foreign keys referencing partitioned parent supported PG12+ — migration from non-partitioned to partitioned requires careful FK recreation script tested on staging clone with production FK graph complexity including circular references between orders and shipments tables common in ecommerce schemas.
+
+Automate next-month partition creation with pg_partman — manual CREATE PARTITION forgotten before month boundary causes production INSERT failures.
+
+Include partition key in every ORM default scope — linter flags repository methods querying partitioned events table without created_at predicate preventing accidental full partition scan.
+
+Detach old monthly partitions to cold tablespace before DROP — compliance archive COPY to S3 completes while detached partition still queryable read-only for finance audit window without impacting primary INSERT throughput on current month partition.
 
 ## Resources
 

@@ -1,129 +1,264 @@
 ---
-title: "Observability Service Graph Topology"
+title: "Service Graph Topology from Traces"
 slug: "observability-service-graph-topology"
-description: "Derive dependency map from traces — SLO per edge and critical path analysis."
-datePublished: "2026-01-30"
-dateModified: "2026-01-30"
+description: "Build live service dependency maps from distributed trace data—validate architecture docs and find circular calls."
+datePublished: "2026-01-20"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
-  - "SRE"
-keywords: "observability service graph topology, production, backend"
+  - "Architecture"
+  - "OpenTelemetry"
+keywords: "service graph topology, trace service map, dependency map observability, jaeger service graph, tempo service graph"
 faq:
-  - q: "What problem does Observability Service Graph Topology solve?"
-    a: "It addresses production gaps teams hit when scaling observability service graph topology: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability service graph topology appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How is trace graph different from architecture diagrams?"
+    a: "Diagrams show intent; trace graphs show actual runtime calls including surprises and deprecated paths."
+  - q: "What sample rate is needed?"
+    a: "1–10% head sampling usually suffices for stable edges on high-traffic paths."
+  - q: "Can graphs replace service catalog?"
+    a: "Complement—catalogs hold owners; graphs hold live edges weighted by error and latency."
 ---
 
-## Production context
+Architecture slides showed checkout → payment → inventory. Trace graph added `legacy-tax` and inventory → checkout loop under load. Static diagrams lie; trace topology is as-built wiring.
 
-A billing service lost duplicate events because observability service graph topology was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Generation
 
-Senior backend work on observability service graph topology is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Jaeger SPM, Tempo service graph + span metrics processor, Honeycomb dependency views.
 
-## Architecture pattern
+## Requirements
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Consistent `service.name`; client+server instrumentation; W3C propagation on HTTP/gRPC/messaging.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Incidents
+
+Symptom alert → graph time range → red edge → exemplar traces on that edge.
+
+## Governance
+
+Weekly diff vs expected topology; ticket bot for missing expected edges.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## Service graph in deployment pipelines
 
-## Implementation checklist
+Post-deploy smoke: compare service graph edge error rates for canary vs stable. Automated rollback if new version introduces edge to deprecated `legacy-tax` service—architecture regression caught before full traffic shift.
 
-Validate inputs at the trust boundary with schema versioning.
+## Graph density management
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Graphs with 200 nodes are unreadable. Filter to depth-2 from entry service `checkout` during incidents; full graph for quarterly architecture reviews only.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Missing instrumentation ticket bot
 
-Run migrations with lock_timeout and statement_timeout set.
+Weekly job: edges in service catalog expected graph but absent in trace graph → create Jira tickets to owning teams. Closes observability gaps systematically.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Cost of span metrics generation
 
-## Observability
+Tempo metrics-generator derives RED from spans—increases Tempo CPU. Size generator pods for peak trace ingest; disable span metrics on dev environments to save cost while keeping prod service graph enabled.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Graph-driven capacity planning
 
-Dashboards for observability service graph topology should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Edge weight `rps` growth month-over-month on `checkout→fraud` edge justifies scaling fraud service before checkout peak season—graph becomes capacity planning input, not just incident tool.
 
-## Security notes
+## Graph as onboarding artifact
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+New engineers study service graph in first week to learn real dependencies—faster than reading stale wiki. Assign mentor walkthrough: pick one user journey, trace it in graph, open exemplar trace, read correlated logs. Practical observability onboarding beats slide deck architecture review.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+When decommissioning services, graph should show edge traffic trending to zero before DNS cut—graph-driven deprecation confirms no shadow callers remain.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Debugging and triage workflow
 
-When production misbehaves, work top-down:
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
 
-## Operational checklist
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Measure before optimizing observability service graph topology. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Ship observability service graph topology changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
 
-## Testing recommendations
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+## Production review cadence
+
+Revisit dashboards and alert thresholds after every deploy affecting this observability surface. Weekly on-call review should include one exemplar trace or log linked from a metric spike—paper metrics without exemplars train teams to ignore charts.

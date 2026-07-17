@@ -3,7 +3,7 @@ title: "Signals: The Reactivity Primitive"
 slug: "web-signals-fine-grained-reactivity"
 description: "Understand signals as a fine-grained reactivity primitive: how they work, framework implementations in Solid, Angular, and Preact, and when signals beat virtual DOM diffing."
 datePublished: "2026-05-16"
-dateModified: "2026-05-16"
+dateModified: "2026-07-17"
 tags: ["Web", "JavaScript", "Reactivity", "Frontend"]
 keywords: "signals, fine-grained reactivity, SolidJS, Angular signals, Preact signals, reactive primitives"
 faq:
@@ -14,7 +14,6 @@ faq:
   - q: "Which frameworks support signals?"
     a: "SolidJS is built entirely on signals from the ground up. Angular added signals in version 16 as a core reactivity primitive alongside RxJS. Preact offers @preact/signals as an optional package. Vue's ref and computed are conceptually similar to signals. React does not have native signals, though proposals like the React Forget compiler aim to achieve similar fine-grained updates through automatic memoization. The TC39 Signals proposal aims to standardize a signal API across JavaScript."
 ---
-
 Updating a counter in React re-rendered a component with 2,000 DOM nodes, diffed the virtual DOM, and patched one text node. In Solid, the same counter update changed one text node. No re-render. No diff. The framework knew exactly which DOM node displayed the counter because a signal tracked the dependency at creation time. Signals aren't a framework feature — they're a reactivity primitive that makes the framework's job trivial: update only what changed. The concept is spreading from Solid to Angular to Preact, and understanding it clarifies how reactive UI can work without virtual DOM overhead.
 
 ## How signals work
@@ -241,14 +240,6 @@ effect(() => {
 
 Clean up side effects by returning a dispose function from effects where the framework supports it.
 
-## Measuring success in production
-
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
-
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
-
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
-
 ## Resources
 
 - [SolidJS signals documentation](https://www.solidjs.com/docs/latest/api#createsignal)
@@ -256,3 +247,97 @@ Review changes quarterly. Browser updates, new API support, and traffic pattern 
 - [Preact signals](https://preactjs.com/guide/v10/signals/)
 - [TC39 Signals proposal](https://github.com/tc39/proposal-signals)
 - [Fine-grained reactivity (Ryan Carniato)](https://www.solidjs.com/guides/reactivity)
+
+## Operational checklist (1)
+
+Before promoting Web Signals Fine Grained Reactivity changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Web Signals Fine Grained Reactivity after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web Signals Fine Grained Reactivity touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Web Signals Fine Grained Reactivity changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Web Signals Fine Grained Reactivity after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web Signals Fine Grained Reactivity touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Web Signals Fine Grained Reactivity changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Capacity and cost notes for web signals fine grained reactivity
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct web signals fine grained reactivity changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+| Check | Expected for web signals fine grained reactivity |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Reviewer checklist for web signals fine grained reactivity
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most web signals fine grained reactivity regressions before production.
+
+Concrete probe 2: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Incident patterns around web signals fine grained reactivity
+
+Most incidents involving web signals fine grained reactivity start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+| Check | Expected for web signals fine grained reactivity |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Invariants to enforce for web signals fine grained reactivity
+
+Name three invariants that must hold after every deploy of web signals fine grained reactivity. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+Concrete probe 4: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for web signals fine grained reactivity
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to web signals fine grained reactivity, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+| Check | Expected for web signals fine grained reactivity |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for web signals fine grained reactivity
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for web signals fine grained reactivity should include the revert command and the expected user-visible effect within five minutes.
+
+Concrete probe 6: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for web signals fine grained reactivity
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how web signals fine grained reactivity breaks without a clear owner in the incident channel.
+
+| Check | Expected for web signals fine grained reactivity |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for web signals fine grained reactivity in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

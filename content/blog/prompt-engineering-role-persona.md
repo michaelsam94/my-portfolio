@@ -3,7 +3,7 @@ title: "Role and Persona Prompting"
 slug: "prompt-engineering-role-persona"
 description: "Use role and persona prompts effectively: system message design, persona boundaries, domain expert patterns, and when role-playing helps or hurts LLM output quality."
 datePublished: "2025-08-26"
-dateModified: "2025-08-26"
+dateModified: "2026-07-17"
 tags: ["AI", "Prompt Engineering", "LLM", "Best Practices"]
 keywords: "role prompting, persona prompt engineering, system message design, LLM role play, expert persona prompts"
 faq:
@@ -213,6 +213,30 @@ Regression test in CI when system prompts change — persona drift breaks produc
 Track version hashes of system prompts in LLM observability tools (Langfuse, LangSmith, Helicone).
 
 Version-control system prompts alongside application code; treat prompt edits as API changes requiring changelog and rollback plan. In multi-tenant products, allow per-tenant persona overrides but keep safety rules non-overridable in a base layer prepended after tenant config. Red-team persona prompts for jailbreak paths — "ignore previous instructions" embedded in user content should not override hard rules when rules are placed correctly. Localization affects persona: a friendly casual tone in English may read unprofessional in Japanese business context; test per locale. For regulated industries, legal review of implied credentials ("as a lawyer") is mandatory even when disclaimers follow — marketing often wants authoritative voice product cannot support.
+
+
+## A/B persona with guardrails
+
+Test two persona variants on copy tasks only — measure brand voice score with human rubric, not BLEU. Cap persona length at 100 tokens for extraction agents; longer persona correlates with schema violation rate in our evals. Never let tenant-supplied persona override safety blocks in the platform layer.
+
+## Persona drift across model upgrades
+
+Re-run persona eval suite when switching model families — Claude and GPT interpret "concise technical writer" differently. Keep persona definitions in version control linked to eval hashes so rollback is one revert, not archaeology.
+
+## Persona for multilingual outputs
+
+Specify output language in task block, not persona — "German lawyer persona" writing English confuses models. Persona sets tone; explicit `Respond in de-DE` sets language.
+
+## Short persona library
+
+Maintain approved persona snippets in internal library — copy-paste vetted 1-liners instead of freehand persona authoring per project.
+
+## Production rollout notes
+
+For regulated outputs, persona is secondary to mandatory disclaimer blocks — persona cannot override compliance text. Legal review should sign off persona + disclaimer combination, not persona alone. Shorter persona reduces conflict surface with mandatory blocks.
+## Voice brand guidelines linkage
+
+Link persona snippets to brand voice PDF — when brand updates voice, persona version bumps in same release train. Marketing owns persona text review same as ad copy; engineering owns schema and tool sections.
 
 ## Resources
 

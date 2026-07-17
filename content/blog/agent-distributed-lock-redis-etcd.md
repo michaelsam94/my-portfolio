@@ -1,111 +1,258 @@
 ---
 title: "AI Agents: Distributed Lock Redis Etcd"
 slug: "agent-distributed-lock-redis-etcd"
-description: "Distributed Lock Redis Etcd: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Compare Redis Redlock and etcd lease-based locks for agent orchestration—fencing tokens, TTL math, split-brain behavior, and when each store fits."
 datePublished: "2026-04-30"
 dateModified: "2026-04-30"
 tags: ["AI", "Agent", "Distributed"]
-keywords: "agent, distributed, lock, redis, etcd, ai, production, engineering, architecture"
+keywords: "distributed lock, Redis Redlock, etcd concurrency, fencing token, agent leader election, split brain"
 faq:
-  - q: "What is Distributed Lock Redis Etcd?"
-    a: "Distributed Lock Redis Etcd covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Distributed Lock Redis Etcd?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Distributed Lock Redis Etcd?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Distributed Lock Redis Etcd fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Distributed Lock Redis Etcd should be observable in production and safe to change in small diffs."
+  - q: "When should agent orchestrators use Redis versus etcd for distributed locks?"
+    a: "Use Redis when you already run it for caching/queues, lock hold times are short (seconds), and you can tolerate rare edge cases with fencing tokens on downstream writes. Use etcd when correctness under partition matters more than raw latency—leader election for schedulers, workflow engines, and anything that must survive coordinated failover without double-execution."
+  - q: "Is Redlock safe for agent job deduplication?"
+    a: "Only if every side effect is guarded by a monotonic fencing token written to your database or object store. Redlock alone does not guarantee mutual exclusion across clock skew and GC pauses. Treat the lock as optimization; make job execution idempotent and store the fencing token with the lease record."
+  - q: "What TTL should agent worker locks use?"
+    a: "Set TTL to at least 3× your p99 heartbeat interval plus expected critical section duration. If work can exceed TTL, use lease renewal loops with jitter and abort work if renewal fails—never assume infinite extension. For LLM tool batches running 2–10 minutes, prefer workflow-level leases in etcd over Redis locks without renewal."
+  - q: "How do you test distributed lock correctness before production?"
+    a: "Run Jepsen-style partition tests: isolate lock holder from Redis/etcd majority, verify at most one writer receives a valid fencing token. Chaos-inject process pauses longer than TTL while holding lock—downstream must reject stale tokens. Measure double-execution rate in staging; anything above zero without idempotency is a release blocker."
 ---
-Distributed Lock Redis Etcd sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Two agent scheduler pods both believed they held the lock for `reindex-tenant-4421`. Each spawned embedding jobs against the same document corpus; vector store size doubled, invoice line items duplicated, and neither pod crashed—so alerts stayed green until finance noticed. The team had copied a Redis `SET NX EX` snippet from a blog post without **fencing tokens**, without lease renewal, and without asking whether Redis or etcd matched their failure model. Distributed locks are not mutexes; they are probabilistic coordination primitives whose sharp edges only appear under partitions and long GC pauses.
 
-When distributed lock redis etcd is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## What agents need locks for
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Typical agent platform lock scopes:
 
-Solid AI engineering turns distributed lock redis etcd from a recurring argument into a documented pattern with tests and an owner.
+| Use case | Hold duration | Correctness bar | Store bias |
+|----------|---------------|-----------------|------------|
+| Cron leader election | Until pod healthy | High | etcd |
+| Per-tenant ingestion | Minutes | High | etcd or Redis + fence |
+| Tool rate budget | Sub-second | Medium | Redis |
+| Singleton migration | Seconds–minutes | High | etcd |
+| Deduplicate webhook | Seconds | Medium | Redis + idempotency key |
 
-## Design principles that survive production
+Locks coordinate **who may start** work; they do not replace idempotent execution. Always design so duplicate starters cause at worst duplicate effort detectable downstream, never duplicate spend.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent distributed lock redis etcd bugs hide.
+## Redis: single-instance vs Redlock
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for distributed lock redis etcd, you do not yet understand the behavior you shipped.
+Single Redis primary with `SET key token NX PX ttl` is fast and widely understood:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+```python
+import uuid
+import redis
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent distributed lock redis etcd flows so duplicates are harmless or detectable.
+class RedisLock:
+    def __init__(self, client: redis.Redis, key: str, ttl_ms: int):
+        self.client = client
+        self.key = key
+        self.ttl_ms = ttl_ms
+        self.token = uuid.uuid4().hex
 
-## Implementation patterns
+    def acquire(self) -> bool:
+        return bool(
+            self.client.set(self.key, self.token, nx=True, px=self.ttl_ms)
+        )
 
-A practical baseline for distributed lock redis etcd in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent distributed lock redis etcd changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Distributed Lock Redis Etcd: typed boundary + structured errors
-export async function handleDistributedLockRedisEtcd(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-distributed-lock-redis-etcd");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+    def release(self) -> bool:
+        # Lua: delete only if token matches
+        script = """
+        if redis.call('get', KEYS[1]) == ARGV[1] then
+            return redis.call('del', KEYS[1])
+        else
+            return 0
+        end
+        """
+        return bool(self.client.eval(script, 1, self.key, self.token))
 ```
 
+If primary fails over asynchronously, two clients can both believe they hold the lock. Mitigate with **fencing tokens**: monotonic counters stored in your source of truth.
 
-## Operational concerns
+Redlock (multiple independent Redis nodes) reduces but does not eliminate split-brain risk under real-world clock skew. If you use it, keep quorum math explicit and still fence downstream writes.
 
-Runbooks for distributed lock redis etcd should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+## Fencing tokens: the non-optional half
 
-Production agent distributed lock redis etcd work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Martin Kleppmann's critique of Redlock lands on one fix: the lock service must hand the winner a **fencing token** that storage layers enforce:
 
-Rollouts for distributed lock redis etcd benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```sql
+-- PostgreSQL: reject stale lock holders
+CREATE TABLE agent_job_leases (
+  job_id TEXT PRIMARY KEY,
+  holder TEXT NOT NULL,
+  fence BIGINT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+-- Worker must pass fence on mutation
+UPDATE agent_runs
+SET status = 'running', lease_fence = $fence
+WHERE job_id = $job_id
+  AND (lease_fence IS NULL OR lease_fence < $fence);
+```
 
-## Security and compliance angles
+Redis lock token UUIDs are not fencing tokens unless they monotonically increase per resource. Use a dedicated `INCR lock:fence:{job_id}` inside the acquire Lua script:
 
-Even when distributed lock redis etcd is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```lua
+-- KEYS[1] = lock key, KEYS[2] = fence key
+if redis.call('set', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then
+  local fence = redis.call('incr', KEYS[2])
+  return fence
+end
+return 0
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent distributed lock redis etcd so security reviews do not rely on tribal knowledge.
+Return fence to Python; pass it on every DB write the lock protects.
 
-## Testing strategy
+## etcd: leases, sessions, and native correctness
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that distributed lock redis etcd depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+etcd builds locks on **leases** with keep-alive streams—better fit for agent leaders and longer workflows:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```go
+import (
+  clientv3 "go.etcd.io/etcd/client/v3"
+  concurrency "go.etcd.io/etcd/client/v3/concurrency"
+)
 
-## Migration and evolution
+func runAsLeader(cli *clientv3.Client, lockKey string, work func(ctx context.Context) error) error {
+  session, err := concurrency.NewSession(cli, concurrency.WithTTL(15))
+  if err != nil {
+    return err
+  }
+  defer session.Close()
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent distributed lock redis etcd functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+  mutex := concurrency.NewMutex(session, lockKey)
+  ctx := context.Background()
+  if err := mutex.Lock(ctx); err != nil {
+    return err
+  }
+  defer mutex.Unlock(ctx)
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where distributed lock redis etcd spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+  return work(ctx)
+}
+```
 
-## Related concepts
+Session TTL defines survival without renewal; the etcd client renews automatically while the process runs. If the agent pod freezes longer than TTL, the lease expires and another pod can lead—exactly what you want if the frozen pod cannot make progress anyway.
 
-Distributed Lock Redis Etcd intersects with broader ai topics — see companion notes on [agent-distributed patterns](https://blog.michaelsam94.com/agent-distributed/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+For **compare-and-swap** style guards, use native transactions:
+
+```go
+txn := cli.Txn(ctx).
+  If(clientv3.Compare(clientv3.CreateRevision(lockKey), "=", 0)).
+  Then(clientv3.OpPut(lockKey, holderID, clientv3.WithLease(leaseID))).
+  Else(clientv3.OpGet(lockKey))
+resp, err := txn.Commit()
+```
+
+## Redis vs etcd decision matrix
+
+| Dimension | Redis lock | etcd lock |
+|-----------|------------|-----------|
+| Latency | Sub-ms typical | Low ms, gRPC overhead |
+| Durability | Memory-first; AOF helps | Raft persisted |
+| Partition behavior | Risk of dual holders | Quorum-enforced single leader |
+| Operational load | Often already present | Dedicated cluster care |
+| Lease renewal | Manual heartbeats | Built into session |
+| Watch notifications | Keyspace notifications (fragile) | Native watches for leader loss |
+
+Choose etcd when the lock guards **financially meaningful** or **hard-to-rollback** agent side effects—billing aggregation, destructive migrations, global rate limiter configuration. Choose Redis for **best-effort deduplication** where duplicate work is cheap and idempotency keys catch stragglers.
+
+## Agent orchestration patterns
+
+**Leader election for schedulers** — One pod ticks cron; followers idle. On etcd watch firing `DELETE` for leader key, followers campaign. Expose `/healthz/leader` for load balancers that should not route user traffic to followers.
+
+**Per-tenant serialization** — Prevent concurrent agent runs mutating the same tenant workspace:
+
+```python
+def tenant_lock_key(tenant_id: str) -> str:
+    return f"agent:lock:tenant:{tenant_id}"
+
+async def with_tenant_lock(redis, tenant_id: str, ttl_ms: int, coro):
+    lock = RedisLock(redis, tenant_lock_key(tenant_id), ttl_ms)
+    if not lock.acquire():
+        raise TenantBusyError(tenant_id)
+    try:
+        fence = await get_fence(redis, tenant_id)  # from INCR
+        return await coro(fence)
+    finally:
+        lock.release()
+```
+
+**Lock-free alternative** — For many agent workloads, **optimistic concurrency** with version columns outperforms distributed locks. Locks make sense when retry cost is high (LLM batch re-embed) or external APIs lack idempotency.
+
+## TTL and renewal math
+
+Define variables:
+
+- `H` = heartbeat interval
+- `T` = lock TTL
+- `W` = worst-case work duration
+- `G` = max GC/STW pause
+
+Rule of thumb: `T >= 3*H + G` and renew at `H` with jitter. If `W > T`, you need renewal loops:
+
+```python
+async def renew_loop(redis, key: str, token: str, ttl_ms: int, stop: asyncio.Event):
+    while not stop.is_set():
+        await asyncio.sleep(ttl_ms / 3000)  # renew at ~1/3 TTL
+        ok = await extend_if_owner(redis, key, token, ttl_ms)
+        if not ok:
+            raise LeaseLostError(key)
+```
+
+On `LeaseLostError`, abort agent work and mark job **retryable**—continuing without lock risks split brain.
+
+## Observability and debugging
+
+Emit metrics:
+
+- `lock_acquire_success_total{backend="redis|etcd"}`
+- `lock_acquire_contention_seconds` histogram
+- `lock_lease_lost_total` — critical alert
+- `fence_rejected_writes_total` — should be near zero; spikes mean TTL misconfiguration
+
+Log structured fields: `lock_key`, `holder_id`, `fence`, `ttl_ms`, `backend`. During incidents, compare holder logs with etcd revision history or Redis `GET` values.
+
+## Failure drills
+
+Run quarterly:
+
+1. **Pause holder** — `SIGSTOP` agent worker mid-job; verify lease expires and second worker completes with higher fence.
+2. **Network partition** — Isolate holder from etcd quorum; verify no writes without valid fence after partition heals.
+3. **Redis failover** — Trigger primary promotion; measure window of dual acquire; confirm fencing blocked duplicate DB writes.
+
+Document observed double-execution rate. If non-zero, tighten idempotency before tightening locks.
+
+## Anti-patterns
+
+- **Long critical sections without renewal** — Embedding ten million chunks under one Redis `EX 30` lock.
+- **Lock per message** — Kafka consumer locks each message; use partition assignment instead.
+- **Ignoring clock skew** — Redlock with unsynchronized VMs and sub-second TTL.
+- **No fence on object storage** — S3 overwrites from stale lock holder corrupt agent artifact directories.
 
 ## The takeaway
 
-Distributed Lock Redis Etcd rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent distributed lock redis etcd becomes a maintainable asset instead of incident fuel.
+Redis and etcd both offer distributed locks for agent systems, but they fail differently. Redis wins on speed and simplicity when fencing tokens and idempotency backstop correctness. etcd wins when lease semantics and quorum matter for schedulers and irreversible workflows. Pick the store to match your failure model, then prove it with partition tests—not blog post confidence.
+
+## FAQ
+
+### When should agent orchestrators use Redis versus etcd for distributed locks?
+
+Use Redis when you already run it for caching/queues, lock hold times are short (seconds), and you can tolerate rare edge cases with fencing tokens on downstream writes. Use etcd when correctness under partition matters more than raw latency—leader election for schedulers, workflow engines, and anything that must survive coordinated failover without double-execution.
+
+### Is Redlock safe for agent job deduplication?
+
+Only if every side effect is guarded by a monotonic fencing token written to your database or object store. Redlock alone does not guarantee mutual exclusion across clock skew and GC pauses. Treat the lock as optimization; make job execution idempotent and store the fencing token with the lease record.
+
+### What TTL should agent worker locks use?
+
+Set TTL to at least 3× your p99 heartbeat interval plus expected critical section duration. If work can exceed TTL, use lease renewal loops with jitter and abort work if renewal fails—never assume infinite extension. For LLM tool batches running 2–10 minutes, prefer workflow-level leases in etcd over Redis locks without renewal.
+
+### How do you test distributed lock correctness before production?
+
+Run Jepsen-style partition tests: isolate lock holder from Redis/etcd majority, verify at most one writer receives a valid fencing token. Chaos-inject process pauses longer than TTL while holding lock—downstream must reject stale tokens. Measure double-execution rate in staging; anything above zero without idempotency is a release blocker.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — How to do distributed locking
+- [etcd.io/docs/latest/learning/why/](https://etcd.io/docs/latest/learning/why/) — Why etcd
+- [redis.io/docs/manual/patterns/distributed-locks/](https://redis.io/docs/manual/patterns/distributed-locks/) — Redis distributed locks documentation
+- [jepsen.io/analyses](https://jepsen.io/analyses) — Jepsen consistency analyses
+- [github.com/etcd-io/etcd/tree/main/client/v3/concurrency](https://github.com/etcd-io/etcd/tree/main/client/v3/concurrency) — etcd concurrency package

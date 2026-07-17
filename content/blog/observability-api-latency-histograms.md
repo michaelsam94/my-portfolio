@@ -121,6 +121,62 @@ Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — tra
 
 Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
 
+## Comparing histogram quantiles to trace percentiles
+
+Weekly sanity check: export p99 from Prometheus histogram for `checkout` service and p99 from Tempo span metrics for the same route. Divergence >20% means buckets lie or sampling skews traces.
+
+```promql
+# Tempo span metrics (if metrics-generator enabled)
+histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_latency_bucket{service="checkout"}[1h])))
+```
+
+Document acceptable drift. During incidents, trust traces for single-request truth; trust histograms for alert firing when traces are sampled.
+
+## Recording rules for dashboard performance
+
+High-cardinality route labels make dashboard queries expensive. Pre-aggregate tier-1 routes:
+
+```yaml
+groups:
+  - name: latency_recording
+    rules:
+      - record: route:http_request_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, route) (
+              rate(http_request_duration_seconds_bucket{route=~"/checkout.*|/login.*"}[5m])
+            )
+          )
+```
+
+Dashboards query recording rules; ad-hoc investigation uses raw metrics with short time range.
+
+## Native histogram migration checklist
+
+When moving to Prometheus native histograms:
+
+1. Enable scrape feature flag on one Prometheus shard
+2. Dual-write classic + native histogram metric names during migration (`_bucket` vs `_nhcb`)
+3. Compare quantiles in Grafana overlay panel for two weeks
+4. Switch alerts to native histogram queries
+5. Drop classic buckets after 30-day retention expires
+
+Classic bucket misconfiguration becomes technical debt—native histograms reduce tuning but require Prometheus 2.47+ and compatible exporters throughout the fleet.
+
+## SLO review with product
+
+Histogram buckets should align with product language: if PM says "checkout must feel instant," define instant as <300ms and place bucket boundaries at 100ms, 200ms, 300ms, 500ms so p95 and p99 reflect perceptual thresholds in user research—not arbitrary exponential spacing alone.
+
+Review buckets after major architecture changes (edge caching added, sync path became async). Latency distribution shape shifts; buckets from the monolith era misrepresent serverless or BFF architectures.
+
+## Edge CDN and origin histogram separation
+
+CDN caches hide origin latency in user-facing metrics. Instrument **origin-only** histogram on API servers and **edge** histogram on CDN logs separately. SLO dashboards for API team use origin; product NPS correlates with edge. Comparing both during cache miss storms explains "users slow, origin fine" paradox.
+
+## Histograms for async work
+
+HTTP returns 202 immediately while work continues—histogram on HTTP misleading. Emit separate histogram `job_processing_duration_seconds` for queue workers with same bucket design process as API latency doc. Alert on worker histogram SLO, not HTTP 202 latency.
+
 ## Resources
 
 - [PostgreSQL documentation](https://www.postgresql.org/docs/)

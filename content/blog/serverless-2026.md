@@ -4,7 +4,7 @@ seoTitle: "Serverless in 2026: When It Makes Sense"
 slug: "serverless-2026"
 description: "An honest look at serverless in 2026: where FaaS genuinely wins, where cold starts and cost still bite, and how serverless containers changed the calculus."
 datePublished: "2026-07-02"
-dateModified: "2026-07-02"
+dateModified: "2026-07-17"
 tags: ["Serverless", "Cloud Architecture", "Backend", "Cost"]
 keywords: "serverless, AWS Lambda, serverless tradeoffs, FaaS, cold starts, serverless containers, event-driven"
 faq:
@@ -83,6 +83,10 @@ Default to serverless containers for new services with uncertain or low traffic 
 
 Serverless in 2026 isn't a movement to join or resist. It's one more tool with a well-understood envelope. Deploy it inside that envelope and it's excellent; drag it outside and you'll spend the savings on workarounds.
 
+## Sustaining production quality
+
+Draw compute boundaries on architecture diagram: which boxes are Lambda, Fargate, edge workers, and why. Revisit quarterly when traffic shape changes — steady growth on former spike workload may justify min replicas. Cost anomaly alerts on Lambda duration and Step Functions state transitions catch runaway orchestration.
+
 ## Resources
 
 - [AWS Lambda — best practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
@@ -91,3 +95,15 @@ Serverless in 2026 isn't a movement to join or resist. It's one more tool with a
 - [Firecracker — microVMs](https://firecracker-microvm.github.io/)
 - [CNCF Serverless Whitepaper](https://github.com/cncf/wg-serverless)
 - [Azure Container Apps documentation](https://learn.microsoft.com/en-us/azure/container-apps/)
+
+## Operational checklist (1)
+
+Before promoting Serverless 2026 changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Serverless 2026 after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Serverless 2026 touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.

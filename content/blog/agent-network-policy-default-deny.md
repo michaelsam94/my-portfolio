@@ -1,111 +1,307 @@
 ---
 title: "AI Agents: Network Policy Default Deny"
 slug: "agent-network-policy-default-deny"
-description: "Network Policy Default Deny: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Lock down agent pod egress and ingress with Kubernetes NetworkPolicy default-deny baselines, label contracts, and a rollout that does not break tool calls on day one."
 datePublished: "2026-02-03"
 dateModified: "2026-02-03"
 tags: ["AI", "Agent", "Network"]
-keywords: "agent, network, policy, default, deny, ai, production, engineering, architecture"
+keywords: "kubernetes network policy, default deny, zero trust agents, cilium network policy, egress filtering, agent security"
 faq:
-  - q: "What is Network Policy Default Deny?"
-    a: "Network Policy Default Deny covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Network Policy Default Deny?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Network Policy Default Deny?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Network Policy Default Deny fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Network Policy Default Deny should be observable in production and safe to change in small diffs."
+  - q: "Does default deny block DNS resolution for agent pods?"
+    a: "Only if you forget to allow UDP/TCP 53 to kube-dns or CoreDNS. Every baseline should include an explicit allow to the cluster DNS service IP and to the DNS pods via namespaceSelector. Without it, agents fail tool calls with opaque 'connection refused' errors because hostnames never resolve."
+  - q: "Should agent tool gateways live in the same namespace as workers?"
+    a: "Separate namespaces improve policy clarity. Workers egress to the gateway namespace on 443; the gateway egresses to the internet or VPC endpoints. If everything shares one namespace, you end up with overly broad podSelector rules that defeat the purpose of segmentation."
+  - q: "How do you roll out default deny without breaking production?"
+    a: "Start in audit or log-only mode if your CNI supports it, then enforce on new namespaces before legacy ones. Run conntrack-aware connectivity tests from a Job that mimics agent egress paths. Keep a break-glass NetworkPolicy with a distinct label that security reviews monthly."
+  - q: "Calico vs Cilium—which matters for agent workloads?"
+    a: "Both enforce NetworkPolicy; Cilium adds L7 HTTP policy and Hubble flow visibility useful for debugging agent tool calls. Pick based on what your platform team already operates. The policy semantics that matter—default deny plus explicit allows—are the same; observability and eBPF performance differ."
 ---
-Network Policy Default Deny is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+A security review asked a simple question: "Show me every outbound connection an agent pod can make." The answer was a shrug and a `curl` demo that worked because the cluster allowed all egress. Default-deny network policy is how you turn that shrug into a diagram—and how you stop a compromised agent from scanning your internal `/16` or exfiltrating embeddings to an arbitrary IP.
 
-When network policy default deny is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## The trust model agent pods inherit
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+An agent worker typically holds API keys via projected volumes, talks to an LLM endpoint, hits internal tool gateways, and occasionally reaches a vector database. That is four trust zones, not "the internet."
 
-Solid AI engineering turns network policy default deny from a recurring argument into a documented pattern with tests and an owner.
+Without default deny, any RCE in your agent runtime—or a supply-chain compromise in a base image—gets lateral movement for free. Network policy is not a substitute for patching, but it caps blast radius when something executes arbitrary code inside the pod network namespace.
 
-## Design principles that survive production
+Zero trust here means **deny all, allow by label**. Not "allow all, deny bad IPs." The latter list rots.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent network policy default deny bugs hide.
+## Baseline: deny everything in the namespace
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for network policy default deny, you do not yet understand the behavior you shipped.
+Apply two policies before any allow rules:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent network policy default deny flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for network policy default deny in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent network policy default deny changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Network Policy Default Deny: typed boundary + structured errors
-export async function handleNetworkPolicyDefaultDeny(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-network-policy-default-deny");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+# deny-all-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# deny-all-egress.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
 ```
 
+`podSelector: {}` matches every pod in `agents`. Until you add allows, traffic drops. Schedule this during a maintenance window for existing namespaces; for greenfield agent namespaces, apply deny-first on creation via a Kyverno or OPA Gatekeeper mutating policy.
 
-## Operational concerns
+## Label contract platform teams enforce
 
-Runbooks for network policy default deny should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Policies select pods by labels. Standardize these on every agent Deployment:
 
-Production agent network policy default deny work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+| Label | Purpose |
+|-------|---------|
+| `app.kubernetes.io/name: agent-worker` | Worker egress bundle |
+| `app.kubernetes.io/name: tool-gateway` | Gateway egress bundle |
+| `tenant-tier: standard \| enterprise` | Optional stricter rules for enterprise |
+| `egress-profile: llm-openai` | Declares approved external endpoints |
 
-Rollouts for network policy default deny benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+CI should fail if agent manifests ship without `app.kubernetes.io/name`. Policies reference stable keys—not image tags.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Allow DNS before anything else
 
-## Security and compliance angles
+The first production outage from default deny is always DNS. Explicit allow:
 
-Even when network policy default deny is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent network policy default deny so security reviews do not rely on tribal knowledge.
+If you run NodeLocal DNSCache, target those endpoints instead and document the change in the runbook.
 
-## Testing strategy
+## Worker → gateway → world layering
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that network policy default deny depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Agents should not reach the public internet directly. Force tool and model traffic through an egress gateway:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-worker-egress
+  namespace: agents
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-worker
+  policyTypes:
+    - Egress
+  egress:
+    # tool gateway in same cluster
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tool-gateway
+      ports:
+        - protocol: TCP
+          port: 8443
+    # vector store in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: qdrant
+      ports:
+        - protocol: TCP
+          port: 6333
+```
 
-## Migration and evolution
+Gateway namespace gets a separate policy permitting HTTPS to approved CIDR blocks or `egress-gateway` SNAT IPs.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent network policy default deny functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Ingress: who may call the agent API
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where network policy default deny spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Agent HTTP servers should accept traffic only from the ingress controller and internal orchestrators:
 
-## Related concepts
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-worker-ingress
+  namespace: agents
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agent-orchestrator
+      ports:
+        - protocol: TCP
+          port: 8080
+```
 
-Network Policy Default Deny intersects with broader ai topics — see companion notes on [agent-network patterns](https://blog.michaelsam94.com/agent-network/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Adjust namespace labels to match your ingress installation—`ingress-nginx` vs `traefik` vs Gateway API implementation.
 
-## The takeaway
+## Cilium L7 policy for tool URLs
 
-Network Policy Default Deny rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent network policy default deny becomes a maintainable asset instead of incident fuel.
+When you need domain-level control—not just IP—CiliumNetworkPolicy can enforce HTTP `:path` and `:method`:
+
+```yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gateway-egress-llm
+  namespace: agents
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tool-gateway
+  egress:
+    - toFQDNs:
+        - matchName: api.openai.com
+        - matchPattern: "*.openai.azure.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+          rules:
+            http:
+              - method: POST
+                path: "/v1/chat/completions"
+```
+
+L7 rules carry CPU overhead. Apply them on gateways, not on every worker replica.
+
+## Progressive rollout playbook
+
+**Phase 0 — inventory.** Run Hubble `hubble observe --namespace agents` or Calico flow logs for 72 hours. Export unique `(src, dst, port)` tuples. Unknown tuples become allow candidates or bugs.
+
+**Phase 1 — new namespaces.** Deny-all on `agents-staging-*` only. Run connectivity Job after each deploy.
+
+**Phase 2 — audit mode.** If using Cilium, enable policy audit annotations before enforcement. Watch for dropped-flow counters.
+
+**Phase 3 — production enforce.** Roll one tenant shard at a time via namespace label `netpol-enforced: true`.
+
+**Phase 4 — remove break-glass.** Delete temporary `allow-all-debug` policies created during migration. Grep Git for `allow-all` weekly until zero hits.
+
+Connectivity test Job:
+
+```bash
+kubectl run netcheck -n agents --rm -it --restart=Never \
+  --image=curlimages/curl:8.5.0 \
+  --labels="app.kubernetes.io/name=agent-worker" \
+  -- curl -sf --max-time 5 https://tool-gateway.agents.svc:8443/healthz
+```
+
+Wire this into CI against a kind cluster with the same policies.
+
+## Debugging drops without guessing
+
+Symptoms map to causes:
+
+- **ImagePullBackOff** — usually not NetworkPolicy; check image registry egress on nodes.
+- **Tool timeout after 30s** — likely egress deny or DNS; check CNI drop counters.
+- **Intermittent 503** — policy may allow pod IP but not Service ClusterIP path; verify `to` blocks include namespaceSelectors for Service backends.
+- **Works in staging, fails in prod** — label drift on namespace or missing `kubernetes.io/metadata.name` label on system namespaces (common on older clusters).
+
+Hubble CLI example:
+
+```bash
+hubble observe --namespace agents --verdict DROPPED --follow
+```
+
+Correlate drops with agent trace IDs if your mesh adds them.
+
+## Interaction with service mesh mTLS
+
+Istio/Linkerd mTLS encrypts pod-to-pod traffic but does not replace NetworkPolicy—they are complementary. Policy still decides *which* pods may connect; mesh decides *how* bytes are authenticated. Sidecar outbound ports must appear in allow rules or traffic dies at the sidecar before the CNI sees it.
+
+Document whether policies select **pod IP** or **service account identity** when mesh is enabled. Mixed modes confuse on-call.
+
+## Compliance and evidence collection
+
+SOC2 auditors ask for periodic proof that prod matches Git. Store rendered NetworkPolicy manifests in a GitOps repo; Argo CD diff alerts on drift. Export monthly Hubble flow summaries showing zero DROPPED flows from agent workers to non-approved destinations.
+
+Break-glass policies require ticket IDs in annotations:
+
+```yaml
+metadata:
+  annotations:
+    security.example.com/break-glass-ticket: "INC-4821"
+    security.example.com/expires: "2026-02-10T00:00:00Z"
+```
+
+Automated policy lint rejects break-glass without expiry.
+
+## Namespace-per-tenant isolation for enterprise agents
+
+Enterprise contracts sometimes require **hard network separation** between tenants—not just logical RBAC. Namespace-per-tenant with cloned policy templates achieves this without bespoke rules per customer:
+
+```yaml
+# templated per tenant namespace agents-tenant-acme
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tenant-isolation
+  namespace: agents-tenant-acme
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tenant-access: acme
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              tenant-access: acme
+```
+
+Platform automation renders this from a tenant onboarding CRD. The `tenant-access` label on namespaces is the only variable—policies stay auditable and diffable in review. Pair with ResourceQuota so a noisy tenant cannot exhaust IP tables or conntrack entries on shared nodes.
+
+## What changes after default deny lands
+
+Incident triage gets faster: if an agent cannot reach a tool, the answer is in policy Git history, not tcpdump on a node. New integrations require an explicit allow PR—security sees them before production. Compromised pods stop scanning internal subnets because there was never a rule permitting it.
+
+Default deny is tedious to adopt and cheap to operate. That asymmetry is the point.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Kubernetes NetworkPolicy documentation](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+- [Cilium — network policy editor and guides](https://docs.cilium.io/en/stable/security/policy/)
+- [Calico — network policy tutorial](https://docs.tigera.io/calico/latest/network-policy/get-started/kubernetes-policy)
+- [Hubble — network observability for Cilium](https://github.com/cilium/hubble)
+- [NSA/CISA — Kubernetes hardening guide (network segmentation)](https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/KUBERNETES-HARDENING-GUIDE-1.2-PDF.pdf)

@@ -3,7 +3,7 @@ title: "Progressive Delivery with Flagger"
 slug: "ops-progressive-delivery-flagger"
 description: "Automate canary analysis with Flagger: metric templates, traffic splitting on Istio and NGINX, rollback triggers, and GitOps integration for hands-off rollouts."
 datePublished: "2026-01-13"
-dateModified: "2026-01-13"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Kubernetes", "Flagger", "Progressive Delivery"]
 keywords: "Flagger canary, progressive delivery Kubernetes, automated canary analysis, Istio Flagger, GitOps rollout"
 faq:
@@ -181,6 +181,50 @@ When progressive delivery flagger misbehaves in production, work top-down instea
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Flagger Canary with Istio/Contour
+
+Flagger shifts traffic weight based on metric checks:
+
+```yaml
+analysis:
+  interval: 1m
+  threshold: 5
+  maxWeight: 50
+  stepWeight: 10
+  metrics:
+    - name: request-success-rate
+      thresholdRange:
+        min: 99
+```
+
+Failed analysis triggers automatic rollback — verify rollback doesn't leave orphaned canary pods consuming GPU/DB connections.
+
+## Load generator for canary validation
+
+Low traffic services never hit canary pods — metrics look green while broken code ships. Inject synthetic traffic or mirror production shadow traffic during analysis window.
+
+## Metric availability during low traffic
+
+Flagger analysis needs minimum request count — night deployments on internal APIs never satisfy threshold. Inject synthetic traffic or lower `threshold` for low-QPS services with longer `interval`.
+
+## Istio subset routing cleanup
+
+Failed canary leaves orphaned VirtualService weights — GitOps reconcile should reset to 100% stable; alert if canary Service entries persist >24h.
+
+## Manual promotion gates
+
+Require human approval in Flagger after canary metrics pass — auto-promote risky for payment services. Slack button webhook to `flagger promote`.
+
+## Flagger notification integration
+
+Slack webhook on canary failure with dashboard link — on-call acknowledges in 5 min or auto-rollback. PagerDuty only for customer-facing SLO breach, not every failed analysis.
+## Header-based canary for internal APIs
+
+`x-canary: true` on internal gRPC complements Flagger HTTP — mesh routes staff dogfood before percentage rollout.
+## Canary metric burn rate
+
+Pair Flagger with Prometheus burn-rate alerts — canary passes error rate but exhausts monthly error budget in an hour. Set max canary duration and max traffic weight per service tier in platform policy.
 
 ## Resources
 

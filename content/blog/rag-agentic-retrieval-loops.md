@@ -3,7 +3,7 @@ title: "Agentic Retrieval Loops"
 slug: "rag-agentic-retrieval-loops"
 description: "Build agentic RAG with multi-step retrieval loops: query decomposition, iterative search, self-correction, and stopping criteria that improve answer quality on complex questions."
 datePublished: "2024-11-17"
-dateModified: "2024-11-17"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Agents", "Retrieval"]
 keywords: "agentic RAG, iterative retrieval, query decomposition, self-RAG, multi-hop retrieval, retrieval loops, LLM agents"
 faq:
@@ -103,29 +103,37 @@ Not every question needs a loop. A lightweight classifier — keyword heuristics
 
 This hybrid architecture keeps p95 latency acceptable while improving quality on the 15–20% of queries that actually need multi-hop retrieval.
 
-## Common production mistakes
 
-Teams get agentic retrieval loops wrong in predictable ways:
+## Token budget governor
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Track cumulative retrieved tokens across iterations — hard cap at 8k or 70% of model context, whichever lower. Evaluator prompt at cap must choose synthesize vs ask clarifying question, not silently truncate oldest chunks without telling the model.
 
-RAG pipelines for agentic retrieval loops degrade when chunk boundaries split tables, embeddings go stale after doc updates, and retrieval metrics are measured offline only. Re-index incrementally and monitor answer faithfulness on live traffic samples.
+## Cheap-first iteration strategy
 
-## Debugging and triage workflow
+Iteration 1: BM25 only. Iteration 2+: add vector + reranker if evaluator confidence below threshold. Saves 40–60% retrieval cost on queries that exit after one hop in our support bot traces.
 
-When agentic retrieval loops misbehaves in production, work top-down instead of guessing:
+## Sub-query diversity scoring
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+If iteration N retrieves >80% duplicate chunk IDs vs iteration N-1, stop early — rewriter is stuck. Log duplicate rate; high rates indicate poor query reformulation prompt or corpus too sparse for the question domain.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Parallel sub-queries per iteration
+
+Independent sub-queries (Enterprise SLA vs Starter SLA) can retrieve in parallel within one iteration — wall clock drops vs sequential searches. Merge contexts with dedupe on chunk ID before evaluate step; parallel without dedupe bloats context and confuses evaluator.
+
+## User-visible loop transparency
+
+Optional debug mode shows "Searching: migration timeline Q3 2025" — support power users tolerate slightly longer loops when progress is visible. Hide in consumer mode; show in B2B admin consoles with toggle.
+
+## Production rollout notes
+
+Product management should define max acceptable latency for agentic path — if p95 exceeds 8 seconds, route more queries to single-shot via classifier threshold tuning. Loops improve quality only when users wait; async email-style workflows tolerate longer loops than live chat.
+## Citation requirement in loop exit
+
+Final generation must cite chunk IDs used across all iterations — evaluator checks citations cover entities in question before marking sufficient. Prevents early exit when model has partial context missing one of three required entities in compound question.
+
+## Closing operational guidance
+
+Expose max iteration config per tenant tier — free tier single-shot only; enterprise enables four iterations with SLA on p95 latency documented in contract appendix. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

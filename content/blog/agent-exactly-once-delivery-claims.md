@@ -7,105 +7,269 @@ dateModified: "2024-11-17"
 tags: ["AI", "Agent", "Exactly"]
 keywords: "agent, exactly, once, delivery, claims, ai, production, engineering, architecture"
 faq:
-  - q: "What is Exactly Once Delivery Claims?"
-    a: "Exactly Once Delivery Claims covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Exactly Once Delivery Claims?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Exactly Once Delivery Claims?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Exactly Once Delivery Claims fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Exactly Once Delivery Claims should be observable in production and safe to change in small diffs."
+  - q: "Is exactly-once delivery actually possible in distributed systems?"
+    a: "Pure exactly-once end-to-end is impossible under the laws of distributed systems—networks drop acknowledgments, processes crash mid-handler, and brokers redeliver. What vendors mean is 'exactly-once semantics': the effect on your application state happens once, achieved by idempotent consumers plus transactional outbox or broker deduplication. The claim is about observable outcomes, not magic transport."
+  - q: "Why do agent pipelines care more than typical microservices?"
+    a: "A duplicate Kafka message that double-charges a penny is annoying. A duplicate agent job that sends two wire transfers, indexes the same document twice into a vector store, or runs a destructive shell tool twice is catastrophic. Agent side effects are expensive, irreversible, and externally visible. At-least-once delivery is the default; without idempotency you get at-most-never-trust."
+  - q: "What is the difference between idempotency keys and broker exactly-once?"
+    a: "Idempotency keys are application-layer: the consumer records 'job-abc already processed' and skips. Broker exactly-once (e.g., Kafka transactions) guarantees no duplicate records within a stream under specific producer configs—but your tool calls still need idempotency because the broker cannot see past your consumer. Use both: broker features shrink the duplicate window; app idempotency closes the gap."
+  - q: "How do I test that duplicates are harmless?"
+    a: "Chaos-test by replaying messages deliberately. In staging, wrap consumers with a fault injector that delivers each message 2–3 times. Assert downstream state: one row in billing, one vector embedding, one Slack notification. Property: effect_count(message_id) == 1 for all idempotent handlers."
 ---
-Exactly Once Delivery Claims is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The Kafka consumer group looked healthy. Lag was zero. Yet finance found duplicate invoice line items—same `job_id`, same amount, timestamps two seconds apart. The agent worker had processed `RunBillingSync` twice after a rebalance left the first attempt's offset uncommitted. The broker delivered at-least-once, as designed. The handler was not idempotent, as assumed. Marketing called it "exactly-once Kafka." Engineering learned what the claim actually covered—which was not the credit card charge.
 
-When exactly once delivery claims is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+"Exactly-once delivery" is the most misunderstood phrase in event-driven agent architecture. This post unpacks what brokers and stream processors really guarantee, how to achieve exactly-once **effects** for tool calls and side effects, and how to stop believing checkbox semantics that stop at the consumer boundary.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The impossibility result, practically stated
 
-Solid AI engineering turns exactly once delivery claims from a recurring argument into a documented pattern with tests and an owner.
+The classic two-generals problem applies: a producer cannot know if a message was processed after a network partition. Brokers choose among:
 
-## Design principles that survive production
+| Guarantee | Meaning | Duplicate risk |
+|-----------|---------|----------------|
+| At-most-once | Fire and forget; may lose messages | None |
+| At-least-once | Retry until ack; may duplicate | High without idempotency |
+| Exactly-once semantics | Effect applied once | Requires app + infra cooperation |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent exactly once delivery claims bugs hide.
+Kafka's EOS (idempotent producer + transactions), Pulsar deduplication, and SQS FIFO with deduplication IDs shrink duplicate **publication**. They do not make your `delete_file` tool safe when the consumer crashes after the delete but before commit.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for exactly once delivery claims, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent exactly once delivery claims flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for exactly once delivery claims in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent exactly once delivery claims changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Exactly Once Delivery Claims: typed boundary + structured errors
-export async function handleExactlyOnceDeliveryClaims(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-exactly-once-delivery-claims");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+For agents, the useful framing is **effectively-once processing**:
 
 ```
+duplicate_messages × idempotent_handler = single_external_effect
+```
 
+## Where duplicates enter agent pipelines
 
-## Operational concerns
+**Consumer rebalance.** Partition reassigned while handler runs; offset not committed → redelivery.
 
-Game-day exercises for exactly once delivery claims beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Visibility timeout expiry.** SQS message not deleted in time; another worker picks it up.
 
-Production agent exactly once delivery claims work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**HTTP webhook retries.** Tool gateway returns 500 after succeeding; caller retries.
 
-Rollouts for exactly once delivery claims benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Orchestrator at-least-once.** Temporal, Step Functions, and custom schedulers retry activities on timeout—even if the activity completed but the ack was lost.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Human-in-the-loop resume.** User clicks "retry"; system resubmits same `session_id` job.
 
-## Security and compliance angles
+Each path is normal. Treating duplicates as exceptional guarantees incidents.
 
-Even when exactly once delivery claims is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Idempotency keys: the application layer contract
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent exactly once delivery claims so security reviews do not rely on tribal knowledge.
+Every externally visible command carries an idempotency key—`job_id`, `session_id + step_index`, or client-supplied UUID.
 
-## Testing strategy
+```typescript
+// workers/idempotent-handler.ts
+import { createHash } from "crypto";
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that exactly once delivery claims depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+interface JobEnvelope {
+  idempotencyKey: string;
+  type: string;
+  payload: unknown;
+}
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+export async function handleJob(
+  db: Db,
+  envelope: JobEnvelope,
+  execute: (payload: unknown) => Promise<void>,
+): Promise<"processed" | "duplicate" | "in_flight"> {
+  const keyHash = createHash("sha256").update(envelope.idempotencyKey).digest("hex");
 
-## Migration and evolution
+  return db.transaction(async (tx) => {
+    const { rows } = await tx.query(
+      `INSERT INTO idempotency_records (key_hash, status, created_at)
+       VALUES ($1, 'in_flight', now())
+       ON CONFLICT (key_hash) DO NOTHING
+       RETURNING key_hash`,
+      [keyHash],
+    );
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent exactly once delivery claims functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+    if (rows.length === 0) {
+      const existing = await tx.query(
+        `SELECT status FROM idempotency_records WHERE key_hash = $1`,
+        [keyHash],
+      );
+      return existing.rows[0].status === "completed" ? "duplicate" : "in_flight";
+    }
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where exactly once delivery claims spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+    try {
+      await execute(envelope.payload);
+      await tx.query(
+        `UPDATE idempotency_records SET status = 'completed', completed_at = now()
+         WHERE key_hash = $1`,
+        [keyHash],
+      );
+      return "processed";
+    } catch (err) {
+      await tx.query(`DELETE FROM idempotency_records WHERE key_hash = $1`, [keyHash]);
+      throw err; // allow broker retry
+    }
+  });
+}
+```
 
-## Related concepts
+Critical details:
 
-Exactly Once Delivery Claims intersects with broader ai topics — see companion notes on [agent-exactly patterns](https://blog.michaelsam94.com/agent-exactly/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+- **Claim in-flight atomically** before side effects.
+- **Delete in-flight record on failure** so legitimate retries can proceed.
+- **Store completion persistently** so duplicates short-circuit.
+- **TTL stale in-flight records** (e.g., 24h) for crash recovery with manual review.
+
+## Transactional outbox: aligning DB and broker
+
+Dual-write problem: you update Postgres and publish to Kafka—one can succeed, one fail.
+
+Outbox pattern: write business row + outbox row in one transaction; separate relay publishes to broker.
+
+```sql
+CREATE TABLE outbox (
+  id         BIGSERIAL PRIMARY KEY,
+  topic      TEXT NOT NULL,
+  payload    JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  published  BOOLEAN DEFAULT false
+);
+```
+
+```python
+# In same transaction as domain write
+def complete_agent_step(conn, session_id, step_result):
+    conn.execute(
+        "UPDATE agent_steps SET status = 'done', result = %s WHERE id = %s",
+        (step_result, session_id),
+    )
+    conn.execute(
+        "INSERT INTO outbox (topic, payload) VALUES (%s, %s)",
+        (
+            "agent.step.completed",
+            json.dumps({"session_id": session_id, "idempotency_key": session_id}),
+        ),
+    )
+```
+
+Relay uses `FOR UPDATE SKIP LOCKED` or Debezium CDC. Consumers still need idempotency—outbox guarantees **at-least-once publication**, not effect-once.
+
+## Broker-level exactly-once: what Kafka EOS actually covers
+
+Kafka transactions let a producer send to multiple partitions atomically and commit consumer offsets in the same transaction—isolation within the streaming layer.
+
+```java
+// Simplified Kafka EOS producer concept
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "agent-worker-1");
+
+producer.initTransactions();
+producer.beginTransaction();
+producer.send(new ProducerRecord<>("agent-events", key, value));
+producer.sendOffsetsToTransaction(offsets, consumerGroupMetadata);
+producer.commitTransaction();
+```
+
+This prevents duplicate **records in the log** under broker failure modes the transaction covers. It does not prevent:
+
+- Your consumer calling OpenAI twice
+- Two different consumers processing logically duplicate jobs on different topics
+- A bug that emits two events with different keys for one user action
+
+Use EOS to keep event logs clean; still implement idempotent handlers for tools.
+
+## Agent tool calls: designing for safe retry
+
+Tools are the danger zone. Classify each tool:
+
+| Tool class | Idempotency strategy |
+|------------|---------------------|
+| Read-only (search, GET) | Naturally safe; still dedupe to save cost |
+| Create with server ID | Pass idempotency key to external API (Stripe, Slack) |
+| Update / delete | Use version numbers or If-Match headers |
+| Irreversible (shell, email) | Guard with pre-check + idempotency store; prefer dry-run event first |
+
+```typescript
+async function invokeTool(
+  tool: Tool,
+  args: unknown,
+  idempotencyKey: string,
+): Promise<ToolResult> {
+  if (tool.supportsIdempotencyKey) {
+    return tool.execute(args, { idempotencyKey });
+  }
+  if (tool.sideEffectClass === "irreversible") {
+    const prior = await idempotencyStore.get(idempotencyKey);
+    if (prior) return prior.result;
+  }
+  // Read-only: execute but cache result by key
+  return tool.execute(args);
+}
+```
+
+Document tool idempotency in the agent's tool manifest—planners and eval harnesses need to know which tools can be safely retried.
+
+## Dedup windows and vector store pitfalls
+
+Embedding pipelines often claim exactly-once because "we use a unique document ID." Reprocessing the same `doc_id` with unchanged content should upsert, not duplicate. Use deterministic IDs:
+
+```
+vector_id = hash(tenant_id + source_uri + content_version)
+```
+
+Reindex jobs that change embedding models bump `content_version` intentionally. Blind re-ingest without version logic creates near-duplicate vectors that poison retrieval.
+
+## Observability: proving effect-once
+
+Metrics that matter:
+
+- `idempotency_duplicate_skipped_total` — healthy non-zero in production
+- `idempotency_in_flight_stuck` — alert if > 0 for > 5 minutes
+- `side_effect_count_by_key` — should never exceed 1; assert in tests
+
+Structured logs on every handler:
+
+```json
+{
+  "event": "job_handled",
+  "idempotency_key": "sess_abc_step_3",
+  "outcome": "duplicate",
+  "handler": "RunBillingSync"
+}
+```
+
+During incidents, grep `outcome=processed` grouped by key—duplicates show immediately.
+
+## Testing duplicate delivery
+
+**Replay harness.** Export production messages (sanitized) and feed each twice to staging consumers.
+
+**Fault injection middleware.**
+
+```python
+async def maybe_duplicate(next_handler, message):
+    await next_handler(message)
+    if os.getenv("CHAOS_DUPLICATE_RATE", "0") == "1":
+        await next_handler(message)  # intentional double delivery
+```
+
+**Contract tests with external APIs.** Mock Stripe/Slack idempotency endpoints; verify your client sends the same key on retry.
+
+Game-day scenario: kill consumer pod after tool success, before offset commit. Verify one external effect when pod restarts.
+
+## What to say in architecture reviews
+
+When someone claims "exactly-once delivery," ask:
+
+1. Exactly-once **what**—broker records, consumer processing, or external side effects?
+2. What happens on rebalance mid-handler?
+3. Where is the idempotency key generated and stored?
+4. Is the outbox pattern used for DB + event alignment?
+5. Show the test that delivers the same message three times.
+
+Honest answers sound like: "At-least-once transport with idempotent consumers and transactional outbox; external APIs use provider idempotency keys." That is production-grade. "Exactly-once Kafka" without the rest is marketing.
 
 ## The takeaway
 
-Exactly Once Delivery Claims rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent exactly once delivery claims becomes a maintainable asset instead of incident fuel.
+Exactly-once delivery claims describe semantics, not miracles. Agent systems need effectively-once **effects**: idempotency records at the handler, transactional outbox for publish consistency, broker EOS where appropriate, and tool manifests that classify retry safety. Test by duplicating messages on purpose. The goal is not zero duplicates in the log—it is zero duplicate wire transfers, emails, and database destroys.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Kafka documentation — Exactly-once semantics](https://kafka.apache.org/documentation/#semantics)
+- [Jepsen analyses of distributed systems](https://jepsen.io/analyses)
+- [Stripe idempotent requests](https://stripe.com/docs/api/idempotent_requests)
+- [Microservices.io — Transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html)
+- [AWS SQS FIFO deduplication](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html)

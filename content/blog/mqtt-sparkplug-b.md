@@ -3,8 +3,8 @@ title: "MQTT Sparkplug B for Industrial Telemetry"
 slug: "mqtt-sparkplug-b"
 description: "MQTT Sparkplug B for industrial telemetry: birth/death certificates, stateful sessions, the unified namespace, and how it turns plain MQTT into a real OT/IT data backbone."
 datePublished: "2026-03-22"
-dateModified: "2026-03-22"
-tags: ["IoT", "Protocols", "MQTT"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MQTT Sparkplug B, industrial MQTT, birth death certificates, state management IIoT, unified namespace, OT IT"
 faq:
   - q: "What is MQTT Sparkplug B?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are birth and death certificates in Sparkplug B?"
     a: "A birth certificate (NBIRTH/DBIRTH) is a retained message a node or device publishes on connect that declares all its metrics and their current values. A death certificate (NDEATH/DDEATH) is registered as an MQTT Last Will and Testament so the broker publishes it automatically if the device disconnects unexpectedly. Together they let consumers always know the online/offline state and the full current context of every device."
 ---
-
 Plain MQTT is a fantastic transport and a terrible protocol — by which I mean it tells you exactly nothing about what a message contains, how topics are named, or whether the device that should be publishing is even alive. In a chat app that's fine. On a factory floor with hundreds of devices feeding SCADA, MES, and analytics systems, that ambiguity means every integration is a bespoke, brittle mapping exercise. MQTT Sparkplug B fixes this by layering convention on top of MQTT: standardized topic namespaces, an efficient binary payload, and — the crucial part — explicit state management through birth and death certificates. It's what turns MQTT into an actual industrial data backbone.
 
 I've worked on both raw-MQTT industrial pipelines and Sparkplug-based ones, and the difference in how much glue code you write is stark. Sparkplug's whole value is that it makes state and structure part of the protocol instead of tribal knowledge.

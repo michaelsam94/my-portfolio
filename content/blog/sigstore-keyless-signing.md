@@ -3,16 +3,17 @@ title: "Keyless Signing with Sigstore"
 slug: "sigstore-keyless-signing"
 description: "How Sigstore keyless signing works: cosign, OIDC identity, ephemeral certificates, and the Rekor transparency log — signing artifacts without managing private keys."
 datePublished: "2026-02-28"
-dateModified: "2026-02-28"
-tags: ["Security", "Supply Chain", "DevSecOps"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "Sigstore, cosign, keyless signing, OIDC signing, artifact signing, Rekor transparency log, provenance"
 faq:
-  - q: "What is keyless signing with Sigstore?"
-    a: "Keyless signing lets you sign software artifacts using a short-lived certificate tied to an OIDC identity instead of a long-lived private key you have to store and protect. Sigstore issues an ephemeral certificate that binds a signature to an identity (a CI workflow, a person, a service account) for a few minutes, records it in a public transparency log, and then the key material is discarded. There's no signing key to leak because none persists."
-  - q: "What does cosign do?"
-    a: "Cosign is the Sigstore CLI for signing and verifying artifacts, most commonly container images and their attestations. In keyless mode it drives the OIDC flow, obtains an ephemeral certificate from Fulcio, signs the artifact, and uploads the signature and certificate to the Rekor transparency log. On the verify side, it checks the signature and asserts the signer's identity matches a policy you specify."
-  - q: "What is the Rekor transparency log?"
-    a: "Rekor is Sigstore's public, append-only, tamper-evident transparency log of signing events. Every keyless signature is recorded there with its certificate and metadata, so anyone can later verify that a given artifact was signed by a given identity at a given time. Because the log is immutable and publicly auditable, it provides the accountability that replaces a private key you'd otherwise have to trust was never misused."
+  - q: "Keyless signing?"
+    a: "Fulcio issues cert from OIDC identity; Rekor logs signature for verification."
+  - q: "cosign in CI?"
+    a: "cosign sign with OIDC provider matching your CI platform."
+  - q: "Verification?"
+    a: "Policy controllers or admission webhooks verify signatures at deploy time."
 ---
 
 The oldest problem in code signing isn't the cryptography — it's the key. Somebody has to generate a private signing key, store it somewhere safe, rotate it, keep it out of CI logs, and pray it never leaks. Sigstore's keyless signing throws that whole problem out. Instead of a durable private key, you sign with a short-lived certificate bound to an OIDC identity — your CI workflow, your Google account, a service identity — and the key material evaporates after a few minutes. There's no signing key to steal because none survives the operation.
@@ -89,6 +90,18 @@ Keyless is excellent, but be honest about the dependencies. You're trusting the 
 There's also an availability consideration — signing and verification depend on those services being reachable, so bake in retries and think about your verification path in air-gapped environments (cosign supports offline verification with bundled Rekor proofs for exactly this).
 
 My take after adopting it across pipelines: keyless signing is one of the rare security improvements that also *reduces* operational burden. No key vault, no rotation runbook, no "who has access to the signing key" audit. You trade a secret you have to guard for an identity you already manage and a public log anyone can audit — and that trade is almost always the right one.
+
+## OIDC identity binding
+
+Fulcio cert must match expected `issuer` + `subject` (GitHub repo ref). Consumers verifying signature without identity check accept any signed malware. Mirror Rekor queries if air-gapped verify; transparency log proves artifact existed at build time for compliance asks.
+
+## OIDC identity binding
+
+Fulcio cert must match expected `issuer` + `subject` (GitHub repo ref). Consumers verifying signature without identity check accept any signed malware. Mirror Rekor queries if air-gapped verify; transparency log proves artifact existed at build time for compliance asks.
+
+## Notes on sigstore keyless signing
+
+Verify signatures in admission controller before pods deploy; unsigned images fail closed. OIDC trust policy scoped to environment branch, not entire org. Maintain offline root of trust documentation for auditors explaining Fulcio and Rekor roles.
 
 ## Resources
 

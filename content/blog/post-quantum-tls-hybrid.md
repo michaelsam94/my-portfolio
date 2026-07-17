@@ -3,7 +3,7 @@ title: "Hybrid Post-Quantum TLS"
 slug: "post-quantum-tls-hybrid"
 description: "Prepare TLS for post-quantum threats with hybrid key exchange: ML-KEM, classical ECDHE, certificate considerations, and rollout strategy for 2025–2026 stacks."
 datePublished: "2026-03-02"
-dateModified: "2026-03-02"
+dateModified: "2026-07-17"
 tags: ["Security", "TLS", "Cryptography", "Networking"]
 keywords: "post-quantum TLS, hybrid key exchange, ML-KEM Kyber, PQC TLS 1.3, quantum-safe cryptography"
 faq:
@@ -113,29 +113,54 @@ Test hybrid TLS with legacy corporate proxies that intercept TLS — some MITM a
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
 
-Teams get post quantum tls hybrid wrong in predictable ways:
+## Negotiating hybrid groups in TLS 1.3
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Client and server must agree on named group like X25519MLKEM768. Mismatch falls back to classical only — monitor handshake metrics for PQC group selection rate.
 
-Production implementations of post quantum tls hybrid fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Performance impact measurement
 
-## Debugging and triage workflow
+ML-KEM encapsulation adds microseconds — negligible vs RTT. Larger handshake messages matter on mobile high-latency links. Benchmark full handshake p95 before enabling hybrid on API gateway.
 
-When post quantum tls hybrid misbehaves in production, work top-down instead of guessing:
+## Load balancer and CDN configuration
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+F5, AWS ALB, nginx 1.25+ expose hybrid group configuration differently. Document exact directives per hop — enabling on origin but not edge means users still get classical-only from CDN.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Fallback policy
+
+When PQC library bug discovered, ability to disable hybrid group via config flag without full TLS downgrade to TLS 1.2.
+
+## Browser support matrix maintenance
+
+Maintain internal page listing Chrome/Edge/Firefox/Safari minimum versions for hybrid groups. Mobile WebView apps embedding system TLS stack may lag OS update — test in-app HTTP client separately from browser lab. Enterprise proxy performing TLS inspection may strip PQ groups — document bypass procedure for corp networks during pilot.
+
+## Certificate chain considerations
+
+Hybrid key exchange protects session keys; certificate still signed with RSA or ECDSA until ML-DSA chains widely trusted. Inventory signing algorithms separately from KEX — post-quantum signature migration follows KEX, not simultaneous. Internal mTLS may pilot ML-DSA sooner with custom trust store.
+
+## Testing hybrid handshakes in CI
+
+curl 8.x with `--tls13-ciphers` and OpenSSL 3.5+ in GitHub Actions matrix job asserts server offers hybrid group. Regression test fails if load balancer config drift removes ML-KEM after cert renewal playbook run by different team.
+
+## Client hello inspection
+
+Wireshark or sslyze scan documents negotiated group weekly on external endpoints — drift detection when ops renews cert and resets nginx ssl config to template missing hybrid groups. Automate sslscan in external synthetics probe from three regions.
+
+## Hybrid rollout communication
+
+Status page and security FAQ explain hybrid TLS upgrade — no user action required, no visible change. Support macro prepared for enterprise customers scanning with legacy SSL inspectors that choke on larger ClientHello — known vendor list linked from internal runbook.
+
+## Closing notes
+
+Inventory internal gRPC services terminating TLS on sidecar — sidecar upgrade lagging ingress delays hybrid adoption for east-west traffic carrying same sensitive payloads as north-south HTTPS.
+
+## Additional guidance
+
+East-west service mesh mTLS upgrades independently from edge ingress — track both in crypto inventory. Mesh control plane may lag ingress hybrid support; sensitive microservice traffic stays classical-only longer unless prioritized in migration roadmap alongside external HTTPS termination upgrades scheduled same quarter.
+
+Document cipher suite order preference in nginx ssl_ecdh_curve and BoringSSL equivalent — operations runbook includes rollback one-liner restoring previous config file path and reload command validated in staging monthly so incident commander executes without searching wiki during hybrid-related handshake failure spike.
+
+Add hybrid TLS verification to external uptime synthetics — alert when negotiated group drops to classical-only on any production endpoint.
 
 ## Resources
 

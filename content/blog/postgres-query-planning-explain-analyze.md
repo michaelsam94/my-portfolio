@@ -3,7 +3,7 @@ title: "Reading EXPLAIN ANALYZE Output"
 slug: "postgres-query-planning-explain-analyze"
 description: "Interpret PostgreSQL EXPLAIN ANALYZE plans: scan types, cost vs actual rows, buffer hits, join methods, and systematic query optimization workflow."
 datePublished: "2026-03-30"
-dateModified: "2026-03-30"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Performance"]
 keywords: "EXPLAIN ANALYZE PostgreSQL, query plan optimization, sequential scan vs index scan, Postgres buffers, query tuning"
 faq:
@@ -144,29 +144,64 @@ Red flags in plan output:
 
 Run `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` for buffer hit ratio.
 
-## Common production mistakes
 
-Teams get query planning explain analyze wrong in predictable ways:
+## EXPLAIN ANALYZE BUFFERS WAL
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Buffers show shared hit vs read — index scan with high reads means cache cold. WAL shows write amplification on UPDATE-heavy plans.
 
-Postgres work on query planning explain analyze causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Row estimate mismatch
 
-## Debugging and triage workflow
+rows=1 estimate vs rows=50000 actual — stale statistics or missing extended stats on correlated columns. Run ANALYZE, consider CREATE STATISTICS.
 
-When query planning explain analyze misbehaves in production, work top-down instead of guessing:
+## Never EXPLAIN ANALYZE destructive queries in prod
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+EXPLAIN ANALYZE executes query — use on SELECT replicas only, or auto_explain with log_min_duration_statement.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Hypothetical indexes
+
+pg_hypo or CREATE INDEX on staging clone validates index before prod CONCURRENTLY build.
+
+## Generic vs custom plan in EXPLAIN
+
+EXPLAIN shows whether plan is generic or custom (PG 12+ uses generic plan hint in verbose). Force custom with SET plan_cache_mode = force_custom_plan when generic plan chooses seq scan due to skewed parameter.
+
+## Parallel query flags
+
+EXPLAIN ANALYZE shows Workers Planned vs Workers Launched — launched zero with planned 4 means max_parallel_workers_per_gather misconfigured or query not parallel-safe. Tune per warehouse workload; OLTP often disables parallel to reduce tail latency contention.
+
+## BUFFERS and WAL for write-heavy EXPLAIN
+
+UPDATE ... RETURNING in EXPLAIN ANALYZE actually writes — use rollback transaction on replica. shared_blks_written and wal_bytes quantify write amplification — wide update touching indexed columns rewrites all indexes.
+
+## JIT compilation noise
+
+PG11+ JIT compiles expensive expressions first run — first EXPLAIN ANALYZE slower than steady state. SET jit = off for repeatable benchmark comparison; enable in prod for analytics queries selectively.
+
+## prepare=false in EXPLAIN
+
+Generic plan shown when parameters not bound — use EXPLAIN with literal values for skew diagnosis or EXECUTE ... USING for prepared shape matching production.
+
+## Settings snapshot in EXPLAIN
+
+EXPLAIN (ANALYZE, SETTINGS) shows work_mem, effective_cache_size active during plan — reproducing plan on laptop with different settings misleads. Include settings block in ticket when escalating to DBA.
+
+## auto_explain in production
+
+log_min_duration_statement 1000ms plus auto_explain.log_analyze on — sample slow plans without manual EXPLAIN during incident. Redact auto_explain to separate log file shipped to restricted bucket — plans may embed literal PII from query constants.
+
+## Closing notes
+
+Save EXPLAIN ANALYZE output in support ticket when escalating slow query — DBA reproduces without re-guessing parameters; include SET commands active in session (work_mem, enable_seqscan off experiments).
+
+## Additional guidance
+
+Create read-only replica role for developers running EXPLAIN ANALYZE on production-shaped data — prevents accidental EXPLAIN ANALYZE DELETE on primary during lunch debugging. Replica lag acceptable for plan investigation; use primary only when investigating replica-specific plan divergence from stale statistics on replica delayed ANALYZE schedule.
+
+Include row count estimates versus actual in postmortem when slow query caused incident — persistent order-of-magnitude mismatch triggers extended statistics project on correlated columns tenant_id and created_at common in multitenant SaaS schemas where default single-column statistics insufficient for nested loop join cardinality prediction.
+
+Store EXPLAIN plans in ticket when escalating to DBA — includes SET work_mem and enable_seqscan session state reproducing planner choice accurately on replica.
+
+Developers run EXPLAIN on read replica role only — ticket template requires attach plan output when requesting index creation from DBA guild office hours queue.
 
 ## Resources
 

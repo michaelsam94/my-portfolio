@@ -3,7 +3,7 @@ title: "The App-of-Apps Pattern in Argo CD"
 slug: "ops-argocd-app-of-apps"
 description: "Structure Argo CD with the app-of-apps pattern: bootstrap repos, Application CRDs, environment layering, and how to avoid the sync loops that waste on-call time."
 datePublished: "2025-12-23"
-dateModified: "2025-12-23"
+dateModified: "2026-07-17"
 tags: ["DevOps", "GitOps", "Argo CD", "Kubernetes"]
 keywords: "Argo CD app of apps, GitOps bootstrap, Application CRD, Argo CD patterns, Kubernetes deployment"
 faq:
@@ -164,6 +164,38 @@ When argocd app of apps misbehaves in production, work top-down instead of guess
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## AppProject boundaries and blast radius
+
+Without `AppProject` RBAC, any developer's Application can deploy cluster-scoped resources to production. Structure projects:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+spec:
+  destinations:
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+```
+
+Workload apps get narrow namespaces; platform team owns cluster-scoped apps. CI service accounts receive tokens scoped to one project — leaked staging token cannot touch prod cluster resources.
+
+## Secrets and config management in GitOps
+
+Never commit raw secrets to bootstrap repo. Use External Secrets Operator, SOPS-encrypted files, or Argo CD vault plugins. Document sealed-secrets rotation — app-of-apps makes secret drift visible when sealed secret updates don't propagate to child apps referencing old versions.
+
+## Disaster recovery bootstrap
+
+Store root Application manifest and repo credentials in break-glass vault — total cluster loss means re-applying single `root-app.yaml` restores entire GitOps tree. Test annual fire drill: new empty cluster to production parity from bootstrap only.
+
+## Sync windows and maintenance
+
+`syncPolicy.syncOptions: [CreateNamespace=true]` plus maintenance windows pauses auto-sync during black Friday — manual sync freeze prevents mid-traffic Deployment churn from innocent Git commits.
 
 ## Resources
 

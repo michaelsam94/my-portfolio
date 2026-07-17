@@ -3,16 +3,17 @@ title: "The Saga Pattern for Distributed Transactions"
 slug: "saga-pattern-distributed-transactions"
 description: "The saga pattern for distributed transactions: choreography vs orchestration, compensating actions, and keeping microservices consistent without 2PC."
 datePublished: "2026-01-19"
-dateModified: "2026-01-19"
-tags: ["Backend", "Architecture", "Distributed Systems"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "saga pattern, distributed transactions, choreography, orchestration saga, compensating transactions, eventual consistency"
 faq:
   - q: "What is the saga pattern?"
-    a: "The saga pattern is a way to manage a business transaction that spans multiple services, where a single ACID transaction is impossible. It models the transaction as a sequence of local transactions, each in one service, and defines a compensating action for each step that semantically undoes it if a later step fails. Instead of atomic all-or-nothing behavior, a saga guarantees that the system either completes every step or compensates the ones that already ran, reaching a consistent end state through eventual consistency."
-  - q: "What is the difference between choreography and orchestration sagas?"
-    a: "In a choreography saga, each service reacts to events published by other services and emits its own events, with no central coordinator — the workflow is emergent from the event choreography. In an orchestration saga, a central orchestrator explicitly tells each service what to do and tracks the saga's state. Choreography is decoupled and simple for short flows but hard to follow as it grows; orchestration centralizes the logic, making complex flows visible and debuggable at the cost of a coordinator component."
-  - q: "Why not just use two-phase commit for distributed transactions?"
-    a: "Two-phase commit (2PC) provides atomicity across services but requires all participants to hold locks while waiting for the coordinator, which blocks resources, scales poorly, and fails badly if the coordinator dies mid-commit. It also assumes all participants support distributed transactions, which most modern services and databases don't. Sagas trade 2PC's strong atomicity for availability and loose coupling, accepting eventual consistency and compensations instead of locks and blocking."
+    a: "A sequence of local transactions with compensating actions if a later step fails."
+  - q: "Choreography vs orchestration?"
+    a: "Choreography uses events; orchestration uses a central coordinator with durable state."
+  - q: "Why not two-phase commit?"
+    a: "2PC blocks resources and most modern services do not support distributed transactions."
 ---
 
 Once a business operation touches more than one service, the database transaction you relied on for correctness disappears. You can't wrap "reserve inventory, charge the card, create the shipment" in a single `BEGIN`/`COMMIT` when those three things live in three services with three databases. The saga pattern is the standard answer: model the operation as a sequence of local transactions, and for each step define a **compensating action** that semantically undoes it, so that if step three fails you can walk back steps two and one. You give up atomic all-or-nothing in exchange for a system that either finishes or cleans up after itself.
@@ -90,6 +91,14 @@ And two hard truths regardless of style. First, **the intermediate states are vi
 
 Used with eyes open, the saga pattern is the right tool for cross-service consistency — it trades the impossible dream of distributed atomicity for a pragmatic, recoverable, eventually-consistent workflow. The pattern is straightforward; the discipline it demands around idempotency, compensation design, and failure-of-failure handling is what separates a robust implementation from a demo.
 
+## Operational notes for saga pattern distributed transactions
+
+Support tooling should list saga instances by state with links to step logs. When compensation fails, operators need a single screen showing forward steps completed, compensations attempted, and external API error bodies — not five Kibana tabs. Load-test sagas with injected failures monthly: kill payment service mid-flight, verify inventory releases and no double refunds. Document semantic compensation rules in product language so engineers and PMs agree what undo means for each step.
+
+## Notes on saga pattern distributed transactions
+
+Support tooling should list saga instances by state with links to step logs. When compensation fails, operators need a single screen showing forward steps completed, compensations attempted, and external API error bodies — not five Kibana tabs. Load-test sagas with injected failures monthly: kill payment service mid-flight, verify inventory releases and no double refunds. Document semantic compensation rules in product language so engineers and PMs agree what undo means for each step.
+
 ## Resources
 
 - [microservices.io — Saga pattern](https://microservices.io/patterns/data/saga.html)
@@ -98,3 +107,5 @@ Used with eyes open, the saga pattern is the right tool for cross-service consis
 - ["Sagas" — Garcia-Molina & Salem (1987)](https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf)
 - [microservices.io — Transactional outbox](https://microservices.io/patterns/data/transactional-outbox.html)
 - [Camunda: orchestration vs choreography](https://camunda.com/blog/2023/02/orchestration-vs-choreography/)
+
+Saga orchestrators should expose a query API for support: current step, elapsed time, last error. Without visibility, 'order stuck processing' tickets become archaeology across five services.

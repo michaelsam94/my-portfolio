@@ -3,7 +3,7 @@ title: "Passwordless Auth with Magic Links"
 slug: "passwordless-magic-links"
 description: "Implement magic link authentication securely: token design, expiry, replay prevention, email deliverability, and when magic links beat passkeys."
 datePublished: "2026-02-02"
-dateModified: "2026-02-02"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "Passwordless", "Web"]
 keywords: "magic link authentication, passwordless login, email login link, secure token auth, passwordless email"
 faq:
@@ -149,6 +149,34 @@ When magic links misbehaves in production, work top-down instead of guessing:
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Email deliverability as auth dependency
+
+Magic links fail when auth emails hit spam. Configure SPF, DKIM, DMARC on sending domain; use transactional provider (Postmark, SES) not marketing SMTP pools. Monitor bounce rate and spam complaint rate — above 0.1% complaints degrades all auth email.
+
+## Device binding without friction
+
+Optional `device_token` cookie set on first successful magic link login — subsequent links from new device trigger step-up email ("Was this you?"). Balances UX on trusted laptop vs alert on stolen session cookie.
+
+## Magic link + passkey hybrid onboarding
+
+Flow: magic link establishes session → immediate passkey enrollment prompt while session fresh. Converts email-verified users to passkeys without separate verification email. Track conversion — typically 2–3× passkey enrollment vs cold prompt.
+
+## Deep linking mobile apps
+
+Magic links open app via universal links — token in query param may leak via referrer on external browser hop. Use `?token=` exchanged server-side for session on first app open; one-time exchange endpoint invalidates URL.
+
+## Rate limiting magic link requests
+
+Per-email: 5 requests/hour; per-IP: 20/hour. Prevents inbox flooding harassment and token brute force surface reduction. CAPTCHA only after threshold — not on first request (conversion killer).
+
+## Corporate email scanners
+
+Outlook Safe Links prefetch URLs — single-use tokens consumed before user clicks. Use POST exchange form on landing page, not GET token alone, or detect scanner user-agents and defer consumption.
+
+## SES bounce handling
+
+Magic link email hard bounce disables magic link for address — prompt user to update email. Prevents infinite retry to dead inboxes polluting sender reputation.
 
 ## Resources
 

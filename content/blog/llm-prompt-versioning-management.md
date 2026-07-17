@@ -3,8 +3,8 @@ title: "Versioning and Managing Prompts"
 slug: "llm-prompt-versioning-management"
 description: "Version and manage LLM prompts like code: registries, git-based workflows, A/B deployment, rollback, and the practices that stop prompt changes from being tribal knowledge."
 datePublished: "2024-12-27"
-dateModified: "2024-12-27"
-tags: ["AI", "LLM", "Architecture", "DevOps"]
+dateModified: "2026-07-17"
+tags:
 keywords: "prompt versioning, prompt management, prompt registry, LLM prompt deployment, prompt engineering workflow"
 faq:
   - q: "Should prompts live in code or a prompt management tool?"
@@ -14,7 +14,6 @@ faq:
   - q: "What metadata should each prompt version carry?"
     a: "Version ID, author, date, linked eval results, compatible model list, change description, and parent version. When debugging a regression, you need to answer 'what changed between v2.1 and v2.2 and who approved it' in under a minute."
 ---
-
 The support bot started refusing refund requests on Tuesday. The prompt hadn't changed — according to the engineer who edited a string literal in `chat_handler.py` at 4pm Monday without telling anyone. Prompts scattered across code, Notion docs, and Slack messages aren't configuration — they're liabilities. Versioning prompts like code means every change is tracked, tested, attributable, and reversible.
 
 ## Prompt registry structure

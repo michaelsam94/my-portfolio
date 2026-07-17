@@ -1,111 +1,262 @@
 ---
 title: "AI Agents: Read Replica Routing"
 slug: "agent-read-replica-routing"
-description: "Read Replica Routing: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Route agent read traffic to replicas without breaking session consistency: lag-aware routing for RAG retrieval, sticky primary for tool writes, and failover patterns when replicas fall behind."
 datePublished: "2024-12-17"
 dateModified: "2024-12-17"
 tags: ["AI", "Agent", "Read"]
-keywords: "agent, read, replica, routing, ai, production, engineering, architecture"
+keywords: "read replica routing agents, PostgreSQL replica lag routing, RAG stale retrieval, session consistency agent DB, primary replica failover"
 faq:
-  - q: "What is Read Replica Routing?"
-    a: "Read Replica Routing covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Read Replica Routing?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Read Replica Routing?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Read Replica Routing fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Read Replica Routing should be observable in production and safe to change in small diffs."
+  - q: "How much replication lag is acceptable for agent RAG retrieval?"
+    a: "For document search over published content, 1–5 seconds is usually fine if agents never answer 'did my upload succeed?' from a replica. For session memory or permission checks, route to primary or use lag ceiling under 500ms. Measure per replica — lag is not uniform."
+  - q: "Should vector similarity search run on replicas?"
+    a: "Yes, when queries are read-only and documents are eventually consistent. pgvector HNSW indexes replicate like any index; heavy ANN queries belong off the primary. Invalidate or warm caches when embeddings bulk-update."
+  - q: "What breaks when an agent reads its own write from a replica?"
+    a: "Classic failure: user uploads a file, agent immediately searches, replica hasn't received the row yet, agent says 'I can't find that document.' Route post-write reads to primary for a short session window or block until replication catches up."
+  - q: "How do you test replica routing without production traffic?"
+    a: "Inject artificial lag with pg_sleep on replica apply, or use delayed standbys in staging. Run agent evals that upload-then-query in one session and assert document visibility. Chaos-test replica promotion during active sessions."
 ---
-Read Replica Routing is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When read replica routing is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The agent answered confidently that the policy document didn't exist. The user had uploaded it thirty seconds earlier. Primary had the row; the replica serving RAG retrieval was four seconds behind after a bulk re-embedding job saturated replication bandwidth. Nothing was "wrong" with the model — we routed **read-your-own-write** traffic to a lagging replica and called it scale.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Read replica routing for agent platforms is a consistency problem dressed up as infrastructure.
 
-Solid AI engineering turns read replica routing from a recurring argument into a documented pattern with tests and an owner.
+## Read patterns in agent workloads
 
-## Design principles that survive production
+Agent systems generate unusual read traffic:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent read replica routing bugs hide.
+| Pattern | Consistency need | Replica OK? |
+|---------|------------------|-------------|
+| RAG chunk retrieval | Eventual (seconds) | Yes, with lag guard |
+| Tool SQL analytics | Eventual | Yes, prefer OLAP |
+| Session memory fetch | Read-your-writes | Primary or fresh replica |
+| Permission / tenancy check | Strong | Primary or sync replica |
+| Idempotency key lookup | Strong | Primary |
+| Conversation history | Read-your-writes | Primary for recent turns |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for read replica routing, you do not yet understand the behavior you shipped.
+Most teams enable replica routing globally, save 40% primary CPU, and ship a week of "the agent forgot" tickets. The fix is **intent-aware routing**, not turning replicas off.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Lag-aware router core
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent read replica routing flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for read replica routing in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent read replica routing changes safer because business rules stay isolated from transport details.
+Track replication lag per replica from `pg_stat_replication` or your cloud provider's metric. Route only when lag is below threshold:
 
 ```typescript
-// Read Replica Routing: typed boundary + structured errors
-export async function handleReadReplicaRouting(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-read-replica-routing");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+type ReplicaTarget = {
+  id: string;
+  dsn: string;
+  lagMs: number;
+  healthy: boolean;
+  weight: number;
+};
+
+type ReadIntent =
+  | "rag_search"
+  | "session_memory"
+  | "authz_check"
+  | "analytics";
+
+interface RoutingPolicy {
+  maxLagMs: number;
+  requirePrimary: boolean;
 }
 
+const POLICIES: Record<ReadIntent, RoutingPolicy> = {
+  rag_search: { maxLagMs: 5000, requirePrimary: false },
+  session_memory: { maxLagMs: 500, requirePrimary: false },
+  authz_check: { maxLagMs: 0, requirePrimary: true },
+  analytics: { maxLagMs: 60_000, requirePrimary: false },
+};
+
+function pickReplica(
+  replicas: ReplicaTarget[],
+  intent: ReadIntent
+): ReplicaTarget | "primary" {
+  const policy = POLICIES[intent];
+
+  if (policy.requirePrimary) return "primary";
+
+  const eligible = replicas.filter(
+    (r) => r.healthy && r.lagMs <= policy.maxLagMs
+  );
+
+  if (eligible.length === 0) return "primary";
+
+  // weighted random among eligible
+  return weightedPick(eligible);
+}
 ```
 
+Refresh lag every 1–2 seconds; do not query `pg_stat_replication` per request.
 
-## Operational concerns
+## Read-your-own-write session stickiness
 
-Runbooks for read replica routing should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+After a write, pin subsequent reads for that session to primary for a short window:
 
-Production agent read replica routing work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```typescript
+class SessionRouter {
+  private primaryUntil = new Map<string, number>(); // sessionId → epoch ms
 
-Rollouts for read replica routing benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+  markWrite(sessionId: string, pinMs = 3000) {
+    this.primaryUntil.set(sessionId, Date.now() + pinMs);
+  }
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+  route(sessionId: string, intent: ReadIntent): "primary" | ReplicaTarget {
+    const until = this.primaryUntil.get(sessionId) ?? 0;
+    if (Date.now() < until) return "primary";
+    return pickReplica(replicas, intent);
+  }
+}
+```
 
-## Security and compliance angles
+For upload flows, stronger guarantee: poll replication position until caught up.
 
-Even when read replica routing is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+-- On primary after INSERT
+SELECT pg_current_wal_lsn() AS write_lsn;
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent read replica routing so security reviews do not rely on tribal knowledge.
+-- On candidate replica before RAG query
+SELECT pg_last_wal_replay_lsn() >= $1 AS caught_up;
+```
 
-## Testing strategy
+Expose `caught_up` as a routing gate for "search what I just uploaded" intents.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that read replica routing depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Connection pool layout
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Separate pools prevent analytics from starving retrieval:
 
-## Migration and evolution
+```
+                    ┌──────────────┐
+  Agent gateway ──► │ Router       │
+                    └───┬──────┬───┘
+                        │      │
+              ┌─────────▼      ▼─────────┐
+              │ primary pool (small)     │
+              │ replica pool RAG (large) │
+              │ replica pool analytics   │
+              └──────────────────────────┘
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent read replica routing functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Primary pool stays small — only strong reads and all writes. RAG pool scales wide on replicas. Never share one pool with round-robin DNS; ORMs will happily send session reads to random nodes.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where read replica routing spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Prisma / TypeORM pattern: explicit `readClient` and `writeClient`, not `@Transaction` magic on a single datasource.
 
-## Related concepts
+```typescript
+async function searchDocuments(
+  session: Session,
+  query: VectorQuery
+): Promise<Chunk[]> {
+  const target = sessionRouter.route(session.id, "rag_search");
+  const db = target === "primary" ? writePool : readPool;
 
-Read Replica Routing intersects with broader ai topics — see companion notes on [agent-read patterns](https://blog.michaelsam94.com/agent-read/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  return db.query(
+    `SELECT id, chunk_text FROM document_chunks
+     WHERE tenant_id = $1
+     ORDER BY embedding <=> $2
+     LIMIT 20`,
+    [session.tenantId, query.vector]
+  );
+}
+```
 
-## The takeaway
+## RAG-specific staleness UX
 
-Read Replica Routing rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent read replica routing becomes a maintainable asset instead of incident fuel.
+When replica lag exceeds policy but you still serve the request (degraded mode), surface it internally:
+
+- Log `replica_id`, `lag_ms`, `intent` on every retrieval span
+- Optionally append system context: "Document index may be up to N seconds stale"
+- Do not silently fail — missing docs with high lag should trigger primary retry once
+
+```typescript
+async function retrieveWithFallback(
+  session: Session,
+  query: VectorQuery
+): Promise<Chunk[]> {
+  const replica = sessionRouter.route(session.id, "rag_search");
+  let chunks = await searchDocuments(replica, query);
+
+  if (chunks.length === 0 && replica !== "primary") {
+    const lag = getLag(replica);
+    if (lag > 1000) {
+      chunks = await searchDocuments("primary", query);
+      metrics.increment("rag_primary_fallback");
+    }
+  }
+  return chunks;
+}
+```
+
+Cap fallbacks — primary overload from zero-result retries is worse than staleness.
+
+## Failover and replica promotion
+
+When a replica dies, remove it from the eligible set within one health-check interval. When **primary** fails:
+
+1. Promote most caught-up replica
+2. Rewind connection strings in config service
+3. Invalidate pools — stale connections kill agents silently
+4. Expect brief window where agents see conflicting data; pause mutating tools if promotion is in progress
+
+Run game days: promote replica during load, measure agent error rate and p99 retrieval latency.
+
+## Metrics that matter
+
+- `db_replica_lag_ms{replica_id}` — gauge
+- `db_route_total{intent, target}` — counter
+- `db_primary_fallback_total{reason}` — counter
+- `db_pool_waiting_connections{pool}` — saturation
+
+SLO example: 99% of `authz_check` reads hit primary; 95% of `rag_search` served from replica with lag < 2s.
+
+## Anti-patterns
+
+- **Global round-robin** without intent — simplest way to break uploads
+- **Ignoring hot standby conflicts** on long replica queries — cancel queries exceeding `max_standby_streaming_delay`
+- **Same schema migrations on replicas lagging hours** — agent retrieval against old schema + new app code = empty results
+- **Caching embeddings only on primary** — cache invalidation must propagate or replicas return different neighbors than primary
+
+Read replica routing is how agent platforms absorb retrieval load without sacrificing the moments users test hardest: right after they change something and ask the agent to use it.
+
+## Caching layer between agents and replicas
+
+Even well-routed replica traffic repeats identical retrieval queries within seconds — multiple users asking the same FAQ, or one agent loop retrying search with minor paraphrase. Add a read-through cache **after** routing decision, keyed by normalized query fingerprint:
+
+```typescript
+async function cachedRagSearch(
+  session: Session,
+  query: VectorQuery
+): Promise<Chunk[]> {
+  const target = sessionRouter.route(session.id, "rag_search");
+  const cacheKey = `rag:v3:${session.tenantId}:${hash(query.vector)}:${query.filtersHash}`;
+
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    metrics.increment("rag_cache_hit", { target: String(target) });
+    return JSON.parse(cached);
+  }
+
+  const chunks = await searchDocuments(target, query);
+
+  // Short TTL when served from replica; longer when primary confirmed fresh
+  const ttl = target === "primary" ? 60 : 15;
+  await redis.setex(cacheKey, ttl, JSON.stringify(chunks));
+  return chunks;
+}
+```
+
+Invalidate on write paths: `redis.del` matching `rag:v3:${tenantId}:*` when documents in that tenant change. Stale cache on replica is worse than stale replica — you doubled your consistency lag.
+
+For embedding queries, cache **chunk IDs and scores**, not full text, and hydrate text from replica in one batch `WHERE id = ANY($1)`. Text blobs bloat Redis; IDs stay small.
+
+## Long-running analytical tool calls
+
+When agents run "generate quarterly report" tools that scan millions of rows, route to a **dedicated analytics replica** with `hot_standby_feedback` disabled and `max_standby_streaming_delay` set high — long queries should not cancel replication on the RAG replica.
+
+Tag these connections in application name: `SET application_name = 'agent_analytics'`. Postgres logs and `pg_stat_activity` then separate retrieval from reporting. Mixing both on one replica pool guarantees mutual interference.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL Hot Standby documentation](https://www.postgresql.org/docs/current/hot-standby.html)
+- [Monitoring replication lag (pg_stat_replication)](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-VIEW)
+- [AWS RDS Read Replica lag metrics](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ReadRepl.html)
+- [PgBouncer connection pooling](https://www.pgbouncer.org/usage.html)
+- [Jepsen consistency analysis (background reading)](https://jepsen.io/analyses)

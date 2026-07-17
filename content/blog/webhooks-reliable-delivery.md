@@ -3,18 +3,28 @@ title: "Reliable Webhook Delivery"
 slug: "webhooks-reliable-delivery"
 description: "How to build reliable webhook delivery: retries with backoff, idempotency keys, HMAC signing, dead-letter queues, and at-least-once guarantees."
 datePublished: "2026-06-07"
-dateModified: "2026-06-07"
-tags: ["Backend", "API Design", "Architecture", "Messaging"]
+dateModified: "2026-07-17"
+tags:
+  - "Backend"
+  - "API Design"
+  - "Architecture"
+  - "Messaging"
 keywords: "webhooks, reliable delivery, retries, idempotency webhooks, signing webhooks, dead letter, at-least-once"
 faq:
-  - q: "What makes webhook delivery reliable?"
-    a: "Reliable webhook delivery means every event is delivered to the consumer at least once, even when the consumer is temporarily down or slow. It requires durably persisting each event before attempting delivery, retrying failed attempts with exponential backoff and jitter, giving each event a stable ID so consumers can deduplicate, and moving permanently-failing events to a dead-letter queue for inspection rather than dropping them. Without these, a single consumer outage silently loses events."
-  - q: "Why do webhooks need idempotency keys?"
-    a: "Because reliable delivery is at-least-once, not exactly-once. Retries, network timeouts where the response is lost, and duplicate deliveries all mean a consumer can receive the same event more than once. A stable idempotency key — usually the event ID sent in the payload and a header — lets the consumer detect and ignore duplicates so processing the same event twice has no additional effect. Exactly-once delivery is effectively impossible over an unreliable network, so idempotency on the consumer side is mandatory."
-  - q: "How should webhook payloads be signed?"
-    a: "The standard approach is HMAC: the provider computes an HMAC-SHA256 of the raw request body (usually with a timestamp to prevent replay) using a shared secret, and sends it in a header like Webhook-Signature. The consumer recomputes the HMAC over the received body and compares using a constant-time comparison. This proves the payload came from the provider and wasn't tampered with, without the complexity of mutual TLS or asymmetric keys for most use cases."
+  - q: "At-least-once vs exactly-once delivery?"
+    a: "At-least-once is achievable with retries; exactly-once over HTTP is not — consumers must dedupe with stable event IDs."
+  - q: "How long to retry failed webhooks?"
+    a: "24–72 hours with exponential backoff and jitter covers most outages. Dead-letter permanently failing endpoints after max attempts."
+  - q: "Should webhooks be synchronous with the transaction?"
+    a: "Never block user requests on delivery — write to outbox in same DB transaction as business event; async worker delivers."
+faqAnswers:
+  - question: "When is webhooks reliable delivery the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for webhooks reliable delivery?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back webhooks reliable delivery safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Webhooks look trivial until the receiving server is down for ninety seconds and you discover your "delivery" was a single fire-and-forget POST. Reliable webhook delivery is the set of guarantees that keep that outage from silently losing events: persist every event before sending, retry with backoff when the consumer fails, give each event a stable ID so duplicates are harmless, sign the payload so it can't be forged, and dead-letter what can't be delivered instead of dropping it. Get those five right and you've built an integration partners can actually depend on.
 
 I've been on both ends of this — building the sender and cursing the sender as a receiver — and the failures are always the same handful. The good news is they're well-understood and the fixes compose cleanly. Here's how I build a webhook system that holds up.
@@ -117,3 +127,33 @@ None of these pieces is exotic, and that's the point. Reliable webhooks aren't a
 - [RFC 2104 — HMAC: Keyed-Hashing for Message Authentication](https://datatracker.ietf.org/doc/html/rfc2104)
 - [GitHub: securing webhook deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
 - [OWASP: cheat sheet on server-side request forgery / webhooks](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html)
+
+Webhooks looked trivial until a consumer outage silently dropped events — persist-first delivery with backoff turned integrations from complaint magnets into dependable contracts.
+
+## Production context
+
+**Production context** — In production, reliable webhook delivery with outbox and retries shows up where latency, correctness, and compliance intersect. When partners depend on event notifications for billing, fulfillment, or sync. The expensive mistake teams repeat: fire-and-forget post without durable queue or retry policy.
+
+## Core mechanism
+
+From incident review: Webhooks looked trivial until a consumer outage silently dropped events — persist-first delivery with backoff turned integrations from complaint magnets into dependable contracts. That symptom is the compass — if your design cannot explain how it prevents that user-visible failure, narrow scope before widening rollout.
+
+## Implementation walkthrough
+
+Instrument the change on one route or tenant first. Slice RUM by device class and connection type; lab Lighthouse confirms repro but field p75 decides priority. Document owner, rollback path, and the single metric you expect to move.
+
+## Edge cases
+
+Edge cases matter: corporate proxies, Save-Data clients, ad blockers, and OEM battery savers behave unlike staging on office Wi-Fi. Test keyboard-only paths, refresh mid-flow, and back navigation — especially when reliable webhook delivery with outbox and retries touches auth or checkout.
+
+## Performance impact
+
+Security and privacy ride along even for "frontend-only" work. Treat URL params, CMS HTML, and webhook bodies as hostile. Fail closed, log correlation IDs, and add CI checks so unsafe patterns regress visibly.
+
+## Accessibility
+
+Operability: link runbooks from dashboards, alert on week-over-week p75 regression for tier-1 surfaces, and schedule a 15-minute review after the next traffic doubling. Assumptions drift faster than dependencies.
+
+## Operational checklist
+
+Accessibility: WCAG 2.2 AA remains the bar — focus visibility, target size, reduced motion, and polite live regions for async feedback. Automated axe in CI catches roughly a third of issues; manual screen reader passes catch the rest.

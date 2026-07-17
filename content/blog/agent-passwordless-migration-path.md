@@ -1,111 +1,182 @@
 ---
 title: "AI Agents: Passwordless Migration Path"
 slug: "agent-passwordless-migration-path"
-description: "Passwordless Migration Path: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "A phased plan to migrate existing password users to passkeys, magic links, and SSO—covering account recovery, IdP cutover, and rollback without locking anyone out."
 datePublished: "2025-12-26"
 dateModified: "2025-12-26"
 tags: ["AI", "Agent", "Passwordless"]
-keywords: "agent, passwordless, migration, path, ai, production, engineering, architecture"
+keywords: "passwordless migration, passkey rollout, auth transition, account recovery, SSO cutover, dual authentication"
 faq:
-  - q: "What is Passwordless Migration Path?"
-    a: "Passwordless Migration Path covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Passwordless Migration Path?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Passwordless Migration Path?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Passwordless Migration Path fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Passwordless Migration Path should be observable in production and safe to change in small diffs."
+  - q: "How long should password and passwordless methods run in parallel?"
+    a: "Plan six to eighteen months depending on user base and regulatory constraints. Parallel operation is not failure—it is risk management. Set explicit sunset dates only after enrollment and recovery metrics stabilize for two consecutive release cycles."
+  - q: "What is the safest order: passkeys first or magic links first?"
+    a: "Magic links and OTP email establish passwordless habits on every device class without hardware dependencies. Passkeys come next for returning users. SSO-first makes sense for workforce accounts where the IdP already owns primary authentication."
+  - q: "How do you migrate users who never log in?"
+    a: "Do not force passwordless on dormant accounts at login—they have no session to upgrade. Trigger enrollment on next successful auth or via a verified email campaign with a time-limited setup link, not a blanket credential wipe."
+  - q: "What rollback looks like if passkey adoption stalls?"
+    a: "Feature-flag passwordless UI off, keep password backend hot, and preserve enrolled passkeys for users who already migrated. Never delete passkey records during rollback—you will need them when you retry."
 ---
-Most teams encounter passwordless migration path after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Passwordless migration is less about picking FIDO2 over magic links and more about sequencing trust transitions across millions of accounts that already have passwords, security questions nobody remembers, and SMS 2FA wired into billing workflows. The teams that stumble usually treat migration as a frontend swap. The teams that succeed run it like a data migration with auth invariants: every account must remain reachable, every privileged action must remain step-up protected, and every rollback must take minutes—not a weekend restore from backup.
 
-When passwordless migration path is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Start with an auth inventory, not a vendor demo
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Before changing login UI, map every authentication surface:
 
-Solid AI engineering turns passwordless migration path from a recurring argument into a documented pattern with tests and an owner.
+- Web and mobile native login
+- API keys and machine tokens (out of scope for passwordless UI but in scope for session policy)
+- Admin impersonation and support tools
+- Partner SSO and SAML/OIDC federation
+- Legacy OAuth apps still on resource-owner password grants
 
-## Design principles that survive production
+For each surface, record: primary factor today, backup factor, account recovery path, and whether the account is human, service, or shared inbox. Shared and service accounts often block a naive "remove passwords everywhere" mandate.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent passwordless migration path bugs hide.
+Export counts: monthly active logins by method, password reset volume, 2FA recovery tickets, and SSO vs local auth split. These baselines become your migration scoreboard.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for passwordless migration path, you do not yet understand the behavior you shipped.
+## Four phases with explicit exit criteria
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+### Phase 0 — Instrumentation and feature flags
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent passwordless migration path flows so duplicates are harmless or detectable.
+Wrap every auth method behind flags: `auth.password.enabled`, `auth.magic_link.enabled`, `auth.passkey.enabled`, `auth.sso.required_for_domain`. Ship flags before shipping UX so rollback is a config change.
 
-## Implementation patterns
+Add structured events: `auth_method_used`, `enrollment_started`, `enrollment_completed`, `recovery_started`, `recovery_completed`, with `failure_reason` enums stable enough for dashboards.
 
-A practical baseline for passwordless migration path in ai stacks:
+Exit criteria: 100% of auth attempts emit events; staging can toggle any method independently.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+### Phase 1 — Additive enrollment (password remains default)
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent passwordless migration path changes safer because business rules stay isolated from transport details.
+Users log in with passwords as today. After login, prompt optional enrollment: passkey, additional email factor, or security key. Never block access for skipping.
 
-```typescript
-// Passwordless Migration Path: typed boundary + structured errors
-export async function handlePasswordlessMigrationPath(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-passwordless-migration-path");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+For mobile, deep-link enrollment into the app after email verification so users do not create passkeys on the wrong RP ID in an in-app browser.
 
+Exit criteria: ≥15% of MAU have a second factor or passkey without support ticket spike.
+
+### Phase 2 — Passwordless as equal choice
+
+Login screen presents passkey / magic link / password with equal visual weight (not a tiny "other options" link). Magic links get short TTL (10–15 minutes), single use, and rate limits per email and IP.
+
+Implement **account chooser** UX for magic links: reveal whether an email exists only after token verification to reduce enumeration—return the same HTTP response for unknown emails but skip sending mail.
+
+Exit criteria: ≥40% of logins use passwordless methods; password reset tickets flat or down.
+
+### Phase 3 — Passwordless default, password exception
+
+New registrations are passwordless-only. Returning users see passwordless first; password appears after explicit "Use password instead" for stragglers.
+
+Corporate domains on SSO: redirect to IdP before any local auth renders—local passwords become a support-only break-glass.
+
+Exit criteria: password logins <20% of total; recovery SLA unchanged.
+
+### Phase 4 — Password sunset with grace
+
+Disable password login for cohorts that enrolled passkeys or SSO. Email cohorts 30 and 7 days ahead with recovery instructions. Keep password enabled for accounts without passwordless factors until manually verified or until a hard regulatory deadline.
+
+## Dual-auth middleware pattern
+
+Keep one session issuance path regardless of front-door method. Authentication adapters normalize to a `VerifiedIdentity` struct:
+
+```python
+from dataclasses import dataclass
+from enum import Enum
+
+class AuthMethod(str, Enum):
+    PASSWORD = "password"
+    MAGIC_LINK = "magic_link"
+    PASSKEY = "passkey"
+    SSO = "sso"
+
+@dataclass(frozen=True)
+class VerifiedIdentity:
+    user_id: str
+    method: AuthMethod
+    amr: tuple[str, ...]  # authentication methods references for token claims
+    session_version: int
+
+def issue_session(identity: VerifiedIdentity) -> Session:
+    session = Session.create(
+        user_id=identity.user_id,
+        auth_method=identity.method.value,
+        amr=list(identity.amr),
+        version=identity.session_version,
+    )
+    audit.log("session_issued", user_id=identity.user_id, method=identity.method.value)
+    return session
 ```
 
+Password and passkey flows differ at the edge; session and authorization middleware stay identical. That separation is what makes rollback safe.
 
-## Operational concerns
+## Account recovery without reintroducing passwords
 
-Runbooks for passwordless migration path should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Recovery is where migrations fail audit. Rules:
 
-Production agent passwordless migration path work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+1. **Never** email a temporary password in plain text.
+2. **Always** require equal-or-stronger verification than enrollment (if passkey + email enrolled, recovery needs both channels or human identity proofing).
+3. **Issue new credentials**; do not "unlock" old passkeys remotely.
 
-Rollouts for passwordless migration path benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```typescript
+async function startRecovery(email: string): Promise<void> {
+  const user = await users.findByEmail(email);
+  // Constant-time path whether or not user exists
+  const token = user ? await recoveryTokens.issue(user.id, { ttlMinutes: 15 }) : null;
+  if (token) {
+    await mailer.sendRecovery(email, token);
+  }
+  await delay(jitterMs(200, 400)); // reduce timing oracle
+}
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+async function completeRecovery(token: string, newPasskey: RegistrationPayload) {
+  const { userId } = await recoveryTokens.consume(token); // single-use
+  await sessions.revokeAllForUser(userId);
+  await passkeys.register(userId, newPasskey);
+  await audit.record("recovery_passkey_enrolled", { userId });
+}
+```
 
-## Security and compliance angles
+Maintain printed backup codes for high-value accounts—generated once, shown once, stored hashed.
 
-Even when passwordless migration path is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Enterprise IdP and SCIM interactions
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent passwordless migration path so security reviews do not rely on tribal knowledge.
+Workforce migration often means OIDC/SAML becomes primary while local passwords atrophy. Coordinate:
 
-## Testing strategy
+- **JIT provisioning** — first SSO login creates the shadow user; map `sub` and `email` with immutable external ID.
+- **Domain verification** — auto-route `@corp.com` to IdP; prevent duplicate local accounts.
+- **SCIM deprovisioning** — disable local sessions within minutes of IdP suspend; passkeys alone do not help if the IdP already cut access.
+- **Break-glass** — two break-glass local admins stored offline; rotate quarterly with recorded ceremony.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that passwordless migration path depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Document which system owns MFA. If the IdP enforces MFA, do not stack a second SMS gate on your side unless compliance requires step-up at the app layer.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Metrics that tell you to pause or accelerate
 
-## Migration and evolution
+| Metric | Healthy trend | Pause signal |
+|--------|---------------|--------------|
+| Passwordless login share | Up week over week | Flat after major UX push |
+| Enrollment funnel completion | >60% start→finish | Drop on one OS version |
+| Recovery tickets / 1k MAU | Flat or down | Spike after phase change |
+| Session duration post-migration | Stable | Collapse (auth loops) |
+| Failed auth rate | <1% | Climb on magic link TTL issues |
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent passwordless migration path functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Review weekly during phase changes; monthly once stable. Tie phase gates to these numbers in writing so product cannot skip Phase 2 because of a launch deadline.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where passwordless migration path spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Communication templates that reduce support load
 
-## Related concepts
+Users fear lockout more than they fear passwords. Every phase-change email needs: what is changing, what they should do, what happens if they ignore it, and a single support link with pre-filled context.
 
-Passwordless Migration Path intersects with broader ai topics — see companion notes on [agent-passwordless patterns](https://blog.michaelsam94.com/agent-passwordless/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+In-app banners beat email for active users. Dormant users get email only—do not expire passwords on accounts that have not logged in since 2019 without a verified recovery address.
 
-## The takeaway
+## Rollback you can execute at 3 a.m.
 
-Passwordless Migration Path rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent passwordless migration path becomes a maintainable asset instead of incident fuel.
+1. Disable `auth.passkey.required` and `auth.passwordless_default` flags.
+2. Restore login UI component that lists password first (keep deployed, hidden behind flag).
+3. Leave enrolled passkeys active—users who enrolled can still use them.
+4. Post status page note only if password login was briefly unavailable; silent rollback if caught in canary.
+
+Run rollback drills in staging quarterly. Measure time-to-flag-off and confirm sessions issued during passwordless-only mode remain valid or fail gracefully per your security policy.
+
+Passwordless migration is a multi-quarter program: inventory first, parallel methods second, aggressive UX third, sunset last—with recovery and rollback rehearsed as seriously as the happy path.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [NIST SP 800-63B Digital Identity Guidelines](https://pages.nist.gov/800-63-3/sp800-63b.html)
+- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+- [FIDO Alliance: Passwordless sign-in UX guidelines](https://fidoalliance.org/white-paper-fido-authentication-user-experience-guidelines/)
+- [OAuth 2.0 for Browser-Based Apps (RFC 8252)](https://www.rfc-editor.org/rfc/rfc8252)
+- [Microsoft identity platform: Plan passwordless deployment](https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-passwordless-deployment)

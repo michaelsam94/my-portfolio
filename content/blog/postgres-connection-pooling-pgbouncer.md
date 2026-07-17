@@ -3,7 +3,7 @@ title: "Connection Pooling with PgBouncer"
 slug: "postgres-connection-pooling-pgbouncer"
 description: "Scale Postgres connections with PgBouncer: pool modes, sizing math, prepared statements, RDS integration, and common misconfigurations that exhaust connections."
 datePublished: "2026-03-09"
-dateModified: "2026-03-09"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Performance"]
 keywords: "PgBouncer connection pooling, Postgres max connections, pool mode transaction session, RDS PgBouncer, connection pool sizing"
 faq:
@@ -180,16 +180,50 @@ Use connection pool per process, not per request. Stagger pod startup with `maxS
 
 Pair with [Postgres query planning EXPLAIN ANALYZE](https://blog.michaelsam94.com/postgres-query-planning-explain-analyze/) when pool waits indicate slow queries, not pool undersizing.
 
-## Common production mistakes
 
-Teams get connection pooling pgbouncer wrong in predictable ways:
+## Transaction vs session pooling mode
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Transaction pooling multiplexes clients to fewer server connections — breaks prepared statements and session-level SET. Session pooling safer for ORMs using prepared statements.
 
-Postgres work on connection pooling pgbouncer causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Pool size formula
+
+Size pooler default_pool_size to expected concurrent transactions per database, not client count. Postgres max_connections divided by instances is wrong when using PgBouncer.
+
+## Server-side prepared statements with Prisma
+
+Prisma recommends pgbouncer=true disabling prepared statements in transaction mode. Without flag, intermittent prepared statement already exists errors under load.
+
+## Observability
+
+Export PgBouncer SHOW POOLS to Prometheus. Alert on cl_waiting sustained — clients queue for connections, tail latency explodes before Postgres CPU maxes.
+
+## max_client_conn vs default_pool_size tuning
+
+max_client_conn 1000 with default_pool_size 20 means 980 clients queue at PgBouncer — watch cl_waiting. Increase pool size only if Postgres CPU and max_connections allow; otherwise scale read replicas or optimize queries. Document pool math in platform runbook: `postgres_connections >= sum(pool_size per db) + superuser_reserve`.
+
+## RDS Proxy alternative
+
+AWS RDS Proxy offers similar multiplexing with IAM auth integration — compare when already on AWS and driver supports it. PgBouncer remains portable across clouds; RDS Proxy ties to AWS and pricing per connection hour.
+
+## Auth query and pool modes
+
+PgBouncer auth_query against security definer function maps client user to postgres role — enables per-app credentials without sharing postgres superuser password. auth_user in ini must reach database for lookup while app users connect through pooler only.
+
+## Failover behavior
+
+When primary fails over to replica, PgBouncer holds connections to dead primary until server_check_query fails — tune server_check_delay and server_fast_close. Application sees transient connection errors; pooler reconnects to new primary if DNS or config updated via sidecar reload.
+
+## Client-side pool vs PgBouncer double pooling
+
+Node pg pool max 20 plus PgBouncer pool 20 does not mean 400 server connections — clients multiplex onto PgBouncer connections. Disable oversized app pool (max 5) when PgBouncer present to reduce idle client overhead.
+
+## SHOW CLIENTS during incident
+
+PgBouncer admin console SHOW CLIENTS lists waiting clients — if hundreds waiting, scale pool size or fix slow queries holding server connections. SHOW SERVERS shows active server link — idle server count zero means saturation imminent.
+
+## Closing notes
+
+Rotate PgBouncer userlist and auth_query credentials via automation quarterly — stale passwords in pooler ini file are recurring audit finding when app creds rotate but pooler auth lags.
 
 ## Resources
 

@@ -1,115 +1,262 @@
 ---
 title: "RAG: Canary Analysis Flagger"
 slug: "rag-canary-analysis-flagger"
-description: "Canary Analysis Flagger: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Flagger automates canary promotion for RAG services by comparing Prometheus metrics between primary and canary—retrieval latency, embedding cost, and nDCG gates on Kubernetes."
 datePublished: "2026-03-06"
-dateModified: "2026-03-06"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Canary"]
-keywords: "rag, canary, analysis, flagger, ai, production, engineering, architecture"
+keywords: "Flagger, canary analysis, progressive delivery, RAG deployment, Prometheus metrics, retrieval latency, Kubernetes, automated rollback, Istio"
 faq:
-  - q: "What is Canary Analysis Flagger?"
-    a: "Canary Analysis Flagger covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Canary Analysis Flagger?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Canary Analysis Flagger?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Canary Analysis Flagger fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Canary Analysis Flagger should be observable in production and safe to change in small diffs."
+  - q: "What does Flagger actually do during a RAG canary deploy?"
+    a: "Flagger watches a Kubernetes Deployment, shifts traffic incrementally to a canary version, queries Prometheus for configured success metrics, and either promotes the canary to primary or rolls back—all without manual kubectl steps. It integrates with Istio, Linkerd, NGINX, Contour, and App Mesh for traffic splitting."
+  - q: "Which metrics should gate RAG canary promotion?"
+    a: "Use a layered set: infrastructure metrics (5xx rate, p95 latency), RAG-specific metrics (retrieval hit rate, tokens per query, embedding API cost), and quality metrics (offline nDCG@10 or shadow-traffic relevance scores). Never promote on availability alone—a RAG service can be up but returning irrelevant chunks."
+  - q: "Can Flagger rollback on custom retrieval quality metrics?"
+    a: "Yes, if quality scores are exported to Prometheus—either from a shadow pipeline that scores canary retrieval results or from a batch job that writes gauges. Flagger's MetricTemplate CRD accepts any PromQL query; the constraint is statistical stability at low canary traffic percentages."
 ---
-Most teams encounter canary analysis flagger after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Shipping a new chunking strategy or reranker model feels routine until the canary starts returning irrelevant context and nobody notices for thirty minutes because error rates stayed at zero. Manual canary checks do not scale when RAG releases happen daily and quality regressions show up in user feedback before infrastructure dashboards move. [Flagger](https://flagger.app/)—the progressive delivery controller originally built at Weaveworks—automates the promote-or-rollback decision by comparing metrics between primary and canary pods during a controlled traffic shift.
 
-When canary analysis flagger is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+This post is a practical guide to running Flagger against RAG retrieval services: which metrics matter, how to structure Canary CRDs, and where automated analysis breaks down for non-deterministic retrieval quality.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Flagger in the RAG deployment stack
 
-Solid AI engineering turns canary analysis flagger from a recurring argument into a documented pattern with tests and an owner.
+A typical RAG retrieval service runs as a Kubernetes Deployment behind a service mesh or ingress controller. Without Flagger, teams either big-bang deploy (risky) or manually shift Istio VirtualService weights while staring at Grafana (error-prone). Flagger closes the loop:
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag canary analysis flagger bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for canary analysis flagger, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag canary analysis flagger flows so duplicates are harmless or detectable.
-
-## Key terms
-
-**canary** — Canary releases route a small traffic slice to a new version before full rollout, limiting blast radius.
-
-## Implementation patterns
-
-A practical baseline for canary analysis flagger in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag canary analysis flagger changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Canary Analysis Flagger: typed boundary + structured errors
-export async function handleCanaryAnalysisFlagger(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-canary-analysis-flagger");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```mermaid
+flowchart LR
+  CI[CI builds image] --> Deploy[Deploy canary pods]
+  Deploy --> Flagger[Flagger Canary CR]
+  Flagger --> Split[Traffic split 5→10→50→100%]
+  Split --> Prom[Prometheus metrics]
+  Prom --> Decision{Metrics pass?}
+  Decision -->|Yes| Promote[Promote canary]
+  Decision -->|No| Rollback[Rollback to primary]
 ```
 
+The Canary custom resource defines analysis intervals, metric thresholds, and webhook notifications. Flagger handles pod readiness, HPA interactions, and final promotion or rollback.
 
-## Operational concerns
+## Defining metrics that catch RAG regressions
 
-Runbooks for canary analysis flagger should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Infrastructure metrics alone miss the failure modes that matter for retrieval. A canary with a broken hybrid search weight might show identical p95 latency while nDCG@10 drops fifteen points.
 
-Production rag canary analysis flagger work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Layer 1: Availability and latency**
 
-Rollouts for canary analysis flagger benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```yaml
+# flagger/canary-rag.yaml (metrics excerpt)
+metrics:
+  - name: request-success-rate
+    thresholdRange:
+      min: 99
+    interval: 1m
+  - name: request-duration
+    thresholdRange:
+      max: 500
+    interval: 1m
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+These catch crashes and severe latency regressions. They will not catch semantic retrieval degradation.
 
-## Security and compliance angles
+**Layer 2: RAG-specific operational metrics**
 
-Even when canary analysis flagger is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Export these from your retrieval service:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag canary analysis flagger so security reviews do not rely on tribal knowledge.
+- `rag_retrieval_chunks_returned` — histogram of chunk counts per query
+- `rag_embedding_api_calls_total` — cost proxy; spikes indicate cache regression
+- `rag_hybrid_search_fallback_rate` — ratio of BM25-only fallbacks when vector search fails
+- `rag_reranker_timeout_rate` — cross-encoder saturation signal
 
-## Testing strategy
+```yaml
+  - name: embedding-call-rate
+    templateRef:
+      name: rag-embedding-rate
+      namespace: rag
+    thresholdRange:
+      max: 10
+    interval: 2m
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that canary analysis flagger depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Layer 3: Quality metrics**
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Quality gates require offline or shadow evaluation exported to Prometheus:
 
-## Migration and evolution
+```yaml
+  - name: ndcg-at-10
+    templateRef:
+      name: rag-ndcg-shadow
+      namespace: rag
+    thresholdRange:
+      min: 0.85
+    interval: 5m
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag canary analysis flagger functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+The MetricTemplate runs PromQL against gauges written by a shadow evaluator that scores canary retrieval results against a frozen query set.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where canary analysis flagger spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Canary CRD structure for RAG services
 
-## Related concepts
+A complete Canary resource for a RAG retrieval deployment:
 
-Canary Analysis Flagger intersects with broader ai topics — see companion notes on [rag-canary patterns](https://blog.michaelsam94.com/rag-canary/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: rag-retrieval
+  namespace: production
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rag-retrieval
+  progressDeadlineSeconds: 600
+  service:
+    port: 8080
+    targetPort: 8080
+    gateways:
+      - public-gateway.istio-system.svc.cluster.local
+    hosts:
+      - rag-api.internal.example.com
+  analysis:
+    interval: 1m
+    threshold: 5
+    maxWeight: 50
+    stepWeight: 10
+    metrics:
+      - name: request-success-rate
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: request-duration
+        thresholdRange:
+          max: 400
+        interval: 1m
+      - name: ndcg-at-10
+        templateRef:
+          name: rag-ndcg-shadow
+          namespace: production
+        thresholdRange:
+          min: 0.82
+        interval: 5m
+    webhooks:
+      - name: load-test
+        url: http://flagger-loadtester.production/
+        timeout: 5s
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 http://rag-retrieval-canary.production:8080/health"
+```
 
-## The takeaway
+Key parameters:
 
-Canary Analysis Flagger rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag canary analysis flagger becomes a maintainable asset instead of incident fuel.
+- `stepWeight: 10` — increase canary traffic by 10% each interval
+- `maxWeight: 50` — cap at 50% before final analysis
+- `threshold: 5` — allow five failed checks before rollback
+- `interval: 1m` — check frequency
+
+## Shadow evaluation pipeline for quality gates
+
+Automated rollback on retrieval quality requires a shadow path that does not affect user responses:
+
+```python
+# shadow/evaluator.py
+import asyncio
+from prometheus_client import Gauge
+
+NDCG_GAUGE = Gauge("rag_canary_ndcg_at_10", "Shadow nDCG@10 for canary", ["variant"])
+
+GOLDEN_QUERIES = load_golden_set("eval/queries_v3.jsonl")
+
+async def shadow_eval_loop(canary_url: str, primary_url: str):
+    while True:
+        scores = {"canary": [], "primary": []}
+        for item in GOLDEN_QUERIES:
+            for variant, url in [("canary", canary_url), ("primary", primary_url)]:
+                results = await retrieve(url, item["query"], top_k=10)
+                scores[variant].append(ndcg_at_k(results, item["relevant_ids"], k=10))
+
+        for variant in ["canary", "primary"]:
+            avg = sum(scores[variant]) / len(scores[variant])
+            NDCG_GAUGE.labels(variant=variant).set(avg)
+
+        await asyncio.sleep(60)
+```
+
+Run this as a sidecar or separate Deployment. Flagger reads the canary gauge and compares against threshold. Statistical note: at 10% canary traffic, quality metrics need longer intervals (5m+) for stable estimates.
+
+## Progressive delivery patterns for RAG components
+
+Different RAG components need different canary strategies.
+
+**Embedding model updates.** Highest risk—vector space shifts break retrieval silently. Run extended canary (30–60 min) with nDCG gate. Consider dual-write to both indexes during transition.
+
+**Chunking strategy changes.** Requires reindex; canary the new ingestion pipeline separately from query serving. Do not canary query serving until new index is populated.
+
+**Reranker model swaps.** Lower blast radius if bi-encoder retrieval is unchanged. Shorter canary window (10–15 min) with reranker timeout rate gate.
+
+**Hybrid search weight tuning.** A/B test via feature flags first; use Flagger for the service binary that hosts the flag logic, not for weight values themselves.
+
+## When Flagger analysis fails for RAG
+
+Automated canary analysis has blind spots:
+
+**Non-stationary query traffic.** Monday morning queries differ from Friday afternoon. Compare canary vs primary on the same traffic slice, not absolute thresholds alone. Use relative comparison: `canary_ndcg / primary_ndcg > 0.95`.
+
+**Cold start on new indexes.** First queries after deploy hit empty caches and show inflated latency. Add warmup webhook before analysis starts.
+
+**Low canary traffic volume.** At 5% traffic with 100 QPS total, canary sees 5 QPS—insufficient for rare query types. Increase `stepWeight` slowly or use synthetic load via loadtester webhook.
+
+**Correlated failures.** If embedding API is degraded, both primary and canary fail together and Flagger sees no difference. Add external dependency health checks independent of variant comparison.
+
+## Integration with GitOps and CI
+
+Flagger works naturally with Flux or Argo CD:
+
+1. CI builds and pushes image with semver tag
+2. GitOps repo updates Deployment image field
+3. Flagger detects new pod spec and starts canary analysis
+4. On success, Flagger updates primary Deployment; on failure, reverts
+
+```yaml
+# .github/workflows/rag-deploy.yaml (excerpt)
+- name: Update deployment manifest
+  run: |
+    yq -i '.spec.template.spec.containers[0].image = "${{ env.IMAGE }}"' \
+      k8s/rag-retrieval/deployment.yaml
+    git commit -am "deploy rag-retrieval ${{ env.VERSION }}"
+    git push
+```
+
+Avoid manual `kubectl set image`—it bypasses GitOps reconciliation and confuses Flagger state.
+
+## Alerting and incident response
+
+Configure Flagger webhooks to Slack or PagerDuty:
+
+```yaml
+    webhooks:
+      - name: slack-notification
+        type: event
+        url: https://hooks.slack.com/services/XXX
+        metadata:
+          type: rollback
+          channel: rag-deploys
+```
+
+When Flagger rolls back:
+
+1. Check which metric failed—latency vs quality vs cost
+2. Pull canary pod logs for retrieval errors
+3. Run offline eval against canary endpoint manually
+4. Fix and redeploy; do not override Flagger thresholds without understanding the regression
+
+## Closing thoughts
+
+Flagger turns RAG deploys from anxiety-inducing events into routine automation—but only if you export the right metrics. Availability gates are necessary; quality gates are what prevent silent retrieval regressions. Invest in shadow evaluation infrastructure before you need it, and tune analysis intervals for the statistical stability your traffic volume allows.
+
+## Integration notes for canary analysis flagger
+
+This rarely lives alone. Map upstream dependencies (auth, data stores, queues) and downstream consumers before you harden the happy path. Sequence the rollout: observability first, then flags, then the risky behavior change. That order turns rollback into a flag flip instead of a reverse migration under pressure. Keep the integration diagram in the same repo as the code so it cannot rot in a slide deck.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Flagger documentation](https://docs.flagger.app/)
+- Prometheus MetricTemplate CRD reference
+- Weaveworks progressive delivery blog posts
+- Offline RAG evaluation golden set design patterns

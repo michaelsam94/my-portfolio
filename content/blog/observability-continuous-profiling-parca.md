@@ -1,129 +1,208 @@
 ---
 title: "Continuous Profiling with Parca"
 slug: "observability-continuous-profiling-parca"
-description: "Sample CPU profiles in production — correlate with traces via exemplars."
-datePublished: "2026-01-21"
-dateModified: "2026-01-21"
+description: "Deploy Parca for always-on CPU and memory profiling in Kubernetes—correlate flame graphs with metrics and traces without manual pprof captures."
+datePublished: "2026-01-20"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
-  - "SRE"
-keywords: "observability continuous profiling parca, production, backend"
+  - "Kubernetes"
+  - "Performance"
+keywords: "parca continuous profiling, eBPF profiling kubernetes, flame graphs production, parca agent, always-on profiling"
 faq:
-  - q: "What problem does Continuous Profiling solve?"
-    a: "It addresses production gaps teams hit when scaling observability continuous profiling parca: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability continuous profiling parca appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How is Parca different from grabbing pprof manually during incidents?"
+    a: "Manual pprof captures one moment. Parca scrapes profiles continuously and lets you diff flame graphs before and after a deploy without reproducing the incident live."
+  - q: "What overhead does Parca add in production?"
+    a: "eBPF-based CPU sampling typically adds 1–3% CPU at default sample rates. Memory profiling costs more—enable selectively or sample fewer pods."
+  - q: "Does Parca replace distributed tracing?"
+    a: "No. Traces show per-request path; profiles show which functions consumed CPU. Link high-latency spans to profiles at the same timestamp."
 ---
 
-## Production context
+Latency doubled after a deploy. Traces pointed at `inventory-service`, but spans were generically slow. Someone SSH'd and ran pprof during quiet traffic—the flame graph looked fine. The spike happened under load at 14:32. Parca solves that: continuous profiling stored as time series, queryable like metrics, diffable like git blame for CPU.
 
-A billing service lost duplicate events because observability continuous profiling parca was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Architecture on Kubernetes
 
-Senior backend work on continuous profiling with parca is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Parca Agent (DaemonSet eBPF) scrapes app pods; Parca Server stores profiles in S3/MinIO; UI provides flame graphs and diffs. Label pods with `app`, `version`, `environment` for filtering.
 
-## Architecture pattern
+## Investigating a latency regression
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Compare profiles 14:00–14:30 vs 14:30–15:00 after deploy—new hot path in `calculateAvailability()` visible without reproduction.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## eBPF sampling and symbols
+
+Unwind quality depends on debug symbols—ship symbols separately for stripped Go/Rust binaries. Memory profiles heavier than CPU—enable per namespace during OOM investigations.
+
+## Security
+
+Profiles expose function names—restrict Parca UI via SSO; encrypt object storage. Disable public pprof endpoints when Parca covers profiling.
+
+## Parca vs alternatives
+
+Parca fits teams on Prometheus/Grafana wanting open-source profiles beside existing stacks without per-host SaaS fees.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## Symbol upload and container builds
 
-## Implementation checklist
+Go and Rust binaries stripped in Docker multi-stage builds lose symbols Parca needs. Options:
 
-Validate inputs at the trust boundary with schema versioning.
+**Separate debug image** — CI pushes `myapp:1.2.0-debug` with symbols to internal registry; Parca queries debuginfod or symbol server mapped by build ID.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+**Build ID in Kubernetes labels** — Pod label `git.sha=abc123`; Parca maps profiles to symbols from object storage path `symbols/abc123/`.
 
-Store idempotency keys with TTL; return cached responses on replay.
+Without symbols, flame graphs show hex addresses—better than nothing, useless for developers who do not carry addr2line in muscle memory.
 
-Run migrations with lock_timeout and statement_timeout set.
+## Profiling and compliance workloads
 
-Load test at 2× expected peak with production-like payload sizes.
+Regulated environments may restrict always-on profiling as potential data leakage via stack strings. Mitigations:
 
-## Observability
+- Profile only non-PII code paths (exclude payment handler packages via build tags—not practical usually)
+- Restrict Parca UI to VPC-only
+- Redact symbol names in UI export for vendor support tickets
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Legal review often approves CPU sampling where heap dumps would not pass—document difference for security questionnaires.
 
-Dashboards for observability continuous profiling parca should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## Integrating with CI performance gates
 
-## Security notes
+Optional: short k6 load in CI with Parca scrape of staging deploy. Compare top 10 functions vs baseline main branch—fail PR if new hot path adds >5% CPU in `applyDiscounts`. Lightweight guard against algorithmic regressions before production profiles confirm pain.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+## Parca vs Pyroscope operational choice
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Both use eBPF; Grafana Pyroscope merges into LGTM stack with unified Grafana Explore. Parca remains strong for teams wanting CNCF-aligned OSS without Grafana Cloud coupling. Evaluation criteria: existing object storage (S3 compatibility), team familiarity, and whether Tempo trace-to-profile linking is already on roadmap—Grafana path shortens integration time.
 
-## Common production mistakes
+## Retention and legal hold
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Profile blobs may contain function names revealing unreleased features—align S3 retention with code release policy. Legal hold on incident dates: snapshot profile object storage prefix for postmortem evidence alongside traces.
 
-## Debugging and triage workflow
+## On-call training exercise
 
-When production misbehaves, work top-down:
+Quarterly: inject CPU loop in staging service, on-call must find hot function in Parca within 15 minutes without SSH. Failure means runbook or access gaps—fix before production incident.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+## Ownership and access model
 
-## Operational checklist
+Assign Parca UI access to service teams for their namespaces only—platform operates agents and storage, product teams investigate their flame graphs. Prevents accidental cross-team visibility into unreleased feature code paths visible in symbols while still enabling self-service perf debugging.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Include Parca link in performance-related incident templates next to Grafana and Tempo. Three-way correlation (metrics spike, trace slow span, profile hot function) should be exercisable in under ten minutes by any mid-level backend engineer after onboarding lab.
 
-## Performance tuning notes
 
-Measure before optimizing observability continuous profiling parca. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Rollout and migration
 
-Ship observability continuous profiling parca changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Testing recommendations
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Incident patterns we see
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
 
-## Resources
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.

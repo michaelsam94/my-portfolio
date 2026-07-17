@@ -3,115 +3,179 @@ title: "Deployment Gates and Post-Deploy Smoke Tests"
 slug: "devops-deployment-gates-smoke-tests"
 description: "Block promotion until smoke tests pass against canary or staging."
 datePublished: "2026-05-10"
-dateModified: "2026-05-10"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "CI/CD"
   - "SRE"
 keywords: "deployment gates, smoke tests"
 faq:
-  - q: "What is Deployment Gates and Post-Deploy Smoke Tests?"
-    a: "Deployment Gates and Post-Deploy Smoke Tests covers operational practices for deployment gates in production ci/cd environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Deployment Gates and Post-Deploy Smoke Tests?"
-    a: "On every automated production promotion path."
-  - q: "What mistakes break Deployment Gates and Post-Deploy Smoke Tests?"
-    a: "Smoke tests hitting mocks—not real downstream dependencies."
+  - q: "What is a deployment gate vs CI test?"
+    a: "A gate runs against the deployed artifact in a prod-like environment after build success, before promotion."
+  - q: "What makes a smoke test useful?"
+    a: "Fast critical-path requests against real read-only dependencies—not /health alone or mocks."
+  - q: "How do canary promotion gates work?"
+    a: "Automated comparison of error rate and latency canary vs baseline before increasing traffic weight."
+  - q: "How handle flaky smoke tests?"
+    a: "One retry with jitter; chronic flakes are Sev-2 debt—quarantine and fix, not ignored green builds."
 ---
+Pipeline green; production returned 500 on orders API because smoke tested /health only.
 
-Pipeline green but prod 500s—health check only hit /health not /api/v1/orders.
+## Smoke design
 
-This post walks through **Deployment Gates and Post-Deploy Smoke Tests** for platform and SRE teams shipping reliable infrastructure. Block promotion until smoke tests pass against canary or staging. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+Three to five read-only API paths with synthetic tenant—represent revenue and auth flows.
 
-## Problem framing: Deployment Gates and Post-Deploy Smoke Tests
+A production team running deployment gates smoke tests discovered that smoke design failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Pipeline green but prod 500s—health check only hit /health not /api/v1/orders.
+Runbook entry for smoke design: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
+For deployment gates smoke tests, instrument smoke design with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-Platform teams treat **deployment gates** as solved after the first successful deploy. Production disagrees: edge cases around deployment gates smoke tests, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day scenario for smoke design: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-## Design principles for deployment gates
+Ownership for smoke design belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-Explicit contracts beat tribal knowledge. Document who owns deployment gates configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management for deployment gates smoke tests: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in smoke design
+configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for smoke design, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-A common failure mode: Smoke tests hitting mocks—not real downstream dependencies. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+## CD gates
 
+Block promotion until smoke passes on canary URL; automatic rollback on failure.
 
-```yaml
-# pipeline / GitOps snippet for devops-deployment-gates-smoke-tests
-name: deployment-gates-smoke-tests
-on:
-  pull_request:
-    paths: ["infra/deployment-gates-smoke-tests/**"]
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: make validate-deployment-gates-smoke-tests
-```
+A production team running deployment gates smoke tests discovered that cd gates failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-## Implementation walkthrough
+Runbook entry for cd gates: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Start with the smallest production-safe slice of **Deployment Gates and Post-Deploy Smoke Tests**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+For deployment gates smoke tests, instrument cd gates with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
+Game day scenario for cd gates: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for deployment gates.
+Ownership for cd gates belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Operational concerns in production
+Change management for deployment gates smoke tests: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in cd gates configs
+that authors no longer notice.
 
-Day-two operations for ci/cd work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Capacity planning note: estimate peak QPS or job concurrency for cd gates, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
+## Environment parity
 
-Run game days or fault injection in staging quarterly for deployment gates smoke tests. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Same secrets resolver and network path as production—not localhost mocks.
 
-## Security and compliance angles
+A production team running deployment gates smoke tests discovered that environment parity failures
+show up only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed
+the regression until Black Friday.
 
-Even when Deployment Gates and Post-Deploy Smoke Tests is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when deployment gates accepts configuration from multiple teams.
+Runbook entry for environment parity: confirm blast radius (single namespace vs fleet-wide),
+identify last config change, roll back via documented single step, then capture metrics screenshots
+for postmortem—not ad-hoc dashboard hunting.
 
+For deployment gates smoke tests, instrument environment parity with low-cardinality metrics tied to
+user-visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid
+paging on vanity gauges that never correlated with past incidents.
 
-For regulated workloads, maintain an immutable audit trail: who changed deployment gates settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Game day scenario for environment parity: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
 
-## Integration with platform standards
+Ownership for environment parity belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
 
-Align deployment gates with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Change management for deployment gates smoke tests: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in environment
+parity configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for environment parity, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+## Flake policy
 
+One retry with jitter; chronic flakes are Sev-2 debt tracked to resolution.
 
-## What to measure after rollout
+A production team running deployment gates smoke tests discovered that flake policy failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Runbook entry for flake policy: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+For deployment gates smoke tests, instrument flake policy with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-## Documentation your team should maintain
+Game day scenario for flake policy: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Ownership for flake policy belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Pre-production checklist
+Change management for deployment gates smoke tests: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in flake policy
+configs that authors no longer notice.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Capacity planning note: estimate peak QPS or job concurrency for flake policy, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+## Override auditing
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Manual gate skips require ticket ID in deploy metadata and alert to platform.
 
-## Common questions from reviewers
+A production team running deployment gates smoke tests discovered that override auditing failures
+show up only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed
+the regression until Black Friday.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Runbook entry for override auditing: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-## Version and compatibility notes
+For deployment gates smoke tests, instrument override auditing with low-cardinality metrics tied to
+user-visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid
+paging on vanity gauges that never correlated with past incidents.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Game day scenario for override auditing: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
 
+Ownership for override auditing belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
 
-## Resources
+Change management for deployment gates smoke tests: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in override
+auditing configs that authors no longer notice.
 
-- https://docs.github.com/en/actions
-- https://docs.gitlab.com/ee/ci/
+Capacity planning note: estimate peak QPS or job concurrency for override auditing, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
+
+Smoke three to five read-only API paths with synthetic tenant context after deploy—`/health` alone misses misconfigured database URLs. Block promotion on canary smoke failure with automatic rollback; manual gate overrides require ticket ID in deploy annotation.

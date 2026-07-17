@@ -3,7 +3,7 @@ title: "Threat Modeling with Data-Flow Diagrams"
 slug: "threat-modeling-data-flow-diagrams"
 description: "Threat modeling identifies security risks before code is written. Learn STRIDE analysis with data-flow diagrams to systematically find vulnerabilities in system design."
 datePublished: "2026-01-30"
-dateModified: "2026-01-30"
+dateModified: "2026-07-17"
 tags: ["Security", "Threat Modeling", "STRIDE", "Architecture"]
 keywords: "threat modeling, data flow diagram security, STRIDE analysis, threat modeling process, security design review, Microsoft Threat Modeling Tool"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "STRIDE is a threat categorization mnemonic: Spoofing (fake identity), Tampering (modify data), Repudiation (deny actions), Information Disclosure (leak data), Denial of Service (make unavailable), Elevation of Privilege (gain unauthorized access). For each component and data flow in your diagram, ask what STRIDE threats apply. Spoofing applies to authentication boundaries. Tampering applies to data in transit and at rest. Not every category applies to every element."
   - q: "Do I need special tools for threat modeling?"
     a: "A whiteboard or diagramming tool (Miro, Excalidraw, draw.io) works for most teams. Microsoft Threat Modeling Tool (free) generates STRIDE threats automatically from data-flow diagrams. OWASP Threat Dragon is an open-source alternative. The tool matters less than the process — a hand-drawn diagram with a STRIDE worksheet completed by the team is more valuable than a polished diagram nobody analyzed."
+faqAnswers:
+  - question: "When is threat modeling data flow diagrams the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for threat modeling data flow diagrams?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back threat modeling data flow diagrams safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 We shipped a file upload feature without threat modeling. Six months later, a pentest found that uploaded files were served from the same domain as the application — an attacker uploaded an HTML file with JavaScript that stole session cookies from other users. A one-hour threat modeling session would have identified the cross-origin data flow, flagged the missing content-type validation, and suggested serving uploads from a separate domain. The fix cost two weeks and a security advisory.
 
 Threat modeling is a structured process for identifying security threats in a system design before they're exploited. Data-flow diagrams (DFDs) map what data moves where, and STRIDE analysis systematically asks what could go wrong at each point.
@@ -156,13 +162,31 @@ Include the engineer building the feature, a security-minded reviewer, and optio
 
 **Ignoring trust boundaries:** The most critical threats occur at trust boundaries — where data crosses from untrusted (internet) to trusted (internal). Focus STRIDE analysis on boundary crossings.
 
-## Measuring success in production
+## Trust boundaries on DFDs
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Draw dashed lines for trust boundaries — browser, API gateway, internal VPC, third-party SaaS. STRIDE per element crossing boundaries first. Data stores get tampering and information disclosure; processes get spoofing and elevation.
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+## Living threat models in CI
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Link threat model diagram from repo to Jira epic — update diagram in same PR as new external integration. Quarterly review with security champion; diff diagram against production architecture discovered via service catalog.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

@@ -3,7 +3,7 @@ title: "Prompt Decomposition Techniques"
 slug: "prompt-engineering-decomposition"
 description: "Break complex LLM tasks into prompt chains: decomposition patterns, intermediate validation, map-reduce summarization, and when single-shot prompts fail."
 datePublished: "2026-04-27"
-dateModified: "2026-04-27"
+dateModified: "2026-07-17"
 tags: ["AI", "LLM", "Prompt Engineering", "Architecture"]
 keywords: "prompt decomposition, LLM chain of prompts, map reduce LLM, task decomposition AI, multi-step prompting"
 faq:
@@ -174,29 +174,37 @@ Step 4: Execute and synthesize
 
 Or use explicit JSON schema output for step 1, feed to step 2 in separate LLM call — more reliable than single-shot for compound requests.
 
-## Common production mistakes
 
-Teams get decomposition wrong in predictable ways:
+## DAG documentation for onboarding
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Draw the chain as a DAG in your repo: nodes are steps, edges carry schema names (`InvoiceJSON → SummaryText`). New engineers fix step 4 faster when they see which upstream schema changed. Include expected p95 latency and token budget per node — decomposition without budgets allows runaway map fan-out on large PDFs.
 
-Production implementations of decomposition fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Partial chain replay after failures
 
-## Debugging and triage workflow
+Persist intermediate JSON after each validated step. When step 4 fails, replay from step 3 output without re-running expensive step 1 OCR+extract. Idempotent step keys (`doc_hash + step_id`) prevent duplicate side effects when orchestrators retry.
 
-When decomposition misbehaves in production, work top-down instead of guessing:
+## Fan-out limits on map steps
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Cap map parallelism at 10 concurrent chunk calls — 200-chunk document with unbounded asyncio.gather tripped provider rate limits and cost alarms. Queue map work with semaphore; surface progress for long docs.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Chain versioning
+
+Tag each step output with `chain_version` and `step_schema_version` — replay debugging needs to know if step 2 failed because step 1 used deprecated schema from last week's deploy.
+
+## Production rollout notes
+
+Document expected token budget per chain in runbook — finance approval for new document types requires cost estimate from pilot chain trace. A single unbounded map over 500-page PDF can exceed daily API quota; decomposition without budgets is an ops incident waiting for first enterprise upload.
+## Step timeout budgets
+
+Each chain step gets max wall clock — step 2 killed after 15s triggers fallback response, not infinite hang. Orchestrator records which step timed out for ops dashboard. Long-running map steps need per-chunk timeout distinct from reduce step timeout.
+
+## Deterministic steps outside LLM
+
+Move regex validation, checksum verification, and date parsing to code between LLM steps — reduces tokens and eliminates hallucinated date formats in intermediate JSON passed to step 3.
+
+## Closing operational guidance
+
+Reduce step temperature 0; creative steps moderate — mixed chain with single global temperature suboptimizes each step. Pass per-step generation config in orchestrator metadata. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

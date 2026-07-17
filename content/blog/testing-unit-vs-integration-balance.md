@@ -3,16 +3,20 @@ title: "Balancing Unit and Integration Tests"
 slug: "testing-unit-vs-integration-balance"
 description: "Finding the right unit vs integration test balance: testing pyramid critique, social tests, test boundaries, ROI by layer, and team-specific ratios."
 datePublished: "2026-01-22"
-dateModified: "2026-01-22"
-tags: ["Testing", "Software Engineering", "Architecture", "Quality"]
+dateModified: "2026-07-17"
+tags:
+  - "Testing"
+  - "Software Engineering"
+  - "Architecture"
+  - "Quality"
 keywords: "unit vs integration tests, testing pyramid, testing trophy, test balance, integration test ROI, microservice testing strategy"
 faq:
-  - q: "What is the testing pyramid?"
-    a: "The testing pyramid recommends many fast unit tests at the base, fewer integration tests in the middle, and minimal slow end-to-end tests at the top. The shape reflects cost and speed — unit tests run in milliseconds and pinpoint failures; E2E tests run minutes and diagnose poorly. The pyramid is guidance, not a quota mandate."
-  - q: "What is wrong with aiming for 100% unit test coverage?"
-    a: "Unit tests with every dependency mocked verify isolated logic but miss wiring bugs, SQL mistakes, schema drift, and serialization mismatches. Over-mocking produces tests that pass when production fails. Some integration coverage at repository and API boundaries catches failures unit tests structurally cannot see."
-  - q: "How do you decide what to integration test?"
-    a: "Integration test at boundaries where types cross process or I/O: HTTP handlers against real DB (Testcontainers), repository layer against real SQL, message consumers against embedded broker. Skip integrating what unit tests already prove — pure domain calculations, formatters, validators without I/O. One happy-path plus key error integration test per boundary often suffices."
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
 ---
 
 A team proud of 95% unit coverage shipped a release where every API returned 500. The ORM entity had a renamed column; unit tests mocked the repository. Integration tests existed but only for checkout — catalog, search, and auth untested against real Postgres. The pyramid was wide at the bottom and hollow in the middle.
@@ -168,29 +172,35 @@ Pair with [testing mutation testing](https://blog.michaelsam94.com/testing-mutat
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
+## The integration test honeycomb
 
-Teams get unit vs integration balance wrong in predictable ways:
+Unit tests prove logic; integration tests prove wiring. The costly mistake is mocking everything in "integration" tests until they prove nothing. Test containers (Testcontainers, Docker Compose in CI) give real Postgres and Redis without shared staging environments. One integration test per critical path — checkout, signup, password reset — catches config errors unit tests miss. Keep integration suite under ten minutes or teams skip it.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Contract tests at service boundaries
 
-Testing strategy for unit vs integration balance gives false confidence when mocks return happy paths only, flakey tests are retried until green, and contract tests are never run against staging before deploy.
+Pact or schema-based contract tests sit between unit and integration: fast, no shared environment, catch API shape drift. One breaking change in notifications service should fail consumer CI before deploy — integration tests that mock the downstream prove wiring, not contract agreement.
 
-## Debugging and triage workflow
+## Flaky test budget
 
-When unit vs integration balance misbehaves in production, work top-down instead of guessing:
+Track flaky test rate weekly. Above 2% of CI runs, freeze feature work for one day and fix or quarantine flakes. Quarantined tests must have owner and expiry — quarantine is not permanent exile. Teams that tolerate flakes stop trusting red builds and ship regressions.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Practical follow-through (1)
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 
@@ -199,3 +209,33 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Google Testing Blog — sizes](https://testing.googleblog.com/2010/12/test-sizes.html)
 - [Testcontainers](https://testcontainers.com/)
 - [Spring Boot @WebMvcTest](https://docs.spring.io/spring-boot/docs/current/reference/htmlsingle/#webmvc-test)
+
+## Consumer-driven contracts
+
+Pact on API boundary — integration without full E2E stack running.
+
+## Slice tests
+
+Spring `@WebMvcTest`, Nest testing module with real controller + mocked service — middle layer between unit and full integration.
+
+## Frontend MSW integration
+
+MSW in Vitest with real React Query stack — integration of data layer without backend.
+
+## Defect taxonomy retro
+
+Tag last quarter prod bugs: "mock wouldn't catch" vs "unit would catch" — data drives investment.
+
+## Test debt budget
+
+Allow +5 integration tests per sprint without deleting unit tests — gradual rebalance.
+
+## Flaky integration fixes
+
+Quarantine flaky integration with ticket — zero tolerance long-term; delete if not fixed in 30 days.
+
+Balance is empirical — pyramid poster is starting point, production escape data is truth.
+
+## Contract tests at boundaries
+
+Pact or similar at service edges replaces some integration tests — faster CI with same breaking-change detection.

@@ -3,7 +3,7 @@ title: "Zero-Downtime Migrations in CD"
 slug: "ops-database-migrations-zero-downtime"
 description: "Run database migrations in CI/CD without downtime: expand-contract pattern, migration ordering, backward-compatible deploys, and tooling with Flyway and Liquibase."
 datePublished: "2026-01-06"
-dateModified: "2026-01-06"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Database", "CI/CD", "SRE"]
 keywords: "zero downtime migration, database CI CD, expand contract pattern, Flyway migrations, backward compatible schema"
 faq:
@@ -150,6 +150,52 @@ When database migrations zero downtime misbehaves in production, work top-down i
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Expand-contract worked example
+
+Adding `NOT NULL` column without downtime:
+
+**Expand:** `ADD COLUMN status_new TEXT NULL` — deploy app writing both columns
+**Migrate:** backfill `status_new` from `status` in batches
+**Contract:** `SET NOT NULL` after backfill; deploy app reading new only; drop old
+
+Never `ADD COLUMN ... NOT NULL DEFAULT` on Postgres big tables in one step — locks table, blocks writes.
+
+## Migration job observability
+
+Long backfills need progress metrics:
+
+```sql
+UPDATE users SET migrated = true
+WHERE id IN (SELECT id FROM users WHERE NOT migrated LIMIT 5000);
+-- repeat until rowcount = 0
+```
+
+Export `rows_remaining` gauge; pause backfill if replica lag exceeds 30s. Read traffic on lagging replica returns stale data — acceptable briefly, not for hours.
+
+## Lock timeout on migrations
+
+```sql
+SET lock_timeout = '5s';
+SET statement_timeout = '600s';
+```
+
+Long `ACCESS EXCLUSIVE` from careless `ADD COLUMN DEFAULT` fails fast instead of blocking checkout queue overnight.
+
+## ORM migration ordering
+
+Deploy app reading new column before backfill completes only if column nullable — document deploy order in migration ticket template: expand deploy → backfill job → contract deploy.
+
+## Flyway vs Liquibase ordering
+
+Version numbers collide when teams merge migrations — CI check max version monotonic per branch. Out-of-order deploy breaks expand-contract sequencing.
+
+## Shadow columns for rename
+
+Rename column via add-new copy dual-write drop-old — never `ALTER RENAME` on hot table under load. Shadow period length = max app deploy cycle + 24h safety.
+## Connection pool storm after migration
+
+Deploy with new column drains old pool slowly — PgBouncer `SERVER_RESET_QUERY` or rolling app restart prevents mixed schema parsers in one pool.
 
 ## Resources
 

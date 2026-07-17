@@ -7,105 +7,229 @@ dateModified: "2025-05-18"
 tags: ["AI", "Agent", "Datasheet"]
 keywords: "agent, datasheet, datasets, ai, production, engineering, architecture"
 faq:
-  - q: "What is Datasheet Datasets?"
-    a: "Datasheet Datasets covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Datasheet Datasets?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Datasheet Datasets?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Datasheet Datasets fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Datasheet Datasets should be observable in production and safe to change in small diffs."
+  - q: "What is a Datasheet for Datasets in an agent context?"
+    a: "It is a structured, versioned document describing how a dataset was created, what it contains, known limitations, and recommended uses—applied to the corpora, eval sets, and fine-tune data that power agent retrieval, tool routing, and safety classifiers. Unlike a README with column names, it answers whether this data is safe to embed, fine-tune on, or expose to a multi-tenant agent."
+  - q: "Which agent datasets need datasheets first?"
+    a: "Start with datasets on the critical path: RAG knowledge bases with PII risk, tool-selection training logs, human preference datasets for RLHF, and eval suites that gate production promotion. Internal wiki dumps and scraped documentation can wait until they feed a customer-facing agent."
+  - q: "How do datasheets connect to dataset versioning?"
+    a: "Every dataset version hash—content-addressed blob or table snapshot—should reference a datasheet version in metadata. CI rejects embedding jobs or fine-tune pipelines when the datasheet is missing, stale relative to the data, or marked deprecated. Agents deployed without a linked datasheet should fail promotion gates."
+  - q: "Who owns agent dataset datasheets?"
+    a: "The team that creates or curates the dataset owns the datasheet, with mandatory review from security when PII is possible and from legal when data crosses jurisdictions. Platform teams provide the schema, validation tooling, and registry—not the domain content."
 ---
-Datasheet Datasets is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+An agent shipped a confident answer about a refund policy that had been revoked eighteen months earlier. Retrieval pulled from a Confluence export indexed before the policy change. The embedding job had no owner, no changelog, and no document explaining that the corpus was a one-time snapshot with known gaps in the EU region. Legal did not ask whether the model hallucinated—they asked why production agents were allowed to cite unaudited data.
 
-When datasheet datasets is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+That incident is what **Datasheet for Datasets** discipline prevents. Gebru et al. introduced the concept for ML datasets broadly; agent systems multiply the stakes because datasets are not static training artifacts—they are live inputs to retrieval, tool routing, eval gates, and fine-tune loops that change weekly.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why agents need datasheets, not READMEs
 
-Solid AI engineering turns datasheet datasets from a recurring argument into a documented pattern with tests and an owner.
+Traditional ML treats datasets as batch inputs with a train/val/test split. Agents treat datasets as **operational dependencies**:
 
-## Design principles that survive production
+- RAG corpora define what the agent can cite.
+- Tool invocation logs become fine-tune material for routing models.
+- Eval sets decide whether a prompt change promotes to production.
+- Safety classifiers train on red-team transcripts and moderation labels.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent datasheet datasets bugs hide.
+Each of these can drift, contain PII, encode outdated business rules, or over-represent one tenant's vocabulary. A README listing S3 paths does not answer: *Should we embed this in prod? Can we fine-tune a shared base model on it? What happens if a regulator asks for provenance?*
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for datasheet datasets, you do not yet understand the behavior you shipped.
+A datasheet answers those questions in a fixed schema so humans and automation can consume it.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Anatomy of an agent dataset datasheet
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent datasheet datasets flows so duplicates are harmless or detectable.
+Adapt the original eight sections to agent-specific concerns:
 
-## Implementation patterns
+| Section | Agent focus |
+|---------|-------------|
+| Motivation | Which agent workflows depend on this data |
+| Composition | Sources, sampling, deduplication, tenant scope |
+| Collection process | Scrapers, exports, human labeling, retention |
+| Preprocessing | Chunking, redaction, language filters |
+| Uses | RAG, fine-tune, eval-only, shadow traffic |
+| Distribution | Access controls, export restrictions |
+| Maintenance | Owner, refresh cadence, deprecation policy |
+| Known limitations | Staleness, bias, missing locales, PII residue |
 
-A practical baseline for datasheet datasets in ai stacks:
+Add agent-specific extensions:
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+- **Embedding compatibility** — model ID, dimension, distance metric used at index time
+- **Tool schema alignment** — whether examples match current OpenAI/Anthropic tool formats
+- **Multi-tenancy** — shared vs tenant-isolated; cross-tenant leakage risk
+- **Eval linkage** — which promotion gates reference this dataset version
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent datasheet datasets changes safer because business rules stay isolated from transport details.
+## Datasheet as code in the pipeline
 
-```typescript
-// Datasheet Datasets: typed boundary + structured errors
-export async function handleDatasheetDatasets(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-datasheet-datasets");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Store datasheets beside datasets under version control. Validate in CI before any downstream job runs.
 
+```yaml
+# datasets/support-kb-eu/v2025-05-01/datasheet.yaml
+schema_version: 1
+dataset_id: support-kb-eu
+version: "2025-05-01"
+content_hash: "sha256:a3f9c2..."
+
+motivation: |
+  Primary RAG corpus for EU Tier-1 support agent. Answers policy and
+  product questions for DE, FR, NL locales.
+
+composition:
+  sources:
+    - type: confluence_export
+      space: SUPPORT-EU
+      snapshot_date: "2025-04-28"
+    - type: zendesk_articles
+      locale: [de, fr, nl]
+      count: 12400
+  excluded:
+    - draft_pages
+    - internal-only labels: [legal-hold, exec-only]
+  estimated_tokens: 48_000_000
+
+preprocessing:
+  chunk_size: 512
+  chunk_overlap: 64
+  pii_redaction: presidio_v2
+  dedupe: minhash_lsh_threshold_0.92
+
+uses:
+  allowed:
+    - rag_retrieval_prod
+    - offline_eval_regression
+  forbidden:
+    - fine_tune_shared_base
+    - cross_region_replication
+
+maintenance:
+  owner: support-platform@company.com
+  refresh: weekly_sunday_utc
+  sla_staleness_max_days: 14
+
+limitations:
+  - Confluence export misses inline comments updated after snapshot
+  - NL coverage ~15% lower than DE for hardware SKU docs
+  - Known PII false-negative rate 0.3% on phone numbers in tables
+
+embedding:
+  model: text-embedding-3-large
+  dimensions: 3072
+  index: pinecone/support-eu-prod
 ```
 
+Gate embedding and fine-tune jobs on datasheet presence and freshness:
 
-## Operational concerns
+```python
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
+import yaml
 
-Runbooks for datasheet datasets should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
 
-Production agent datasheet datasets work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+@dataclass
+class DatasheetValidation:
+    ok: bool
+    errors: list[str]
 
-Rollouts for datasheet datasets benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+def validate_datasheet_for_job(
+    datasheet_path: str,
+    data_blob_hash: str,
+    job_type: str,
+) -> DatasheetValidation:
+    with open(datasheet_path) as f:
+        ds = yaml.safe_load(f)
 
-## Security and compliance angles
+    errors: list[str] = []
 
-Even when datasheet datasets is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+    if ds.get("content_hash") != data_blob_hash:
+        errors.append(
+            f"content_hash mismatch: datasheet={ds.get('content_hash')} "
+            f"data={data_blob_hash}"
+        )
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent datasheet datasets so security reviews do not rely on tribal knowledge.
+    allowed = ds.get("uses", {}).get("allowed", [])
+    forbidden = ds.get("uses", {}).get("forbidden", [])
+    if job_type in forbidden:
+        errors.append(f"job_type {job_type!r} explicitly forbidden")
+    if job_type not in allowed:
+        errors.append(f"job_type {job_type!r} not in allowed uses")
 
-## Testing strategy
+    max_days = ds.get("maintenance", {}).get("sla_staleness_max_days")
+    if max_days:
+        version_date = datetime.fromisoformat(ds["version"])
+        age = (datetime.now(timezone.utc) - version_date.replace(tzinfo=timezone.utc)).days
+        if age > max_days:
+            errors.append(f"dataset stale: {age} days > SLA {max_days}")
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that datasheet datasets depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+    return DatasheetValidation(ok=len(errors) == 0, errors=errors)
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Operational integration
 
-## Migration and evolution
+**Registry.** Central catalog listing dataset ID, version, owner, linked agents, and datasheet URL. Agent deployment manifests should declare `dataset_refs` that resolve through the registry—same pattern as container image digests.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent datasheet datasets functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Lineage.** When an agent answer is wrong, trace backward: agent version → retrieval index → embedding job → dataset version → datasheet limitations. OpenLineage or custom spans with `dataset.version` attributes make this queryable.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where datasheet datasets spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+**Refresh workflows.** Scheduled re-ingestion must produce a new content hash, updated datasheet version, and diff summary ("412 pages added, 89 removed, 3 PII blocks"). Auto-promote to staging index; eval regression must pass before prod swap.
 
-## Related concepts
+**Deprecation.** Mark datasheets `status: deprecated` with `successor_version` and `hard_delete_after`. Block new agent versions from referencing deprecated datasets; existing agents get a 30-day migration window with alerts.
 
-Datasheet Datasets intersects with broader ai topics — see companion notes on [agent-datasheet patterns](https://blog.michaelsam94.com/agent-datasheet/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Security and compliance
+
+Datasheets are evidence artifacts. For GDPR and similar regimes, document lawful basis, data subjects represented, retention, and erasure procedure. If a user exercises deletion rights, the datasheet's `composition.sources` tells you which shards to purge and whether re-embedding is required.
+
+For multi-tenant agents, datasheets must state isolation guarantees explicitly. "Tenant A's tickets were included in fine-tune" is a datasheet fact, not an inference from code archaeology.
+
+Red-team and safety datasets need access controls documented in the Distribution section—who can read jailbreak prompts, where copies may not land (laptops, vendor tickets).
+
+## Testing and review cadence
+
+- **Schema validation** — CI fails on missing required fields.
+- **Human review** — security sign-off when `pii_redaction` is anything other than `none`; legal when `cross_border: true`.
+- **Consistency checks** — row counts in datasheet match actual parquet/JSONL stats within tolerance.
+- **Drill** — quarterly exercise: pick a random prod agent, reconstruct full dataset lineage from a logged trace in under 15 minutes.
+
+## Common failure modes
+
+**Ghost corpora.** Engineers index a folder nobody owns. Fix: no index job without registry entry and datasheet.
+
+**Stale-but-live.** Weekly refresh breaks silently; agents cite outdated policies. Fix: staleness SLA in datasheet + alert on `version` age.
+
+**Scope creep.** Eval dataset reused for fine-tune without updating `uses`. Fix: job-type validation in CI.
+
+**Copy-paste datasheets.** Template filled with placeholders. Fix: linter rejects `TBD` in production paths; require owner email domain match.
+
+## Cross-team workflows
+
+Datasheets sit at the intersection of ML, product, and compliance. Make handoffs explicit:
+
+**ML engineers** publish initial datasheet draft when a dataset version is cut. Include embedding model compatibility and eval linkage.
+
+**Product owners** validate `motivation` and `limitations` against customer-facing promises. If marketing claims the agent knows "all EU policies," the datasheet must not say NL hardware docs are 15% sparse.
+
+**Security** reviews `composition.sources` and `preprocessing.pii_redaction` before prod index promotion. Sign off with ticket ID stored in datasheet metadata.
+
+**Legal** approves `uses.cross_border` and retention fields. Block prod deploy if legal review timestamp is older than the dataset version.
+
+Weekly office hours for "datasheet questions" reduce Slack DMs and inconsistent interpretations. Publish a JSON schema and example gallery in the internal docs portal so new teams do not reinvent structure.
+
+## Measuring datasheet ROI
+
+Track operational metrics tied to datasheet maturity:
+
+- Mean time to answer lineage questions during incidents (target: under 10 minutes)
+- Percentage of prod agent deployments with valid `dataset_refs` (target: 100%)
+- Eval regressions attributed to undocumented dataset drift (target: trending down)
+- Legal review cycle time for new corpora (target: days, not weeks)
+
+When an wrong-answer incident occurs, tag root cause: `dataset_stale`, `dataset_scope`, `model_issue`, or `prompt_issue`. If `dataset_*` causes dominate, datasheet investment is justified. If prompts dominate, do not blame the corpus—fix the card instead.
 
 ## The takeaway
 
-Datasheet Datasets rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent datasheet datasets becomes a maintainable asset instead of incident fuel.
+Datasheet discipline turns agent datasets from tribal knowledge into auditable infrastructure. The investment is modest—a YAML file per version, validation in CI, a registry—but the payoff shows up when evals fail for explainable reasons, legal reviews finish in days instead of weeks, and wrong answers trace to a documented stale export rather than a mysterious model mood swing.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Datasheets for Datasets (Gebru et al., 2018)](https://arxiv.org/abs/1803.09010)
+- [Model Cards for Model Reporting (Mitchell et al.)](https://arxiv.org/abs/1810.03993)
+- [Hugging Face Dataset Card documentation](https://huggingface.co/docs/hub/datasets-cards)
+- [OpenLineage specification](https://openlineage.io/docs/)
+- [Microsoft Presidio — PII detection](https://microsoft.github.io/presidio/)
+- [NIST AI RMF — data governance](https://www.nist.gov/itl/ai-risk-management-framework)

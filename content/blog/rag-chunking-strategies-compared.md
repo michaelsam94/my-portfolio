@@ -3,16 +3,18 @@ title: "RAG Chunking Strategies Compared"
 slug: "rag-chunking-strategies-compared"
 description: "Compare RAG chunking strategies — fixed-size, recursive, semantic, document-based, and agentic — with guidance on matching strategy to corpus type and query patterns."
 datePublished: "2024-11-25"
-dateModified: "2024-11-25"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Chunking", "Retrieval"]
 keywords: "RAG chunking strategies, semantic chunking, recursive splitting, document chunking, text segmentation, retrieval optimization"
 faq:
-  - q: "What is the best chunking strategy for RAG?"
-    a: "There is no universal best strategy — the right choice depends on document structure and query type. Structured documentation with clear headings works well with document-based splitting. Heterogeneous corpora with mixed formats often start with recursive character splitting and upgrade to semantic chunking where recall falls short. Evaluate on your own data instead of adopting whichever strategy is trending."
-  - q: "Is semantic chunking worth the extra cost?"
-    a: "Semantic chunking requires embedding sentences or paragraphs and detecting topic shifts, which adds compute at index time. It improves recall on prose where fixed windows break mid-thought, especially research papers and long-form articles. For well-structured docs with headings and short sections, the improvement over recursive splitting is often marginal and may not justify the indexing cost."
-  - q: "How does chunking interact with embedding model choice?"
-    a: "Embedding models have different effective granularity — some represent short phrases well, others need more context. After switching embedding models, re-run retrieval evals because optimal chunk size shifts. A chunking strategy tuned for text-embedding-3-small will not automatically be optimal for a multilingual or code-specific model."
+  - q: "Can you mix chunking strategies in one RAG index?"
+    a: "Yes — route by doc_type metadata: markdown uses header split, PDFs use semantic, tickets use fixed 384. Single index with strategy tag in metadata."
+  - q: "Which strategy fails most on PDF exports?"
+    a: "Fixed-size without layout-aware extraction — tables become garbage chunks. Preprocess with Unstructured or Docling before strategy selection."
+  - q: "How often re-evaluate chunking strategy?"
+    a: "On corpus format migration, embedding model change, or recall@5 drop exceeding 5 points on weekly eval."
+  - q: "Agentic chunking — when is cost justified?"
+    a: "When rule-based strategies fail eval on high-value legal or medical sets and manual chunking cost exceeds LLM boundary detection at index time."
 ---
 
 Two teams indexed the same 10,000-page knowledge base. One used 500-token fixed windows and complained that retrieval kept returning truncated tables. The other used heading-aware document splitting and watched recall@5 jump 18 points on the same eval set. Chunking strategy is the highest-leverage RAG decision most teams undertune because "we used the default splitter" sounds reasonable until you measure it.
@@ -165,6 +167,50 @@ Teams get chunking strategies compared wrong in predictable ways:
 - **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
 
 RAG pipelines for chunking strategies compared degrade when chunk boundaries split tables, embeddings go stale after doc updates, and retrieval metrics are measured offline only. Re-index incrementally and monitor answer faithfulness on live traffic samples.
+
+## Pipeline chaining in production
+
+Real systems rarely use one strategy:
+
+```python
+def chunk_document(doc: ParsedDoc) -> list[Chunk]:
+    if doc.format == "markdown":
+        sections = markdown_header_split(doc)
+    elif doc.format == "pdf":
+        sections = unstructured_extract_then_semantic_split(doc)
+    else:
+        sections = recursive_split(doc)
+    return [c for s in sections for c in split_if_oversized(s, max_tokens=768)]
+```
+
+Tag each chunk with `chunk_strategy` in metadata — debug recall regressions by strategy slice in eval dashboard.
+
+## Eval-driven strategy selection
+
+Run identical 100-question eval across fixed, recursive, header, semantic on **your** corpus. The winner on recall@5 may lose on answer accuracy if chunks are too small for generation — measure both.
+
+Document the decision in ADR: "We use header + recursive because semantic added 4× index cost for 2-point recall gain."
+
+## Re-index cost by strategy
+
+Semantic and agentic chunking increase index-time compute — budget 4–10× wall clock vs recursive on same corpus. Schedule strategy upgrades during maintenance window with embed GPU pool pre-scaled; communicate search quality improvement timeline to stakeholders.
+
+## Language-specific chunking
+
+CJK corpora without whitespace need character or morphological splitters — recursive `
+` and space separators fail. Japanese technical docs often use 300–400 character chunks vs 512 English tokens for equivalent semantic unit size.
+
+## Versioning chunk strategy in metadata
+
+When switching strategies on live corpus, bump `chunk_strategy_version` in metadata — mixed-strategy indexes confuse eval dashboards unless queries filter by strategy tag during A/B comparison window.
+
+## Regression suite per strategy
+
+Maintain separate eval JSON file per chunking strategy in git — comparing strategies six months later requires frozen query sets, not ad-hoc manual questions.
+
+## SLA for strategy migration
+
+Document expected search quality dip duration when migrating chunking strategy — stakeholders accept hours of reindex if eval improvement is published beforehand.
 
 ## Resources
 

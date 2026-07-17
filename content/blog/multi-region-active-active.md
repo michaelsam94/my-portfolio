@@ -3,8 +3,8 @@ title: "Multi-Region Active-Active Architecture"
 slug: "multi-region-active-active"
 description: "Multi-region active-active architecture explained: latency routing, data replication and conflict resolution, the CAP tradeoffs, and when the complexity is worth it."
 datePublished: "2026-06-23"
-dateModified: "2026-06-23"
-tags: ["Architecture", "Distributed Systems", "Reliability"]
+dateModified: "2026-07-17"
+tags:
 keywords: "active-active, multi-region, geo replication, failover, latency-based routing, conflict resolution, disaster recovery"
 faq:
   - q: "What is an active-active multi-region architecture?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is the hardest part of going active-active?"
     a: "Data. Serving reads and writes in multiple regions at once means the same record can be modified in two places nearly simultaneously, so you must choose a replication and conflict-resolution strategy — and accept the consistency tradeoffs the CAP theorem imposes. The compute tier is comparatively easy; the database is where active-active projects succeed or fail."
 ---
-
 Active-active is what you build when a region going down cannot be allowed to take your product with it — and when your users are spread across continents you don't want to serve all of them from Virginia. A multi-region active-active architecture runs your full application stack in two or more regions that *all* serve live traffic at once. Users hit the nearest healthy region for lower latency, and losing an entire region degrades capacity rather than causing an outage. The payoff is resilience and speed; the price, which I'll be honest about, is a genuinely hard data-consistency problem.
 
 I've built toward this twice, and both times the compute tier was the easy 20% and the data tier was the hard 80%. Let's take the layers in order of increasing difficulty.

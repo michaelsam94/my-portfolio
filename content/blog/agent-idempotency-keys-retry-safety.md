@@ -1,115 +1,329 @@
 ---
-title: "AI Agents: Idempotency Keys Retry Safety"
+title: "Idempotency Keys and Retry Safety for Agent APIs"
 slug: "agent-idempotency-keys-retry-safety"
-description: "Idempotency Keys Retry Safety: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Design idempotency keys for agent run creation, tool invocations, and billing webhooks—handle concurrent retries, payload mismatches, and TTL expiry without double-charging LLM workloads."
 datePublished: "2024-10-28"
 dateModified: "2024-10-28"
-tags: ["AI", "Agent", "Idempotency"]
-keywords: "agent, idempotency, keys, retry, safety, ai, production, engineering, architecture"
+tags: ["AI Agents", "API Design", "Reliability", "Idempotency"]
+keywords: "idempotency keys, retry safety, agent API, duplicate request prevention, Idempotency-Key header, LLM billing"
 faq:
-  - q: "What is Idempotency Keys Retry Safety?"
-    a: "Idempotency Keys Retry Safety covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Idempotency Keys Retry Safety?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Idempotency Keys Retry Safety?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Idempotency Keys Retry Safety fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Idempotency Keys Retry Safety should be observable in production and safe to change in small diffs."
+  - q: "Who generates idempotency keys for agent requests—client or server?"
+    a: "Clients generate keys for user-initiated actions (start run, submit feedback, purchase credits). Servers generate keys for internal retries and async job replays. Never let the LLM invent keys; expose keys only through your SDK and HTTP headers, not prompt text."
+  - q: "How long should idempotency records live?"
+    a: "24–72 hours covers most client retry windows. Agent runs that span hours need TTL at least max_run_duration + retry_buffer. Document expiry behavior: after TTL, the same key may create a new run—clients must use fresh keys for intentionally new work."
+  - q: "What HTTP status should duplicate in-flight requests return?"
+    a: "Return 409 Conflict with the original request fingerprint when the same key arrives with a different body. Return 200/201 with the stored response when the same key and body retry while complete. Return 202 with Retry-After when the first request is still processing."
+  - q: "Do idempotency keys apply to streaming agent responses?"
+    a: "Keys guard the create/start mutation, not every SSE chunk. POST /v1/runs with Idempotency-Key creates at most one run; GET /v1/runs/{id}/stream is safe to reconnect without a key if the run_id is stable. Store run_id as the idempotent outcome."
 ---
-Idempotency Keys Retry Safety sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When idempotency keys retry safety is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Finance noticed duplicate charges on the same `run_id` before engineering did. The agent API accepted retries — mobile clients, gateway timeouts, impatient users double-tapping — and each retry spawned a **new OpenAI thread** because the handler checked idempotency **after** enqueueing work. The fix was not "disable retries." It was **idempotency keys** with atomic claim semantics, stored outcomes, and honest HTTP status codes.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Agent platforms are retry magnets. Runs take seconds to minutes. Clients use exponential backoff. Load balancers replay POSTs. Without idempotency, you double-bill, double-send emails, and double-invoke destructive tools.
 
-Solid AI engineering turns idempotency keys retry safety from a recurring argument into a documented pattern with tests and an owner.
+## Idempotency scope for agent APIs
 
-## Design principles that survive production
+Apply keys to **mutations with side effects**, not reads:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent idempotency keys retry safety bugs hide.
+| Endpoint | Idempotent? | Key source |
+|----------|-------------|------------|
+| `POST /v1/runs` | Yes | Client `Idempotency-Key` |
+| `POST /v1/runs/{id}/cancel` | Yes | Client or derived from run_id |
+| `POST /v1/tools/invoke` | Yes | Hash(run_id, tool, args_hash) |
+| `POST /v1/billing/charge` | Yes | Required — PCI adjacent |
+| `GET /v1/runs/{id}` | No | — |
+| `GET /v1/runs/{id}/stream` | Reconnect only | run_id in URL |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for idempotency keys retry safety, you do not yet understand the behavior you shipped.
+Streaming is idempotent at the **resource** level once `run_id` exists. The key problem is creating two runs for one user intent.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Header contract
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent idempotency keys retry safety flows so duplicates are harmless or detectable.
-
-## Key terms
-
-**idempotency** — An operation is idempotent if repeating it with the same arguments produces the same system state as executing it once — critical for safe retries on flaky networks.
-
-## Implementation patterns
-
-A practical baseline for idempotency keys retry safety in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent idempotency keys retry safety changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Idempotency Keys Retry Safety: typed boundary + structured errors
-export async function handleIdempotencyKeysRetrySafety(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-idempotency-keys-retry-safety");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Follow Stripe-style conventions — developers already understand them:
 
 ```
+POST /v1/runs HTTP/1.1
+Idempotency-Key: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+Content-Type: application/json
 
+{"agent_id":"support-v2","input":{"ticket_id":"T-8821"}}
+```
 
-## Operational concerns
+Server rules:
 
-Game-day exercises for idempotency keys retry safety beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+1. Keys are opaque strings, max 256 chars, UUID v4 recommended
+2. Same key + same request body → same response (byte-stable JSON preferred)
+3. Same key + different body → `409 Conflict`
+4. Unknown key → process normally, store result
+5. Keys scoped per **API key / tenant**, not global — prevent cross-tenant collision
 
-Production agent idempotency keys retry safety work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Storage schema
 
-Rollouts for idempotency keys retry safety benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```sql
+CREATE TABLE idempotency_records (
+  tenant_id         TEXT NOT NULL,
+  idempotency_key   TEXT NOT NULL,
+  request_hash      TEXT NOT NULL,       -- SHA-256 of canonical body
+  status            TEXT NOT NULL,       -- processing | completed | failed
+  response_code     INT,
+  response_body     JSONB,
+  run_id            TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at      TIMESTAMPTZ,
+  expires_at        TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (tenant_id, idempotency_key)
+);
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+CREATE INDEX ON idempotency_records (expires_at) WHERE status = 'completed';
+```
 
-## Security and compliance angles
+TTL index supports cleanup cron. **`processing`** status is the lock — only one worker may hold it.
 
-Even when idempotency keys retry safety is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Atomic claim pattern
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent idempotency keys retry safety so security reviews do not rely on tribal knowledge.
+The race: two identical retries arrive before either completes. Only one may execute side effects:
 
-## Testing strategy
+```python
+import hashlib
+import json
+from datetime import timedelta
+from fastapi import HTTPException
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that idempotency keys retry safety depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+def canonical_hash(body: dict) -> str:
+    normalized = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+async def claim_idempotency(
+    tenant_id: str,
+    key: str,
+    body: dict,
+    ttl_hours: int = 48,
+) -> tuple[str, dict | None]:
+    req_hash = canonical_hash(body)
+    expires = now() + timedelta(hours=ttl_hours)
 
-## Migration and evolution
+    row = await db.fetchrow(
+        """
+        INSERT INTO idempotency_records
+          (tenant_id, idempotency_key, request_hash, status, expires_at)
+        VALUES ($1, $2, $3, 'processing', $4)
+        ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+        RETURNING status, request_hash, response_code, response_body, run_id
+        """,
+        tenant_id, key, req_hash, expires,
+    )
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent idempotency keys retry safety functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+    if row is not None:
+        return "claimed", None  # this request owns execution
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where idempotency keys retry safety spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+    existing = await db.fetchrow(
+        """
+        SELECT status, request_hash, response_code, response_body, run_id
+        FROM idempotency_records
+        WHERE tenant_id = $1 AND idempotency_key = $2 AND expires_at > now()
+        """,
+        tenant_id, key,
+    )
 
-## Related concepts
+    if existing is None:
+        return "expired", None  # treat as new request — re-insert
 
-Idempotency Keys Retry Safety intersects with broader ai topics — see companion notes on [agent-idempotency patterns](https://blog.michaelsam94.com/agent-idempotency/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+    if existing["request_hash"] != req_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency-Key reused with different request body",
+        )
+
+    if existing["status"] == "processing":
+        return "in_progress", None
+
+    return "replay", {
+        "code": existing["response_code"],
+        "body": existing["response_body"],
+        "run_id": existing["run_id"],
+    }
+```
+
+```python
+@app.post("/v1/runs")
+async def create_run(request: Request, body: CreateRunBody):
+    key = request.headers.get("Idempotency-Key")
+    if not key:
+        raise HTTPException(400, "Idempotency-Key required")
+
+    state, cached = await claim_idempotency(tenant_id, key, body.dict())
+
+    if state == "replay":
+        return JSONResponse(cached["body"], status_code=cached["code"])
+
+    if state == "in_progress":
+        return JSONResponse(
+            {"status": "processing", "retry_after_seconds": 2},
+            status_code=202,
+            headers={"Retry-After": "2"},
+        )
+
+    try:
+        run = await execute_run(body)  # LLM + tools — expensive
+        response = {"run_id": run.id, "status": run.status}
+        await complete_idempotency(tenant_id, key, 201, response, run.id)
+        return JSONResponse(response, status_code=201)
+    except Exception as e:
+        await fail_idempotency(tenant_id, key, str(e))
+        raise
+```
+
+## Request handler middleware
+
+Centralize in middleware so every team does not reimplement:
+
+```typescript
+// middleware/idempotency.ts
+import { createHash } from "crypto";
+import type { Request, Response, NextFunction } from "express";
+
+export function idempotencyMiddleware(store: IdempotencyStore) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "POST") return next();
+
+    const key = req.header("Idempotency-Key");
+    if (!key) {
+      res.status(400).json({ error: "Idempotency-Key header required" });
+      return;
+    }
+
+    const tenantId = req.auth!.tenantId;
+    const bodyHash = createHash("sha256")
+      .update(JSON.stringify(req.body))
+      .digest("hex");
+
+    const claim = await store.claim({ tenantId, key, bodyHash });
+
+    if (claim.status === "replay") {
+      res.status(claim.responseCode).json(claim.responseBody);
+      return;
+    }
+    if (claim.status === "in_progress") {
+      res.status(202).set("Retry-After", "2").json({ status: "processing" });
+      return;
+    }
+    if (claim.status === "conflict") {
+      res.status(409).json({ error: "Key reused with different payload" });
+      return;
+    }
+
+    // Capture response for storage
+    const originalJson = res.json.bind(res);
+    res.json = (body: unknown) => {
+      store.complete({ tenantId, key, code: res.statusCode, body }).catch(console.error);
+      return originalJson(body);
+    };
+
+    next();
+  };
+}
+```
+
+Apply only to routes registered in an idempotency allowlist — do not break webhooks that use signature auth instead.
+
+## Tool invocation idempotency
+
+Internal tool calls retry inside the run worker. Derive keys server-side:
+
+```python
+def tool_idempotency_key(run_id: str, tool_name: str, arguments: dict) -> str:
+    material = f"{run_id}|{tool_name}|{canonical_hash(arguments)}"
+    return hashlib.sha256(material.encode()).hexdigest()
+```
+
+Before calling a payment API or sending email:
+
+```python
+key = tool_idempotency_key(run.id, "send_refund_email", args)
+if await idempotency_seen(key):
+    return cached_tool_result(key)
+result = await send_email(args)
+await idempotency_store(key, result)
+```
+
+This layer protects against **worker retries** even when the client behaved correctly.
+
+## Client SDK guidance
+
+Document retry rules in the SDK — humans will not read RFCs:
+
+```typescript
+// sdk/agent-client.ts
+export async function createRun(
+  client: AgentClient,
+  input: CreateRunInput,
+  options?: { idempotencyKey?: string }
+): Promise<Run> {
+  const key = options?.idempotencyKey ?? crypto.randomUUID();
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await client.post("/v1/runs", input, {
+      headers: { "Idempotency-Key": key },
+    });
+
+    if (res.status === 202) {
+      await sleep(parseRetryAfter(res.headers.get("Retry-After")) ?? 2000);
+      continue;
+    }
+
+    if (res.ok) return res.json();
+    if (res.status === 409) throw new IdempotencyConflictError(await res.json());
+    throw new AgentApiError(res.status, await res.text());
+  }
+
+  throw new Error("Run creation timed out after retries");
+}
+```
+
+**Same key across retries** — never regenerate per attempt. New user action → new key.
+
+## Failure and crash recovery
+
+If the worker dies after LLM spend but before `complete_idempotency`:
+
+- Record stays `processing`
+- Retries get `202 Retry-After`
+- Sweeper job reconciles stale `processing` rows older than N minutes:
+
+```sql
+-- Find orphaned processing records
+SELECT tenant_id, idempotency_key, run_id, created_at
+FROM idempotency_records
+WHERE status = 'processing'
+  AND created_at < now() - interval '15 minutes';
+```
+
+Sweeper checks if `run_id` was actually created in the runs table. If yes, backfill completed response. If no, mark failed and allow client retry with same key to proceed. This is operational glue most tutorials skip.
+
+## Metrics and alerts
+
+Track:
+
+- `idempotency.replay_total` — healthy on retry-heavy clients
+- `idempotency.conflict_total` — bug or malicious reuse; alert if spikes
+- `idempotency.stale_processing` — sweeper findings; indicates crash window
+- `idempotency.expired_new_run` — client reused old key after TTL
+
+Dashboard replay rate against 202 rate. High 202 without eventual replay means clients gave up — user sees stuck UI.
+
+## Security considerations
+
+Idempotency keys are not auth. Validate API key first. Rate-limit key **creation**, not replay lookups. Do not echo stored response bodies to a different authenticated principal — tenant scoping is mandatory.
+
+Avoid predictable keys (`ticket_id` alone). Combine with tenant and operation: `sha256(tenant + operation + client_request_id)`.
 
 ## The takeaway
 
-Idempotency Keys Retry Safety rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent idempotency keys retry safety becomes a maintainable asset instead of incident fuel.
+Idempotency keys make agent APIs safe under retries: atomic claim, request body fingerprinting, stored outcomes, and 202 while in-flight. Require keys on run creation and billing, derive keys for internal tool retries, run a sweeper for crashed workers, and ship SDKs that reuse one key per logical user action. Double LLM charges and duplicate side effects are optional failures — idempotency is the default fix.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Stripe — Idempotent requests guide](https://stripe.com/docs/api/idempotent_requests)
+- [IETF draft — The Idempotency-Key HTTP Header Field](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header)
+- [PayPal — Idempotency best practices](https://developer.paypal.com/api/rest/reference/info-security.html)
+- [AWS — Exponential backoff and jitter](https://aws.amazon.com/builders-library/exponential-backoff-and-jitter/)
+- [Google Cloud — Idempotent operations pattern](https://cloud.google.com/storage/docs/retry-strategy#idempotency)

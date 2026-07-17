@@ -1,0 +1,1309 @@
+{
+  "batch": "05",
+  "index_range": [
+    1250,
+    1499
+  ],
+  "total": 250,
+  "at_target": 250,
+  "under_target": 0,
+  "target_words": 1200,
+  "templated_remaining": 0,
+  "deep_rewrite_count": 18,
+  "updated_at": "2026-07-17",
+  "samples_at_target": [
+    {
+      "slug": "devops-terraform-moved-blocks-refactor",
+      "words": 1274,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-plan-comment-pr",
+      "words": 1290,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-policy-as-code-sentinel",
+      "words": 1346,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-provider-pinning",
+      "words": 1281,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-remote-state-locking",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-security-scanning",
+      "words": 1308,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-state-migration",
+      "words": 1240,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-terragrunt-dry",
+      "words": 1236,
+      "at_target": true
+    }
+  ],
+  "samples_under": [],
+  "results": [
+    {
+      "slug": "devops-terraform-moved-blocks-refactor",
+      "words": 1274,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-plan-comment-pr",
+      "words": 1290,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-policy-as-code-sentinel",
+      "words": 1346,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-provider-pinning",
+      "words": 1281,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-remote-state-locking",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-security-scanning",
+      "words": 1308,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-state-migration",
+      "words": 1240,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-terragrunt-dry",
+      "words": 1236,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-test-framework",
+      "words": 1234,
+      "at_target": true
+    },
+    {
+      "slug": "devops-terraform-workspace-strategy",
+      "words": 1251,
+      "at_target": true
+    },
+    {
+      "slug": "devops-thanos-long-term-storage",
+      "words": 1282,
+      "at_target": true
+    },
+    {
+      "slug": "devops-topology-spread-constraints",
+      "words": 1230,
+      "at_target": true
+    },
+    {
+      "slug": "devops-traffic-forecasting-seasonality",
+      "words": 1206,
+      "at_target": true
+    },
+    {
+      "slug": "devops-vector-db-ops-production",
+      "words": 1210,
+      "at_target": true
+    },
+    {
+      "slug": "devops-vertical-pod-autoscaler",
+      "words": 1203,
+      "at_target": true
+    },
+    {
+      "slug": "devops-victoria-metrics-cluster-ops",
+      "words": 1204,
+      "at_target": true
+    },
+    {
+      "slug": "devops-warehouse-query-governance",
+      "words": 1203,
+      "at_target": true
+    },
+    {
+      "slug": "devops-zero-trust-workload-identity",
+      "words": 1214,
+      "at_target": true
+    },
+    {
+      "slug": "devsecops-shift-left",
+      "words": 1342,
+      "at_target": true
+    },
+    {
+      "slug": "differential-privacy-basics",
+      "words": 1306,
+      "at_target": true
+    },
+    {
+      "slug": "diffusion-models-how-they-work",
+      "words": 1281,
+      "at_target": true
+    },
+    {
+      "slug": "digital-twins-architecture",
+      "words": 1354,
+      "at_target": true
+    },
+    {
+      "slug": "disaster-recovery-rpo-rto",
+      "words": 1354,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-cap-theorem-pacelc",
+      "words": 1321,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-clocks-vector-timestamps",
+      "words": 1319,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-consensus-raft-explained",
+      "words": 1324,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-consistent-hashing",
+      "words": 1314,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-eventual-consistency-patterns",
+      "words": 1325,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-leader-election-patterns",
+      "words": 1295,
+      "at_target": true
+    },
+    {
+      "slug": "distributed-transactions-2pc-saga",
+      "words": 1299,
+      "at_target": true
+    },
+    {
+      "slug": "dns-anycast-load-balancing",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "docker-buildkit-cache-mounts",
+      "words": 1290,
+      "at_target": true
+    },
+    {
+      "slug": "docker-distroless-images",
+      "words": 1292,
+      "at_target": true
+    },
+    {
+      "slug": "docker-image-layer-optimization",
+      "words": 1278,
+      "at_target": true
+    },
+    {
+      "slug": "docker-multi-stage-builds",
+      "words": 1317,
+      "at_target": true
+    },
+    {
+      "slug": "document-parsing-pipelines-rag",
+      "words": 1315,
+      "at_target": true
+    },
+    {
+      "slug": "documentation-as-code",
+      "words": 1295,
+      "at_target": true
+    },
+    {
+      "slug": "dora-metrics-that-matter",
+      "words": 1331,
+      "at_target": true
+    },
+    {
+      "slug": "duckdb-analytics-in-process",
+      "words": 1288,
+      "at_target": true
+    },
+    {
+      "slug": "ebpf-observability-opentelemetry-obi",
+      "words": 1347,
+      "at_target": true
+    },
+    {
+      "slug": "edge-computing-cloudflare-workers",
+      "words": 1279,
+      "at_target": true
+    },
+    {
+      "slug": "edge-computing-functions",
+      "words": 1325,
+      "at_target": true
+    },
+    {
+      "slug": "edge-databases-turso-d1",
+      "words": 1322,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-ab-test-routing",
+      "words": 1315,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-auth-redirect",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-bot-detection",
+      "words": 1268,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-geolocation-routing",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-rate-limiting",
+      "words": 1268,
+      "at_target": true
+    },
+    {
+      "slug": "edge-middleware-security-headers",
+      "words": 1268,
+      "at_target": true
+    },
+    {
+      "slug": "edge-to-edge-android-16",
+      "words": 1327,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-aggregations-cardinality",
+      "words": 1291,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-analyzer-custom-tokenizer",
+      "words": 1255,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-bulk-indexing-tuning",
+      "words": 1253,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-cross-cluster-replication",
+      "words": 1254,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-index-template-ilm",
+      "words": 1255,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-ingest-pipeline-enrichment",
+      "words": 1255,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-nested-vs-object-mapping",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-scroll-vs-search-after",
+      "words": 1264,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-security-rbac-roles",
+      "words": 1256,
+      "at_target": true
+    },
+    {
+      "slug": "elasticsearch-slow-log-tuning",
+      "words": 1245,
+      "at_target": true
+    },
+    {
+      "slug": "embedded-interrupt-handling",
+      "words": 1303,
+      "at_target": true
+    },
+    {
+      "slug": "embedded-memory-constrained-design",
+      "words": 1337,
+      "at_target": true
+    },
+    {
+      "slug": "embedded-rtos-freertos-tasks",
+      "words": 1304,
+      "at_target": true
+    },
+    {
+      "slug": "embedded-rust-no-std",
+      "words": 1317,
+      "at_target": true
+    },
+    {
+      "slug": "embedding-drift-monitoring",
+      "words": 1320,
+      "at_target": true
+    },
+    {
+      "slug": "embeddings-binary-quantization",
+      "words": 1335,
+      "at_target": true
+    },
+    {
+      "slug": "embeddings-fine-tuning-domain",
+      "words": 1304,
+      "at_target": true
+    },
+    {
+      "slug": "embeddings-image-multimodal-clip",
+      "words": 1354,
+      "at_target": true
+    },
+    {
+      "slug": "embeddings-matryoshka-representation",
+      "words": 1297,
+      "at_target": true
+    },
+    {
+      "slug": "embeddings-multilingual-cross-lingual",
+      "words": 1370,
+      "at_target": true
+    },
+    {
+      "slug": "encryption-at-rest-envelope",
+      "words": 1292,
+      "at_target": true
+    },
+    {
+      "slug": "encryption-in-transit-tls13",
+      "words": 1382,
+      "at_target": true
+    },
+    {
+      "slug": "end-to-end-encryption-design",
+      "words": 1316,
+      "at_target": true
+    },
+    {
+      "slug": "engineering-career-senior-to-staff",
+      "words": 1288,
+      "at_target": true
+    },
+    {
+      "slug": "engineering-estimation-story-points",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "engineering-onboarding-ramp-up",
+      "words": 1365,
+      "at_target": true
+    },
+    {
+      "slug": "engineering-tech-debt-prioritization",
+      "words": 1285,
+      "at_target": true
+    },
+    {
+      "slug": "engineering-technical-leadership",
+      "words": 1301,
+      "at_target": true
+    },
+    {
+      "slug": "etl-vs-elt-pipelines",
+      "words": 1342,
+      "at_target": true
+    },
+    {
+      "slug": "ev-charging-iso-15118-20",
+      "words": 1305,
+      "at_target": true
+    },
+    {
+      "slug": "ev-charging-payment-integration",
+      "words": 1286,
+      "at_target": true
+    },
+    {
+      "slug": "ev-charging-plug-and-charge-pki",
+      "words": 1350,
+      "at_target": true
+    },
+    {
+      "slug": "ev-charging-roaming-ocpi",
+      "words": 1343,
+      "at_target": true
+    },
+    {
+      "slug": "ev-fleet-depot-charging",
+      "words": 1291,
+      "at_target": true
+    },
+    {
+      "slug": "ev-vehicle-to-grid-v2g",
+      "words": 1294,
+      "at_target": true
+    },
+    {
+      "slug": "eval-driven-development-llm",
+      "words": 1337,
+      "at_target": true
+    },
+    {
+      "slug": "evaluating-retrieval-metrics-rag",
+      "words": 1308,
+      "at_target": true
+    },
+    {
+      "slug": "event-driven-outbox-pattern",
+      "words": 1292,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-aggregate-design",
+      "words": 1254,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-catch-up-subscriptions",
+      "words": 1269,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-deduplication-idempotency",
+      "words": 1257,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-event-envelope-metadata",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-event-store-postgres",
+      "words": 1273,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-fundamentals",
+      "words": 1263,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-idempotent-handlers",
+      "words": 1259,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-multi-stream-projections",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-projection-lag-monitoring",
+      "words": 1271,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-projections-read-models",
+      "words": 1334,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-saga-timeout-compensation",
+      "words": 1268,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-schema-registry-events",
+      "words": 1270,
+      "at_target": true
+    },
+    {
+      "slug": "event-sourcing-temporal-queries",
+      "words": 1258,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-ab-test-assignment",
+      "words": 1307,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-feature-flag-frontend",
+      "words": 1268,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-guardrail-metrics-frontend",
+      "words": 1275,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-holdout-groups-design",
+      "words": 1275,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-multivariate-testing-limits",
+      "words": 1282,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-personalization-vs-ab",
+      "words": 1316,
+      "at_target": true
+    },
+    {
+      "slug": "experimentation-sequential-testing-ux",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "fast-cicd-pipelines",
+      "words": 1326,
+      "at_target": true
+    },
+    {
+      "slug": "faster-gradle-builds",
+      "words": 1323,
+      "at_target": true
+    },
+    {
+      "slug": "feature-flags-trunk-based-development",
+      "words": 1335,
+      "at_target": true
+    },
+    {
+      "slug": "feature-stores-ml",
+      "words": 1346,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-catastrophic-forgetting",
+      "words": 1348,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-dataset-curation",
+      "words": 1306,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-dpo-preference-optimization",
+      "words": 1306,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-instruction-tuning",
+      "words": 1299,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-lora-qlora-guide",
+      "words": 1328,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-rlhf-overview",
+      "words": 1283,
+      "at_target": true
+    },
+    {
+      "slug": "fine-tuning-vs-rag-vs-prompting",
+      "words": 1357,
+      "at_target": true
+    },
+    {
+      "slug": "finops-cloud-cost-optimization",
+      "words": 1367,
+      "at_target": true
+    },
+    {
+      "slug": "finops-spot-instances-savings",
+      "words": 1331,
+      "at_target": true
+    },
+    {
+      "slug": "finops-tagging-allocation",
+      "words": 1282,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-accessibility-guide",
+      "words": 1277,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-accessibility-semantics-widgets",
+      "words": 1271,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-algolia-search-integration",
+      "words": 1300,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-animation-controller-patterns",
+      "words": 1341,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-app-lifecycle-state",
+      "words": 1277,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-app-size-optimization",
+      "words": 1298,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-appwrite-backend",
+      "words": 1284,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-awesome-notifications",
+      "words": 1279,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-background-geolocation",
+      "words": 1328,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-background-isolates-plugins",
+      "words": 1296,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-basic-message-channels",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-biometric-local-auth",
+      "words": 1264,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-bloc-cubit-testing",
+      "words": 1273,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-bloc-test-package",
+      "words": 1315,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-bloc-test-patterns",
+      "words": 1294,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-canvas-custom-painter",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-ci-cd-fastlane-codemagic",
+      "words": 1272,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-clean-architecture-layers",
+      "words": 1264,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-code-generation-build-runner",
+      "words": 1334,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-contentful-delivery-api",
+      "words": 1299,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-custom-multi-child-layout",
+      "words": 1283,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-custom-renderobjects-paint",
+      "words": 1337,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-custom-scroll-physics",
+      "words": 1298,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-custom-scroll-view-slivers-advanced",
+      "words": 1269,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-deep-linking-app-links",
+      "words": 1312,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-deep-links-app-links-universal",
+      "words": 1285,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-dependency-injection-getit",
+      "words": 1276,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-desktop-multi-window",
+      "words": 1289,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-desktop-windows-macos-linux",
+      "words": 1285,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-dio-interceptors-retry",
+      "words": 1256,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-drift-sqlite-orm",
+      "words": 1262,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-elasticsearch-dart-client",
+      "words": 1303,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-embedded-iot",
+      "words": 1305,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-error-handling-either-dartz",
+      "words": 1255,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-event-channel-streams",
+      "words": 1291,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-feature-first-project-structure",
+      "words": 1309,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-ffi-native-interop",
+      "words": 1294,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-ffi-native-libraries",
+      "words": 1272,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-firebase-analytics-events",
+      "words": 1270,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-firebase-app-check",
+      "words": 1281,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-firebase-crashlytics-setup",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-firebase-messaging-topics",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-firebase-remote-config-ab",
+      "words": 1263,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-flavors-build-configuration",
+      "words": 1341,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-flutter-driver-e2e",
+      "words": 1325,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-form-validation-patterns",
+      "words": 1267,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-freezed-data-classes",
+      "words": 1259,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-geolocator-permissions",
+      "words": 1276,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-gesture-arena-recognizers",
+      "words": 1326,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-golden-test-comparison",
+      "words": 1300,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-golden-tests",
+      "words": 1289,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-google-maps-clustering",
+      "words": 1287,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-gorouter-shell-routes",
+      "words": 1297,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-graphql-ferry-artemis",
+      "words": 1274,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-hero-animations-advanced",
+      "words": 1326,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-hive-vs-shared-preferences",
+      "words": 1272,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-hooks-vs-stateful",
+      "words": 1312,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-image-caching-cached-network",
+      "words": 1269,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-impeller-rendering-engine",
+      "words": 1271,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-implicit-explicit-animations",
+      "words": 1273,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-injectable-service-locator",
+      "words": 1320,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-integration-test-patrol",
+      "words": 1297,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-integration-tests-patrol",
+      "words": 1324,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-isar-nosql-database",
+      "words": 1276,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-isolate-compute-heavy",
+      "words": 1328,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-isolates-compute-patterns",
+      "words": 1320,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-isolates-heavy-compute",
+      "words": 1247,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-json-serialization-codegen",
+      "words": 1323,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-keyboard-focus-management",
+      "words": 1330,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-l10n-internationalization",
+      "words": 1283,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-lazy-loading-lists-pagination",
+      "words": 1269,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-local-notifications-scheduling",
+      "words": 1305,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-local-notifications",
+      "words": 1317,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-mapbox-maps-flutter",
+      "words": 1278,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-maps-integration-patterns",
+      "words": 1303,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-meilisearch-integration",
+      "words": 1321,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-melos-monorepo-management",
+      "words": 1300,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-method-channel-patterns",
+      "words": 1295,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-method-channels-vs-pigeon",
+      "words": 1330,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-mockito-riverpod-test",
+      "words": 1294,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-mocktail-mocking",
+      "words": 1305,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-monorepo-melos",
+      "words": 1286,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-navigator-2-gorouter",
+      "words": 1302,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-objectbox-performance",
+      "words": 1307,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-package-publishing-pub-dev",
+      "words": 1329,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-performance-devtools",
+      "words": 1295,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-performance-impeller",
+      "words": 1309,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-pigeon-code-generation",
+      "words": 1326,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-pigeon-platform-channels",
+      "words": 1315,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-platform-views-hybrid",
+      "words": 1325,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-platform-views-native-embedding",
+      "words": 1272,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-plugin-federated-architecture",
+      "words": 1326,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-plugin-platform-interface",
+      "words": 1310,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-pocketbase-integration",
+      "words": 1284,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-push-notifications-fcm",
+      "words": 1283,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-rebuild-optimization-const",
+      "words": 1321,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-render-object-widgets",
+      "words": 1338,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-repaint-boundary-optimization",
+      "words": 1270,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-responsive-adaptive-layouts",
+      "words": 1321,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-result-pattern-sealed",
+      "words": 1259,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-retrofit-code-gen-networking",
+      "words": 1263,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-rive-interactive-animations",
+      "words": 1321,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-riverpod-2-code-generation",
+      "words": 1280,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-riverpod-async-notifier",
+      "words": 1331,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-riverpod-state-management",
+      "words": 1279,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-riverpod-testing-overrides",
+      "words": 1276,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-sanity-cms-content",
+      "words": 1284,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-secure-storage-encryption",
+      "words": 1323,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-shaders-fragment-programs",
+      "words": 1332,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-shorebird-code-push",
+      "words": 1305,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-slivers-custom-scroll",
+      "words": 1287,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-state-restoration",
+      "words": 1289,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-strapi-headless-cms",
+      "words": 1309,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-supabase-auth-realtime",
+      "words": 1289,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-testing-widget-tests",
+      "words": 1260,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-texture-layer-hybrid",
+      "words": 1283,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-theme-extensions-custom",
+      "words": 1271,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-theming-material3-dynamic",
+      "words": 1253,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-typesense-search",
+      "words": 1299,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-vs-kotlin-multiplatform",
+      "words": 1286,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-web-2026",
+      "words": 1292,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-web-canvaskit-vs-html",
+      "words": 1327,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-web-seo-strategies",
+      "words": 1271,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-web-wasm-compilation",
+      "words": 1294,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-webview-inappwebview",
+      "words": 1307,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-widget-test-finders",
+      "words": 1298,
+      "at_target": true
+    },
+    {
+      "slug": "flutter-workmanager-background-tasks",
+      "words": 1289,
+      "at_target": true
+    },
+    {
+      "slug": "font-display-swap-optional-strategies",
+      "words": 1286,
+      "at_target": true
+    }
+  ]
+}

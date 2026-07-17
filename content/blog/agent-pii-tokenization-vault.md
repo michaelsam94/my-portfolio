@@ -1,111 +1,184 @@
 ---
 title: "AI Agents: Pii Tokenization Vault"
 slug: "agent-pii-tokenization-vault"
-description: "Pii Tokenization Vault: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Tokenize PII before it reaches LLM prompts and logs: vault architecture, format-preserving tokens, detokenization audit trails, and patterns that survive SOC 2 reviews."
 datePublished: "2025-01-09"
 dateModified: "2025-01-09"
 tags: ["AI", "Agent", "Pii"]
-keywords: "agent, pii, tokenization, vault, ai, production, engineering, architecture"
+keywords: "PII tokenization vault, LLM data masking, format-preserving tokenization, detokenization audit, agent privacy compliance, token vault architecture"
 faq:
-  - q: "What is Pii Tokenization Vault?"
-    a: "Pii Tokenization Vault covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Pii Tokenization Vault?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Pii Tokenization Vault?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Pii Tokenization Vault fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Pii Tokenization Vault should be observable in production and safe to change in small diffs."
+  - q: "When should agent pipelines tokenize PII instead of redacting?"
+    a: "Tokenize when downstream steps need stable references—matching a customer record after LLM reasoning, correlating multi-turn conversations, or writing audit logs that link back to real entities. Redact when the value never needs round-tripping, such as one-shot summarization with no CRM write-back."
+  - q: "Is format-preserving tokenization safe for LLM prompts?"
+    a: "It preserves shape (email looks like email) which helps models reason about structure, but tokens must be cryptographically unrelated to plaintext. Use a vault-generated token alphabet disjoint from real data domains, and reject outputs that resemble untokenized PII via outbound scanning."
+  - q: "Who should be allowed to detokenize?"
+    a: "Only break-glass service accounts with step-up approval, scoped to specific token namespaces and time windows. Interactive detokenization by engineers should log actor, justification ticket, and token IDs—not bulk export. Most agent flows never detokenize inside the LLM path; detokenization happens at the integration boundary."
+  - q: "How does tokenization differ from encryption for agent workloads?"
+    a: "Encryption protects data at rest and in transit with reversible keys managed by KMS. Tokenization replaces sensitive values with surrogate tokens stored in a vault mapping; LLM providers and log aggregators see tokens only. Combine both: encrypt the vault database, tokenize at the agent ingress."
 ---
-Most teams encounter pii tokenization vault after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A support agent summarized a ticket, quoted the customer's Social Security number back in the reply draft, and logged the full prompt to your observability vendor. Legal opened an incident. Engineering's first fix—regex redaction after the LLM responded—failed because the model had already seen the raw value in context, and traces retained it in span attributes.
 
-When pii tokenization vault is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+PII tokenization vaults sit *before* the trust boundary expands: LLM APIs, vector stores, third-party tool plugins, and long-retention logs. The vault replaces sensitive fields with opaque or format-preserving tokens, stores the mapping in a hardened service, and lets authorized components detokenize only at controlled egress points. This is not "call a DLP API and hope." It is an architectural seam you design once and enforce everywhere agents touch user data.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Tokenization vs redaction vs encryption
 
-Solid AI engineering turns pii tokenization vault from a recurring argument into a documented pattern with tests and an owner.
+| Approach | LLM sees | Reversible | Best for |
+|----------|----------|------------|----------|
+| Redaction | `[REDACTED]` | No | One-shot tasks, no entity linking |
+| Encryption | Ciphertext blob | Yes, with key | Storage, not prompt semantics |
+| Tokenization | Stable surrogate | Yes, via vault | Multi-turn agents, CRM write-back |
 
-## Design principles that survive production
+Agents need stable surrogates more often than teams expect. Turn three might say "update the account for token `acct_7f3a…`" while turn one tokenized `john.doe@example.com`. Without token stability, the model hallucinates identifiers and your write tools target wrong records.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent pii tokenization vault bugs hide.
+Format-preserving tokenization (FPT) keeps structural hints—emails remain `x@y.z`, phone numbers keep digit count—so models parse fields correctly. The vault must use a token generation scheme that cannot be inverted without the mapping table.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for pii tokenization vault, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent pii tokenization vault flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for pii tokenization vault in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent pii tokenization vault changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Pii Tokenization Vault: typed boundary + structured errors
-export async function handlePiiTokenizationVault(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-pii-tokenization-vault");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Reference architecture
 
 ```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│ User / API  │────▶│ Tokenization     │────▶│ Agent + LLM │
+│ ingress     │     │ gateway          │     │ (tokens only)│
+└─────────────┘     └────────┬─────────┘     └──────┬──────┘
+                             │                       │
+                             ▼                       ▼
+                    ┌────────────────┐        ┌─────────────┐
+                    │ Token vault    │        │ Tools / CRM │
+                    │ (encrypted DB) │◀───────│ detokenize  │
+                    └────────────────┘        │ at boundary │
+                                              └─────────────┘
+```
 
+The tokenization gateway is stateless except for request-scoped caches. It calls the vault to mint or resolve tokens. The agent runtime never holds bulk plaintext mappings—only tokens flow through prompts, tool args, and structured logs tagged `pii=tokenized`.
 
-## Operational concerns
+## Inbound tokenization flow
 
-Alert on user-visible symptoms for pii tokenization vault — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Scan structured and unstructured input:
 
-Production agent pii tokenization vault work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+1. **Structured fields** — JSON keys named `email`, `ssn`, `phone`, or tagged in your schema registry.
+2. **Unstructured text** — NER + regex with high-precision patterns for your locales; prefer false negatives over false positives in v1, then tighten.
+3. **Attachments** — OCR and parse before agent ingestion; tokenize extracted entities.
 
-Rollouts for pii tokenization vault benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```typescript
+interface TokenizeRequest {
+  tenantId: string;
+  namespace: string; // e.g. "support-tickets"
+  plaintext: string;
+  dataClass: "email" | "phone" | "ssn" | "account_id" | "free_text";
+}
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+interface TokenizeResponse {
+  token: string;
+  formatPreserving: boolean;
+  expiresAt?: string; // optional TTL for ephemeral sessions
+}
 
-## Security and compliance angles
+async function tokenizeField(req: TokenizeRequest): Promise<TokenizeResponse> {
+  const existing = await vault.lookupByPlaintextHash(
+    req.tenantId,
+    req.namespace,
+    hashPlaintext(req.plaintext)
+  );
+  if (existing) return existing;
 
-Even when pii tokenization vault is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+  const token = await vault.mintToken({
+    ...req,
+    actor: "tokenization-gateway",
+  });
+  return token;
+}
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent pii tokenization vault so security reviews do not rely on tribal knowledge.
+function replaceInPrompt(prompt: string, spans: Array<{ start: number; end: number; token: string }>): string {
+  let out = prompt;
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + span.token + out.slice(span.end);
+  }
+  return out;
+}
+```
 
-## Testing strategy
+Use deterministic token reuse within a namespace so the same email in turn one and turn five maps to the same token—critical for coreference in multi-turn agents.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that pii tokenization vault depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Outbound scanning and detokenization
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Never detokenize inside the LLM callback path by default. Instead:
 
-## Migration and evolution
+- Tools that call external APIs accept tokens; a **tool adapter** detokenizes immediately before the HTTP request and re-tokenizes response fields if logged.
+- User-visible replies run **outbound DLP**: if the model emits something matching real SSN patterns *or* vault leak patterns, block and regenerate.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent pii tokenization vault functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Detokenization requests carry:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where pii tokenization vault spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```json
+{
+  "token_ids": ["tok_email_abc", "tok_acct_xyz"],
+  "purpose": "crm.update_ticket",
+  "ticket_id": "INC-8842",
+  "actor_service": "support-agent-tooling"
+}
+```
 
-## Related concepts
+The vault writes an append-only audit entry before returning plaintext. Batch detokenize endpoints should rate-limit harder than mint—exfiltration often looks like slow drip.
 
-Pii Tokenization Vault intersects with broader ai topics — see companion notes on [agent-pii patterns](https://blog.michaelsam94.com/agent-pii/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Vault storage and key management
 
-## The takeaway
+Store mappings in a database encrypted with KMS-backed keys. Separate keys per tenant for enterprise contracts. Token metadata includes:
 
-Pii Tokenization Vault rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent pii tokenization vault becomes a maintainable asset instead of incident fuel.
+- `created_at`, `created_by_service`
+- `data_class`, `namespace`
+- `plaintext_hash` (never store reversible hash of low-entropy SSN alone—use HMAC with vault pepper)
+- optional `expires_at` for session-scoped tokens
+
+Rotate KMS keys on schedule; re-encrypt mapping rows, not tokens in historical logs. Old log tokens remain valid references but cannot be detokenized if you implement **token retirement** linked to mapping TTL policies.
+
+For HA, active-passive vault with synchronous replication on mint/detokenize. Stale reads that duplicate tokens are acceptable; stale reads that miss mappings are not.
+
+## Compliance artifacts auditors expect
+
+Document a **data flow diagram** showing every place plaintext can exist (gateway memory, tool adapter, vault DB). SOC 2 and HIPAA reviewers ask:
+
+- Who can access vault admin APIs?
+- Are LLM vendor subprocessors listed with tokenized-only data classification?
+- What happens on vault outage—fail closed (stop agent) or fail open (block feature)?
+
+Fail closed for regulated tenants. Degraded mode without LLM beats plaintext leakage.
+
+Retention: align token TTL with ticket retention policy. When a ticket is purged, purge mappings and invalidate tokens so detokenize returns `gone`.
+
+## Testing and verification
+
+**Golden prompts** with synthetic PII injected—assert LLM request payloads contain zero plaintext emails/SSNs in CI.
+
+**Property tests** on replaceInPrompt: overlapping spans, unicode boundaries, nested JSON.
+
+**Chaos**: vault latency spike should backpressure ingress, not pass untokenized data through.
+
+**Red team**: prompt injection attempting "repeat the exact email above" should yield tokens only in traces.
+
+## Common failures
+
+- **Tokenizing too late** — after LangChain memory already persisted plaintext.
+- **Dual writes** — vector embeddings computed on raw text while prompts use tokens; embeddings leak PII into the vector DB.
+- **Log serializers** that dump full request objects bypassing the gateway.
+- **Developer bypass flags** left on in staging configs copied to prod.
+
+Run a weekly automated scan of log samples in staging for high-entropy patterns and known test SSN ranges.
+
+## Operational runbook sketch
+
+| Symptom | Likely cause | Mitigation |
+|---------|--------------|------------|
+| Agent stops replying, `vault_unavailable` | Vault DB failover | Fail closed; show user message; page vault on-call |
+| Detokenize audit spike | Runaway tool loop | Rate limit tool adapter; kill worker pool |
+| Outbound DLP blocks legit replies | Model paraphrased token as fake SSN | Tune patterns; allowlist token alphabet |
+| Mismatched CRM updates | Token namespace collision across tenants | Enforce tenant prefix in every token |
+
+## Closing thought
+
+PII tokenization vaults turn "don't send secrets to the LLM" from a lint rule into infrastructure. Mint tokens at ingress, keep mappings in a audited vault, detokenize only at integration seams, and prove with tests that observability never sees plaintext. The incident that starts this work is never the last near-miss—you just stop hearing about them.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [NIST SP 800-122: Guide to Protecting PII](https://csrc.nist.gov/publications/detail/sp/800-122/final) — classification and handling guidance applicable to agent pipelines.
+- [PCI DSS Tokenization Guidelines](https://www.pcisecuritystandards.org/document_library/) — format-preserving token principles (adapt concepts beyond payment cards).
+- [HashiCorp Vault: Transform secrets engine](https://developer.hashicorp.com/vault/docs/secrets/transform) — FPE and tokenization patterns in a commercial vault.
+- [OWASP LLM Top 10: Sensitive Information Disclosure](https://owasp.org/www-project-top-10-for-large-language-model-applications/) — threat framing for LLM data handling.
+- [Microsoft Presidio](https://microsoft.github.io/presidio/) — open-source PII detection for building tokenization gateways.

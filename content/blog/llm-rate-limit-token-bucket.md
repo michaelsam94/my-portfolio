@@ -1,111 +1,252 @@
 ---
 title: "Rate Limit Token Bucket"
 slug: "llm-rate-limit-token-bucket"
-description: "Rate Limit Token Bucket: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-11-27"
-dateModified: "2025-11-27"
-tags: ["AI", "Llm", "Rate"]
-keywords: "llm, rate, limit, token, bucket, ai, production, engineering, architecture"
+description: "Implement token-bucket rate limits for agent APIs: burst-friendly quotas for tool loops, Redis Lua atomicity, multi-dimensional limits on tokens and cost, and Retry-After headers clients actually respect for teams running LLM features in production."
+datePublished: "2025-11-29"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "token bucket rate limit agents, Redis Lua rate limiting, LLM API quota burst, Retry-After agent clients, multi-dimensional rate limits"
 faq:
-  - q: "What is Rate Limit Token Bucket?"
-    a: "Rate Limit Token Bucket covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Rate Limit Token Bucket?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Rate Limit Token Bucket?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Rate Limit Token Bucket fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Rate Limit Token Bucket should be observable in production and safe to change in small diffs."
+  - q: "Why token bucket instead of fixed window for agent endpoints?"
+    a: "Agent sessions burst: a user sends one message, the backend fires six tool calls in two seconds, then goes idle. Fixed windows either block legitimate bursts or allow 2x spikes at window boundaries. Token bucket permits controlled bursts while enforcing average rate over time."
+  - q: "Should rate limits apply per user, per API key, or per tenant?"
+    a: "All three, nested. Tenant limit protects your infrastructure; API key limit protects integrators from runaway scripts; user limit protects shared-tenant fairness. Check cheapest scope first to fail fast."
+  - q: "How do you rate-limit token consumption vs HTTP requests?"
+    a: "Maintain separate buckets: requests_per_minute for ingress, tokens_per_minute and cost_usd_per_hour for egress to model providers. A single slow request can exhaust token budget without high request count — one-dimensional limits miss that."
+  - q: "What should Retry-After contain for agent clients?"
+    a: "Seconds until the bucket has enough tokens for the requested cost, not a generic 60. Agent SDKs should read Retry-After, backoff with jitter, and surface a user-visible 'rate limited' state instead of retrying tool loops blindly."
 ---
-Most teams encounter rate limit token bucket after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A script called your agent API 400 times in a minute. Each call was "valid." Each triggered a three-tool loop averaging 8,000 completion tokens. The invoice arrived before the alert fired because you counted **requests** while the attacker — or more often, a buggy retry loop — consumed **tokens**. Fixed-window counters at the edge didn't help; the damage was downstream.
 
-When rate limit token bucket is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Token bucket rate limiting fits agent workloads because it models **sustained throughput with tolerated bursts** — exactly how humans and autonomous loops behave.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Token bucket mechanics in plain terms
 
-Solid AI engineering turns rate limit token bucket from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm rate limit token bucket bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for rate limit token bucket, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm rate limit token bucket flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for rate limit token bucket in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm rate limit token bucket changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Rate Limit Token Bucket: typed boundary + structured errors
-export async function handleRateLimitTokenBucket(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-rate-limit-token-bucket");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+The bucket holds at most `capacity` tokens. Tokens refill continuously at `refill_rate` per second. Each operation consumes `cost` tokens. If insufficient tokens exist, reject or queue.
 
 ```
+capacity = 100 tokens
+refill_rate = 10 tokens/sec
 
+t=0:   bucket=100, request cost 40 → allow, bucket=60
+t=0:   request cost 40 → allow, bucket=20
+t=0:   request cost 40 → DENY (need 40, have 20)
+t=2:   refilled 20 → bucket=40 → allow if retried
+```
 
-## Operational concerns
+Compare to leaky bucket (smoother output, less burst-friendly) and sliding window log (accurate, memory-heavy). For multi-tenant agent gateways, token bucket hits the sweet spot: predictable memory, burst tolerance, easy Redis implementation.
 
-Alert on user-visible symptoms for rate limit token bucket — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+## Atomic Redis implementation with Lua
 
-Production llm rate limit token bucket work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Race conditions destroy rate limiters. Two concurrent tool calls both read `tokens=5`, both deduct, both pass — you doubled spend. Use a single atomic script:
 
-Rollouts for rate limit token bucket benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```lua
+-- KEYS[1] = bucket key, ARGV[1]=now_ms, ARGV[2]=cost, ARGV[3]=capacity, ARGV[4]=refill_per_ms
+local data = redis.call('HMGET', KEYS[1], 'tokens', 'last_refill')
+local tokens = tonumber(data[1])
+local last = tonumber(data[2])
+local now = tonumber(ARGV[1])
+local cost = tonumber(ARGV[2])
+local capacity = tonumber(ARGV[3])
+local refill_per_ms = tonumber(ARGV[4])
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+if tokens == nil then
+  tokens = capacity
+  last = now
+end
 
-## Security and compliance angles
+local elapsed = math.max(0, now - last)
+tokens = math.min(capacity, tokens + elapsed * refill_per_ms)
 
-Even when rate limit token bucket is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+if tokens < cost then
+  local deficit = cost - tokens
+  local retry_ms = math.ceil(deficit / refill_per_ms)
+  return {0, tokens, retry_ms}
+end
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm rate limit token bucket so security reviews do not rely on tribal knowledge.
+tokens = tokens - cost
+redis.call('HMSET', KEYS[1], 'tokens', tokens, 'last_refill', now)
+redis.call('PEXPIRE', KEYS[1], 86400000)
+return {1, tokens, 0}
+```
 
-## Testing strategy
+Wrap in TypeScript at the gateway:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that rate limit token bucket depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```typescript
+type LimitResult =
+  | { allowed: true; remaining: number }
+  | { allowed: false; remaining: number; retryAfterMs: number };
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+async function consumeTokenBucket(
+  redis: Redis,
+  key: string,
+  cost: number,
+  capacity: number,
+  refillPerSecond: number
+): Promise<LimitResult> {
+  const [allowed, remaining, retryMs] = await redis.eval(
+    TOKEN_BUCKET_LUA,
+    1,
+    key,
+    Date.now(),
+    cost,
+    capacity,
+    refillPerSecond / 1000
+  ) as [number, number, number];
 
-## Migration and evolution
+  if (allowed === 1) {
+    return { allowed: true, remaining };
+  }
+  return { allowed: false, remaining, retryAfterMs: retryMs };
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm rate limit token bucket functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Key naming: `rl:tenant:{id}:tokens`, `rl:tenant:{id}:requests`, `rl:user:{id}:cost_usd`.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where rate limit token bucket spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Multi-dimensional limits for agent loops
 
-## Related concepts
+One bucket is never enough. Check dimensions in order of cheapness:
 
-Rate Limit Token Bucket intersects with broader ai topics — see companion notes on [llm-rate patterns](https://blog.michaelsam94.com/llm-rate/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```typescript
+async function checkAgentLimits(ctx: RequestContext): Promise<LimitResult> {
+  const checks = [
+    { key: `rl:req:${ctx.tenantId}`, cost: 1, capacity: 300, refill: 5 },
+    { key: `rl:tok:${ctx.tenantId}`, cost: ctx.estimatedTokens, capacity: 500_000, refill: 8000 },
+    { key: `rl:usd:${ctx.tenantId}`, cost: ctx.estimatedCostMicros, capacity: 50_000_000, refill: 13889 },
+  ];
 
-## The takeaway
+  for (const c of checks) {
+    const result = await consumeTokenBucket(redis, c.key, c.cost, c.capacity, c.refill);
+    if (!result.allowed) {
+      return result;
+    }
+  }
+  return { allowed: true, remaining: 0 };
+}
+```
 
-Rate Limit Token Bucket rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm rate limit token bucket becomes a maintainable asset instead of incident fuel.
+Estimate `cost` before the LLM call using historical p90 tokens for `(tool_name, tenant tier)`. Reconcile after the call with a **refund** or **debt** adjustment — otherwise underestimates erode limits and overestimates frustrate users.
+
+For streaming responses, reserve tokens upfront, stream partial deduction every N chunks, release unused reservation on `done`.
+
+## HTTP surface: headers clients need
+
+Return standard headers so SDKs behave:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 3
+X-RateLimit-Limit: 500000
+X-RateLimit-Remaining: 1240
+X-RateLimit-Reset: 1732890123
+X-RateLimit-Policy: token-bucket; capacity=500000; refill=8000; scope=tenant
+```
+
+Agent SDK retry policy:
+
+```typescript
+async function withRateLimitRetry<T>(fn: () => Promise<T>, max = 3): Promise<T> {
+  for (let attempt = 0; attempt <= max; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isRateLimitError(e) || attempt === max) throw e;
+      const retryAfter = parseRetryAfter(e.headers) ?? backoffMs(attempt);
+      await sleep(retryAfter + jitter(0, 250));
+    }
+  }
+  throw new Error("unreachable");
+}
+```
+
+Never retry tool side effects blindly. Pair rate limit backoff with **idempotency keys** on mutating tools.
+
+## Fairness under noisy neighbors
+
+Within a tenant, one power user can drain the shared bucket. Options:
+
+- **Weighted sub-buckets** per user with minimum guaranteed refill
+- **Priority tiers** — enterprise tenants get higher capacity, not just higher refill
+- **Concurrency limits** separate from token bucket (max in-flight agent runs)
+
+Token bucket controls average rate; a concurrency semaphore controls simultaneous tool fan-out. You need both when agents parallelize retrieval.
+
+## Observability and tuning
+
+Dashboard per scope:
+
+- `rate_limit_rejected_total{scope, reason}`
+- `rate_limit_retry_after_ms_histogram`
+- `bucket_remaining_ratio` sampled pre-request
+- Correlation with `llm_tokens_total` — if rejections are low but cost spikes, your token estimates are wrong
+
+Load-test with **burst then idle** patterns, not uniform QPS. Tune capacity to absorb p99 burst of a single agent session; tune refill to match your model provider's sustained TPM contract.
+
+Alert when rejection rate exceeds 1% for five minutes for paid tiers — that is a product-visible event, not noise.
+
+## Edge cases that bite
+
+- **Clock skew** across gateway nodes — use Redis TIME or centralized `now_ms` from the script caller consistently
+- **Cold start after key expiry** — resetting to full capacity is a gift to bursters; consider starting at `capacity * 0.5`
+- **Partial failures** — if LLM call fails after reservation, refund tokens in a `finally` block
+- **Webhooks inbound** — rate limit by sender IP and signature key, separate bucket from user-facing API
+
+Token bucket rate limiting will not make agents cheap. It will make cost predictable, bursts survivable, and 429 responses actionable instead of mysterious.
+
+## Global vs local buckets at the edge
+
+Single-region Redis works until you deploy multi-region gateways. Options:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Central Redis (one region) | Exact global count | Cross-region latency, single point of failure |
+| Regional buckets at 1/N capacity | Fast, resilient | User can burst N × regional limit via geo routing |
+| CRDT / gossip sync | True global burst | Complex, eventual consistency |
+
+Most agent APIs accept **regional buckets** with capacity set to `global_capacity / region_count` plus 10% headroom for uneven traffic. Enterprise contracts that promise hard global caps need central Redis or a dedicated rate-limit service (Envoy RLS, Kong).
+
+At the CDN edge, enforce coarse request limits only — edge nodes lack token-cost context. Fine-grained token buckets belong on the gateway that knows model pricing.
+
+## Coordinating with upstream provider limits
+
+Your bucket is not the only bucket. OpenAI, Anthropic, and Bedrock enforce TPM/RPM independently. Mirror provider limits as nested buckets:
+
+```typescript
+const tenantOk = await consumeTokenBucket(redis, `rl:tok:${tenantId}`, estimated, ...);
+if (!tenantOk.allowed) return reject429(tenantOk);
+
+const providerOk = await consumeTokenBucket(
+  redis,
+  `rl:provider:openai:tpm`,
+  estimated,
+  providerTpmCapacity,
+  providerTpmRefill
+);
+if (!providerOk.allowed) {
+  // queue or route to fallback model — don't burn tenant budget retrying doomed calls
+  return queueForRetry(providerOk.retryAfterMs);
+}
+```
+
+When provider limits bind before tenant limits, expose a different error code (`503_provider_capacity`) so clients don't blame the tenant quota. Ops dashboards should show provider bucket saturation separately — that is a vendor or contract problem, not a user abuse problem.
+
+## Graceful degradation tiers
+
+When buckets empty, degrade in stages rather than hard-failing everything:
+
+1. **Disable nonessential tools** (web browse, image gen) — cheap check via feature flag
+2. **Switch model tier** — smaller model still answers, higher bucket effective capacity
+3. **Queue batch requests** — async webhook when complete
+4. **Hard 429** — only when revenue or abuse policy requires it
+
+Document degradation order in customer-facing SLA appendices. Surprises here generate more support tickets than honest throttling.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Token bucket algorithm (Wikipedia)](https://en.wikipedia.org/wiki/Token_bucket)
+- [Redis EVAL atomicity documentation](https://redis.io/docs/interact/programmability/eval-intro/)
+- [IETF RateLimit header fields draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers)
+- [Retry-After header (RFC 9110)](https://httpwg.org/specs/rfc9110.html#field.retry-after)
+- [Envoy rate limit service architecture](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting)

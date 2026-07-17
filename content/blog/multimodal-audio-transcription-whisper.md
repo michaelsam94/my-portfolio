@@ -3,8 +3,8 @@ title: "Speech-to-Text with Whisper"
 slug: "multimodal-audio-transcription-whisper"
 description: "Build production speech-to-text pipelines with OpenAI Whisper: model selection, chunking long audio, timestamps, language detection, and deployment trade-offs."
 datePublished: "2025-08-04"
-dateModified: "2025-08-04"
-tags: ["AI", "Audio", "Machine Learning", "Backend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "OpenAI Whisper, speech to text, audio transcription, Whisper API, automatic speech recognition, timestamp extraction"
 faq:
   - q: "Which Whisper model should I use in production?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can Whisper handle multiple speakers?"
     a: "Whisper transcribes mixed audio as a single stream without speaker labels. Add a diarization step—pyannote.audio or similar—to assign speaker IDs before or after transcription."
 ---
-
 A support team uploads 40-minute call recordings and needs searchable transcripts by morning. Generic cloud STT charges per minute and garbles product names. Whisper—OpenAI's open-weight speech recognition model—handles 99 languages, noisy phone lines, and technical vocabulary when you pick the right variant and chunking strategy. The API wraps the same models; self-hosting with faster-whisper gives you cost control at scale.
 
 ## Model landscape
@@ -152,17 +151,6 @@ Batch overnight transcription for non-real-time use cases — spot GPU instances
 
 Pair with [multimodal document understanding](https://blog.michaelsam94.com/multimodal-document-understanding/) when transcripts feed downstream extraction pipelines.
 
-## Common production mistakes
-
-Teams get multimodal audio transcription whisper wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of multimodal audio transcription whisper fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [OpenAI Whisper paper (arXiv)](https://arxiv.org/abs/2212.04356) — architecture and training details
@@ -170,3 +158,17 @@ Production implementations of multimodal audio transcription whisper fail when s
 - [OpenAI Audio API reference](https://platform.openai.com/docs/guides/speech-to-text) — hosted transcription endpoints
 - [Silero VAD](https://github.com/snakers4/silero-vad) — voice activity detection for chunking
 - [Hugging Face distil-whisper](https://huggingface.co/distil-whisper) — distilled models for lower latency
+
+## Production notes for LLM stacks
+
+When `multimodal-audio-transcription-whisper` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `speech-to-text with whisper` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

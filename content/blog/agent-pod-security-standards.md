@@ -1,111 +1,251 @@
 ---
 title: "AI Agents: Pod Security Standards"
 slug: "agent-pod-security-standards"
-description: "Pod Security Standards: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Apply Kubernetes Pod Security Standards to LLM inference workloads: restricted vs baseline tradeoffs, GPU sidecars, model volume mounts, and a namespace rollout that does not block deploys."
 datePublished: "2026-01-31"
 dateModified: "2026-01-31"
 tags: ["AI", "Agent", "Pod"]
-keywords: "agent, pod, security, standards, ai, production, engineering, architecture"
+keywords: "Kubernetes Pod Security Standards, PSS restricted baseline, LLM inference security, agent workload hardening, pod security admission, GPU sidecar security"
 faq:
-  - q: "What is Pod Security Standards?"
-    a: "Pod Security Standards covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Pod Security Standards?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Pod Security Standards?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Pod Security Standards fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Pod Security Standards should be observable in production and safe to change in small diffs."
+  - q: "Which Pod Security Standard level should LLM inference namespaces use?"
+    a: "Start at baseline for inference namespaces with GPU drivers and shared model volumes, then tighten to restricted for stateless API gateway and orchestrator pods that do not need hostPath or privileged init containers. Mixed namespaces split by pod labels—do not run gateways and model servers under one blanket policy."
+  - q: "How do Pod Security Standards interact with GPU workloads?"
+    a: "NVIDIA device plugins and some CSI drivers historically required privileged sidecars or mount propagation. Baseline allows common patterns restricted blocks. Document exceptions in Policy Exceptions (Kubernetes 1.26+) or isolate GPU nodes in a dedicated namespace at baseline while keeping user-facing agent APIs at restricted."
+  - q: "Can agent pods mount Hugging Face model caches from hostPath?"
+    a: "Avoid hostPath for model weights in multi-tenant clusters—it breaks node isolation and violates restricted policy. Use ReadOnlyMany PVCs, object storage FUSE with securityContext constraints, or preloaded images. If hostPath is unavoidable for bare-metal GPU farms, scope to dedicated node pools with baseline policy and taints."
+  - q: "What breaks when you enforce restricted on a running agent stack?"
+    a: "Typical failures: containers running as root, missing drop ALL capabilities, allowPrivilegeEscalation true, hostNetwork for legacy metrics agents, and default seccompProfile unset. Audit with kubectl label dry-run before enforce mode—collect Pod Security Admission warnings for one week in warn audit mode."
 ---
-Pod Security Standards sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+A platform team flipped their agent namespace to Pod Security **enforce: restricted** on a Friday. By Saturday, vLLM inference pods were CrashLooping—init containers needed `CAP_SYS_ADMIN` for GPU memory pinning, and someone's debug sidecar ran as root "temporarily since beta." Rollback took twenty minutes; the postmortem took three weeks of exception paperwork.
 
-When pod security standards is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Kubernetes Pod Security Standards (PSS) replace the deprecated PodSecurityPolicy with three built-in profiles enforced by Pod Security Admission (PSA). For AI agent stacks—retrieval APIs, orchestrators, embedding workers, GPU inference—you need a rollout plan that respects how model serving actually runs, not a blanket `restricted` label on every namespace.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The three profiles, translated for agent workloads
 
-Solid AI engineering turns pod security standards from a recurring argument into a documented pattern with tests and an owner.
+| Control | Privileged | Baseline | Restricted |
+|---------|------------|----------|------------|
+| Run as non-root | Optional | Recommended | Required |
+| Privileged containers | Allowed | Denied | Denied |
+| hostPath volumes | Allowed | Restricted | Denied |
+| hostNetwork | Allowed | Allowed | Denied |
+| Capabilities | Any | Limited add | Drop ALL + NET_BIND_SERVICE only |
+| seccompProfile | Unset OK | Unset OK | RuntimeDefault required |
 
-## Design principles that survive production
+**Privileged** — avoid for anything user-facing. Some legacy GPU node agents still live here on isolated bare-metal; treat as tech debt.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent pod security standards bugs hide.
+**Baseline** — reasonable default for **inference workers** pulling large model artifacts, using device plugins, or FUSE mounts where restricted blocks volume types.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for pod security standards, you do not yet understand the behavior you shipped.
+**Restricted** — target for **agent orchestrators**, tool gateways, retrieval APIs, and embedding CPU workers that only need ConfigMaps, Secrets, and PVCs.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Split your agent platform across at least two namespaces if one team owns both inference and orchestration.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent pod security standards flows so duplicates are harmless or detectable.
+## Namespace labeling strategy
 
-## Implementation patterns
+Pod Security Admission reads namespace labels:
 
-A practical baseline for pod security standards in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent pod security standards changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Pod Security Standards: typed boundary + structured errors
-export async function handlePodSecurityStandards(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-pod-security-standards");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-orchestration
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-inference
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ```
 
+Use **warn** and **audit** at the stricter level while **enforce** stays at the achievable profile—warnings surface in audit logs without blocking deploys during migration.
 
-## Operational concerns
+Progression:
 
-Game-day exercises for pod security standards beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+1. Week 1–2: enforce privileged (document current state), audit restricted.
+2. Week 3–4: enforce baseline on inference, audit restricted.
+3. Week 5+: enforce restricted on orchestration; baseline on inference until GPU exceptions resolved.
 
-Production agent pod security standards work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Hardening agent orchestrator pods
 
-Rollouts for pod security standards benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Orchestrator pods (LangGraph runners, tool routers, RAG pipelines) should run restricted without exceptions:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-orchestrator
+  namespace: agent-orchestration
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: orchestrator
+          image: registry.example/agent-orchestrator:1.4.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+```
 
-## Security and compliance angles
+`readOnlyRootFilesystem` forces writable paths to emptyDir—agents that download plugins at runtime need explicit cache volumes or init containers that copy artifacts to emptyDir before main container starts non-root.
 
-Even when pod security standards is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Drop `ALL` capabilities. If something fails with `permission denied` binding port 8080, run on 8080 as non-root (unprivileged ports >1024) rather than adding `NET_BIND_SERVICE` unless you truly bind 443 in-container—which you should not; use a Service or ingress.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent pod security standards so security reviews do not rely on tribal knowledge.
+## Inference pods: baseline with tight boundaries
 
-## Testing strategy
+Model servers often need:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that pod security standards depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+- Larger `emptyDir` or PVC for weights.
+- `nvidia.com/gpu` resources.
+- Sometimes init containers fixing permissions on mounted volumes—fix ownership in init running as root is blocked under restricted; use fsGroup or pre-chowned PVC snapshots.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vllm-worker
+  namespace: llm-inference
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  containers:
+    - name: vllm
+      image: vllm/vllm-openai:v0.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+      volumeMounts:
+        - name: model-cache
+          mountPath: /models
+          readOnly: true
+  volumes:
+    - name: model-cache
+      persistentVolumeClaim:
+        claimName: llama-70b-weights
+```
 
-## Migration and evolution
+ReadOnly model mounts prevent runtime model swap attacks from compromised agents—pair with image digest pinning for orchestrator → inference RPC auth.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent pod security standards functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Policy Exceptions without going back to PSP chaos
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where pod security standards spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Kubernetes 1.26+ **Pod Security Admission exceptions** grant named exemptions:
 
-## Related concepts
+```yaml
+apiVersion: policy/v1alpha1
+kind: PodSecurityConfiguration
+# Use Policy Binding / exceptions API per cluster version docs
+```
 
-Pod Security Standards intersects with broader ai topics — see companion notes on [agent-pod patterns](https://blog.michaelsam94.com/agent-pod/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Prefer narrow exceptions: single ServiceAccount, single Deployment name, expiry date in ticket. Quarterly review exceptions—GPU driver sidecars often disappear after upgrading device plugin versions.
 
-## The takeaway
+Alternative: **dedicated node pool** tainted `gpu=true`, namespace at baseline, NetworkPolicy blocking inference pods from talking to metadata API or cluster control plane.
 
-Pod Security Standards rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent pod security standards becomes a maintainable asset instead of incident fuel.
+## NetworkPolicy complements PSS
+
+PSS hardens pod spec; it does not stop lateral movement. Agent stacks should add:
+
+- Default deny ingress in namespace.
+- Allow orchestrator → inference on gRPC port only.
+- Deny inference → internet egress except model registry allowlist.
+- Deny all pods → `169.254.169.254` cloud metadata unless using workload identity via dedicated node agents.
+
+LLM pods exfiltrating weights or prompts via DNS tunneling is an agent-specific threat—egress logging on orchestration namespace catches odd destinations PSS never sees.
+
+## Workload Identity and secrets
+
+Restricted pods still mount Secrets. Prefer:
+
+- **Projected service account tokens** with audience bound to inference API.
+- **External Secrets Operator** syncing short-lived creds.
+- Never bake API keys into container images agent orchestrators pull at runtime.
+
+Rotate Secrets without pod restart where possible; agent sessions are long—rolling restart during Secret rotation should be graceful via preStop hooks draining in-flight tool calls.
+
+## Migration playbook
+
+**Inventory** — run admission audit mode cluster-wide; collect violating pods:
+
+```bash
+kubectl get pods -A -o json | jq -r '
+  .items[] |
+  select(.metadata.namespace | startswith("agent")) |
+  "\(.metadata.namespace)/\(.metadata.name)"'
+```
+
+Fix generators first—Helm charts, Kustomize bases—before one-off kubectl patches.
+
+**Common fixes**:
+
+| Violation | Fix |
+|-----------|-----|
+| `runAsUser: 0` | Set non-zero USER in Dockerfile; chart override |
+| `privileged: true` debug | Remove; use ephemeral debug containers (K8s 1.23+) with separate RBAC |
+| `hostPath` model cache | Migrate to PVC or node-local storage class |
+| Missing seccompProfile | Add `RuntimeDefault` at pod level |
+| `capabilities.add: [SYS_PTRACE]` | Remove; use dedicated profiling namespace |
+
+**CI gate** — conftest or kyverno policies in pipeline rejecting manifests that violate target profile before apply.
+
+**Game day** — attempt deploy of intentionally bad pod; verify PSA rejects with clear message.
+
+## Observability
+
+Alert on PSA audit events exceeding baseline—often the first sign a chart regressed. Include `pod-security.kubernetes.io/enforce` label in deployment dashboards so on-call knows which profile applies.
+
+Track CrashLoop reasons after migration—OOM from read-only root without tmp volume masquerades as "security broke GPU."
+
+## Agent platform checklist before enforce mode
+
+Before flipping a namespace from warn to enforce, walk this list with the team owning charts—not only platform SRE:
+
+- Every container image declares a non-zero `USER`; no Dockerfile ends on implicit root.
+- Debug tooling uses `kubectl debug` ephemeral containers with their own RBAC, not privileged long-lived sidecars.
+- Model weights and vector index volumes are ReadOnly where the serving runtime allows it.
+- ServiceAccounts are per deployment, not one shared cluster-admin SA for "simplicity."
+- Resource requests and limits are set—PSS does not replace quota management, but OOMKill loops during migration look like policy regressions in triage.
+
+Run a one-hour load test in staging at enforce level while watching PSA audit logs and pod events. If nothing fires except expected GPU namespace baseline warnings, promote to production namespace-by-namespace, not cluster-wide.
+
+## Closing thought
+
+Pod Security Standards give agent platforms a default-deny posture without maintaining bespoke PodSecurityPolicies. Use restricted for orchestration and retrieval, baseline for GPU inference until hardware stacks catch up, migrate with warn-before-enforce, and pair PSS with NetworkPolicy because hardened pods still talk to each other. The Friday CrashLoop is optional if you audit first.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) — official profile definitions.
+- [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) — namespace labels and enforce/warn/audit modes.
+- [Kubernetes hardening guide ( NSA / CISA )](https://www.nsa.gov/Press-Room/News-Highlights/Article/Article/3148990/nsa-and-cisa-release-kubernetes-hardening-guide/) — complementary cluster-level guidance.
+- [NVIDIA GPU Operator: security context notes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) — GPU node requirements affecting PSS level choice.
+- [Kyverno Pod Security policies](https://kyverno.io/policies/pod-security/) — optional policy-as-code beyond built-in PSA.

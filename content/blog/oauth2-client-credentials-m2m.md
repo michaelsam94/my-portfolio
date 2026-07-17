@@ -3,7 +3,7 @@ title: "Client Credentials for Machine-to-Machine"
 slug: "oauth2-client-credentials-m2m"
 description: "Implement OAuth 2.0 client credentials flow for service-to-service auth: token endpoints, scopes, credential rotation, and comparison with mTLS."
 datePublished: "2025-09-18"
-dateModified: "2025-09-18"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "API", "Backend"]
 keywords: "OAuth client credentials, machine to machine authentication, M2M OAuth, service account OAuth, client credentials grant, API service auth"
 faq:
@@ -243,7 +243,11 @@ Teams get client credentials m2m wrong in predictable ways:
 - **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
 - **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
 
-OAuth flows involving client credentials m2m leak sessions when refresh tokens are stored in localStorage, redirect URI validation is loose in staging, and token introspection is skipped for opaque bearer tokens.
+Rotate client secrets on a calendar rhythm and automate distribution to secret stores — manual env var updates do not scale past a handful of services.
+
+## Scope design for M2M
+
+Issue one OAuth client per service identity, not one shared “backend super-client.” Map scopes to API resources (`inventory:read`, `billing:write`) and enforce them at the resource server with centralized policy tests. LLM orchestration services that call multiple downstream APIs should use distinct clients or token exchange so a compromise in the agent runtime cannot inherit admin scopes meant for batch jobs.
 
 ## Resources
 

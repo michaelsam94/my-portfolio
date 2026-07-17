@@ -3,16 +3,18 @@ title: "Citations and Grounding in RAG"
 slug: "rag-citation-attribution-grounding"
 description: "Implement citations and grounding in RAG pipelines: source attribution, inline references, faithfulness checks, and UX patterns that build user trust."
 datePublished: "2024-11-29"
-dateModified: "2024-11-29"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Citations", "Grounding"]
 keywords: "RAG citations, source attribution, grounded generation, faithfulness, inline references, hallucination reduction"
 faq:
-  - q: "Do citations prevent LLM hallucinations?"
-    a: "Citations reduce unsupported claims by tying statements to retrieved passages, but they do not eliminate hallucinations entirely. Models still misquote, overgeneralize, or cite the wrong chunk. Combine citation formatting with faithfulness checks that verify each claim against its cited source before showing the answer to users."
-  - q: "Should citations appear inline or as footnotes?"
-    a: "Inline citations — bracketed numbers or linked phrases — let users verify specific claims without scrolling. Footnotes or a sources section at the bottom work for shorter answers. For long generated responses, inline references per sentence prevent the disconnect between claim and source that footnote-only designs create."
-  - q: "What metadata should each citation include?"
-    a: "At minimum: document title, URL or internal ID, and page or section if applicable. For regulated industries add document version and effective date. The goal is letting a user or auditor find the exact passage in under 30 seconds without asking your team for help."
+  - q: "Do citations prevent RAG hallucinations?"
+    a: "They reduce unsupported claims but models still misquote or cite wrong chunks. Combine citation formatting with NLI faithfulness checks before display."
+  - q: "Inline vs footnote citations for RAG UI?"
+    a: "Inline for compliance Q&A where users verify per claim. Footnotes acceptable for short summaries; long answers need per-sentence references."
+  - q: "What metadata must citations include?"
+    a: "Document title, URL or internal ID, section, version, effective date — enough for auditor to find exact passage in 30 seconds."
+  - q: "How handle conflicting cited sources?"
+    a: "Prompt model to present both positions with citations. Prefer retrieval-time filters on status:current to reduce conflicts before generation."
 ---
 
 Legal reviewed your RAG chatbot's answer about data retention and approved the wording — then someone noticed the "90-day retention for logs" claim cited a marketing blog post from 2019, not the current privacy policy. The model grounded its answer in *something*, just not the right something. Citations without grounding discipline create false confidence worse than no citations at all.
@@ -141,6 +143,43 @@ When citation attribution grounding misbehaves in production, work top-down inst
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Structured claims for automated verification
+
+Force JSON output for high-stakes RAG:
+
+```json
+{
+  "claims": [
+    {"text": "Logs retained 180 days", "source_chunk_ids": ["policy:v3:4.2:07"]}
+  ]
+}
+```
+
+Post-process: for each claim, run NLI entailment against chunk text. Drop or flag claims below threshold before UI render.
+
+## Citation precision vs recall tradeoff
+
+- **High citation recall, low precision**: model cites everything, many wrong — users lose trust.
+- **High precision, low recall**: few citations, all correct — may omit support for true claims.
+
+Target precision > 0.95 on eval even if recall is 0.80. A missing citation is better than a wrong one in compliance contexts.
+
+## Version-aware citation display
+
+Show `effective_date` and `version` in citation UI when metadata available — user sees "Policy v3.1 (effective 2024-06-01)" not just "Policy Handbook". Reduces confusion when multiple versions retrieved.
+
+## User trust studies and citation UX
+
+A/B test citation UI: inline expandable vs footer-only. Track verification click-through rate — low clicks with high thumbs-down suggests citations present but not usable (wrong section linked). Iterate on snippet length shown in expand panel.
+
+## Auditor walkthrough drills
+
+Quarterly drill: pick random production answer, verify each citation resolves to correct passage within 60 seconds using only metadata in citation UI — same path auditors and regulators follow.
+
+## Mobile citation tap targets
+
+Citation links on mobile need 44px min touch target — small superscript brackets fail usability and accessibility even when contrast passes.
 
 ## Resources
 

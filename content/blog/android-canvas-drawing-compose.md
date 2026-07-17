@@ -113,6 +113,28 @@ Before shipping graphics-heavy drawing, I run through:
 
 Compose Canvas is a full 2D drawing API, and using it well is almost entirely about phase discipline: keep object allocation in `drawWithCache`, keep animating reads inside the draw block, and precompute heavy geometry when inputs change rather than per frame. Reach for it when content is continuous or freeform and stick with composables when elements are discrete and interactive. Get the phases right and you can animate rich custom graphics at a steady 60fps; get them wrong and even a simple progress ring will recompose your whole screen into a slideshow.
 
+## Hardware layer for path animation
+
+Animated `drawPath` without `Modifier.graphicsLayer` recomposes entire tree — promote Canvas to layer during stroke animation. Large paths: simplify with `PathMeasure` segments to cap draw calls per frame.
+
+## Touch slop vs draw precision
+
+Stylus apps need `MotionEvent.getHistorical` points for smooth curves — standard drag only samples per frame and looks jagged on 120Hz displays.
+
+## Canvas Drawing Compose Supplement 0 on Samsung and Pixel divergence
+
+Exercise canvas drawing compose supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching canvas; regressions above 8% block release for `android-canvas-drawing-compose-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Canvas Drawing Compose Supplement 0" should map to a single runbook section with known workarounds.
+
+## Compose regression gates for Play Vitals
+
+Before promoting `android-canvas-drawing-compose-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing canvas with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing canvas drawing compose supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Graphics in Compose — Canvas and DrawScope](https://developer.android.com/develop/ui/compose/graphics/draw/overview)

@@ -3,8 +3,8 @@ title: "MQTT for IoT at Scale"
 slug: "mqtt-iot-at-scale"
 description: "How MQTT actually scales for IoT: QoS levels that matter, topic design, retained messages, last will, shared subscriptions, and broker choices for millions of devices."
 datePublished: "2026-07-16"
-dateModified: "2026-07-16"
-tags: ["MQTT", "IoT", "Messaging", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MQTT, IoT messaging, MQTT broker, pub sub IoT, MQTT QoS, retained messages, shared subscriptions"
 faq:
   - q: "Which MQTT QoS level should I use?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are retained messages used for?"
     a: "A retained message is stored by the broker and delivered immediately to any new subscriber of that topic. It's ideal for state — the last known status of a device — so a subscriber that connects later instantly gets the current value instead of waiting for the next publish."
 ---
-
 MQTT earns its place in IoT because it's cheap where IoT is expensive: bandwidth, battery, and unreliable networks. It's a lightweight publish/subscribe protocol over TCP, designed originally for oil pipeline telemetry over satellite links, and that heritage shows — tiny headers, a persistent connection that survives flaky networks, and quality-of-service levels that let each message choose its own reliability. Scaling it to millions of devices is less about the protocol and more about three decisions: QoS discipline, topic design, and broker topology.
 
 I'll go through what actually matters when you move from a demo with ten devices to a fleet. The demo works with any settings. The fleet punishes every lazy choice — a bad topic hierarchy, QoS 2 everywhere, or retained messages you forgot to clear will each show up as a production incident.

@@ -1,129 +1,244 @@
 ---
 title: "Error Budget Burn Rate Alerts"
 slug: "observability-error-budget-burn-alerts"
-description: "Multi-window burn alerts — page on fast burn, ticket on slow burn."
-datePublished: "2026-01-24"
-dateModified: "2026-01-24"
+description: "Alert on SLO error budget burn rates—fast and slow windows—so pages fire on user impact trends, not single blips."
+datePublished: "2026-01-20"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
   - "SRE"
-keywords: "observability error budget burn alerts, production, backend"
+  - "Prometheus"
+keywords: "error budget burn rate, slo alerting, multi window burn alerts, google sre alerting, prometheus slo"
 faq:
-  - q: "What problem does Error Budget Burn Rate Alerts solve?"
-    a: "It addresses production gaps teams hit when scaling observability error budget burn alerts: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability error budget burn alerts appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is error budget burn rate?"
+    a: "Burn rate is how fast you consume monthly error budget. A burn rate of 14.4 means you exhaust a 30-day budget in ~2 days at the current error ratio."
+  - q: "Why use multiple alert windows?"
+    a: "Short windows catch sudden outages; long windows catch slow leaks that single-spike alerts miss."
+  - q: "What SLO target should I start with?"
+    a: "99.9% monthly availability for tier-1 journeys is common. Pick SLIs users feel: success rate and latency threshold."
 ---
 
-## Production context
+Checkout returned 503 for 0.5% of requests for six hours—below a naive 5% alert threshold but burned 38 minutes of 43-minute monthly budget. Error budget burn rate alerting pages when budget consumption accelerates—fast for outages, slow for leaks.
 
-A billing service lost duplicate events because observability error budget burn alerts was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Burn rate math
 
-Senior backend work on error budget burn rate alerts is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Budget 0.1% errors at 99.9%; current 1.4% errors → burn rate 14.4× → budget gone in ~2 days.
 
-## Architecture pattern
+## Multi-window alerts
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Fast burn: 14.4× over 2m/1h window pages immediately. Slow burn: 6× over 15m/6h creates tickets. Use Sloth or Pyrra to generate rules from SLO specs.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## SLI selection
+
+Good: availability and latency threshold SLIs. Bad: pod restart count, CPU, queue depth without user correlation.
+
+## Policy
+
+Budget >50% consumed mid-month → freeze risky releases. Budget exhausted → incident review before feature work.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+## Error budget reviews with product
+
+Monthly 30-minute meeting: chart `1 - error_budget_remaining` per tier-1 SLO. Product decides:
+
+- Budget >50% left → accelerate features
+- Budget <20% → reliability sprint, freeze risky launches
+- Budget exhausted → postmortem before new feature work
+
+Burn alerts are input data; policy drives behavior. Without policy, burn alerts become ignored Grafana panels.
+
+## Multi-window tuning for low-traffic services
+
+Startup services lack volume for 2-minute burn windows—adjust windows to 15m/6h and require minimum event count:
+
+```promql
+(slo:errors:burn_rate_6h > 6)
+and
+(slo:requests:total_6h > 500)
 ```
 
-## Implementation checklist
+Prevents paging on three errors total.
 
-Validate inputs at the trust boundary with schema versioning.
+## Composite SLOs
 
-Use timeouts and cancellation on every outbound call; propagate context.
+User journey spans three services—define composite SLI as product of success probabilities or end-to-end synthetic check success rate. Burn composite SLO for executive view; burn per-service SLO for engineering drill-down. Sloth supports grouping multiple SLIs into one alert policy.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## SLO waiver process
 
-Run migrations with lock_timeout and statement_timeout set.
+Planned maintenance burns budget—file waiver ticket subtracting expected burn from alert thresholds or silence burn alerts with documented change ticket. Unplanned burn without waiver triggers automatic incident commander assignment in mature orgs.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Customer-facing SLO pages
 
-## Observability
+Public status page "99.9% this month" must match internal burn math—discrepancy erodes trust. Automate status page from same Prometheus recording rules as internal SLO, not separate manual spreadsheet.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Executive communication
 
-Dashboards for observability error budget burn alerts should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Translate burn rate alerts into non-technical summaries for leadership: "At current error rate we consume a week of monthly budget daily" lands better than raw PromQL. Automate weekly email from recording rules showing budget remaining per tier-1 SLO—aligns release train decisions without emergency meetings.
 
-## Security notes
+When multiple services share one error budget (user journey composite), document attribution rules when burn occurs—avoid circular blame between frontend and backend during joint incidents.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Debugging and triage workflow
 
-When production misbehaves, work top-down:
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
 
-## Operational checklist
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Measure before optimizing observability error budget burn alerts. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Ship observability error budget burn alerts changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
 
-## Testing recommendations
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.

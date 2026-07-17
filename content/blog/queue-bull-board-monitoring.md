@@ -3,127 +3,227 @@ title: "Bull Board Queue Monitoring"
 slug: "queue-bull-board-monitoring"
 description: "UI for Bull/BullMQ — auth proxy, failed job retry, and stalled detection."
 datePublished: "2026-03-13"
-dateModified: "2026-03-13"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue bull board monitoring, production, backend"
+keywords: "bull board, bullmq monitoring, redis queue dashboard, stalled jobs"
 faq:
-  - q: "What problem does Bull Board Queue Monitoring solve?"
-    a: "It addresses production gaps teams hit when scaling queue bull board monitoring: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue bull board monitoring appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Does Bull Board work with both Bull and BullMQ?"
+    a: "Yes, via separate adapters (@bull-board/api with @bull-board/bull or @bull-board/bullmq). BullMQ is the maintained successor; new projects should use BullMQ adapter. Queue names and Redis key prefixes must match your worker configuration or the dashboard shows empty queues."
+  - q: "Why must Bull Board never be exposed publicly without authentication?"
+    a: "The UI can retry failed jobs, promote delayed jobs, clean queues, and inspect payloads that may contain PII or secrets. Treat it like admin API access — mount behind SSO reverse proxy, VPN, or IP allowlist with session auth."
+  - q: "What causes stalled jobs in Bull/BullMQ and how does Bull Board help?"
+    a: "Stalled jobs occur when a worker stops heartbeating — process crash, long GC pause, or blocking synchronous work exceeding lockDuration. Bull Board highlights stalled counts; workers should log stall events. Fix root cause in worker code; use Bull Board to retry after deploy, not as permanent remediation."
 ---
 
-## Production context
+Operations deleted the wrong Redis keys trying to "clear a stuck queue" because nobody could see what Bull was doing. After mounting Bull Board behind the internal OAuth proxy, on-call could inspect failed payloads, retry poison messages after a fix, and watch stalled counts drop after a worker memory leak patch — without SSH or raw `redis-cli`. A queue UI is not luxury; it is how you avoid becoming the person who `FLUSHDB`'d production.
 
-A billing service lost duplicate events because queue bull board monitoring was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## What Bull Board renders
 
-Senior backend work on bull board queue monitoring is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Bull Board is an Express/Fastify middleware that reads Bull's Redis structures and serves a React UI:
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+Browser ──► nginx (SSO) ──► Express + Bull Board ──► Redis
+                                    ▲
+Worker processes ───────────────────┘ (same Redis)
 ```
 
-## Implementation checklist
+Install for BullMQ:
 
-Validate inputs at the trust boundary with schema versioning.
+```bash
+npm install @bull-board/api @bull-board/express @bull-board/bullmq bullmq
+```
 
-Use timeouts and cancellation on every outbound call; propagate context.
+```typescript
+import express from 'express';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/bullmq';
+import { ExpressAdapter } from '@bull-board/express';
+import { Queue } from 'bullmq';
 
-Store idempotency keys with TTL; return cached responses on replay.
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath('/admin/queues');
 
-Run migrations with lock_timeout and statement_timeout set.
+const emailQueue = new Queue('email', { connection: { host: 'redis.internal' } });
+const webhookQueue = new Queue('webhook', { connection: { host: 'redis.internal' } });
 
-Load test at 2× expected peak with production-like payload sizes.
+createBullBoard({
+  queues: [
+    new BullMQAdapter(emailQueue),
+    new BullMQAdapter(webhookQueue),
+  ],
+  serverAdapter,
+});
 
-## Observability
+const app = express();
+app.use('/admin/queues', serverAdapter.getRouter());
+app.listen(3001);
+```
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Queue instances must share the same Redis connection options and prefix as workers.
 
-Dashboards for queue bull board monitoring should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## Authentication and network placement
 
-## Security notes
+Never expose port 3001 to the internet. Patterns that work:
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+**OAuth2 reverse proxy (recommended).** nginx `auth_request` to Okta/Authelia; upstream to Bull Board only after 200 from auth subrequest.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+**Separate admin deployment.** Bull Board runs as internal-only Kubernetes service with NetworkPolicy allowing ingress from VPN CIDR.
 
-## Common production mistakes
+**Read-only mode.** Some teams wrap Bull Board routes and disable POST actions in production, forcing retries through audited CLI scripts.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Also restrict CORS and disable public DNS records for the admin host.
 
-## Debugging and triage workflow
+## Mapping Redis reality to the UI
 
-When production misbehaves, work top-down:
+Bull stores jobs in keys like `bull:email:wait`, `bull:email:active`, `bull:email:failed`. If Bull Board shows zero jobs but workers process work, check prefix mismatch, DB index mismatch, or missing TLS on ElastiCache.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+```typescript
+const connection = {
+  host: process.env.REDIS_HOST,
+  port: 6379,
+  password: process.env.REDIS_PASSWORD,
+  tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+};
+```
 
-## Operational checklist
+Document connection parity in the worker and board README.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+## Stalled job detection
 
-## Performance tuning notes
+Bull marks jobs stalled when workers fail to renew locks — default `lockDuration` 30s.
 
-Measure before optimizing queue bull board monitoring. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+```typescript
+const worker = new Worker('webhook', processor, {
+  connection,
+  lockDuration: 60000,
+  stalledInterval: 30000,
+  maxStalledCount: 2,
+});
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+worker.on('stalled', (jobId) => {
+  metrics.increment('bull.job.stalled', { queue: 'webhook' });
+});
+```
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Root causes: CPU-bound synchronous code in async handler, unhandled promise hang, pod SIGSTOP during node drain, Redis latency preventing lock renewal.
 
-## Rollout and migration
+## Failed job triage workflow
 
-Ship queue bull board monitoring changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+1. Filter failed queue in Bull Board — sort by timestamp.
+2. Inspect `failedReason` stack.
+3. Check `attemptsMade` vs `opts.attempts`.
+4. Retry individually first — confirm fix on one job.
+5. Bulk retry via board or script after deploy.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Scripted retry:
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+```typescript
+const failed = await q.getFailed(0, 100);
+for (const job of failed) {
+  if (job.failedReason.includes('ECONNRESET')) {
+    await job.retry();
+  }
+}
+```
 
-## Testing recommendations
+Scrub payloads before screenshotting jobs for Slack.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Metrics beyond the UI
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+| Metric | Alert threshold |
+|--------|-----------------|
+| `queue_waiting` | Sustained growth > 30 min |
+| `queue_failed` rate | > baseline × 3 |
+| `queue_stalled` | Any increment in 5 min window |
+| Job age p95 (waiting) | Exceeds SLA |
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Correlate Redis memory with delayed job ZSET size — huge delayed sets slow Bull Board pagination.
 
-## Incident patterns we see
+## Bull vs BullMQ adapter differences
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+| Concern | Bull (legacy) | BullMQ |
+|---------|---------------|--------|
+| Adapter import | `@bull-board/bull` | `@bull-board/bullmq` |
+| Maintenance | Limited | Active |
+| Flows / parent-child | No | Yes |
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+When migrating Bull → BullMQ, run board against both Redis namespaces during cutover.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Graceful shutdown and active job visibility
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+During Kubernetes rolling deploy, workers receive SIGTERM; Bull waits `lockDuration` before marking jobs stalled. Set `terminationGracePeriodSeconds` greater than longest job runtime plus lock renewal interval.
 
-## Resources
+## Integration with OpenTelemetry
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Wrap processors to propagate trace context stored in job data:
+
+```typescript
+async function processor(job: Job) {
+  const ctx = propagation.extract(context.active(), job.data.traceContext ?? {});
+  return context.with(ctx, async () => {
+    return span('process', job.name, async () => { ... });
+  });
+}
+```
+
+## Rate limiting admin actions
+
+Bulk retry in Bull Board can overwhelm downstream APIs — wrap production board with rate limits on POST routes or require confirmation for actions affecting >100 jobs.
+
+## Comparing Bull Board to Arena
+
+Arena is an alternative Redis queue UI. Bull Board wins when you already use Bull/BullMQ adapters officially maintained. Grafana dashboards remain authoritative for paging; board is incident triage.
+
+## Production hardening checklist
+
+- [ ] Board behind SSO, no public route
+- [ ] Same Redis prefix/DB/TLS as workers
+- [ ] Role separation: read-only prod board vs full dev
+- [ ] Alerts on stalled/failed independent of UI
+- [ ] Job data schema avoids secrets (reference IDs only)
+
+Bull Board closes the observability gap between "Redis is a black box" and actionable queue operations. Mount it safely, wire stall alerts, and treat retry buttons as sharp tools — useful after fixes, dangerous before root cause.
+
+## Running Bull Board on Fastify
+
+Teams standardizing on Fastify use `@bull-board/fastify` with identical adapter setup — mount path and auth proxy rules mirror Express. Ensure `setBasePath` matches reverse proxy strip prefix or static assets 404 silently.
+
+## Job data redaction in board views
+
+Wrap Bull Board with middleware that scrubs `job.data` fields matching `/password|token|ssn/i` before render — defense in depth when engineers accidentally enqueue secrets. Redaction middleware logs scrub events for security audit without blocking legitimate debugging on non-sensitive fields.
+
+## Multi-environment board federation
+
+Platform teams expose one board per environment (`board.prod.internal`, `board.staging.internal`) with color-coded titles — prevents retrying staging job against prod Redis because engineer bookmarked wrong URL. Never federate prod and staging queues in single board instance — one mis-click retries prod failed jobs.
+
+## Board timeout on million-job queues
+
+Completed job retention without cleanup fills Redis and makes Bull Board pagination timeout. Set `removeOnComplete: { count: 1000 }` and `removeOnFail: { count: 5000 }` at queue level — board stays responsive; metrics remain in Prometheus for historical depth.
+
+## Incident runbook: stalled job spike
+
+1. Check worker pod restarts and CPU throttling. 2. Check Redis latency (`INFO latency`). 3. Sample stalled job IDs — same job class? 4. Deploy fix; use board to retry failed only, not bulk active. 5. Post-incident: add stall alert if missing.
+
+## Board behind Cloudflare Access
+
+Zero-trust access policies gate `/admin/queues` by identity — audit log of who retried which job ID satisfies SOC2 change management without building custom auth middleware. Pair with IP allowlist for defense in depth.
+
+## Custom job filters in Bull Board 5.x
+
+Filter UI by queue state and job name substring — train on-call to filter `failedReason: ECONNREFUSED` before bulk retry after network fix. Reduces accidental retry of genuinely bad payloads mixed in failed set.
+
+## Redis Cluster and Bull Board
+
+Cluster mode requires hash tag in prefix `{bull:prod}` so related keys colocate — board and workers must use identical tagged prefix or jobs appear missing. Document hash tag in infrastructure terraform next to Redis cluster module.
+
+## Docker Compose local board setup
+
+Developers run Bull Board against local Redis with docker-compose service — same `REDIS_HOST=redis` as worker service prevents "works locally, empty board in CI" when CI uses different hostname. Commit compose file to repo as canonical dev topology.
+
+## Audit log for board actions
+
+Proxy logs POST body job ID and authenticated user email to SIEM — compliance asks who retried payment webhook job ID 8842 during incident. Read-only board for most engineers; retry role limited to platform on-call group.
+Treat Board access like production DB access: SSO, audit logs, and no public ingress. Job payloads are a PII surface even when the UI feels like an internal toy.

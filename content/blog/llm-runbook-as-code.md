@@ -1,111 +1,289 @@
 ---
 title: "Runbook As Code"
 slug: "llm-runbook-as-code"
-description: "Runbook As Code: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2026-03-21"
-dateModified: "2026-03-21"
-tags: ["AI", "Llm", "Runbook"]
-keywords: "llm, runbook, as, code, ai, production, engineering, architecture"
+description: "Runbook-as-code for AI agent operations — executable incident steps, versioned remediation in git, parameterized playbooks, and game-day tests that keep LLM outages boring."
+datePublished: "2026-03-22"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "runbook as code, executable runbooks, incident automation, Rundeck, Temporal workflows, AI ops, LLM incident response, game day drills"
 faq:
-  - q: "What is Runbook As Code?"
-    a: "Runbook As Code covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Runbook As Code?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Runbook As Code?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Runbook As Code fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Runbook As Code should be observable in production and safe to change in small diffs."
+  - q: "What makes a runbook 'as code' instead of a wiki page?"
+    a: "The steps are executable artifacts in version control — scripts, workflow definitions, or parameterized job specs — with the same review, testing, and rollback expectations as application code. Prose explains intent; code performs the action."
+  - q: "Which agent incidents benefit most from runbook-as-code?"
+    a: "Repeatable mitigations: disabling a toxic tool, rolling back a prompt version, draining a bad model endpoint, purging poisoned RAG index segments, and scaling inference replicas. If you have done it twice manually at 2 AM, codify it."
+  - q: "How do you keep runbooks from becoming dangerous automation?"
+    a: "Require explicit parameters (tenant ID, model version), dry-run mode, approval gates for destructive steps, and idempotent operations. Runbooks should default to read-only diagnostics; write actions need confirmation or break-glass roles."
+  - q: "How often should runbooks be tested?"
+    a: "Quarterly game days for Tier-1 agent paths, plus CI smoke tests that execute diagnostic-only runbooks against staging. Any runbook not executed in six months gets archived or refreshed — stale steps are worse than no runbook."
 ---
-Runbook As Code is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The PagerDuty alert said `agent_completion_p99 > 12s`. The on-call engineer opened the wiki, searched "LLM latency," and found a runbook last edited fourteen months ago. Step 4 said "restart the inference pod." Step 7 referenced a Grafana dashboard that no longer existed. Step 9 said "ask Sarah." Sarah left the company in 2024.
 
-When runbook as code is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Forty minutes later the team had manually rolled back a prompt template — the correct fix — but only after someone remembered the change from a Slack thread.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Wiki runbooks decay. Agent systems change weekly: models, tools, retrieval indices, rate limits. Runbook-as-code treats operational knowledge like software — versioned, tested, reviewable, and executable under stress.
 
-Solid AI engineering turns runbook as code from a recurring argument into a documented pattern with tests and an owner.
+## Why wikis fail for agent incidents
 
-## Design principles that survive production
+Agent outages have distinctive shapes:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm runbook as code bugs hide.
+- **Provider degradation** — OpenAI/Anthropic latency spikes; your app queues explode
+- **Prompt regression** — a merged JSON template doubles token usage
+- **RAG poisoning** — bad chunk sync causes confident wrong answers
+- **Tool cascade** — CRM API 429s trigger agent retry storms
+- **Cost runaway** — runaway loop calling expensive tools
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for runbook as code, you do not yet understand the behavior you shipped.
+Each mitigation is a sequence of **known commands**: flip feature flag, drain queue, pin model version, invalidate cache key pattern. Wikis describe these in prose humans must interpret. Runbooks-as-code run them with typed parameters and guardrails.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Anatomy of a runbook repository
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm runbook as code flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for runbook as code in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm runbook as code changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Runbook As Code: typed boundary + structured errors
-export async function handleRunbookAsCode(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-runbook-as-code");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+I structure agent ops repos like this:
 
 ```
+runbooks/
+  README.md                    # index + severity routing
+  lib/
+    kubectl_helpers.sh
+    llm_provider.py
+  diagnostics/
+    agent-trace-sample.yaml    # read-only
+    rag-index-health.yaml
+  mitigations/
+    rollback-prompt-version.yaml
+    disable-agent-tool.yaml
+    drain-inference-queue.yaml
+  game-days/
+    2026-q1-provider-outage.md
+```
 
+Each runbook YAML specifies inputs, steps, rollback, and ownership — not a Markdown essay.
 
-## Operational concerns
+## Runbook spec: machine-readable steps
 
-Game-day exercises for runbook as code beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+```yaml
+# mitigations/rollback-prompt-version.yaml
+apiVersion: runbooks.agent/v1
+kind: Runbook
+metadata:
+  name: rollback-prompt-version
+  owner: team-agent-platform
+  severity: [SEV2, SEV3]
+  tags: [prompts, latency, quality]
+description: >
+  Pin agent system prompt to last known-good version from object storage.
+inputs:
+  agent_id:
+    type: string
+    required: true
+    description: Agent identifier in config service
+  target_version:
+    type: string
+    required: false
+    description: Semver; defaults to previous production version
+  dry_run:
+    type: boolean
+    default: true
+steps:
+  - id: fetch-current
+    run: python lib/prompt_admin.py get --agent-id ${agent_id} --json
+    save: current
+  - id: resolve-target
+    run: python lib/prompt_admin.py resolve-previous --agent-id ${agent_id}
+    when: ${target_version} == ""
+    save: target
+  - id: apply
+    run: python lib/prompt_admin.py set --agent-id ${agent_id} --version ${target_version || target.version} --dry-run ${dry_run}
+  - id: verify
+    run: python lib/prompt_admin.py eval-smoke --agent-id ${agent_id}
+    unless: ${dry_run} == true
+rollback:
+  - run: python lib/prompt_admin.py set --agent-id ${agent_id} --version ${current.version}
+```
 
-Production llm runbook as code work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Reviewers see diffs in git. CI validates schema and runs dry-run against staging.
 
-Rollouts for runbook as code benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+## Executors: Rundeck, Temporal, or plain Make
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Pick an executor matching your maturity:
 
-## Security and compliance angles
+**Make / shell** — smallest start; good for teams already living in terminals
 
-Even when runbook as code is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```makefile
+# Makefile excerpt
+rollback-prompt:
+	@test -n "$(AGENT_ID)" || (echo "AGENT_ID required" && exit 1)
+	python lib/prompt_admin.py set --agent-id $(AGENT_ID) \
+	  --version $(or $(VERSION),$$(python lib/prompt_admin.py resolve-previous --agent-id $(AGENT_ID))) \
+	  --dry-run $(or $(DRY_RUN),true)
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm runbook as code so security reviews do not rely on tribal knowledge.
+**Rundeck / StackStorm** — RBAC, audit logs, web UI for on-call without kubectl access
 
-## Testing strategy
+**Temporal / Argo Workflows** — long-running remediations with automatic retry and saga compensation
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that runbook as code depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+For agent incidents, I favor **read diagnostics in Rundeck, write mitigations in Temporal** when steps span multiple services with wait conditions.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Example Temporal workflow fragment for disabling a runaway tool:
 
-## Migration and evolution
+```python
+@workflow.defn
+class DisableAgentTool:
+    @workflow.run
+    async def run(self, agent_id: str, tool_name: str, actor: str) -> str:
+        config_before = await workflow.execute_activity(
+            snapshot_agent_config,
+            agent_id,
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+        await workflow.execute_activity(
+            patch_agent_config,
+            args=[agent_id, {"tools": {"deny": [tool_name]}}],
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+        await workflow.execute_activity(
+            notify_slack,
+            f"{actor} disabled {tool_name} on {agent_id}",
+            start_to_close_timeout=timedelta(seconds=15),
+        )
+        return config_before  # stored for rollback workflow
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm runbook as code functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Linking alerts to runbooks
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where runbook as code spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Alerts should deep-link to a runbook ID, not a wiki space:
 
-## Related concepts
+```yaml
+# alertmanager/agent-p99-latency.yaml
+- alert: AgentCompletionP99High
+  expr: histogram_quantile(0.99, rate(agent_completion_duration_seconds_bucket[5m])) > 12
+  for: 10m
+  labels:
+    severity: sev2
+    runbook: rollback-prompt-version
+  annotations:
+    summary: "Agent {{ $labels.agent_id }} P99 latency elevated"
+    runbook_url: "https://runbooks.internal/agents/rollback-prompt-version?agent_id={{ $labels.agent_id }}"
+```
 
-Runbook As Code intersects with broader ai topics — see companion notes on [llm-runbook patterns](https://blog.michaelsam94.com/llm-runbook/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+On-call clicks through with parameters prefilled. No searching.
 
-## The takeaway
+## Agent-specific runbooks worth writing first
 
-Runbook As Code rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm runbook as code becomes a maintainable asset instead of incident fuel.
+If you are starting from zero, codify these five before exotic scenarios:
+
+1. **Sample production traces** — pull last N traces for agent_id + error class
+2. **Pin / rollback model version** — switch routing weight in inference gateway
+3. **Disable single tool** — patch config deny list without full agent shutdown
+4. **Purge RAG collection segment** — delete by source URI pattern after bad sync
+5. **Enable safe mode** — respond with static fallback, no tools, 503 on writes
+
+```bash
+#!/usr/bin/env bash
+# diagnostics/agent-trace-sample.sh
+set -euo pipefail
+AGENT_ID="${1:?agent id required}"
+LIMIT="${2:-20}"
+curl -s -H "Authorization: Bearer ${OPS_TOKEN}" \
+  "https://trace-api.internal/v1/agents/${AGENT_ID}/traces?status=error&limit=${LIMIT}" \
+  | jq '[.traces[] | {id, error, tools: [.steps[].tool_name], latency_ms}]'
+```
+
+## Safety rails on write actions
+
+Runbooks that mutate production need:
+
+- **Dry-run default** — first execution prints diff only
+- **Break-glass role** — `ops-break-glass` MFA session for write mode
+- **Blast radius params** — max percentage of traffic affected
+- **Automatic rollback timer** — if eval smoke fails post-change, revert
+
+```python
+def patch_agent_config(agent_id: str, patch: dict, dry_run: bool = True) -> dict:
+    current = config_service.get(agent_id)
+    merged = deep_merge(current, patch)
+    diff = json_diff(current, merged)
+    if dry_run:
+        return {"dry_run": True, "diff": diff}
+    if not auth.has_role("ops-break-glass"):
+        raise PermissionError("write runbooks require break-glass role")
+    config_service.set(agent_id, merged, audit={"runbook": ctx.runbook_id})
+    return {"applied": True, "diff": diff}
+```
+
+## Testing runbooks in CI and game days
+
+**CI smoke** — run diagnostic runbooks against staging on every merge to `runbooks/`:
+
+```yaml
+# .github/workflows/runbook-smoke.yml
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r runbooks/requirements.txt
+      - run: make -C runbooks agent-trace-sample AGENT_ID=staging-support DRY_RUN=true
+      - run: python runbooks/ci/validate_schemas.py
+```
+
+**Game days** — inject provider latency, prompt bug, or RAG bad chunk in staging; on-call executes runbooks under time pressure; debrief updates steps.
+
+Measure **time-to-mitigate** per scenario quarter over quarter. That metric matters more than runbook page count.
+
+## Documentation that stays in sync
+
+Keep one paragraph of human context at the top of each YAML — **why this runbook exists, when not to use it**. Everything else should be executable or deleted.
+
+Anti-pattern: 800-word narrative with copy-paste commands. That duplicates the wiki problem inside git.
+
+Good pattern:
+
+```yaml
+description: |
+  Use when P99 latency spikes after a prompt deploy but provider dashboards are green.
+  Do NOT use for CRM 429 errors — see drain-tool-retries runbook instead.
+```
+
+## Observability for runbook executions
+
+Treat runbook runs as first-class events — same as deploys:
+
+```python
+def emit_runbook_metric(runbook_id: str, status: str, duration_ms: int, dry_run: bool):
+    statsd.increment("runbook.execution", tags=[
+        f"runbook:{runbook_id}",
+        f"status:{status}",
+        f"dry_run:{dry_run}",
+    ])
+    statsd.histogram("runbook.duration_ms", duration_ms, tags=[f"runbook:{runbook_id}"])
+```
+
+Dashboard panels worth building:
+
+- Executions per runbook (detect runbooks nobody uses)
+- Failure rate by step ID (identify brittle commands)
+- Median time-to-complete vs game-day targets
+- Ratio of dry-run to live executions (on-call should dry-run first during ambiguous pages)
+
+Correlate runbook executions with agent SLO recovery timestamps. If `rollback-prompt-version` runs but P99 stays elevated, the runbook is stale or the diagnosis was wrong — update the alert routing, not just the agent code.
+
+## Ownership and deprecation
+
+Every runbook has `owner` in metadata. Quarterly bot opens issues for runbooks with no execution logs in 180 days. Owners either refresh or archive.
+
+When agents are decommissioned, delete their runbooks in the same PR that removes production config. Orphan runbooks cause panic clicks during unrelated incidents.
+
+## Closing thought
+
+The goal is not automation for its own sake. The goal is that a tired engineer at 2 AM performs the same correct sequence a well-rested team would choose at 2 PM — without relying on memory, Slack archaeology, or Sarah.
+
+Put the steps in git. Test them. Link them from alerts. Agent incidents will still happen; they do not have to be adventures.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Google SRE: Managing Incidents (Chapter 14)](https://sre.google/sre-book/managing-incidents/)
+- [Rundeck Runbook Automation documentation](https://docs.rundeck.com/docs/manual/runbooks/)
+- [Temporal.io documentation — workflows as code](https://docs.temporal.io/workflows)
+- [PagerDuty Runbook documentation best practices](https://support.pagerduty.com/docs/runbooks)
+- [AWS Well-Architected Operational Excellence pillar](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/welcome.html)

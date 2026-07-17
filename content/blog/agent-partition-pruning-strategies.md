@@ -1,111 +1,276 @@
 ---
 title: "AI Agents: Partition Pruning Strategies"
 slug: "agent-partition-pruning-strategies"
-description: "Partition Pruning Strategies: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Partition pruning keeps agent telemetry and conversation log queries fast by teaching the planner which time and tenant slices to skip — declarative keys, constraint exclusion, and ORM-safe patterns."
 datePublished: "2024-12-06"
 dateModified: "2024-12-06"
 tags: ["AI", "Agent", "Partition"]
-keywords: "agent, partition, pruning, strategies, ai, production, engineering, architecture"
+keywords: "partition pruning PostgreSQL, declarative partitioning, agent conversation logs, constraint exclusion, time series agent telemetry, partition key design"
 faq:
-  - q: "What is Partition Pruning Strategies?"
-    a: "Partition Pruning Strategies covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Partition Pruning Strategies?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Partition Pruning Strategies?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Partition Pruning Strategies fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Partition Pruning Strategies should be observable in production and safe to change in small diffs."
+  - q: "What is partition pruning in database queries?"
+    a: "Partition pruning is when the query planner skips scanning partitions whose bounds cannot contain matching rows — typically because the WHERE clause filters on the partition key (date range, tenant_id). Fewer partitions scanned means lower I/O and more predictable latency on large agent log tables."
+  - q: "Which partition key works best for agent conversation logs?"
+    a: "Composite (tenant_id, event_date) or (tenant_id, month) is common: most agent dashboards query one tenant over a recent time window. Pure time partitioning works for single-tenant installs; pure tenant partitioning creates uneven shard sizes when one customer dominates traffic."
+  - q: "Why do ORMs often defeat partition pruning?"
+    a: "Wrapping partition key columns in functions — `WHERE date(created_at) = '2024-11-01'` — or using open-ended OR conditions prevents compile-time pruning. ORMs also emit queries without partition key predicates when pagination abstractions hide the filter."
+  - q: "How does partition pruning differ from partial indexes?"
+    a: "Pruning eliminates whole physical partitions at plan time. Partial indexes filter rows inside one table. Pruning helps retention and bulk drops; partial indexes help selective hot-row lookups. Agent stacks usually need both on different tables."
 ---
-Partition Pruning Strategies sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The on-call page fired because the agent analytics dashboard timed out. Postgres was not melting — it was obediently scanning eighteen months of `agent_events` child partitions because a well-meaning intern removed the date filter to "show all history by default." Eighty-seven partitions, 400 ms each, users staring at a spinner. The table was partitioned correctly. The queries were not pruning.
 
-When partition pruning strategies is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Partition pruning is the planner behavior that makes partitioning worth the operational tax. For agent platforms storing run logs, tool traces, and token meters, pruning is the difference between sub-second dashboards and sequential scans dressed in enterprise clothing.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why agent telemetry outgrows single tables
 
-Solid AI engineering turns partition pruning strategies from a recurring argument into a documented pattern with tests and an owner.
+Order-of-magnitude math: 500 agents × 40 events per run × 200 runs per day ≈ 4 million rows daily. Indexes grow linearly; autovacuum fights widen; BRIN and partial indexes help but retention policies still need to drop old data without `DELETE` locking the world.
 
-## Design principles that survive production
+Declarative partitioning in PostgreSQL splits one logical table into child tables bound by range or list keys. Pruning lets `WHERE event_time >= '2025-07-01'` touch July partitions only.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent partition pruning strategies bugs hide.
+## Partition layout for multi-tenant agents
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for partition pruning strategies, you do not yet understand the behavior you shipped.
+```sql
+CREATE TABLE agent_events (
+  id          bigserial,
+  tenant_id   text NOT NULL,
+  session_id  text NOT NULL,
+  event_time  timestamptz NOT NULL,
+  event_type  text NOT NULL,
+  payload     jsonb NOT NULL
+) PARTITION BY RANGE (event_time);
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+CREATE TABLE agent_events_2025_07 PARTITION OF agent_events
+  FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent partition pruning strategies flows so duplicates are harmless or detectable.
+CREATE TABLE agent_events_2025_08 PARTITION OF agent_events
+  FOR VALUES FROM ('2025-08-01') TO ('2025-09-01');
 
-## Implementation patterns
-
-A practical baseline for partition pruning strategies in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent partition pruning strategies changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Partition Pruning Strategies: typed boundary + structured errors
-export async function handlePartitionPruningStrategies(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-partition-pruning-strategies");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+-- Per-partition indexes stay small
+CREATE INDEX ON agent_events_2025_07 (tenant_id, session_id);
+CREATE INDEX ON agent_events_2025_07 (tenant_id, event_type, event_time DESC);
 ```
 
+Automate child creation with `pg_partman` or a cron job that creates next month's partition before the first event arrives — inserting into a missing partition fails hard.
 
-## Operational concerns
+### Tenant-heavy skew
 
-Runbooks for partition pruning strategies should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+When one tenant generates 60% of events, range-only partitioning creates hot partitions. Options:
 
-Production agent partition pruning strategies work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+1. **Sub-partition by list(tenant_id)** for whale tenants — advanced, operational overhead high
+2. **Separate tablespace** for large tenants — storage isolation, same pruning rules
+3. **Keep range partitioning** but accept skew; optimize queries with `(tenant_id, event_time)` indexes inside each month
 
-Rollouts for partition pruning strategies benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Most B2B agent products fit option 3 until a single customer forces option 1.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Static pruning vs constraint exclusion
 
-## Security and compliance angles
+**Static pruning** happens at plan time when predicates match partition bounds literally:
 
-Even when partition pruning strategies is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+EXPLAIN SELECT count(*)
+FROM agent_events
+WHERE event_time >= '2025-07-10'
+  AND event_time <  '2025-07-11'
+  AND tenant_id = 'tenant_acme';
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent partition pruning strategies so security reviews do not rely on tribal knowledge.
+Expected plan fragment:
 
-## Testing strategy
+```
+Append
+  ->  Index Scan on agent_events_2025_07
+        Index Cond: ((tenant_id = 'tenant_acme') AND ...)
+Partitions pruned: 11 of 12
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that partition pruning strategies depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Constraint exclusion** (legacy inheritance) still appears in older stacks; declarative partitioning replaced most use cases in PostgreSQL 11+. Ensure `enable_partition_pruning = on` (default since PG 12).
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Query patterns that prune reliably
 
-## Migration and evolution
+### Dashboard: recent runs for one tenant
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent partition pruning strategies functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```sql
+SELECT session_id, max(event_time) AS last_seen
+FROM agent_events
+WHERE tenant_id = $1
+  AND event_time >= now() - interval '7 days'
+GROUP BY session_id
+ORDER BY last_seen DESC
+LIMIT 50;
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where partition pruning strategies spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Prunes to current month partition plus maybe previous month if the 7-day window crosses boundary — two partitions, not twelve.
 
-## Related concepts
+### Session replay: bounded time window
 
-Partition Pruning Strategies intersects with broader ai topics — see companion notes on [agent-partition patterns](https://blog.michaelsam94.com/agent-partition/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Always require session_id **and** a time hint from session metadata:
 
-## The takeaway
+```sql
+SELECT event_type, payload, event_time
+FROM agent_events
+WHERE tenant_id = $1
+  AND session_id = $2
+  AND event_time BETWEEN $3 AND $4  -- session start/end from sessions table
+ORDER BY event_time;
+```
 
-Partition Pruning Strategies rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent partition pruning strategies becomes a maintainable asset instead of incident fuel.
+Without `$3/$4`, Postgres may scan all partitions for that session_id if session IDs are not time-sortable UUIDs.
+
+### Aggregates: push filters inside CTEs
+
+```sql
+WITH daily AS (
+  SELECT date_trunc('day', event_time) AS day, sum((payload->>'tokens')::int) AS tokens
+  FROM agent_events
+  WHERE tenant_id = $1
+    AND event_time >= $2
+    AND event_time <  $3
+  GROUP BY 1
+)
+SELECT * FROM daily ORDER BY day;
+```
+
+Avoid wrapping `event_time` in `date_trunc` in the WHERE clause — that kills compile-time pruning. Filter raw timestamps first, truncate in SELECT.
+
+## Application-layer guardrails
+
+TypeScript repository wrapper that refuses unbounded scans:
+
+```typescript
+type AgentEventQuery = {
+  tenantId: string;
+  from: Date;
+  to: Date;
+  sessionId?: string;
+};
+
+export async function fetchEvents(db: Pool, q: AgentEventQuery) {
+  const spanDays = (q.to.getTime() - q.from.getTime()) / 86_400_000;
+  if (spanDays > 31) {
+    throw new Error("agent_events query exceeds 31-day partition window");
+  }
+  if (q.to <= q.from) {
+    throw new Error("invalid time range");
+  }
+
+  const sql = `
+    SELECT event_type, payload, event_time
+    FROM agent_events
+    WHERE tenant_id = $1
+      AND event_time >= $2
+      AND event_time <  $3
+      ${q.sessionId ? "AND session_id = $4" : ""}
+    ORDER BY event_time
+  `;
+  const params = q.sessionId
+    ? [q.tenantId, q.from, q.to, q.sessionId]
+    : [q.tenantId, q.from, q.to];
+
+  return db.query(sql, params);
+}
+```
+
+Hard limits feel rude until they prevent an outage. Expose "export all history" as an async batch job scanning partitions sequentially with cursor pagination, not an interactive API.
+
+## ORM patterns that break pruning
+
+| Generated SQL | Pruning? |
+|---------------|----------|
+| `event_time >= ? AND event_time < ?` | Yes |
+| `date(event_time) = ?` | Often no |
+| `event_time BETWEEN ? AND ? OR tenant_id IS NULL` | Unpredictable |
+| Missing time filter entirely | No — full scan |
+
+SQLAlchemy example with explicit bounds:
+
+```python
+def events_for_tenant(session, tenant_id: str, start: datetime, end: datetime):
+    if (end - start).days > 31:
+        raise ValueError("range too wide")
+    return (
+        session.query(AgentEvent)
+        .filter(
+            AgentEvent.tenant_id == tenant_id,
+            AgentEvent.event_time >= start,
+            AgentEvent.event_time < end,
+        )
+        .order_by(AgentEvent.event_time)
+        .all()
+    )
+```
+
+Use `union_all` across known partition names only in ETL tools — never in request-path ORM code.
+
+## Retention and partition lifecycle
+
+Pruning helps reads; **DETACH/DROP** helps storage:
+
+```sql
+-- Archive July after billing close
+ALTER TABLE agent_events DETACH PARTITION agent_events_2025_07;
+-- Move to cold storage or drop
+DROP TABLE agent_events_2025_07;
+```
+
+Agent compliance often requires 90-day hot retention, 7-year cold archive. Detached partitions export to Parquet in object storage cheaper than keeping them in primary Postgres.
+
+Schedule drops during low traffic; even DETACH takes an exclusive lock momentarily on parent metadata.
+
+## Cross-partition queries for admin
+
+Internal support tools sometimes need "find session X anywhere." Two strategies:
+
+1. **Lookup table** mapping `session_id → partition_month` at session creation — O(1) partition targeting
+2. **Sequential partition scan** with statement timeout — acceptable for rare admin ops, not user APIs
+
+We stored `partition_month` on `agent_sessions` populated at insert:
+
+```sql
+ALTER TABLE agent_sessions ADD COLUMN log_partition date;
+
+UPDATE agent_sessions SET log_partition = date_trunc('month', created_at)::date;
+```
+
+Replay queries join session metadata for the partition hint:
+
+```sql
+SELECT e.*
+FROM agent_sessions s
+JOIN agent_events e ON e.session_id = s.id
+  AND e.event_time >= s.log_partition
+  AND e.event_time <  s.log_partition + interval '1 month'
+WHERE s.id = $1;
+```
+
+Pruning becomes exact even for UUID session IDs.
+
+## Monitoring pruning effectiveness
+
+Log `EXPLAIN` plans in staging for every new analytics query. In production, track:
+
+- `pg_stat_user_tables.n_tup_ins` per child partition — detect missing future partitions
+- Query latency vs partition count — slope should stay flat as history grows
+- `Partitions pruned` count from auto_explain samples
+
+Enable `auto_explain.log_min_duration = 1000` temporarily after schema changes.
+
+## When not to partition
+
+Skip partitioning if:
+
+- Total row count stays under ~50 million with comfortable index size
+- Queries routinely span entire history without natural time bounds
+- Team lacks automation for child partition creation
+
+A massive single table with BRIN on `event_time` and aggressive partial indexes may outperform immature partitioning where someone forgets to create next month's child at 00:00 UTC.
+
+## Summary
+
+Partition pruning is not a feature you enable once — it is a contract between schema, query authors, and application APIs. Agent telemetry tables grow without sympathy for dashboard deadlines. Range-partition by time, always filter on the partition key in request-path SQL, store partition hints on session records for replay, and treat unbounded ORM queries as production hazards. Pruning turns partitioning from a storage gimmick into predictable query latency as your agent fleet scales.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL declarative partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)
+- [PostgreSQL partition pruning details](https://www.postgresql.org/docs/current/ddl-partitioning.html#DDL-PARTITION-PRUNING)
+- [pg_partman extension](https://github.com/pgpartman/pg_partman)
+- [Timescale hypertables for time-series agent metrics](https://docs.timescale.com/use-timescale/latest/hypertables/)
+- [PostgreSQL auto_explain module](https://www.postgresql.org/docs/current/auto-explain.html)

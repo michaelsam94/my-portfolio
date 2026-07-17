@@ -3,8 +3,8 @@ title: "The Strangler Fig Migration"
 slug: "microservices-strangler-fig-migration"
 description: "Migrate monoliths to microservices incrementally with the strangler fig pattern: routing layers, feature flags, and risk-controlled extraction."
 datePublished: "2025-06-21"
-dateModified: "2025-06-21"
-tags: ["BE", "Microservices", "Migration", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "strangler fig pattern, monolith to microservices migration, incremental migration, legacy system modernization, anti-corruption layer, monolith decomposition"
 faq:
   - q: "How long does a strangler fig migration typically take?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I prevent the monolith and new services from diverging?"
     a: "Use an anti-corruption layer at each extraction boundary to translate between the monolith's data model and the new service's model. Share nothing — no shared database tables, no shared libraries with domain logic. Sync data via events, not direct queries."
 ---
-
 The board approved microservices. Engineering estimated 18 months for a full rewrite. Twelve months in, the rewrite is 40% done, the monolith still runs production, and now you maintain two systems with duplicated logic and diverging data models.
 
 The strangler fig pattern avoids this. Named after the tropical fig that grows around a host tree and eventually replaces it, the pattern wraps the monolith with a routing layer and incrementally redirects traffic to new services — one bounded context at a time. The monolith shrinks until nothing remains.
@@ -167,30 +166,6 @@ API Gateway → legacy monolith (default)
 
 Migrate route-by-route. Shared database initially — extract schema last. Feature flags control traffic split per route.
 
-## Common production mistakes
-
-Teams get strangler fig migration wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of strangler fig migration fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
-## Debugging and triage workflow
-
-When strangler fig migration misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
-
 ## Resources
 
 - [Martin Fowler: Strangler Fig Application](https://martinfowler.com/bliki/StranglerFigApplication.html)
@@ -198,3 +173,34 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Anti-Corruption Layer pattern (Microsoft)](https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer)
 - [Feature flags for migration (LaunchDarkly)](https://docs.launchdarkly.com/
 - [Domain-Driven Design by Eric Evans](https://www.domainlanguage.com/ddd/)
+
+## Production notes for LLM stacks
+
+When `microservices-strangler-fig-migration` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `the strangler fig migration` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Production notes for LLM stacks
+
+When `microservices-strangler-fig-migration` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `the strangler fig migration` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+
+For `microservices-strangler-fig-migration`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.

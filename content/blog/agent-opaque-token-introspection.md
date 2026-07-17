@@ -1,111 +1,233 @@
 ---
 title: "AI Agents: Opaque Token Introspection"
 slug: "agent-opaque-token-introspection"
-description: "Opaque Token Introspection: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "How agent gateways validate opaque OAuth2 access tokens via RFC 7662 introspection — caching, audience checks, revocation latency, and fail-closed middleware without parsing JWT claims locally."
 datePublished: "2025-09-24"
 dateModified: "2025-09-24"
-tags: ["AI", "Agent", "Opaque"]
-keywords: "agent, opaque, token, introspection, ai, production, engineering, architecture"
+tags: ["AI Agents", "OAuth2", "Security", "Authentication"]
+keywords: "opaque token introspection, RFC 7662, OAuth2 agent gateway, token validation cache, authorization server introspection endpoint"
 faq:
-  - q: "What is Opaque Token Introspection?"
-    a: "Opaque Token Introspection covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Opaque Token Introspection?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Opaque Token Introspection?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Opaque Token Introspection fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Opaque Token Introspection should be observable in production and safe to change in small diffs."
+  - q: "When should an agent platform use opaque tokens instead of JWTs?"
+    a: "Choose opaque tokens when you need immediate server-side revocation, short-lived sessions with centralized policy, or when embedding claims in a JWT would leak tenant metadata to clients. Agent orchestrators that call third-party APIs on behalf of users often receive opaque tokens from enterprise IdPs — introspection is the only validation path."
+  - q: "What does RFC 7662 introspection return?"
+    a: "A JSON object with `active` (boolean), and when active: `scope`, `client_id`, `username`, `sub`, `exp`, `iat`, `aud`, and custom claims your authorization server attaches. Inactive tokens return `{ \"active\": false }` with HTTP 200 — not 401."
+  - q: "How do you cache introspection without serving revoked tokens?"
+    a: "Cache positive results keyed by token hash with TTL capped at min(remaining token lifetime, your max cache window — typically 30–60 seconds). Never cache `active: false`. On logout or admin revocation webhooks, purge cache entries by `sub` or `jti` if your IdP exposes them."
+  - q: "Should introspection failures fail open or closed?"
+    a: "Fail closed for agent tool execution — an agent that cannot prove caller identity must not invoke side-effecting tools. Fail open only for read-only telemetry with explicit feature flags, and never for billing, deployment, or data-deletion paths."
 ---
-Opaque Token Introspection is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When opaque token introspection is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+A support engineer once traced a phantom refund to an agent run that executed forty minutes after the user clicked Sign Out. The access token looked valid in application logs — because the gateway cached a positive introspection result for five minutes while the authorization server had already marked the session inactive. Opaque tokens hide their payload; introspection is how you learn whether a bearer string still represents an authorized principal. Get caching, audience binding, or error handling wrong and your agent platform becomes a pipeline that executes tools for ghosts.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What opaque tokens actually are
 
-Solid AI engineering turns opaque token introspection from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent opaque token introspection bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for opaque token introspection, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent opaque token introspection flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for opaque token introspection in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent opaque token introspection changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Opaque Token Introspection: typed boundary + structured errors
-export async function handleOpaqueTokenIntrospection(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-opaque-token-introspection");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+An opaque access token is an uninterpretable reference — often a random 256-bit value — issued by an authorization server (Auth0, Okta, Keycloak, Azure AD, a homegrown OAuth2 deployment). Resource servers cannot validate it locally the way they decode a JWT and verify a signature against a JWKS endpoint. They must call the introspection endpoint:
 
 ```
+POST /oauth/introspect
+Authorization: Basic <client_id:client_secret>
+Content-Type: application/x-www-form-urlencoded
 
+token=<access_token>&token_type_hint=access_token
+```
 
-## Operational concerns
+The response tells you whether the token is **active** and, if so, which scopes, subject, audience, and expiry apply. For agent platforms, that subject maps to the human or service account whose permissions constrain tool calls.
 
-Game-day exercises for opaque token introspection beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+JWT advocates will note introspection adds a network hop. That is the trade: centralized revocation beats local verification when sessions must die immediately after password reset, device loss, or SOC-mandated kill switches.
 
-Production agent opaque token introspection work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Where introspection sits in an agent gateway
 
-Rollouts for opaque token introspection benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```
+Client                Agent gateway              Auth server           Tool executor
+  │                        │                          │                      │
+  │  Bearer opaque token   │                          │                      │
+  │ ──────────────────────►│                          │                      │
+  │                        │  POST /introspect        │                      │
+  │                        │ ────────────────────────►│                      │
+  │                        │◄──────────────────────── │  { active, scope }   │
+  │                        │  bind sub → tool policy  │                      │
+  │                        │ ───────────────────────────────────────────────►│
+  │◄────────────────────── │  streamed response       │                      │
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Every inbound request to `/v1/agents/run` should introspect **once** at the edge middleware, attach normalized claims to request context, and never re-introspect on every internal microservice hop unless you lack a trusted internal identity layer.
 
-## Security and compliance angles
+## Reference middleware (Node.js)
 
-Even when opaque token introspection is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```typescript
+import { createHash } from "crypto";
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent opaque token introspection so security reviews do not rely on tribal knowledge.
+interface IntrospectionResult {
+  active: boolean;
+  sub?: string;
+  scope?: string;
+  aud?: string | string[];
+  exp?: number;
+  client_id?: string;
+}
 
-## Testing strategy
+const CACHE_TTL_MS = 45_000;
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that opaque token introspection depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+function tokenCacheKey(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+async function introspect(
+  token: string,
+  authServerUrl: string,
+  clientId: string,
+  clientSecret: string
+): Promise<IntrospectionResult> {
+  const body = new URLSearchParams({ token, token_type_hint: "access_token" });
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-## Migration and evolution
+  const res = await fetch(`${authServerUrl}/oauth/introspect`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+    signal: AbortSignal.timeout(2_000),
+  });
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent opaque token introspection functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+  if (!res.ok) {
+    throw new Error(`introspection_http_${res.status}`);
+  }
+  return res.json() as Promise<IntrospectionResult>;
+}
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where opaque token introspection spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+export function requireActiveToken(
+  cache: Map<string, { result: IntrospectionResult; expiresAt: number }>,
+  expectedAudience: string
+) {
+  return async (req: Request, ctx: { claims?: IntrospectionResult }) => {
+    const auth = req.headers.get("authorization");
+    if (!auth?.startsWith("Bearer ")) {
+      return Response.json({ error: "missing_token" }, { status: 401 });
+    }
+    const token = auth.slice(7);
+    const key = tokenCacheKey(token);
+    const now = Date.now();
 
-## Related concepts
+    let result = cache.get(key)?.expiresAt > now ? cache.get(key)!.result : undefined;
 
-Opaque Token Introspection intersects with broader ai topics — see companion notes on [agent-opaque patterns](https://blog.michaelsam94.com/agent-opaque/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+    if (!result) {
+      try {
+        result = await introspect(
+          token,
+          process.env.AUTH_SERVER_URL!,
+          process.env.INTROSPECT_CLIENT_ID!,
+          process.env.INTROSPECT_CLIENT_SECRET!
+        );
+      } catch {
+        // Fail closed — do not execute tools on auth uncertainty
+        return Response.json({ error: "introspection_unavailable" }, { status: 503 });
+      }
+      if (result.active) {
+        const ttl = Math.min(
+          CACHE_TTL_MS,
+          result.exp ? Math.max(0, result.exp * 1000 - now) : CACHE_TTL_MS
+        );
+        cache.set(key, { result, expiresAt: now + ttl });
+      }
+    }
 
-## The takeaway
+    if (!result.active) {
+      return Response.json({ error: "token_inactive" }, { status: 401 });
+    }
 
-Opaque Token Introspection rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent opaque token introspection becomes a maintainable asset instead of incident fuel.
+    const aud = result.aud;
+    const audiences = Array.isArray(aud) ? aud : aud ? [aud] : [];
+    if (audiences.length && !audiences.includes(expectedAudience)) {
+      return Response.json({ error: "wrong_audience" }, { status: 403 });
+    }
+
+    ctx.claims = result;
+    return null; // continue pipeline
+  };
+}
+```
+
+Three details easy to miss: hash tokens before using them as cache keys (never log raw bearer values), cap cache TTL by remaining `exp`, and validate `aud` against your agent API identifier — tokens valid for another resource server must not invoke your tools.
+
+## Scope-to-tool mapping
+
+Introspection tells you **who** and **what scopes**; your agent registry decides **which tools** those scopes unlock. Keep that mapping in version-controlled configuration, not scattered `if` statements:
+
+```yaml
+# tool-policy.yaml
+tools:
+  stripe.refund:
+    required_scopes: ["billing:write"]
+  github.merge_pr:
+    required_scopes: ["repos:write"]
+  slack.post_message:
+    required_scopes: ["chat:write"]
+```
+
+At runtime, split `scope` on spaces and require intersection with each tool's `required_scopes` before enqueueing execution. When product adds a destructive tool, you add a scope line — auditable in PR review.
+
+## Caching layers beyond process memory
+
+Single-node `Map` caches fail under horizontal scaling — each pod holds different state, and revocation takes longest on cold pods. Production setups use Redis with the same key scheme:
+
+```python
+import hashlib
+import json
+import redis
+
+r = redis.Redis.from_url("redis://cache:6379/0")
+
+def cache_get(token: str) -> dict | None:
+    key = "intro:" + hashlib.sha256(token.encode()).hexdigest()
+    raw = r.get(key)
+    return json.loads(raw) if raw else None
+
+def cache_set(token: str, payload: dict, ttl_sec: int) -> None:
+    if not payload.get("active"):
+        return  # never cache inactive
+    key = "intro:" + hashlib.sha256(token.encode()).hexdigest()
+    r.setex(key, ttl_sec, json.dumps(payload))
+
+def purge_subject(subject: str) -> None:
+    # Called from IdP logout webhook — maintain reverse index sub → keys if needed
+    for key in r.scan_iter(f"intro:sub:{subject}:*"):
+        r.delete(key)
+```
+
+Wire your IdP's session-revocation webhook (Okta `user.session.end`, Auth0 `guardian` events) to call `purge_subject`. Without that hook, cache TTL is your only revocation bound.
+
+## Operational failure modes
+
+| Symptom | Likely cause | Mitigation |
+|---------|--------------|------------|
+| 503 spikes on agent runs | Auth server slow/down | Circuit breaker; short negative cache forbidden; degrade read-only paths only |
+| Users stay "logged in" after logout | Cache TTL too long | Cap at 30s; webhook purge; never cache inactive |
+| Cross-tenant tool calls | Missing `aud` check | Bind audience at gateway; reject mismatched tokens |
+| Introspection storm at scale | Per-microservice calls | Introspect once at gateway; propagate signed internal identity |
+
+Instrument `introspection_latency_ms`, `introspection_cache_hit_ratio`, and `token_inactive_rejected_total`. Alert when cache hit ratio drops suddenly — often means token rotation or an attack spray of random bearer strings.
+
+## Introspection versus JWT local validation
+
+| Concern | Opaque + introspection | JWT + JWKS |
+|---------|------------------------|------------|
+| Revocation latency | Bounded by cache TTL + webhook purge | Until `exp`; denylist optional |
+| Network dependency | Per cache miss | JWKS fetch periodically |
+| Token size | Small reference | Larger; claims visible to client |
+| Custom claims | Auth server controlled | Embedded; rotation needs key mgmt |
+
+Hybrid stacks issue JWTs to first-party SPAs and opaque tokens to confidential agent clients — your gateway middleware should branch on token shape (`eyJ` prefix heuristic is insufficient; inspect `token_type` from introspection or use separate auth routes).
+
+## Closing note
+
+Opaque token introspection is not exotic OAuth trivia — it is the front door for enterprise agent deployments where security teams refuse client-visible JWT claims and demand instant session kill. Treat introspection as part of your availability story: timeout budgets, fail-closed semantics, audience enforcement, and cache invalidation wired to real logout events. The phantom refund incident ended with a forty-five-second cache cap and an Okta webhook that flushes Redis keys by `sub`. Boring changes; no more ghost agents.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [RFC 7662 — OAuth 2.0 Token Introspection](https://datatracker.ietf.org/doc/html/rfc7662)
+- [OAuth 2.0 Bearer Token Usage (RFC 6750)](https://datatracker.ietf.org/doc/html/rfc6750)
+- [Keycloak Token Introspection Endpoint](https://www.keycloak.org/docs/latest/securing_apps/#_token-introspection-endpoint)
+- [Auth0 Token Introspection](https://auth0.com/docs/secure/tokens/token-introspection)
+- [OWASP OAuth 2.0 Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html)

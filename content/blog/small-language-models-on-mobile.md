@@ -3,16 +3,17 @@ title: "Small Language Models on Mobile: The On-Device AI Shift"
 slug: "small-language-models-on-mobile"
 description: "Small language models and on-device AI for mobile apps: SLM sizing, Gemini Nano, llama.cpp on Android, and when cloud LLMs still win on latency and quality."
 datePublished: "2026-01-25"
-dateModified: "2026-01-25"
-tags: ["Mobile", "On-Device AI", "Android", "SLM"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "small language models, SLM, on-device AI, mobile LLM, Gemini Nano, edge AI"
 faq:
-  - q: "What is a small language model (SLM)?"
-    a: "A small language model is a compact LLM, typically in the 1-8 billion parameter range, designed to run efficiently on constrained hardware like phones and laptops. SLMs trade some raw capability for the ability to run locally with low latency, no network, and strong privacy."
-  - q: "Can phones really run language models locally?"
-    a: "Yes. Modern flagship phones run 1-4B parameter models on-device using dedicated NPUs and platform runtimes like Android's Gemini Nano and Apple's on-device foundation models. Quantization keeps memory and battery use manageable for tasks like summarization, rewriting, and classification."
-  - q: "When should mobile AI run on-device vs in the cloud?"
-    a: "Run on-device for privacy-sensitive, low-latency, or offline tasks that an SLM handles well — summarizing a message, suggesting a reply, classifying content. Route to the cloud for complex reasoning or long-context work that exceeds what a small on-device model can do reliably."
+  - q: "SLM vs cloud LLM?"
+    a: "SLMs trade capability for latency, offline use, and data staying on device."
+  - q: "Quantization?"
+    a: "INT4 shrinks size but test task-specific accuracy after quant."
+  - q: "Frameworks?"
+    a: "Core ML, TensorFlow Lite, ONNX Runtime Mobile — match to hardware delegates."
 ---
 
 The center of gravity in mobile AI is moving from the cloud to the device, and small language models are why. For a decade I've built Android and Flutter apps where every intelligent feature meant a network round-trip to a server. That assumption is breaking. A 1–4 billion parameter model now runs directly on a flagship phone's NPU, summarizing a thread or drafting a reply in a few hundred milliseconds, with the data never leaving the device.
@@ -76,6 +77,22 @@ After years of treating AI as a server-side concern, on-device SLMs pull it back
 
 My advice to teams: start by identifying the features that are simple enough for a small model *and* benefit from privacy, offline, or instant response. Those are where on-device SLMs win decisively today. Build them on the platform-managed runtime, budget memory and battery honestly, and keep a cloud fallback for the hard cases. The device in the user's pocket is now a capable inference machine — the shift is learning to treat it like one. If you're weighing where AI belongs in your mobile stack, [I'm happy to talk it through](https://michaelsam94.com/#contact).
 
+## Thermal throttling during on-device STT
+
+Ninety seconds continuous inference throttled mid-tier Android CPU 3×. Mitigation: chunk audio with breath gaps; prefer NPU delegate; offer cloud fallback with explicit consent when skin temp API signals pressure — users prefer slower correct transcript to device heat warning.
+
+## Thermal throttling during on-device STT
+
+Ninety seconds continuous inference throttled mid-tier Android CPU 3×. Mitigation: chunk audio with breath gaps; prefer NPU delegate; offer cloud fallback with explicit consent when skin temp API signals pressure — users prefer slower correct transcript to device heat warning.
+
+## Field metrics and rollback
+
+Capture baseline p75 error rate and latency on tier-1 routes before merge. Compare seven days post-deploy sliced by mobile and region. Document rollback in PR and runbook.
+
+## Notes on small language models on mobile
+
+Measure battery impact of inference on target devices over thirty minute session — thermal throttling changes latency. Quantize after fine-tune; evaluate perplexity on domain vocabulary, not generic benchmarks. Fallback to cloud when on-device confidence below threshold keeps quality acceptable.
+
 ## Resources
 
 - [Android — AICore and Gemini Nano](https://developer.android.com/ai/gemini-nano)
@@ -84,3 +101,7 @@ My advice to teams: start by identifying the features that are simple enough for
 - [Google — MediaPipe LLM Inference](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
 - [llama.cpp — GitHub](https://github.com/ggml-org/llama.cpp)
 - [Hugging Face — small models and edge deployment](https://huggingface.co/models)
+
+Benchmark on lowest supported device with thermal throttling, not M-series Macs.
+
+Ship small language models on mobile changes with a named owner, dashboard link, and rollback command in the runbook — operational readiness matters as much as the code diff.

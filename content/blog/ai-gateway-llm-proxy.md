@@ -96,6 +96,14 @@ There's also the observability payoff worth wiring in from day one: emit traces 
 
 You don't always have to build this. Mature open-source options (LiteLLM, Portkey's gateway, Kong's AI plugins, Cloudflare's AI Gateway) cover the common cases, and for most teams adopting one beats hand-rolling. I'd build only when you have unusual routing logic, strict data-residency needs, or want the gateway tightly fused with internal auth and billing. Either way, the architectural decision — *route LLM traffic through a central proxy* — is the win. The gateway turns a sprawl of direct provider calls into one governed, observable, swappable seam, and that seam is where cost control, resilience, and consistency all live.
 
+## Provider failover ordering
+
+Primary model outage failover should preserve tool schema compatibility — fallback model with different function-calling format breaks agents silently. Gateway maintains capability matrix per route; failover only to models with matching tool protocol version.
+
+## Cost attribution headers
+
+Pass `X-Tenant-Id` and `X-Feature-Id` through gateway to provider billing tags where supported. Finance reconciliation needs token usage by customer — aggregate at gateway, not per microservice ad hoc.
+
 ## Resources
 
 - [LiteLLM — LLM gateway and proxy](https://github.com/BerriAI/litellm)

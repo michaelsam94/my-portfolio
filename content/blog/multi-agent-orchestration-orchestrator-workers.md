@@ -3,8 +3,8 @@ title: "Multi-Agent Orchestration and the Orchestrator-Workers Pattern"
 slug: "multi-agent-orchestration-orchestrator-workers"
 description: "How the orchestrator-workers pattern makes multi-agent systems reliable: task decomposition, worker isolation, coordination, and when a single agent is the better call."
 datePublished: "2026-01-08"
-dateModified: "2026-01-08"
-tags: ["AI Agents", "Architecture", "Orchestration", "LLM"]
+dateModified: "2026-07-17"
+tags:
 keywords: "multi-agent systems, agent orchestration, orchestrator workers pattern, AI agents, agentic workflows, agent coordination"
 faq:
   - q: "What is the orchestrator-workers pattern?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do orchestrated agents avoid duplicating work?"
     a: "The orchestrator assigns each worker a clearly scoped subtask with explicit boundaries and passes only the context that worker needs. Clear task definitions and non-overlapping objectives are what prevent duplication, not clever prompting."
 ---
-
 The orchestrator-workers pattern is the most useful multi-agent design I've deployed, and also the one most often reached for when a single agent would do. The idea is simple: one **orchestrator** agent plans and decomposes a task, hands each subtask to a **worker** agent, and then combines the results. The orchestrator never does the detailed work itself — it delegates, coordinates, and synthesizes.
 
 Before reaching for it, be honest about whether you need it. Multi-agent systems trade simplicity and cost for parallelism and context isolation. If your task is a sequence of steps that fits in one context window, one well-equipped agent is faster to build and cheaper to run. The pattern earns its keep when a task splits into subtasks that are genuinely independent — the classic example being research, where five workers investigate five sources at once.
@@ -90,3 +89,17 @@ For everything else, invest in good tools and a solid [eval harness to measure a
 - [Anthropic — How we built our multi-agent research system](https://www.anthropic.com/engineering/built-multi-agent-research-system)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Google — Agent Development Kit](https://google.github.io/adk-docs/)
+
+## Production notes for LLM stacks
+
+When `multi-agent-orchestration-orchestrator-workers` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `multi-agent orchestration and the orchestrator-workers pattern` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

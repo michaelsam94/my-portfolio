@@ -3,23 +3,21 @@ title: "Apple Pay and Google Pay Button Placement"
 slug: "payments-ux-wallet-buttons-apple-google"
 description: "Wallet buttons above manual card entry — domain verification, express checkout, and mobile prominence."
 datePublished: "2026-11-08"
-dateModified: "2026-11-08"
+dateModified: "2026-07-17"
 tags: ["Payments", "UX", "Wallets"]
 keywords: "Apple Pay button placement, Google Pay checkout UX, wallet payment UX"
 faq:
-  - q: "What is Apple Pay and Google Pay Button Placement?"
-    a: "Apple Pay and Google Pay Button Placement is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Apple Pay and Google Pay Button Placement?"
-    a: "Adopt Apple Pay and Google Pay Button Placement when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Apple Pay and Google Pay Button Placement?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
----
+  - q: "Where should Apple Pay and Google Pay buttons sit?"
+    a: "Above manual card entry on checkout and subscription screens. Wallet users expect one-tap pay at the top; burying buttons below a 12-field form trains them to type card numbers instead."
+  - q: "What breaks wallet button display?"
+    a: "Missing domain verification (Apple Pay), incorrect merchant ID configuration, serving checkout over HTTP, and CSP blocking payment scripts. Fix verification files and script-src before A/B testing button color."
+  - q: "Should wallet buttons appear on mobile only?"
+    a: "No — desktop Safari supports Apple Pay; Chrome supports Google Pay on desktop with saved cards. Hide buttons only when canMakePayments returns false, not based on viewport width alone."---
+Wallet buttons convert when they are visible, verified, and faster than typing a card. I have seen checkout teams spend weeks on form validation while Apple Pay sat below the fold — wallet-ready users typed 16 digits instead. Placement, domain verification, and express-checkout semantics matter more than button styling.
 
-The gap between reading about apple pay and google pay button placement and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
-
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
-
-## Architecture and boundaries
+This post covers where wallet buttons belong, how domain verification gates Apple Pay on the web, and how to wire Payment Request API so express checkout actually skips fields.
+## 
+## Wallet button placement rules
 
 Before changing implementation details, draw the boundary diagram. Apple Pay and Google Pay Button Placement touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
 
@@ -38,7 +36,7 @@ Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
 
 Document which metrics you expect to move. If apple pay and google pay button placement is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
+## Apple Pay and Google Pay flows
 
 Start with the smallest change that proves the approach. For apple pay and google pay button placement, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
 
@@ -65,7 +63,7 @@ Validate in staging with production-like data volumes. Empty caches and syntheti
 
 For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
 
-## Accessibility requirements
+## Wallet button accessibility
 
 Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
 
@@ -77,7 +75,7 @@ Performance optimizations that break keyboard navigation or screen reader announ
 
 Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Domain verification and session safety
 
 Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
 
@@ -128,6 +126,35 @@ When apple pay and google pay button placement misbehaves in production, work to
 6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
 
 Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+
+## Button hierarchy on checkout
+
+Wallet row first, divider with "or", then manual card entry. On mobile, wallet buttons at full width (min 44px height). Do not duplicate — one Apple Pay button per page per Apple's HIG.
+
+## Apple Pay domain verification
+
+Host `/.well-known/apple-developer-merchantid-domain-association` on every checkout domain. Stripe handles this when you add domains in Dashboard; self-integrated merchants upload the file to CDN origin. Verification fails silently — button simply does not render.
+
+## Google Pay isReadyToPay gating
+
+```javascript
+const ready = await googlePayClient.isReadyToPay({ apiVersion: 2, allowedPaymentMethods: [baseCardPaymentMethod] });
+if (ready.result) mountGooglePayButton();
+```
+
+Render nothing when false — a disabled gray button suggests broken checkout.
+
+## Express checkout data contract
+
+Wallet flows should populate shipping, billing, and email from the wallet token. Re-asking for email after Apple Pay authenticated the user wastes the speed advantage.
+
+## CSP and third-party scripts
+
+Payment Request and Stripe.js need explicit CSP entries for js.stripe.com and applepay.cdn-apple.com. Test headers on the payment route in CI.
+
+## Conversion metrics worth tracking
+
+Segment completion rate: wallet vs manual card. Median time-to-submit. Compare iOS Safari separately — Apple Pay adoption skews mobile revenue.
 
 ## Resources
 

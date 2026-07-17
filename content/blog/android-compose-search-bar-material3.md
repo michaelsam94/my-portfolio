@@ -140,6 +140,12 @@ Before enabling `android-compose-search-bar-material3` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Search Bar Material3 under memory pressure
+
+Low-RAM devices (4GB class) expose search bar material3 jank before Pixel hardware does. Profile with Android Studio Memory Profiler during the exact user journey — not idle home screen. Trim allocations in the hot path: avoid anonymous lambda capture of large lists, prefer `remember` with stable keys, and hoist heavy work to `Dispatchers.Default` with explicit dispatcher tests on API 26 devices.
+
+When Play Vitals reports `slow frames` correlated with your release, reproduce with `adb shell cmd gfxinfo framestats` and compare median frame time against previous version artifact in CI.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

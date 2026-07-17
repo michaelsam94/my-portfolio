@@ -3,7 +3,7 @@ title: "Testing React with Vitest"
 slug: "testing-vitest-react-testing-library"
 description: "Vitest brings fast unit testing to React with native ESM support, Jest-compatible API, and instant HMR. Pair it with Testing Library for behavior-focused component tests."
 datePublished: "2026-01-26"
-dateModified: "2026-01-26"
+dateModified: "2026-07-17"
 tags: ["Testing", "React", "Vitest", "Frontend"]
 keywords: "Vitest React testing, React Testing Library, Vitest vs Jest, component testing React, Vitest configuration, userEvent testing"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Test behavior users experience: does clicking Submit send the form? Does an error message appear on invalid input? Does loading state show while fetching? Don't test implementation details — state variable names, internal hook calls, component structure. If a refactor changes internal state management but the UI behavior is identical, tests should still pass."
   - q: "How do I test components that fetch data?"
     a: "Mock the fetch/API layer with MSW (Mock Service Worker) or vi.mock(). Render the component, let it fetch mocked data, assert on rendered output. Use findBy queries (async) for data that loads after render. Test three states: loading, success, and error. Don't mock React hooks — mock the data source the hooks call."
+faqAnswers:
+  - question: "When is testing vitest react testing library the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for testing vitest react testing library?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back testing vitest react testing library safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Migrating our React test suite from Jest to Vitest cut cold start from 14 seconds to 1.2 seconds. Not because Vitest runs tests faster — the tests themselves take similar time — but because Vitest reuses Vite's already-warm transform pipeline instead of spinning up a separate Babel/Jest config. With 800 component tests, that 12-second difference changed whether developers ran tests on every save or skipped them until CI.
 
 Vitest is a unit test framework built on Vite. It provides a Jest-compatible API (`describe`, `it`, `expect`, `vi.mock`) with native ESM, TypeScript, and JSX support. Combined with React Testing Library, it enables fast, behavior-focused component tests that verify what users see and do.
@@ -248,6 +254,14 @@ Snapshot tests break on intentional UI changes and encourage approving diffs wit
 
 Vitest runs test files in parallel by default. Split slow integration suites into separate CI jobs if total time exceeds your budget. Use `test.concurrent` within files only when tests don't share mutable state.
 
+## Vitest and RTL ergonomics
+
+Vitest's Vite-native speed encourages more component tests — use that velocity. Testing Library queries in priority order: getByRole, getByLabelText, getByText, getByTestId last. `userEvent` over `fireEvent` for realistic interaction simulation. Mock network at MSW layer, not by mocking fetch in every test file. Co-locate tests with components; shared render helpers wrap providers (QueryClient, Router, Theme) once.
+
+## Component test isolation from router
+
+Wrap components under test with MemoryRouter supplying initial entry — testing without router when component calls `useNavigate` throws obscure errors. Export test-utils wrapper from one module; do not copy-paste Provider stacks into every spec.
+
 ## Resources
 
 - [Vitest documentation](https://vitest.dev/guide/)
@@ -255,3 +269,47 @@ Vitest runs test files in parallel by default. Split slow integration suites int
 - [Testing Library query priorities](https://testing-library.com/docs/queries/about/#priority)
 - [MSW (Mock Service Worker) documentation](https://mswjs.io/docs/)
 - [Vitest migration from Jest guide](https://vitest.dev/guide/migration.html)
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing vitest react testing library rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.

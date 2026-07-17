@@ -3,7 +3,7 @@ title: "Smart Charging and Load Balancing"
 slug: "ocpp-load-balancing-smart-charging"
 description: "Implement OCPP smart charging and load balancing: charging profiles, SetChargingProfile, load management across sites, and grid-friendly dispatch."
 datePublished: "2025-10-27"
-dateModified: "2025-10-27"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Energy"]
 keywords: "OCPP smart charging, load balancing EV chargers, SetChargingProfile, charging profiles OCPP, EV fleet load management, demand response charging"
 faq:
@@ -242,6 +242,58 @@ Six months of utilization data informs infrastructure investment decisions — n
 - Per-connector allocated vs actual current monitored
 - Profile override events logged and alerted
 - Capacity planning based on 6-month utilization history
+
+## Measuring allocation quality
+
+Fair-share algorithms look elegant in Python; drivers care whether they hit departure SOC. Track per-session metrics:
+
+| Metric | Formula | Action if bad |
+|--------|---------|---------------|
+| Departure SOC gap | `target_soc - actual_soc` at unplug | Tighten priority weighting |
+| Allocation utilization | `allocated_amps / requested_amps` avg | Raise site cap or add capacity |
+| Profile staleness | Time since last `SetChargingProfile` | Fix scheduler bugs |
+| Starvation count | Sessions below `min_amps` > 30 min | Adjust min floor or queue |
+
+```python
+def session_priority(session):
+    hours_left = (session.departure_time - now()).total_seconds() / 3600
+    soc_gap = session.target_soc - session.current_soc
+    return soc_gap / max(hours_left, 0.25)  # urgency score
+```
+
+Sort by urgency score, not arrival order — a 20% SOC gap with 30 minutes remaining beats a 40% gap with four hours.
+
+## OpenADR and utility signal integration
+
+Demand response events arrive out-of-band from OCPP — OpenADR 2.0b, utility SCADA, or proprietary APIs. Your CSMS needs a **signal adapter** that translates external events into `ChargePointMaxProfile` or `TxDefaultProfile` updates:
+
+```
+OpenADR Event (ACTIVE, 70% duration) → reduce site_max_kw by 30%
+         → recompute allocations → SetChargingProfile per active connector
+         → log metered draw for compliance reporting
+```
+
+After DR ends, restore previous profiles explicitly — do not assume chargers revert automatically. Some hardware retains last profile until overwritten.
+
+## Three-phase site budgeting
+
+Split-phase sites allocate per leg, not just total amps:
+
+```python
+def phase_balance(sessions, leg_max_amps):
+    per_leg = {"L1": 0, "L2": 0, "L3": 0}
+    for s in sessions:
+        leg = s.supply_phase
+        alloc = min(s.requested_amps, leg_max_amps - per_leg[leg])
+        per_leg[leg] += alloc
+        s.allocated_amps = alloc
+```
+
+Imbalanced legs trip breakers even when sum looks under cap — read `SupplyPhases` from Device Model when available.
+
+## Tariff-aware pre-conditioning
+
+Before peak tariff starts, optionally raise limits briefly so vehicles reach target SOC — only with user opt-in and local regulation compliance. Log `precondition_burst` events for transparency disputes.
 
 ## Resources
 

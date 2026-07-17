@@ -3,8 +3,8 @@ title: "Summarizing Long Documents"
 slug: "llm-summarization-long-documents"
 description: "Summarize documents that exceed LLM context windows with map-reduce, hierarchical, and refine strategies — plus evaluation methods that catch quality regressions."
 datePublished: "2025-03-29"
-dateModified: "2025-03-29"
-tags: ["AI", "LLM", "Summarization", "RAG"]
+dateModified: "2026-07-17"
+tags:
 keywords: "long document summarization LLM, map reduce summarization, hierarchical summary, document chunking LLM, abstractive summarization production"
 faq:
   - q: "What is the best strategy for summarizing a 200-page document?"
@@ -14,7 +14,6 @@ faq:
   - q: "Should I use the same model for chunk summaries and final synthesis?"
     a: "Not necessarily. A smaller, faster model works fine for chunk-level summaries where the task is compression. Use a larger model for the final synthesis step where coherence and prioritization matter. This saves cost without sacrificing final quality."
 ---
-
 Legal teams need a two-page brief from a 300-page contract. Support agents need the key facts from a customer's 40-message email thread. Research analysts need takeaways from a 60-page report. All of these exceed what you can stuff into a single prompt — even with 128K context windows, quality degrades on very long inputs and you pay for every token.
 
 Long document summarization is an orchestration problem. You chunk the source, summarize each piece, combine the pieces, and evaluate whether the result actually captured what mattered.

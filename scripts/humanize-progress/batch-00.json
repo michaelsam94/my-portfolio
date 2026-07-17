@@ -1,0 +1,39 @@
+{
+  "batch": "00",
+  "range": "indices 0-249",
+  "total": 250,
+  "completed": 250,
+  "status": "complete",
+  "updatedAt": "2026-07-17T12:56:00Z",
+  "notes": "All 250 posts in slice humanized. 218 template rewrites + 32 pre-humanized posts. 7 short posts expanded to ≥1200 words.",
+  "preHumanizedCount": 32,
+  "templateRewrites": 218,
+  "expandedShortPosts": 7,
+  "samples": [
+    {
+      "slug": "accessibility-autocomplete-attributes",
+      "words": 1411,
+      "structure": "Architecture boundaries → implementation → a11y → security → testing → triage"
+    },
+    {
+      "slug": "agent-3ds2-frictionless-flow",
+      "words": 1446,
+      "structure": "EMV message sequence → ACS risk signals → merchant integration → failure modes"
+    },
+    {
+      "slug": "agent-sanctions-screening-api",
+      "words": 1848,
+      "structure": "Regulatory context → architecture → vendor API → fuzzy matching → case queue"
+    },
+    {
+      "slug": "agent-bm25-elasticsearch-tuning",
+      "words": 1216,
+      "structure": "Scoring math → field boosts → hybrid RRF → offline benchmark harness"
+    },
+    {
+      "slug": "agent-observability-tracing-spans",
+      "words": 1227,
+      "structure": "Span taxonomy → OTel propagation → trace-based alerts → regression fingerprinting"
+    }
+  ]
+}

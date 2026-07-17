@@ -3,8 +3,8 @@ title: "Migrating XML to Compose Without a Rewrite"
 slug: "migrating-xml-to-compose"
 description: "Incremental XML-to-Compose migration for production Android apps: ComposeView/AndroidView interop, feature flags, and stable ViewModel boundaries — no rewrite."
 datePublished: "2026-04-02"
-dateModified: "2026-04-05"
-tags: ["Android", "Jetpack Compose", "Migration", "Kotlin"]
+dateModified: "2026-07-17"
+tags:
 keywords: "XML to Compose migration, Compose interop, AndroidView, ComposeView, incremental migration, hybrid UI"
 faq:
   - q: "Do I have to rewrite my whole app to adopt Jetpack Compose?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can Compose and XML share the same ViewModel?"
     a: "Yes. Both a Fragment rendering XML and a composable can observe the same ViewModel and its StateFlow. Keeping business logic in the ViewModel and out of the UI layer is exactly what makes an incremental migration safe."
 ---
-
 The question I get most often about Compose isn't "how does recomposition work" — it's "do we have to stop everything and rewrite?" The answer is no, and treating it as a rewrite is how migrations die. Compose was designed to **interoperate with the View system in both directions**, so you can migrate an XML app screen by screen, or even component by component, while continuing to ship features the entire time. I've taken apps with hundreds of thousands of users through this over several releases without a single big-bang merge, and crash-free rates never wobbled because nothing changed wholesale.
 
 The whole strategy rests on two interop bridges: `ComposeView` to put Compose *inside* XML, and `AndroidView` to put existing Views *inside* Compose. Get comfortable with those and the migration becomes a series of small, reviewable, individually shippable steps.

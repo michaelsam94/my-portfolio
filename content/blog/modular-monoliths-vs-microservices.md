@@ -3,8 +3,8 @@ title: "Modular Monoliths vs Microservices in 2026"
 slug: "modular-monoliths-vs-microservices"
 description: "When to choose a modular monolith vs microservices in 2026: coupling, team topology, operational cost, and keeping boundaries clean enough to split later."
 datePublished: "2026-05-24"
-dateModified: "2026-05-24"
-tags: ["Architecture", "Microservices", "Modular Monolith", "Backend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "modular monolith, microservices, monolith vs microservices, architecture, service boundaries, distributed systems"
 faq:
   - q: "What is a modular monolith?"
@@ -14,7 +14,6 @@ faq:
   - q: "When do microservices actually make sense?"
     a: "When you have independent scaling needs, teams large enough that a shared deploy pipeline is a bottleneck, or components with genuinely different reliability and technology requirements. The trigger is organizational and operational scale, not a desire for clean architecture."
 ---
-
 The modular monolith versus microservices debate finally matured in 2026: the answer for most teams is **start with a modular monolith, extract services when a specific pressure forces you to.** Microservices solve organizational and scaling problems, not code-cleanliness problems — and if you reach for them before you have those problems, you pay the full distributed-systems tax (network failures, eventual consistency, distributed tracing, deployment orchestration) to solve problems you do not yet have. A modular monolith gives you most of the design benefits people *think* they need microservices for, with a fraction of the operational cost.
 
 Let me make that concrete, because "it depends" is not advice.
@@ -90,3 +89,17 @@ Microservices are a solution to scaling *organizations and load*, and they are e
 - [Azure: microservices architecture style](https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/microservices)
 - [Shopify: deconstructing the monolith (modular)](https://shopify.engineering/deconstructing-monolith-designing-software-maximizes-developer-productivity)
 - [AWS Architecture Center](https://aws.amazon.com/architecture/)
+
+## Production notes for LLM stacks
+
+When `modular-monoliths-vs-microservices` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `modular monoliths vs microservices in 2026` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

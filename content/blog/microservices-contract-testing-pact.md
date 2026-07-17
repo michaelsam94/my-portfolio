@@ -3,8 +3,8 @@ title: "Consumer-Driven Contract Testing"
 slug: "microservices-contract-testing-pact"
 description: "Prevent microservice integration breaks with consumer-driven contract testing using Pact: define expectations, verify providers, and publish contracts."
 datePublished: "2025-06-09"
-dateModified: "2025-06-09"
-tags: ["BE", "Microservices", "Testing", "CI"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Pact contract testing, consumer driven contracts, microservices integration testing, Pact broker, contract testing CI, API contract verification"
 faq:
   - q: "What is the difference between contract testing and integration testing?"
@@ -14,7 +14,6 @@ faq:
   - q: "Do I need a Pact Broker?"
     a: "For one consumer and one provider, local contract files work. For teams with multiple consumers of the same provider, a Pact Broker (self-hosted or pactflow.io) stores contracts, tracks verification results, and provides a compatibility matrix showing which consumer-provider pairs are safe to deploy."
 ---
-
 Your frontend team deploys a change that expects a new field in the user API response. The backend team deploys a refactor that renames that field. Both pass their unit tests. Both deploy successfully. Production breaks because nobody tested the interaction between them.
 
 Integration tests catch this, but full integration test suites are slow, require all services running, and break when any service changes. Contract testing solves the specific problem of service-to-service compatibility — fast, isolated, and run in each service's own CI pipeline.
@@ -203,17 +202,6 @@ Use Pact for synchronous HTTP between teams you don't control. Use shared OpenAP
 
 Pair with [CI/CD deployment strategies](https://blog.michaelsam94.com/ci-cd-deployment-strategies-blue-green/) when `can-i-deploy` gates production releases.
 
-## Common production mistakes
-
-Teams get contract testing pact wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of contract testing pact fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [Pact documentation](https://docs.pact.io/)
@@ -221,3 +209,17 @@ Production implementations of contract testing pact fail when staging mirrors pr
 - [Pact Broker documentation](https://docs.pact.io/pact_broker)
 - [PactFlow (hosted Pact Broker)](https://pactflow.io/)
 - [Martin Fowler: Consumer-Driven Contracts](https://martinfowler.com/articles/consumerDrivenContracts.html)
+
+## Production notes for LLM stacks
+
+When `microservices-contract-testing-pact` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `consumer-driven contract testing` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

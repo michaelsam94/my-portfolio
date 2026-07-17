@@ -3,7 +3,7 @@ title: "OLAP vs OLTP Workloads"
 slug: "olap-vs-oltp-workloads"
 description: "OLAP vs OLTP explained for engineers: workload characteristics, schema design, database choices, and why mixing analytical queries with transactional paths kills production."
 datePublished: "2025-08-14"
-dateModified: "2025-08-14"
+dateModified: "2026-07-17"
 tags: ["Data", "Database", "Analytics", "Architecture"]
 keywords: "OLAP vs OLTP, analytical vs transactional database, data warehouse, star schema, workload isolation"
 faq:
@@ -173,6 +173,52 @@ Reconcile OLTP and OLAP counts nightly — `SUM(orders.total)` in warehouse vs O
 Define SLAs separately: OLTP p99 latency SLOs should exclude analytical query paths entirely. When BI teams request "just one more direct query," redirect to the warehouse or a dedicated read replica with statement_timeout enforced (`SET statement_timeout = '30s'`). Reconciliation jobs comparing row counts and sum totals between OLTP snapshots and OLAP marts catch pipeline bugs before executives see them in board decks. For early-stage teams, Postgres plus nightly pg_dump to DuckDB or BigQuery may suffice — but set a growth trigger (e.g., analytical queries exceed 5% of CPU for three days) to fund proper CDC. FinOps should tag warehouse compute by team; unconstrained OLAP spend often exceeds OLTP RDS cost once analysts adopt self-serve SQL.
 
 Never run `SELECT *` analytics against the production OLTP primary without `statement_timeout` — one analyst's cartesian join becomes everyone's checkout outage.
+
+## Slowly changing dimensions in the warehouse
+
+OLTP stores current customer addresses; OLAP needs history for "sales by region as-of order date." Model **SCD Type 2** in dbt:
+
+```sql
+-- dim_customer with effective dating
+SELECT customer_id, region, valid_from, valid_to,
+       valid_to = '9999-12-31' AS is_current
+FROM dim_customer
+```
+
+Join facts on `order_date BETWEEN valid_from AND valid_to`. Getting SCD wrong inflates revenue in regions users moved away from — executives notice before engineers do.
+
+## Query federation without killing OLTP
+
+BI tools love "live connections." Enforce guardrails:
+
+- Read replica with `hot_standby_feedback = on` and `max_standby_streaming_delay`
+- Role `bi_readonly` with `statement_timeout = '60s'` and `idle_in_transaction_session_timeout`
+- Block `pg_cancel_backend` escalation path documented for on-call
+
+Postgres **logical replication** to a dedicated analytics instance beats letting Metabase hit the primary — slot lag becomes the metric that matters.
+
+## Cost-aware warehouse design
+
+Snowflake/BigQuery bills on scanned bytes. Partition fact tables by `order_date`, cluster on high-cardinality filter columns, and materialize only marts analysts query weekly. Raw CDC JSON blobs are cheap to land; letting analysts `SELECT *` on them daily is not.
+
+## Materialized view trap on Postgres
+
+Materialized views on OLTP DB feel like free OLAP — refresh locks or heavy IO still hurt. Use `REFRESH MATERIALIZED VIEW CONCURRENTLY` only with unique index; schedule refresh off-peak. Beyond 100GB fact data, migrate to warehouse — MV maintenance becomes ops burden.
+
+## Analyst sandbox isolation
+
+Give analysts read-only warehouse role, not production replica — accidental `UPDATE` via BI tool GUI happens. Snowflake `QUERY_TAG` or BigQuery labels attribute cost per team for chargeback conversations.
+
+## Real-time analytics anti-pattern
+
+ClickHouse materialized views fed by Kafka mimic OLAP freshness — still not OLTP. Don't route inventory holds through ClickHouse — eventual consistency sells oversold SKUs.
+
+## CDC lag SLO
+
+Define business SLO: dashboard data max 15 minutes behind OLTP. Alert when replication lag exceeds — executives make decisions on stale warehouse during incident if lag unnoticed.
+## Reverse ETL loop guard
+
+Hightouch/Census syncing warehouse segments back to OLTP for marketing — rate limit and validate; bad SQL in audience builder overwrites production `email_opt_in`.
 
 ## Resources
 

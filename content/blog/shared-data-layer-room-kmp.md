@@ -3,16 +3,20 @@ title: "A Shared Data Layer with Room and Kotlin Multiplatform"
 slug: "shared-data-layer-room-kmp"
 description: "Build a shared offline data layer with Room on Kotlin Multiplatform: KMP setup, expect/actual database builders, migrations, and sharing DAOs across Android and iOS."
 datePublished: "2026-04-13"
-dateModified: "2026-04-13"
-tags: ["Kotlin Multiplatform", "Room", "Android", "iOS"]
+dateModified: "2026-07-17"
+tags:
+  - "Kotlin Multiplatform"
+  - "Room"
+  - "Android"
+  - "iOS"
 keywords: "Room KMP, Room Multiplatform, shared data layer, KMP database, offline storage, SQLite, expect actual"
 faq:
-  - q: "Does Room support Kotlin Multiplatform?"
-    a: "Yes. Room added Kotlin Multiplatform support so a single Room database definition — entities, DAOs, and the database class — can run on Android, iOS, and JVM. It uses the SQLite driver abstraction under the hood, with a platform-specific driver on each target."
-  - q: "How do you create a Room database in a KMP shared module?"
-    a: "Define the entities, DAOs, and RoomDatabase in commonMain, then provide a platform-specific database builder via expect/actual — Android supplies a Context, iOS supplies a documents-directory path. Both hand the builder a BundledSQLiteDriver so behavior is consistent."
-  - q: "Should I share the whole data layer or just the database?"
-    a: "Share the database, DAOs, and repository logic in commonMain, and keep platform-specific concerns — file paths, keychain access, background scheduling — behind expect/actual or dependency injection. The repository API stays common; the wiring is per-platform."
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
 ---
 
 For a long time, "share your business logic with Kotlin Multiplatform, but keep the database native" was the pragmatic advice — SQLDelight covered KMP, Room was Android-only. That changed when Room shipped Kotlin Multiplatform support. Now a single Room database — the same `@Entity`, `@Dao`, and `RoomDatabase` you already know — can back an offline data layer on Android and iOS from one `commonMain` source set. For a Kotlin-heavy team, that's a big deal: your entire persistence layer becomes shared code, and you keep the Room API you're fluent in.
@@ -135,6 +139,44 @@ Room-on-KMP is solid, but a few things still need care. Compile times on iOS are
 
 For a team already fluent in Room and Kotlin, this is the lowest-friction way to get a genuinely shared, offline-capable data layer across mobile. You keep the API you know, you write migrations once, and the platform differences shrink to a few dozen lines of `actual` glue. That's a much better place to be than maintaining two persistence stacks that drift apart over time.
 
+## Sync conflict resolution in Room
+
+Last-write-wins loses edits when two devices update the same row offline. Version columns with optimistic locking surface conflicts to UI: "Your change conflicts with a newer version — merge or discard?" For collaborative fields, CRDTs or field-level timestamps beat whole-row LWW. Test airplane-mode edit on two emulators before shipping sync.
+
+## KMP expect/actual for platform secure storage
+
+Shared `TokenRepository` interface with Android `EncryptedSharedPreferences` actual and iOS Keychain actual keeps secrets off plain Room tables. Never store refresh tokens in unencrypted SQLite even if "just for debugging" — backup exports and rooted devices expose them.
+
+## Type-safe queries with Room Query
+
+Share Query suspend functions in common module; DAO interfaces live in shared, actual database builder per platform. Use Transaction for read-then-write sync operations — partial reads between threads cause duplicate sync jobs on Android.
+
+## Migration testing on both platforms
+
+Room schema export from Android as baseline — iOS actual must apply same Migration object. Divergence causes crash on iOS upgrade while Android users unaffected — test migration path on both before release.
+
+## Integration testing notes
+
+Exercise the happy path plus three failure modes specific to shared data layer room kmp: dependency timeout, duplicate delivery, and partial deploy during rolling update. Automated tests should assert idempotent behavior and user-visible error messages—not only HTTP 200 from mocks.
+
+## Documentation and on-call
+
+Link runbook steps from the service catalog entry for shared data layer room kmp. On-call engineers should find rollback command, dashboard URL, and known false-positive alerts without searching Slack history. Update the entry when behavior or metrics change.
+
+## Rollout checklist
+
+Ship behind a feature flag when behavior is user-visible. Compare error rate and p95 latency for seven days against baseline captured before merge. Document rollback in the pull request so on-call can revert without author contact.
+
+## Quick reference
+
+Instrument shared data layer room kmp before optimizing. Keep a dashboard per critical user journey and review weekly during the first month after launch.
+
+Review metrics quarterly; traffic mix shifts can invert prior wins without code changes.
+
+## Notes on shared data layer room kmp
+
+Schema migrations run on both platforms in CI before merge. Use BundledSQLiteDriver consistently — system SQLite differences caused subtle WAL bugs for us. Keep sync conflict policy in commonMain KDoc so iOS and Android product owners share one specification.
+
 ## Resources
 
 - [Room Kotlin Multiplatform guide](https://developer.android.com/kotlin/multiplatform/room)
@@ -145,3 +187,52 @@ For a team already fluent in Room and Kotlin, this is the lowest-friction way to
 - [Android developers blog](https://android-developers.googleblog.com/)
 
 *Designing an offline-first shared data layer? [Get in touch](https://michaelsam94.com/) — I've shipped a few.*
+
+Export Room schemas to CI; migration tests on both Android and iosTest resources.
+
+## Gradle version catalog alignment
+
+Pin Room, SQLite, and KSP versions in `libs.versions.toml` — KMP breaks on mismatched compiler plugin versions across modules.
+
+## Flow and Room
+
+DAO `Flow` emissions integrate with `stateIn` in ViewModel:
+
+```kotlin
+class ItemViewModel(dao: ItemDao) : ViewModel() {
+    val items = dao.observeAll()
+        .map { list -> list.map { it.toDomain() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+}
+```
+
+Collect in UI with `collectAsStateWithLifecycle()` on Android; SwiftUI consumes via wrapper exposing `StateFlow` as observable.
+
+## iOS Swift interop
+
+Expose repository with `@ObjCName` or SKIE-generated Swift API — Room stays Kotlin; SwiftUI never touches SQL directly.
+
+## Encryption
+
+SQLCipher via expect/actual driver wrapper for sensitive offline cache — key from iOS Keychain / Android Keystore through platform secure storage interface.
+
+## Migration testing matrix
+
+| Test | Android | iOS | commonTest |
+|------|---------|-----|------------|
+| Migration 1→2 | ✓ | ✓ | ✓ |
+| Destructive fallback | instrumented | simulator | in-memory |
+
+## Offline queue conflict UI
+
+When sync fails, surface `synced=false` items in UI with retry — repository exposes `observePending()` Flow.
+
+## Performance
+
+Index columns used in WHERE and ORDER BY. `@Upsert` batch in transactions for bulk refresh — single transaction per sync wave, not per row.
+
+Room KMP rewards teams that treat shared module as product — with migration CI, platform factories, and repository APIs stable enough for Swift and Kotlin UI teams to parallelize.
+
+## iOS background sync triggers
+
+Room repositories in commonMain; `pushPendingSync()` invoked from WorkManager on Android and BGTaskScheduler on iOS. Test airplane-mode edit on both platforms before release — sync semantics must match, not merely compile.

@@ -3,8 +3,8 @@ title: "Prefix Caching for Shared Prompts"
 slug: "llm-serving-prefix-caching"
 description: "How prefix caching reuses KV states across requests with identical prompt prefixes, cutting latency and GPU memory churn in production LLM serving."
 datePublished: "2025-03-01"
-dateModified: "2025-03-01"
-tags: ["AI", "LLM", "Inference", "Performance"]
+dateModified: "2026-07-17"
+tags:
 keywords: "prefix caching LLM, KV cache reuse, vLLM prefix caching, shared system prompt, prompt caching Anthropic, LLM serving optimization"
 faq:
   - q: "When does prefix caching actually help?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I measure whether prefix caching is working?"
     a: "Compare prefill latency and time-to-first-token (TTFT) for requests with and without a shared prefix. Good implementations expose cache hit rate, cached token count, and memory used by the prefix cache. A hit rate above 60% on production traffic usually means your prompt structure is cache-friendly."
 ---
-
 Your support team ships a RAG assistant where every request starts with the same 3,000-token system prompt, tool definitions, and retrieved document chunk. Without prefix caching, the GPU recomputes attention over those 3,000 tokens on every single call — even when the only thing that changed is the user's latest question. Prefix caching fixes this by storing the KV (key-value) tensors from the prefill pass and reusing them when a new request shares the same leading tokens.
 
 The win is straightforward: less compute, lower latency on time-to-first-token, and better GPU utilization when traffic clusters around shared context.
@@ -120,17 +119,6 @@ In SaaS products serving many customers, isolate per-tenant dynamic content from
 
 For multi-turn chat, append new messages rather than rewriting history. Rewriting the messages array with a fresh timestamp on every turn breaks the prefix chain even if the conversation content is identical.
 
-## Common production mistakes
-
-Teams get serving prefix caching wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-LLM features around serving prefix caching break in production when prompts assume deterministic output, context windows are sized for dev datasets, or token costs are never budgeted per user session. Always log prompt hash, model version, and latency—not raw prompts with PII.
-
 ## Resources
 
 - [vLLM Automatic Prefix Caching documentation](https://docs.vllm.ai/en/latest/automatic_prefix_caching/apc.html)
@@ -138,3 +126,17 @@ LLM features around serving prefix caching break in production when prompts assu
 - [Attention Is All You Need (original transformer paper)](https://arxiv.org/abs/1706.03762)
 - [PagedAttention paper (vLLM foundation)](https://arxiv.org/abs/2309.06180)
 - [TensorRT-LLM KV cache reuse](https://nvidia.github.io/TensorRT-LLM/advanced/kv-cache-reuse.html)
+
+## Production notes for LLM stacks
+
+When `llm-serving-prefix-caching` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `prefix caching for shared prompts` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

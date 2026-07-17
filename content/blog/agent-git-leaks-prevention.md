@@ -1,111 +1,269 @@
 ---
 title: "AI Agents: Git Leaks Prevention"
 slug: "agent-git-leaks-prevention"
-description: "Git Leaks Prevention: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Stop API keys, MCP configs, and eval datasets from entering git history—pre-commit hooks, CI depth scans, secret rotation playbooks, and agent-repo patterns that survive monorepos."
 datePublished: "2025-10-26"
 dateModified: "2025-10-26"
 tags: ["AI", "Agent", "Git"]
-keywords: "agent, git, leaks, prevention, ai, production, engineering, architecture"
+keywords: "git leaks, secrets scanning, gitleaks, pre-commit, agent API keys, MCP config, detect-secrets, trufflehog"
 faq:
-  - q: "What is Git Leaks Prevention?"
-    a: "Git Leaks Prevention covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Git Leaks Prevention?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Git Leaks Prevention?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Git Leaks Prevention fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Git Leaks Prevention should be observable in production and safe to change in small diffs."
+  - q: "Why do agent repos leak secrets more often than typical application code?"
+    a: "Agent repos accumulate .env examples, notebook outputs, MCP server configs, prompt files with embedded URLs, and eval fixtures that mirror production payloads. Contributors paste sk- keys into debug scripts. CI logs print truncated tokens during failed auth. The attack surface is wider because experimentation is encouraged and git history is forever."
+  - q: "Should we scan only staged files or the full repository?"
+    a: "Both. Pre-commit hooks scan staged diffs to block commits before push. CI scans full history on every PR and nightly because secrets enter via force-push, amended commits, and imported forks. A secret in an old commit is as exploitable as one on main today."
+  - q: "How do we handle false positives from high-entropy strings in eval data?"
+    a: "Use baselines (detect-secrets, gitleaks allowlists) checked into the repo with review. Never blanket-ignore entire directories—scope allowlists to file path plus line hash. Re-baseline only via PR with security reviewer approval."
+  - q: "What is the rotation playbook when a leak is confirmed?"
+    a: "Revoke the credential immediately, scan git history for all occurrences including forks, notify affected services, rotate downstream dependencies that trusted the key, and run a post-incident review on why pre-commit or CI missed it. Do not rely on 'delete the commit'—assume the secret is burned."
 ---
-Git Leaks Prevention sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+An OpenAI key committed in `eval_runner.py` rotated three staging environments when GitHub secret scanning fired at 2 a.m. The developer had copied `.env.local` into a "temporary" debug branch six weeks earlier; squash-merge preserved the blob. Pre-commit was optional. CI scanned only the default branch on Sundays.
 
-When git leaks prevention is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent repositories leak differently from CRUD apps. You have MCP JSON with bearer tokens, LangSmith URLs with embedded keys, notebook cells that `print(os.environ)`, and prompt YAML where someone pasted a webhook for Slack alerts. Git history is immutable; scanners that only watch `main` miss the damage already sitting in feature branches waiting for merge.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+This post covers defense in depth for git leak prevention in agent stacks: hooks that developers cannot bypass casually, CI that scans history depth, custom rules for LLM provider formats, and the rotation playbook when prevention fails.
 
-Solid AI engineering turns git leaks prevention from a recurring argument into a documented pattern with tests and an owner.
+## The agent-repo secret surface
 
-## Design principles that survive production
+Beyond `.env` files, watch these paths:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent git leaks prevention bugs hide.
+| Path pattern | Typical leak |
+|--------------|--------------|
+| `mcp.json`, `.cursor/mcp.json` | OAuth tokens, API keys in server args |
+| `**/prompts/*.yaml` | Webhook URLs with secrets |
+| `notebooks/*.ipynb` | Cell output containing keys |
+| `eval/fixtures/*.json` | Production-shaped payloads with real tokens |
+| `docker-compose*.yml` | Inline env vars "for local dev" |
+| `.github/workflows/*.yml` | `${{ secrets.X }}` echoed in debug steps |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for git leaks prevention, you do not yet understand the behavior you shipped.
+Treat `**/*.md` code blocks as scan targets—README examples often contain real-looking `sk-proj-` strings copied from dashboards.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Pre-commit: block before history exists
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent git leaks prevention flows so duplicates are harmless or detectable.
+Pre-commit must run on **staged** content and fail the commit. Make installation mandatory via `core.hooksPath` in CI bootstrap scripts, not documentation alone.
 
-## Implementation patterns
-
-A practical baseline for git leaks prevention in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent git leaks prevention changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Git Leaks Prevention: typed boundary + structured errors
-export async function handleGitLeaksPrevention(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-git-leaks-prevention");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        args: ["--staged", "--redact"]
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+  - repo: local
+    hooks:
+      - id: agent-provider-keys
+        name: Scan for LLM provider key patterns
+        entry: python scripts/scan_provider_keys.py
+        language: python
+        files: \.(py|ts|yaml|json|ipynb|md)$
 ```
 
+Custom rules catch formats generic scanners miss:
 
-## Operational concerns
+```python
+# scripts/scan_provider_keys.py
+import re, sys, pathlib
 
-Game-day exercises for git leaks prevention beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+PATTERNS = [
+    (r"sk-[a-zA-Z0-9]{20,}", "OpenAI-style key"),
+    (r"sk-ant-[a-zA-Z0-9-]{20,}", "Anthropic key"),
+    (r"hf_[a-zA-Z0-9]{30,}", "Hugging Face token"),
+    (r"xox[baprs]-[0-9a-zA-Z-]{10,}", "Slack token"),
+    (r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+", "Slack webhook"),
+]
 
-Production agent git leaks prevention work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+def scan_file(path: pathlib.Path) -> list[str]:
+    text = path.read_text(errors="ignore")
+    hits = []
+    for pattern, label in PATTERNS:
+        for match in re.finditer(pattern, text):
+            hits.append(f"{path}:{label} at offset {match.start()}")
+    return hits
 
-Rollouts for git leaks prevention benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+if __name__ == "__main__":
+    errors = []
+    for f in sys.argv[1:]:
+        errors.extend(scan_file(pathlib.Path(f)))
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        sys.exit(1)
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## CI: full history and PR depth
 
-## Security and compliance angles
+Pre-commit fails open when developers use `--no-verify` or commit from GUIs that skip hooks. CI is the backstop:
 
-Even when git leaks prevention is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```yaml
+# .github/workflows/secrets-scan.yml
+name: Secrets scan
+on: [pull_request, push]
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent git leaks prevention so security reviews do not rely on tribal knowledge.
+Configure `.gitleaks.toml` with agent-specific allowlists—narrow, not broad:
 
-## Testing strategy
+```toml
+[allowlist]
+paths = [
+  '''^eval/fixtures/synthetic/''',  # known fake keys only
+]
+regexes = [
+  '''sk-fake-[0-9a-f]{32}''',       # documented test keys
+]
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that git leaks prevention depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Run TruffleHog or GitHub Advanced Security in parallel for entropy-based detection gitleaks rules miss.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Baselines without becoming Swiss cheese
 
-## Migration and evolution
+`detect-secrets` baselines track known false positives by file and line hash. Workflow:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent git leaks prevention functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+1. Initial scan generates `.secrets.baseline`
+2. New findings fail CI until baselined via explicit PR
+3. Security reviews every baseline addition—reject "ignore whole file" requests
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where git leaks prevention spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```bash
+# Refresh baseline after removing real secrets (not to hide them)
+detect-secrets scan --baseline .secrets.baseline
+detect-secrets audit .secrets.baseline  # interactive review
+```
 
-## Related concepts
+Never commit `.env`, `.env.local`, or `credentials.json`. Use `.env.example` with placeholder values and document `direnv` or 1Password inject for local dev.
 
-Git Leaks Prevention intersects with broader ai topics — see companion notes on [agent-git patterns](https://blog.michaelsam94.com/agent-git/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Notebook and MCP-specific hygiene
+
+Jupyter notebooks store outputs in JSON—keys hide in cell outputs after a successful API call:
+
+```python
+# nbstripout in pre-commit — strip outputs before commit
+# .pre-commit-config.yaml addition:
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+```
+
+For MCP configs, use environment variable references instead of inline secrets:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Commit `mcp.example.json`; add `mcp.json` to `.gitignore`. CI validates example files contain no high-entropy strings.
+
+## Monorepo and fork considerations
+
+Agent tooling often lives in monorepos alongside unrelated services. Scope scans per changed paths in CI for speed, but run full-repo scans nightly. When importing open-source agent frameworks:
+
+```bash
+# Before merging external repo
+gitleaks detect --source ./vendor/agent-framework --verbose
+trufflehog git file://./vendor/agent-framework
+```
+
+Forks inherit secret history—scan before `git subtree add`. Enable GitHub secret scanning push protection on org repos; it blocks pushes containing known provider patterns.
+
+## When a leak is confirmed
+
+Assume compromise. Sequence:
+
+1. **Revoke** the credential at the provider within minutes
+2. **Search** full history: `gitleaks detect --source . --log-opts="--all"`
+3. **Notify** security and affected downstream systems
+4. **Rotate** dependent secrets (webhooks, DB passwords derived from same pattern)
+5. **Scrub** is not deletion—use BFG or filter-repo only after rotation; old commits remain in clones
+6. **Post-incident**: why did hooks miss it? `--no-verify`? Path not in hook config? New key format?
+
+```bash
+# Find all commits touching a known leaked prefix
+git log -S 'sk-proj-REDACTED_PREFIX' --all --oneline
+```
+
+Document in runbook: never paste live keys into Slack, tickets, or incident channels—use provider console revocation links.
+
+## Metrics and governance
+
+Track:
+
+- `secret_scan_ci_failures` per week (should be low; investigate spikes)
+- `pre_commit_bypass_rate` if you log `--no-verify` via wrapper scripts
+- `time_to_revoke_minutes` from alert to provider revocation in game days
+- `baseline_additions` per month (rising count signals hygiene debt)
+
+Assign a DRI in the service catalog. New hires should pass a game day: "here is a branch with a fake key—walk through detection and rotation."
+
+## Common mistakes
+
+**Optional pre-commit.** Documented but not enforced equals absent.
+
+**CI scans HEAD only.** Misses secrets in PR commits that get squashed away from view but remain reachable.
+
+**Example keys that match real formats.** Use obviously fake prefixes documented in CONTRIBUTING.md.
+
+**Logging secrets in CI.** Mask `sk-`, `hf_`, and bearer tokens in workflow output; never `echo ${{ secrets.X }}` for debugging.
+
+**Ignoring `.gitignore`d files in local scans.** Developers still push after `git add -f`. Educate; scan staged content regardless.
+
+## Developer experience without bypass culture
+
+Scanning fails when it feels punitive. Reduce friction:
+
+**Fast hooks.** Staged-only scans should finish in under two seconds on typical diffs. Full-repo scans belong in CI, not every commit.
+
+**Clear remediation.** When gitleaks fires, print file, line, and rule ID—not a generic "secret detected." Link to internal docs on 1Password inject and `.env.example` setup.
+
+**Local parity.** `make precommit` runs the same hooks as CI so surprises happen on laptop, not in PR checks.
+
+**Grandfathered history.** Teams importing legacy repos need a bounded remediation sprint: scan, rotate, baseline only after real secrets are gone—not a blanket baseline on day one to greenwash CI.
+
+```makefile
+# Makefile — one command for new contributors
+precommit:
+	pre-commit install --install-hooks
+	pre-commit run --all-files
+```
+
+Security owns the rules; platform owns hook performance. Product teams should not disable hooks for "just this once" without a ticket that expires.
+
+## Supply chain and third-party agent packages
+
+Agent repos depend on prompt libraries, MCP server packages, and vendored eval harnesses published to npm and PyPI. Those packages can contain secrets from upstream maintainer mistakes. Pin dependencies with lockfiles and run secret scans on `node_modules` and `.venv` only in CI nightly—too slow for pre-commit, but catches supply-chain leaks before production deploy.
+
+When copying prompt templates from public GitHub repos, assume they contain real keys until proven otherwise. Run gitleaks on import, not after merge.
 
 ## The takeaway
 
-Git Leaks Prevention rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent git leaks prevention becomes a maintainable asset instead of incident fuel.
+Git leak prevention for agent repos is a pipeline: pre-commit on staged diffs, custom provider rules, full-history CI, notebook output stripping, and MCP config templates. Prevention reduces frequency; rotation readiness limits blast radius. Treat every confirmed leak as burned—history does not forget, and neither do attackers scraping public GitHub.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Gitleaks documentation](https://github.com/gitleaks/gitleaks)
+- [detect-secrets baseline workflow](https://github.com/Yelp/detect-secrets)
+- [GitHub secret scanning and push protection](https://docs.github.com/en/code-security/secret-scanning)
+- [TruffleHog](https://github.com/trufflesecurity/trufflehog)
+- [BFG Repo-Cleaner (post-rotation history rewrite)](https://rtyley.github.io/bfg-repo-cleaner/)

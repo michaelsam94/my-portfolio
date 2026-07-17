@@ -3,8 +3,8 @@ title: "Auth.js Session Management in App Router"
 slug: "nextjs-auth-js-session-management"
 description: "Auth.js v5 in App Router — session callbacks, middleware protection, and database session strategy."
 datePublished: "2027-01-02"
-dateModified: "2027-01-02"
-tags: ["Next.js", "Auth", "Sessions"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Auth.js App Router, NextAuth session, auth.js v5 Next.js"
 faq:
   - q: "What is Auth.js Session Management in App Router?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are common mistakes with Auth.js Session Management in App Router?"
     a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
 ---
-
 The gap between reading about auth.js session management in app router and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.

@@ -7,105 +7,218 @@ dateModified: "2024-12-28"
 tags: ["AI", "Agent", "Feature"]
 keywords: "agent, feature, flag, database, changes, ai, production, engineering, architecture"
 faq:
-  - q: "What is Feature Flag Database Changes?"
-    a: "Feature Flag Database Changes covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Feature Flag Database Changes?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Feature Flag Database Changes?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Feature Flag Database Changes fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Feature Flag Database Changes should be observable in production and safe to change in small diffs."
+  - q: "Can you ship a database migration and a feature flag in the same release?"
+    a: "Yes, but only when the migration is strictly additive and backward-compatible — new nullable columns, new tables unused by old code, new indexes CONCURRENTLY. The flag controls read/write paths on the new schema; old code must run unchanged if the flag is off. Never combine destructive DDL (DROP, NOT NULL on existing rows, type narrowing) with a flag in one deploy."
+  - q: "What is the correct order: flag first or migration first?"
+    a: "Migration expand first, then deploy code that respects the flag, then enable the flag for a canary cohort, then migrate data, then contract schema in a later release. The anti-pattern is enabling a flag that writes new columns before the migration adds them — that causes runtime SQL errors on every canary request."
+  - q: "How do feature flags interact with long-running agent sessions?"
+    a: "Bind flag evaluation to session start or use sticky assignment so mid-session flag flips do not switch memory formats. Store schema_version on the session row; workers read version to pick serializers. If you must flip live, drain sessions gracefully or support dual-read on both old and new shapes until sessions complete."
+  - q: "When should the feature flag come out after a DB migration succeeds?"
+    a: "After contract phase completes: zero reads/writes on legacy columns, metrics flat for two release cycles, rollback no longer requires the old schema. Removing the flag is a separate PR from dropping columns — flags are cheap insurance during contract verification."
 ---
-Most teams encounter feature flag database changes after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The team shipped `new_memory_format` behind a LaunchDarkly flag the same night they ran `ALTER TABLE agent_sessions ADD COLUMN memory_v2 JSONB`. Canary at 5% looked healthy until an old pod — still on yesterday's image without the migration-aware repository — handled a flagged user. `INSERT` referenced `memory_v2` on a code path that assumed the column existed; the pod's driver threw `column does not exist` because that replica had not restarted after DDL. Feature flags decouple **logic** from **schema** only when deploy order and expand-contract discipline are explicit.
 
-When feature flag database changes is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent platforms change schema constantly: conversation memory shapes, tool registry versions, embedding dimensions, eval rubric tables. Feature flags let you route traffic to new behavior without redeploying. Database migrations change the persistence layer both code paths depend on. Combining them without a sequencing model produces the worst class of production bugs — partial writes, incompatible session state, and rollbacks that require restoring dropped columns. This piece covers the expand-flag-migrate-contract rhythm for agent storage.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The coupling problem
 
-Solid AI engineering turns feature flag database changes from a recurring argument into a documented pattern with tests and an owner.
+Feature flags assume two code paths coexist. Database migrations often assume **one schema** at a time. The intersection rules:
 
-## Design principles that survive production
+| Migration type | Safe with flag? | Pattern |
+|----------------|-----------------|---------|
+| Add nullable column | Yes | Flag picks reader/writer |
+| Add table | Yes | Flag gates access to new table |
+| Backfill + switch | Yes | Flag controls read source after backfill |
+| Rename column | No (in one step) | Expand: add new; flag; contract: drop old |
+| Drop column | Only after contract | Flag must be 100% on new path first |
+| Change JSON shape in place | No | Version column + dual serializers |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent feature flag database changes bugs hide.
+Treat schema like API versioning: additive first, consumers migrate, legacy retires.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for feature flag database changes, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent feature flag database changes flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for feature flag database changes in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent feature flag database changes changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Feature Flag Database Changes: typed boundary + structured errors
-export async function handleFeatureFlagDatabaseChanges(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-feature-flag-database-changes");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## The four-phase release train
 
 ```
+Release N   — EXPAND DDL (additive only)
+Release N+1 — Code with flag OFF default; dual-write optional
+Release N+2 — Flag ON for canary; backfill job; parity metrics
+Release N+3 — Flag default ON; monitor
+Release N+4 — CONTRACT DDL; remove flag branches
+```
 
+Never collapse expand and contract because a flag "protects" you. Flags guard **logic**; they do not un-drop columns.
 
-## Operational concerns
+## Example: agent memory format v2
 
-Game-day exercises for feature flag database changes beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Goal:** replace flat `messages JSONB` with structured `memory_v2` including tool call envelopes and token counts.
 
-Production agent feature flag database changes work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+### Phase 1 — Expand (migration only)
 
-Rollouts for feature flag database changes benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```sql
+-- 20241228_001_expand_memory_v2.sql
+ALTER TABLE agent_sessions
+  ADD COLUMN IF NOT EXISTS memory_v2 JSONB,
+  ADD COLUMN IF NOT EXISTS memory_schema_version SMALLINT NOT NULL DEFAULT 1;
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_memory_v2
+  ON agent_sessions (memory_schema_version)
+  WHERE memory_schema_version >= 2;
+```
 
-## Security and compliance angles
+Deploy migration to all environments. No application change required; old code ignores new columns.
 
-Even when feature flag database changes is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+### Phase 2 — Dual-path code behind flag
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent feature flag database changes so security reviews do not rely on tribal knowledge.
+```typescript
+// config/flags.ts
+export async function useMemoryV2(sessionId: string): Promise<boolean> {
+  const ctx = { key: sessionId, custom: { platform: "agent" } };
+  return ldClient.variation("agent-memory-v2", ctx, false);
+}
 
-## Testing strategy
+// repositories/session-memory.ts
+export async function loadMemory(sessionId: string): Promise<Memory> {
+  const row = await db.one(
+    `SELECT messages, memory_v2, memory_schema_version
+     FROM agent_sessions WHERE id = $1`,
+    [sessionId],
+  );
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that feature flag database changes depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+  const v2Enabled = await useMemoryV2(sessionId);
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+  if (v2Enabled && row.memory_v2) {
+    return deserializeMemoryV2(row.memory_v2);
+  }
+  return deserializeLegacy(row.messages);
+}
 
-## Migration and evolution
+export async function saveMemory(sessionId: string, memory: Memory): Promise<void> {
+  const v2Enabled = await useMemoryV2(sessionId);
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent feature flag database changes functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+  if (v2Enabled) {
+    const payload = serializeMemoryV2(memory);
+    await db.query(
+      `UPDATE agent_sessions
+       SET memory_v2 = $1,
+           memory_schema_version = 2,
+           messages = $2
+       WHERE id = $3`,
+      [payload, legacyShim(payload), sessionId],
+    );
+  } else {
+    await db.query(
+      `UPDATE agent_sessions SET messages = $1 WHERE id = $2`,
+      [serializeLegacy(memory), sessionId],
+    );
+  }
+}
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where feature flag database changes spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Dual-write `messages` as a legacy shim so old pods and rollback paths keep working. The flag defaults **false** in production.
 
-## Related concepts
+### Phase 3 — Backfill and parity checks
 
-Feature Flag Database Changes intersects with broader ai topics — see companion notes on [agent-feature patterns](https://blog.michaelsam94.com/agent-feature/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Run an async job keyed by `session_id` with idempotent upserts:
+
+```python
+# jobs/backfill_memory_v2.py
+BATCH = 500
+
+def backfill_batch(session_ids: list[str]) -> int:
+    updated = 0
+    for sid in session_ids:
+        row = fetch_session(sid)
+        if row.memory_schema_version >= 2 and row.memory_v2:
+            continue
+        v2 = convert_legacy_to_v2(row.messages)
+        if not parity_check(row.messages, v2):
+            log.warning("parity_mismatch", session_id=sid)
+            continue
+        execute(
+            """
+            UPDATE agent_sessions
+            SET memory_v2 = %s, memory_schema_version = 2, messages = %s
+            WHERE id = %s AND memory_schema_version = 1
+            """,
+            (v2, legacy_shim(v2), sid),
+        )
+        updated += 1
+    return updated
+```
+
+Gate flag ramp on: backfill completion %, parity error rate < 0.01%, p95 write latency unchanged.
+
+### Phase 4 — Contract
+
+When metrics show 100% v2 reads for two weeks and no rollback:
+
+```sql
+-- Separate release from flag removal
+ALTER TABLE agent_sessions DROP COLUMN messages;
+-- Then remove legacy serializers and flag branches in application code
+```
+
+## Sticky assignment for long sessions
+
+Random per-request flag evaluation breaks agent sessions mid-flight. Options:
+
+**Session-scoped stickiness.** Evaluate flag once at `createSession`; store `memory_schema_version` on the row. Workers honor stored version over live flag for that session.
+
+**User-level stickiness.** Hash `userId` into cohort for gradual rollout — same user always sees v2 during canary.
+
+```typescript
+export async function resolveMemoryVersion(session: SessionRow): Promise<2 | 1> {
+  if (session.memory_schema_version >= 2) return 2;
+  if (session.memory_schema_version === 1 && session.created_at < FLAG_CUTOFF) {
+    return 1; // grandfather in-flight sessions
+  }
+  return (await useMemoryV2(session.id)) ? 2 : 1;
+}
+```
+
+## Flag store vs database source of truth
+
+Feature flag services (LaunchDarkly, Unleash, split.io) are **control plane**. PostgreSQL is **data plane**. Rules:
+
+- Never store business data only in flag payloads.
+- Cache flag evaluations locally with TTL; agent hot paths cannot block on LD outage — fail to default-off for write migrations.
+- Log flag key + variation on every schema-touching write for audit.
+
+## Testing matrix
+
+| Test case | Expect |
+|-----------|--------|
+| Flag off, new code, post-expand DDL | Legacy path only; no v2 writes |
+| Flag on, old code (simulated) | Must not crash — old code unaware of flag |
+| Flag on, dual-write | Both columns populated; reads consistent |
+| Mid-session flag flip with stickiness | Session stays on initial version |
+| Rollback: flag off after partial backfill | Reads fall back to legacy column |
+
+Run integration tests in CI against Docker Postgres applying migrations in order. Include a job that deploys `N-1` application against `N` schema (expand-only) — the common rolling-deploy reality.
+
+## Operational dashboards
+
+Track per flag variation:
+
+- `agent_memory_write_total{version=1|2}`
+- `agent_memory_deserialize_errors`
+- `backfill_lag_sessions_remaining`
+- SQL errors tagged `column_missing` (should be zero)
+
+Alert when v2 error rate exceeds v1 baseline by any margin during canary.
+
+## Security and compliance
+
+Schema migrations behind flags still need change-control tickets. Audit who toggled production flags and when — tie to migration IDs. For regulated agents, prove that canary cohort selection does not correlate with protected attributes unless intentionally stratified for fairness eval.
 
 ## The takeaway
 
-Feature Flag Database Changes rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent feature flag database changes becomes a maintainable asset instead of incident fuel.
+Feature flags and database migrations solve different problems; combining them requires expand-contract sequencing, session stickiness, dual-write shims, and separate releases for DDL expand and contract. Ship additive schema first, deploy flag-default-off code second, ramp with parity jobs and metrics third, drop legacy schema only when the flag has been fully on and stable. That rhythm lets agent platforms evolve memory and tool storage weekly without betting session integrity on a single deploy.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Martin Fowler — Parallel Change (expand/contract)](https://martinfowler.com/bliki/ParallelChange.html)
+- [LaunchDarkly — Release pipelines](https://docs.launchdarkly.com/home/releases/release-pipelines)
+- [Unleash — Feature flag best practices](https://docs.getunleash.io/topics/feature-flags/feature-flag-best-practices)
+- [PostgreSQL — CREATE INDEX CONCURRENTLY](https://www.postgresql.org/docs/current/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)
+- [Flyway / Liquibase migration ordering guides](https://documentation.red-gate.com/fd)
+- [Stripe — Safe database migrations (expand/contract)](https://stripe.com/blog/online-migrations)

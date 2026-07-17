@@ -3,16 +3,146 @@ title: "IVF and Product Quantization Indexes"
 slug: "vector-search-ivf-pq-index"
 description: "Understand IVF and product quantization for vector search: how they reduce memory, recall trade-offs, when to use them over HNSW, and tuning parameters for large-scale indexes."
 datePublished: "2026-03-05"
-dateModified: "2026-03-05"
-tags: ["AI", "Vector Database", "Search", "Performance"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "IVF, product quantization, PQ, vector index, FAISS, approximate nearest neighbor, memory optimization"
 faq:
-  - q: "What is an IVF index in vector search?"
-    a: "IVF (Inverted File Index) partitions the vector space into clusters using k-means, then at query time only searches the clusters nearest to the query vector. Instead of scanning all vectors, the index examines a small subset of clusters (controlled by nprobe), dramatically reducing search time. IVF requires a training step on existing data to compute cluster centroids, and its recall depends on how well the query's nearest neighbors cluster together."
-  - q: "How does product quantization reduce vector index memory?"
-    a: "Product quantization (PQ) compresses each vector by splitting it into sub-vectors, quantizing each sub-vector to a small codebook of representative values, and storing only the codebook indices. A 1536-dimension float32 vector (6 KB) can be compressed to 96 bytes or less with minimal recall loss. PQ is often combined with IVF (IVF-PQ) to get both fast search and small memory footprint, which is how FAISS serves billion-scale indexes on commodity hardware."
-  - q: "When should I use IVF-PQ instead of HNSW?"
-    a: "Use IVF-PQ when memory is the primary constraint and your dataset exceeds what HNSW can hold in RAM — typically above 50-100 million vectors. IVF-PQ can serve billion-vector indexes on a single machine with tens of gigabytes of RAM. Choose HNSW when you need the highest recall at low latency on datasets that fit in memory. Many production systems use HNSW for hot data and IVF-PQ for cold or archival vectors."
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "IVF and Product Quantization Indexes"
+slug: "vector-search-ivf-pq-index"
+description: "Understand IVF and product quantization for vector search: how they reduce memory, recall trade-offs, when to use them over HNSW, and tuning parameters for large-scale indexes."
+datePublished: "2026-03-05"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "IVF, product quantization, PQ, vector index, FAISS, approximate nearest neighbor, memory optimization"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-search-ivf-pq-index"
+slug: "vector-search-ivf-pq-index"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-search-ivf-pq-index"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-search-ivf-pq-index"
+slug: "vector-search-ivf-pq-index"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-search-ivf-pq-index"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-search-ivf-pq-index"
+slug: "vector-search-ivf-pq-index"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-search-ivf-pq-index"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-search-ivf-pq-index"
+slug: "vector-search-ivf-pq-index"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-search-ivf-pq-index"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-search-ivf-pq-index"
+slug: "vector-search-ivf-pq-index"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-search-ivf-pq-index"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "IVF and Product Quantization Indexes"
+slug: "vector-search-ivf-pq-index"
+description: "Understand IVF and product quantization for vector search: how they reduce memory, recall trade-offs, when to use them over HNSW, and tuning parameters for large-scale indexes."
+datePublished: "2026-03-05"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "Vector Database"
+  - "Search"
+  - "Performance"
+keywords: "IVF, product quantization, PQ, vector index, FAISS, approximate nearest neighbor, memory optimization"
+faq:
+  - q: "What is the main production risk with vector search ivf pq index?"
+    a: "Teams ship without field measurement—vector search ivf pq index failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector search ivf pq index?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector search ivf pq index changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Our FAISS index for 200 million image embeddings needed 1.2 TB of RAM with a flat HNSW index. The server had 256 GB. Switching to IVF-PQ brought memory down to 38 GB with recall@10 dropping from 99% to 91% — acceptable for a "similar images" feature where users scroll through results. IVF and product quantization are the techniques that make billion-scale vector search economically viable, and understanding their trade-offs is essential when HNSW runs out of memory.
@@ -164,29 +294,48 @@ top_10 = np.argsort(exact_distances)[:10]
 
 This recovers most of the recall lost to PQ compression with minimal extra compute.
 
-## Common production mistakes
+## Faiss operational patterns
 
-Teams get vector search ivf pq index wrong in predictable ways:
+If you self-host Faiss indices:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+- **Index factory strings** — `IVF4096,PQ64` encodes nlist and PQ params; document chosen string per corpus version
+- **Training sample size** — minimum 256 × nlist vectors for stable k-means; undersampling causes empty lists
+- **nprobe tuning service** — expose nprobe as runtime config; A/B test recall vs latency without reindex
+- **Memory map** — `index.read_index(path, faiss.IO_FLAG_MMAP)` serves indices larger than RAM at latency cost
 
-Production implementations of vector search ivf pq index fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Snapshot indices to object storage after build. Rebuild pipeline should be reproducible from embedding parquet files plus factory string in git.
 
-## Debugging and triage workflow
+## When PQ compression fails visually
 
-When vector search ivf pq index misbehaves in production, work top-down instead of guessing:
+Product thumbnails and UI screenshots encoded with aggressive PQ show visible artifacts in similarity search—"find similar looking button" returns wrong matches. For visual similarity, prefer full-precision or HNSW without PQ on smaller corpora; use PQ on text embedding indices where semantic fuzziness absorbs quantization error.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Run perceptual spot checks: query with known nearest neighbor IDs after PQ migration; if ground truth neighbors disappear from top-10, increase code size or reduce compression.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Training IVF centroids
+
+IVF quality depends on k-means training sample — use 256× nlist vectors minimum from representative corpus. Retrain after major embedding model change; old centroids in wrong space destroy recall.
+
+## When to choose IVF-PQ over HNSW
+
+Billion-scale corpus with relaxed recall — IVF-PQ wins on RAM. Legal or medical RAG needing high recall stays on HNSW or brute re-rank top-100 from IVF.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

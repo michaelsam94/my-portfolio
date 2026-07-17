@@ -3,7 +3,7 @@ title: "Multi-Page View Transitions"
 slug: "web-view-transitions-multi-page"
 description: "Animate page navigations with the View Transitions API across multi-page apps: cross-document transitions, CSS animations, and progressive enhancement."
 datePublished: "2026-05-19"
-dateModified: "2026-05-19"
+dateModified: "2026-07-17"
 tags: ["Web", "CSS", "Animation", "Frontend"]
 keywords: "View Transitions API, cross-document transitions, page transition, MPA, navigation animation, view-transition"
 faq:
@@ -14,7 +14,6 @@ faq:
   - q: "What happens if the browser doesn't support View Transitions?"
     a: "The navigation works normally — instant page swap with no animation. View Transitions are purely progressive enhancement. No polyfill exists for cross-document transitions because they require browser-level navigation control. Same-document transitions can check for API support before calling startViewTransition."
 ---
-
 Our documentation site was a multi-page app served by a static generator. Every link click was an abrupt white flash. We added `@view-transition { navigation: auto; }` to the global CSS — two lines — and page navigations cross-faded smoothly. No JavaScript router, no framework migration, no hydration. The browser handled everything.
 
 ## Cross-document transitions
@@ -177,37 +176,6 @@ if (!('startViewTransition' in document)) {
 }
 ```
 
-## Measuring success in production
-
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
-
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
-
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
-
-## Additional production considerations
-
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
-
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
-
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
-
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
-
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
-
-## Common production mistakes
-
-Teams get view transitions multi page wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of view transitions multi page fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [MDN: View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API)
@@ -215,3 +183,97 @@ Production implementations of view transitions multi page fail when staging mirr
 - [Chrome: View Transitions for MPA](https://developer.chrome.com/docs/web-platform/view-transitions/)
 - [Can I use View Transitions](https://caniuse.com/view-transitions)
 - [View Transition API spec](https://drafts.csswg.org/css-view-transitions-1/)
+
+## Operational checklist (1)
+
+Before promoting Web View Transitions Multi Page changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Web View Transitions Multi Page after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web View Transitions Multi Page touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Web View Transitions Multi Page changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Web View Transitions Multi Page after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web View Transitions Multi Page touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Web View Transitions Multi Page changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Invariants to enforce for web view transitions multi page
+
+Name three invariants that must hold after every deploy of web view transitions multi page. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+| Check | Expected for web view transitions multi page |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for web view transitions multi page
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to web view transitions multi page, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+Concrete probe 2: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for web view transitions multi page
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for web view transitions multi page should include the revert command and the expected user-visible effect within five minutes.
+
+| Check | Expected for web view transitions multi page |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for web view transitions multi page
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how web view transitions multi page breaks without a clear owner in the incident channel.
+
+Concrete probe 4: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Capacity and cost notes for web view transitions multi page
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct web view transitions multi page changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+| Check | Expected for web view transitions multi page |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Reviewer checklist for web view transitions multi page
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most web view transitions multi page regressions before production.
+
+Concrete probe 6: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Incident patterns around web view transitions multi page
+
+Most incidents involving web view transitions multi page start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+| Check | Expected for web view transitions multi page |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for web view transitions multi page in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

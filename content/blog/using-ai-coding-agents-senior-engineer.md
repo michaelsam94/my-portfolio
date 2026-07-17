@@ -3,8 +3,9 @@ title: "How I Actually Use AI Coding Agents as a Senior Engineer"
 slug: "using-ai-coding-agents-senior-engineer"
 description: "A senior mobile engineer's real workflow with AI coding agents: where they help, where they hurt, and how to review agent-written code without shipping garbage."
 datePublished: "2026-02-07"
-dateModified: "2026-02-07"
-tags: ["AI Coding", "Developer Productivity", "Engineering", "Workflow"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "AI coding agents, agentic coding, AI pair programming, coding with AI, developer productivity, code review AI"
 faq:
   - q: "Do AI coding agents make senior engineers faster?"
@@ -13,8 +14,14 @@ faq:
     a: "No. Treat agent output like a pull request from a fast, confident junior who never says 'I don't know.' Read every diff, run the tests, and own the result. The engineer who merges the code is responsible for it, not the model."
   - q: "What tasks should I not give an AI coding agent?"
     a: "Anything where the cost of a subtle wrong answer is high and hard to detect: security-critical code, concurrency and race conditions, data migrations, and core domain logic you don't yet understand yourself. Use the agent to explore these, not to author them unsupervised."
+faqAnswers:
+  - question: "When is using ai coding agents senior engineer the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for using ai coding agents senior engineer?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back using ai coding agents senior engineer safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 I've been writing mobile code for over a decade, and for the last couple of years an AI agent has been in the loop for most of it. The honest summary: coding agents are a genuine multiplier on the boring 60% of the job and a liability on the critical 10% if you let them run unsupervised. The skill isn't prompting — it's knowing which tasks to hand over and how hard to interrogate what comes back.
 
 This is the workflow I actually use across Android, Flutter, and backend work, including the failure modes that cost me time before I learned to spot them. If you're a senior engineer wondering whether these tools are hype, the answer is: they're real, but the productivity comes from judgment, not from typing "make it work" and hoping.
@@ -65,6 +72,38 @@ The volume of code an agent produces can overwhelm normal review habits. A few t
 Agents make it dangerously easy to ship code you don't understand. That's the actual risk — not that the tools are bad, but that they let you skip comprehension and still produce something that compiles. For a junior that's how skills atrophy; for a senior it's how subtle bugs slip past the one person who should have caught them.
 
 So I use them aggressively, and I refuse to let them make me stupid. The parts of the system that matter — the architecture, the concurrency model, the security boundaries — I still hold in my own head. The agent handles the typing. I handle the thinking. That division is why the net effect on my work has been strongly positive, and why I'd tell any senior engineer to adopt these tools without surrendering the judgment that makes them senior. If you want to see the kind of systems I build with this workflow, my [portfolio](https://michaelsam94.com/) has the details.
+
+## A concrete playbook for using ai coding agents senior engineer
+
+Treat using ai coding agents senior engineer as a product capability with an owner, a dashboard, and a rollback plan. Define the user-visible success metric before debating tools.
+
+### Delivery
+
+Ship behind a flag when blast radius is high. Prefer managed services for undifferentiated heavy lifting. Document the escape hatch for teams that cannot adopt using ai coding agents senior engineer yet — and review escape hatches quarterly.
+
+### Operability
+
+Alerts should page on symptoms users feel, not on every internal retry. Link runbooks from alerts. After incidents involving using ai coding agents senior engineer, add one test or one alert that would have shortened detection.
+
+### Knowledge
+
+Keep a short FAQ in frontmatter synchronized with reality. Outdated answers are worse than none. Point to primary sources (RFCs, vendor docs) in Resources rather than secondary blog summaries when behavior is subtle.
+
+## Validation scenarios for using ai coding agents senior engineer
+
+Before calling using ai coding agents senior engineer done, exercise these scenarios in a staging environment that mirrors production identity, data volume, and failure injection:
+
+1. **Happy path** with production-like payload sizes.
+2. **Auth failure** — expired token, missing scope, revoked session.
+3. **Dependency down** — timeout the primary collaborator; confirm degraded mode or clear error.
+4. **Replay / duplicate** — submit the same event or request twice; confirm idempotency.
+5. **Rollback** — disable the flag or revert the deploy; confirm state converges.
+
+Capture traces for each scenario and store them next to the runbook for using ai coding agents senior engineer.
+
+## Ownership and interfaces
+
+Name the producing and consuming teams for using ai coding agents senior engineer. Publish the API/event contract with versioning rules. If you need a breaking change, run dual-write or dual-read long enough for consumers to migrate. Silent breakages erode trust faster than slow features.
 
 ## Resources
 

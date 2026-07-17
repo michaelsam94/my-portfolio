@@ -1,111 +1,273 @@
 ---
 title: "AI Agents: Helm Chart Security Scan"
 slug: "agent-helm-chart-security-scan"
-description: "Helm Chart Security Scan: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Scan Helm charts before agent workloads reach production—template injection, secret leakage, RBAC sprawl, OPA policies, and CI gates for LLM inference stacks."
 datePublished: "2026-01-27"
 dateModified: "2026-01-27"
 tags: ["AI", "Agent", "Helm"]
 keywords: "agent, helm, chart, security, scan, ai, production, engineering, architecture"
 faq:
-  - q: "What is Helm Chart Security Scan?"
-    a: "Helm Chart Security Scan covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Helm Chart Security Scan?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Helm Chart Security Scan?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Helm Chart Security Scan fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Helm Chart Security Scan should be observable in production and safe to change in small diffs."
+  - q: "What should Helm chart security scans catch that container image scans miss?"
+    a: "Charts define runtime behavior—ClusterRole bindings, hostPath mounts, privileged containers, hardcoded secrets in values.yaml, and network policies. An image can be CVE-clean while the chart deploys cluster-admin to an agent sidecar. Scan rendered manifests, not just the chart source."
+  - q: "When should chart scanning run—helm template, helm install, or admission?"
+    a: "All three layers. CI runs helm template + policy check on every PR. Pre-deploy runs against environment-specific values. Admission validates the final rendered manifest at apply time so manual kubectl patches cannot bypass CI."
+  - q: "How do you handle false positives on agent charts that legitimately need GPU nodes?"
+    a: "Use image-class and workload-class exceptions with expiry. GPU inference pods may need elevated capabilities; document owner, compensating controls (network policy, no egress), and re-review quarterly. Never global-allowlist privileged mode."
+  - q: "Should agent Helm charts pin subchart versions?"
+    a: "Yes. Unpinned dependencies pull latest on helm dependency update, silently changing security posture. Lock Chart.lock, scan subcharts recursively, and treat dependency bumps as security-relevant diffs requiring review."
 ---
-Most teams encounter helm chart security scan after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The platform team approved a new agent orchestrator Helm chart because the container image passed Trivy with zero critical CVEs. Two weeks later, a red-team exercise found the chart mounted `/var/run/docker.sock`, granted `cluster-admin` to the default service account, and embedded an OpenAI API key in a ConfigMap labeled `environment: prod`. The image was fine. The chart was the breach waiting to happen.
 
-When helm chart security scan is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Helm charts are executable infrastructure for AI agent platforms—they declare not just which inference image runs, but how it talks to vector stores, tool sandboxes, and secrets backends. Scanning container images without scanning charts is like inspecting the engine but ignoring the wiring diagram.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What agent Helm charts uniquely expose
 
-Solid AI engineering turns helm chart security scan from a recurring argument into a documented pattern with tests and an owner.
+Agent workloads differ from typical microservices in chart design:
 
-## Design principles that survive production
+| Pattern | Risk | Why agents need it |
+|---------|------|-------------------|
+| Sidecar tool runners | Privileged mounts, shared volumes | Sandboxed code execution |
+| GPU node selectors | Tolerations for tainted nodes | Local model inference |
+| Egress to LLM APIs | Wide NetworkPolicy holes | External model calls |
+| Ephemeral scratch PVCs | hostPath fallbacks under pressure | Large context caching |
+| Webhook ingress | Public endpoints without auth | User-facing chat |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent helm chart security scan bugs hide.
+Each pattern is defensible in isolation. Combined without policy guardrails, they produce charts that pass image scans and fail security reviews.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for helm chart security scan, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent helm chart security scan flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for helm chart security scan in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent helm chart security scan changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Helm Chart Security Scan: typed boundary + structured errors
-export async function handleHelmChartSecurityScan(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-helm-chart-security-scan");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Scanning pipeline architecture
 
 ```
+Chart PR → helm template (values-dev/staging/prod)
+              │
+              ├─▶ Checkov / Kubesec (manifest rules)
+              ├─▶ Conftest + OPA/Rego (custom policy)
+              ├─▶ helm-secrets / SOPS validation
+              └─▶ kube-score / polaris (best practices)
+              │
+         fail ▶ block merge
+         pass ▶ deploy → admission webhook (second scan)
+```
 
+Render with **production-shaped values** in CI. Scanning only `values.yaml` defaults misses overrides that inject real secrets and open network paths.
+
+```yaml
+# .github/workflows/helm-security.yml
+name: Helm Security Scan
+on:
+  pull_request:
+    paths: ['charts/agent-orchestrator/**']
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render prod manifests
+        run: |
+          helm template agent-orchestrator ./charts/agent-orchestrator \
+            -f ./charts/agent-orchestrator/values-prod.yaml \
+            --namespace agent-prod > rendered.yaml
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          file: rendered.yaml
+          framework: kubernetes
+          soft_fail: false
+
+      - name: Conftest policy
+        run: |
+          conftest test rendered.yaml \
+            -p policies/helm/agent \
+            --fail-on WARN
+```
+
+## Policy rules that matter for agent charts
+
+Generic Kubernetes policies catch baseline issues. Agent-specific Rego adds context:
+
+```rego
+# policies/helm/agent/deny_privileged.rego
+package agent.helm
+
+deny[msg] {
+  input.kind == "Pod"
+  container := input.spec.containers[_]
+  container.securityContext.privileged == true
+  not annotation_allowed(input.metadata.annotations)
+  msg := sprintf("privileged container %s in %s", [container.name, input.metadata.name])
+}
+
+annotation_allowed(annotations) {
+  annotations["agent.security.io/privileged-review"]
+  annotations["agent.security.io/privileged-expiry"]
+}
+```
+
+Additional high-value rules:
+
+**No secrets in ConfigMaps** — agent charts often stash `OPENAI_API_KEY` in ConfigMaps for convenience. Deny unless referenced from ExternalSecrets.
+
+**Service account least privilege** — flag `cluster-admin`, `create` on secrets cluster-wide, or wildcard verbs on `pods/exec`.
+
+**hostPath mounts** — deny except allowlisted paths (`/dev/nvidia*`) with annotation.
+
+**Image tag mutability** — require digest-pinned images or semver tags; deny `:latest` in production values.
+
+**NetworkPolicy presence** — agent namespaces handling tenant data must have default-deny egress with explicit LLM API allowlist.
+
+```yaml
+# Example failing snippet often found in agent charts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+data:
+  OPENAI_API_KEY: sk-proj-xxxxx   # ← CI must fail this
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-runner-binding
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: agent-prod
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin          # ← deny
+```
+
+## Secret management patterns
+
+Charts should reference secrets, not contain them:
+
+```yaml
+# values-prod.yaml — correct pattern
+externalSecrets:
+  enabled: true
+  llmApiKey:
+    secretStore: aws-secrets-manager
+    key: prod/agent/llm-api-key
+
+# templates/deployment.yaml
+env:
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: {{ include "agent.fullname" . }}-llm
+        key: api-key
+```
+
+Scan for:
+
+- Base64-encoded secrets in manifests (even if Kubernetes "expects" encoding)
+- `.Values` keys matching `*password*`, `*token*`, `*key*` with non-empty defaults in git
+- Helm notes that echo secrets to install output
+
+Integrate `git-secrets` or `trufflehog` on the chart directory alongside manifest policy.
+
+## Subchart and dependency risk
+
+Agent platforms often bundle:
+
+- `redis` for session state
+- `postgresql` for conversation persistence
+- `kafka` for event streaming
+- Vendor `gpu-operator` subcharts
+
+Run `helm dependency list` and scan each subchart's rendered output. A compromised or outdated subchart version can reintroduce `runAsUser: 0` after your parent chart enforces non-root.
+
+Lock file discipline:
+
+```bash
+helm dependency update charts/agent-orchestrator
+# Commit Chart.lock — CI fails if lock out of sync
+helm dependency build charts/agent-orchestrator
+```
+
+## Admission control as last line
+
+CI can be bypassed by emergency hotfixes. Deploy an admission webhook (Kyverno, OPA Gatekeeper) that re-runs the same policies:
+
+```yaml
+# Kyverno ClusterPolicy example
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: agent-chart-baseline
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: require-non-root
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["agent-*"]
+      validate:
+        message: "Agent pods must run as non-root"
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+```
+
+Admission adds latency—cache policy decisions and scope narrowly to agent namespaces.
 
 ## Operational concerns
 
-Runbooks for helm chart security scan should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+**Policy drift** — when Kubernetes upgrades deprecate APIs, charts may silently render differently. Re-scan on cluster upgrade.
 
-Production agent helm chart security scan work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Values sprawl** — ten environment files mean ten render targets in CI. Automate matrix renders; fail if any environment violates policy.
 
-Rollouts for helm chart security scan benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Exception debt** — track allowlisted findings with expiry dates in a CSV consumed by Conftest:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```csv
+rule_id,resource,owner,expires,reason
+deny_privileged,agent-sandbox,pipeline-team,2026-06-01,gVisor requires CAP_SYS_PTRACE
+```
 
-## Security and compliance angles
+Review weekly in agent platform standup.
 
-Even when helm chart security scan is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Testing the scan itself
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent helm chart security scan so security reviews do not rely on tribal knowledge.
+Policy tests prevent regressions:
 
-## Testing strategy
+```rego
+# policies/helm/agent/deny_privileged_test.rego
+test_deny_privileged_pod {
+  deny["privileged container sandbox in agent-worker"] with input as {
+    "kind": "Pod",
+    "metadata": {"name": "agent-worker", "annotations": {}},
+    "spec": {"containers": [{"name": "sandbox", "securityContext": {"privileged": true}}]}
+  }
+}
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that helm chart security scan depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Include **golden bad manifests** in repo—known-vulnerable chart snippets that must always fail. When someone weakens policy to unblock a deploy, golden tests scream.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Rollout checklist for agent platform teams
 
-## Migration and evolution
+Before merging the first chart scan gate, align platform and ML teams on ownership:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent helm chart security scan functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+1. **Inventory charts** — list every Helm release touching agent inference, tool sandboxes, and vector DB sidecars. Unknown charts bypass CI.
+2. **Baseline render matrix** — produce `rendered.yaml` for dev, staging, and prod values; store artifacts in CI for diff review on PRs.
+3. **Severity rubric** — document which Checkov/Conftest rules are `deny` vs. `warn` during a two-week burn-in. Promote warn→deny once false-positive rate drops below 5%.
+4. **Exception workflow** — require ticket ID in chart annotations for any temporary allowlist; auto-fail CI when expiry date passes.
+5. **On-call runbook** — when admission blocks a hotfix deploy at 2am, engineers need a documented escalation path that does not disable the webhook globally.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where helm chart security scan spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
-
-## Related concepts
-
-Helm Chart Security Scan intersects with broader ai topics — see companion notes on [agent-helm patterns](https://blog.michaelsam94.com/agent-helm/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Pair chart scanning with **SBOM export** from the same CI job. When a CVE hits a base image, you can trace which chart version promoted that digest and roll back the release—not just the image tag.
 
 ## The takeaway
 
-Helm Chart Security Scan rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent helm chart security scan becomes a maintainable asset instead of incident fuel.
+Helm chart security scanning closes the gap between "safe image" and "safe deployment." Render with real values, enforce agent-specific RBAC and secret policies, scan dependencies recursively, and duplicate enforcement at admission. AI agent platforms move fast; chart policy is how you move fast without handing cluster-admin to a prompt injection.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Checkov Helm and Kubernetes policies](https://www.checkov.io/5.Policy%20Index/kubernetes.html)
+- [Open Policy Agent Conftest](https://www.conftest.dev/)
+- [Kyverno policy library](https://kyverno.io/policies/)
+- [Helm best practices — values and secrets](https://helm.sh/docs/chart_best_practices/secrets/)
+- [NSA Kubernetes hardening guidance](https://media.defense.gov/2022/Aug/29/2003067252/-1/-1/0/KUBERNETES-HARDENING-GUIDANCE-1.2-PDF.PDF)

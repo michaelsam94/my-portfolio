@@ -87,6 +87,24 @@ Then **watch the rate per release.** ANR rate is noisy in aggregate but clear pe
 
 ANRs are a clustering problem, not a whack-a-mole of individual reports. Read the main thread's top frames first: either it's doing work it shouldn't (move it off the main thread) or it's blocked on a lock (find and fix the thread holding it). Merge Vitals clusters that share a root cause, prioritize by user-perceived rate times fixability, and confirm each fix by watching that cluster's rate drop in the shipping release. Add StrictMode and slow-device testing to catch main-thread stalls before users do. Handled this way, a thousand-report ANR dashboard becomes three or four real bugs — which is a very fixable number.
 
+## Main thread stack signature clustering
+
+Play Vitals groups ANR by native stack — Kotlin coroutine ANRs often show `BlockingCoroutine` pattern. Symbolicate with R8 mapping; cluster `android.os.MessageQueue.nativePollOnce` with top app frame for actionable owner.
+
+## Input dispatching timeout vs Broadcast ANR
+
+Different remediation: input ANR needs main thread profiling; `BroadcastReceiver` ANR needs goAsync or WorkManager migration. Tag internal ANR repro with type before filing framework bug.
+
+## Anr Cluster Analysis Vitals Supplement 0 on Samsung and Pixel divergence
+
+Exercise anr cluster analysis vitals supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching anr; regressions above 8% block release for `android-anr-cluster-analysis-vitals-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Anr Cluster Analysis Vitals Supplement 0" should map to a single runbook section with known workarounds.
+
+## Vitals regression gates for Play Vitals
+
+Before promoting `android-anr-cluster-analysis-vitals-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Vitals — ANRs](https://developer.android.com/topic/performance/vitals/anr)

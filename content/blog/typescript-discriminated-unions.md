@@ -3,7 +3,7 @@ title: "Discriminated Unions in Practice"
 slug: "typescript-discriminated-unions"
 description: "Model domain state with TypeScript discriminated unions: exhaustiveness checking, narrowing patterns, API response typing, and Redux-style action design."
 datePublished: "2026-02-15"
-dateModified: "2026-02-15"
+dateModified: "2026-07-17"
 tags: ["TypeScript", "Web", "Type Safety", "Architecture"]
 keywords: "discriminated unions, tagged unions, TypeScript narrowing, exhaustiveness, union types, algebraic data types"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "When you switch on the discriminant and handle every case, TypeScript verifies all variants are covered. If you add a new variant to the union and forget to handle it, the compiler errors on the default branch. The never type in the default case is the standard pattern: if control reaches default, the value should be never, and assigning a non-never type to never is a compile error."
   - q: "When should I use discriminated unions instead of optional properties?"
     a: "Use discriminated unions when exactly one set of properties is valid at a time — a request is either loading, succeeded, or failed, not all three simultaneously. Optional properties (status plus optional error plus optional data) allow impossible states like { status: 'success', error: '...' }. Discriminated unions make invalid states unrepresentable, which is the core principle of algebraic data type modeling."
+faqAnswers:
+  - question: "When is typescript discriminated unions the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for typescript discriminated unions?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back typescript discriminated unions safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 A React component I reviewed had this state type:
 
 ```typescript
@@ -199,29 +205,76 @@ To refactor an existing interface:
 
 The upfront cost is small. The ongoing benefit is that new states can't be added without the compiler pointing at every place that needs updating.
 
-## Common production mistakes
+## React rendering with exhaustive switches
 
-Teams get discriminated unions wrong in predictable ways:
+Map async state to UI with a single switch — TypeScript verifies every variant:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+```tsx
+function OrderPanel({ state }: { state: AsyncState<Order> }) {
+  switch (state.status) {
+    case "idle": return null;
+    case "loading": return <Spinner />;
+    case "success": return <Receipt order={state.data} />;
+    case "error": return <Alert message={state.error} />;
+    default: return assertNever(state);
+  }
+}
+```
 
-TypeScript patterns for discriminated unions erode when `any` escapes during deadlines, generic constraints are loosened instead of modeling domain invariants, and strict mode is disabled file-by-file without a migration plan.
+Adding `"pending_payment"` to the union without a case errors at compile time — before QA finds a blank screen.
 
-## Debugging and triage workflow
+## JSON deserialization caveat
 
-When discriminated unions misbehaves in production, work top-down instead of guessing:
+Runtime JSON will not automatically match discriminated unions — validate at boundaries with Zod or similar and construct typed objects. TypeScript narrowing applies after you have proven the discriminant field matches a known literal; trust parsed data, not raw `JSON.parse` casts.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Serialization round-trip
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+When persisting discriminated unions to JSON, validate discriminant on read:
+
+```typescript
+function parseEvent(raw: unknown): Event {
+  const o = EventSchema.parse(raw);
+  switch (o.type) {
+    case "click": return o;
+    case "submit": return o;
+    default: return assertNever(o);
+  }
+}
+```
+
+Zod `.discriminatedUnion("type", [...])` generates parser and TypeScript type together — single source of truth.
+
+## Edge cases in typescript discriminated unions
+
+TypeScript techniques in typescript discriminated unions pay off when they encode invariants the compiler can check. Prefer types that make illegal states unrepresentable over sprawling `any` escapes.
+
+### Migration tactics
+
+Enable `strict` incrementally: start with new packages, then tighten `noImplicitAny`, then `strictNullChecks` on legacy modules behind a burn-down list. Track error counts per package weekly.
+
+### Patterns that scale
+
+Branded types for IDs, discriminated unions for results, and `satisfies` for config objects keep refactors safe. Utility types (`Pick`, `Omit`, `ReturnType`) reduce duplication without inventing a parallel type language.
+
+### Tooling
+
+`tsc --noEmit` in CI, ESLint type-aware rules sparingly (they are slow), and API extractors for public packages. Generate types from OpenAPI/Zod when runtime validation must match compile-time types for typescript discriminated unions.
+
+## Validation scenarios for typescript discriminated unions
+
+Before calling typescript discriminated unions done, exercise these scenarios in a staging environment that mirrors production identity, data volume, and failure injection:
+
+1. **Happy path** with production-like payload sizes.
+2. **Auth failure** — expired token, missing scope, revoked session.
+3. **Dependency down** — timeout the primary collaborator; confirm degraded mode or clear error.
+4. **Replay / duplicate** — submit the same event or request twice; confirm idempotency.
+5. **Rollback** — disable the flag or revert the deploy; confirm state converges.
+
+Capture traces for each scenario and store them next to the runbook for typescript discriminated unions.
+
+## Ownership and interfaces
+
+Name the producing and consuming teams for typescript discriminated unions. Publish the API/event contract with versioning rules. If you need a breaking change, run dual-write or dual-read long enough for consumers to migrate. Silent breakages erode trust faster than slow features.
 
 ## Resources
 
@@ -230,3 +283,6 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Exhaustiveness checking (TypeScript docs)](https://www.typescriptlang.org/docs/handbook/2/narrowing.html#exhaustiveness-checking)
 - [Making illegal states unrepresentable](https://blog.janestreet.com/effective-ml-video/)
 - [Redux TypeScript usage guide](https://redux.js.org/usage/usage-with-typescript)
+## Exhaustive never
+
+`default: const _x: never = x` forces new union members handled.

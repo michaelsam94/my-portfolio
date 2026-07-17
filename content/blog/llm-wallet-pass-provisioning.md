@@ -1,111 +1,240 @@
 ---
-title: "Wallet Pass Provisioning"
+title: "Wallet Pass Provisioning from Agent Workflows"
 slug: "llm-wallet-pass-provisioning"
-description: "Wallet Pass Provisioning: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-08-22"
-dateModified: "2025-08-22"
-tags: ["AI", "Llm", "Wallet"]
-keywords: "llm, wallet, pass, provisioning, ai, production, engineering, architecture"
+description: "Issue Apple Wallet and Google Wallet passes via agent tools: boarding passes, event tickets, loyalty cards — signing certificates, pass updates, and PCI-adjacent data boundaries for teams running LLM features in production."
+datePublished: "2025-05-17"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "wallet pass provisioning agent, Apple Wallet API agent tool, Google Wallet pass agent tool, PKPass generation"
 faq:
-  - q: "What is Wallet Pass Provisioning?"
-    a: "Wallet Pass Provisioning covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Wallet Pass Provisioning?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Wallet Pass Provisioning?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Wallet Pass Provisioning fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Wallet Pass Provisioning should be observable in production and safe to change in small diffs."
+  - q: "Should agents generate PKPass files directly or call a wallet service?"
+    a: "Call a dedicated wallet microservice with narrow tools — never embed Apple signing certificates in the agent runtime. Agents pass structured intent (flight, seat, gate); the service signs, stores pass serial, and returns a add-to-wallet URL."
+  - q: "How do pass updates work when an agent changes booking details?"
+    a: "Apple Push Notification service (APNs) with passTypeIdentifier triggers device fetch from your webServiceURL. Google Wallet uses PATCH on pass object JWT. Agent tool `update_pass` must be idempotent on serial number."
+  - q: "What data must stay out of LLM context for wallet flows?"
+    a: "Signing keys, team identifiers, full barcode payloads with PII, payment tokens. Agent context gets: pass_type, serial, last4 confirmation, add_link_token — not PEM files or HMAC secrets."
+  - q: "Are wallet passes in PCI scope?"
+    a: "Passes displaying payment barcodes can be PCI-adjacent — treat barcode value as sensitive, log redaction, short TTL on links. Payment card provisioning to Apple Pay is full PCI; event tickets usually are not."
 ---
-Wallet Pass Provisioning is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Travel agents that rebook flights need to push an updated boarding pass before the user reaches TSA — not email a PDF. **Wallet pass provisioning** from agent workflows means your orchestrator calls signing infrastructure, mints Apple `PKPass` bundles or Google Wallet objects, and returns an Add to Wallet link — while the LLM never touches private keys or raw barcode secrets.
 
-When wallet pass provisioning is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
-
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns wallet pass provisioning from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm wallet pass provisioning bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for wallet pass provisioning, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm wallet pass provisioning flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for wallet pass provisioning in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm wallet pass provisioning changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Wallet Pass Provisioning: typed boundary + structured errors
-export async function handleWalletPassProvisioning(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-wallet-pass-provisioning");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Architecture boundary
 
 ```
+User: "Move me to the 6pm flight"
+         │
+         ▼
+   Agent orchestrator ──tool──► WalletPassService
+         │                           │
+         │                           ├── Apple Pass Type ID cert (HSM)
+         │                           ├── Google service account
+         │                           └── Pass registry DB
+         ▼
+   User message: "Updated — tap to add boarding pass"
+         │
+         └── HTTPS link / wallet deep link (short-lived token)
+```
 
+Agent tools are CRUD on **pass intents**, not cryptographic operations.
 
-## Operational concerns
+## Agent tool definitions
 
-Game-day exercises for wallet pass provisioning beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+```yaml
+tools:
+  - name: create_boarding_pass
+    parameters:
+      booking_id: string
+      passenger_name: string  # validated against PNR server-side
+      flight_number: string
+      departure_iso: string
+      seat: string
+      gate: string
+    returns:
+      pass_serial: string
+      add_to_wallet_url: string
+      expires_at: string
 
-Production llm wallet pass provisioning work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+  - name: update_wallet_pass
+    parameters:
+      pass_serial: string
+      fields: object  # gate, seat, boarding_time
+    returns:
+      update_status: enum[ pushed, queued, not_found ]
+```
 
-Rollouts for wallet pass provisioning benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Server validates `booking_id` against GDS/booking API — agent cannot forge passenger on arbitrary PNR.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Apple Wallet — PKPass generation
 
-## Security and compliance angles
+Signing happens in wallet service:
 
-Even when wallet pass provisioning is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```python
+import json
+import zipfile
+from pathlib import Path
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm wallet pass provisioning so security reviews do not rely on tribal knowledge.
+def build_pkpass(pass_json: dict, manifest_hashes: dict, signature: bytes) -> bytes:
+    # pass.json + manifest.json + signature + assets → zip
+    ...
 
-## Testing strategy
+def create_boarding_pass(booking: Booking) -> PassResult:
+    pass_data = {
+        "formatVersion": 1,
+        "passTypeIdentifier": "pass.com.example.travel",
+        "serialNumber": f"BRD-{booking.id}",
+        "teamIdentifier": TEAM_ID,
+        "organizationName": "Example Travel",
+        "boardingPass": {
+            "primaryFields": [{"key": "origin", "label": "SAN", "value": booking.origin}],
+            "secondaryFields": [{"key": "gate", "label": "GATE", "value": booking.gate}],
+            "auxiliaryFields": [{"key": "seat", "label": "SEAT", "value": booking.seat}],
+        },
+        "barcode": {
+            "format": "PKBarcodeFormatAztec",
+            "message": booking.barcode_payload,  # never log
+            "messageEncoding": "iso-8859-1",
+        },
+        "webServiceURL": "https://wallet.example.com/v1/passes/",
+        "authenticationToken": generate_auth_token(booking.id),
+    }
+    signed = sign_with_apple_cert(pass_data)
+    store_pass_record(pass_data["serialNumber"], booking.id)
+    url = issue_add_pass_url(signed, ttl_minutes=15)
+    return PassResult(serial=pass_data["serialNumber"], url=url)
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that wallet pass provisioning depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Certificates live in HSM or cloud KMS — rotation runbook separate from agent deploys.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Google Wallet — JWT object pattern
 
-## Migration and evolution
+```python
+from google.oauth2 import service_account
+import jwt
+import time
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm wallet pass provisioning functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+def create_google_boarding_pass(booking: Booking) -> str:
+    object_id = f"{ISSUER_ID}.boarding_{booking.id}"
+    payload = {
+        "iss": SERVICE_ACCOUNT_EMAIL,
+        "aud": "google",
+        "typ": "savetowallet",
+        "iat": int(time.time()),
+        "payload": {
+            "flightObjects": [{
+                "id": object_id,
+                "classId": f"{ISSUER_ID}.boarding_class",
+                "boardingAndSeatingInfo": {
+                    "seatNumber": booking.seat,
+                    "boardingGroup": booking.group,
+                },
+                "reservationInfo": {"confirmationCode": booking.pnr},
+            }]
+        },
+    }
+    token = jwt.encode(payload, credentials.signer, algorithm="RS256")
+    return f"https://pay.google.com/gp/v/save/{token}"
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where wallet pass provisioning spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Push updates on agent-driven changes
 
-## Related concepts
+When agent tool `update_wallet_pass` fires after gate change:
 
-Wallet Pass Provisioning intersects with broader ai topics — see companion notes on [llm-wallet patterns](https://blog.michaelsam94.com/llm-wallet/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**Apple:**
 
-## The takeaway
+```python
+def push_pass_update(serial: str):
+    record = pass_registry.get(serial)
+    apns_send(
+        topic=f"pass.{PASS_TYPE_ID}",
+        device_tokens=record.registered_devices,
+        payload={},  # empty → device pulls update
+    )
+```
 
-Wallet Pass Provisioning rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm wallet pass provisioning becomes a maintainable asset instead of incident fuel.
+Device GETs `webServiceURL/v1/devices/.../registrations/...` → returns fresh pass.json.
+
+**Google:** PATCH object via REST API; no APNs equivalent.
+
+Agent receives `update_status: pushed` — not raw APNs diagnostics.
+
+## Idempotency and concurrency
+
+Same booking change retried twice:
+
+```python
+def update_pass(serial: str, fields: dict, idempotency_key: str):
+    if dedupe.exists(idempotency_key):
+        return dedupe.result(idempotency_key)
+    merged = pass_registry.merge_fields(serial, fields)
+    push_pass_update(serial)
+    dedupe.store(idempotency_key, {"update_status": "pushed"})
+    return {"update_status": "pushed"}
+```
+
+## Security and redaction
+
+| Field | In LLM context? | Storage |
+|-------|-----------------|---------|
+| Apple signing cert | Never | HSM |
+| barcode_payload | Never | Encrypted at rest |
+| add_to_wallet_url | Token only, short TTL | Audit log |
+| passenger_name | Yes if user-owned session | Pass registry |
+
+Rotate `authenticationToken` on suspicious agent session revoke.
+
+## Testing without production certs
+
+- Apple PassKit test environment with sandbox certs
+- Google Wallet demo issuer mode
+- Stub tools in agent evals returning fixture URLs
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [Apple — Wallet Passes documentation](https://developer.apple.com/documentation/walletpasses)
+- [Apple — PassKit Web Service Reference](https://developer.apple.com/library/archive/documentation/PassKit/Reference/PassKit_WebService/WebService.html)
+- [Google Wallet — REST API](https://developers.google.com/wallet)
+- [Passkit.io — open PKPass tooling reference](https://github.com/passkit/passkit-generator)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.

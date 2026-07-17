@@ -92,6 +92,24 @@ Automate a launch-and-navigate pass on the 16 KB emulator in CI. Pair it with yo
 
 This is a classic infrastructure migration: technically simple, organizationally annoying. The actual fix is usually one NDK bump and a linker flag. The work is the audit — finding every native library in a dependency graph you didn't fully know you had, and chasing the one maintainer who hasn't updated. Do the audit early, wire the alignment check into CI, and add a 16 KB emulator to your test matrix. Then the deadline becomes a non-event instead of a fire drill.
 
+## JNI LOCAL ref table on 16KB
+
+Native code assuming PAGE_SIZE 4096 for buffer alignment corrupts heap on 16KB devices — use `getpagesize()` runtime. Vendor `.so` audit same as native-libs migration post.
+
+## Play Console prelaunch signal
+
+Pre-launch report flags 16KB incompatible native libs — treat as release blocker same as targetSdk bump regressions.
+
+## 16Kb Page Sizes Supplement 0 on Samsung and Pixel divergence
+
+Exercise 16kb page sizes supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching 16kb; regressions above 8% block release for `android-16kb-page-sizes-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "16Kb Page Sizes Supplement 0" should map to a single runbook section with known workarounds.
+
+## Sizes regression gates for Play Vitals
+
+Before promoting `android-16kb-page-sizes-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android 16 KB page size support guide](https://developer.android.com/guide/practices/page-sizes)

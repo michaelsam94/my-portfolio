@@ -158,6 +158,44 @@ Traces without token attributes are useless for FinOps — instrument at LLM cli
 
 Pair with [agent evaluation trajectory analysis](https://blog.michaelsam94.com/agent-evaluation-trajectory-analysis/) when exporting failed traces to eval datasets.
 
+## Propagation across services and tools
+
+A single agent run often crosses your API, a worker queue, a retrieval service, and third-party tool APIs. If trace context dies at the queue boundary, you get orphaned spans and useless waterfalls. Inject W3C `traceparent` on every outbound HTTP call and message envelope:
+
+```python
+from opentelemetry.propagate import inject
+
+headers = {}
+inject(headers)
+await httpx.post(retrieval_url, json=payload, headers=headers)
+```
+
+Workers continue the trace with `extract` on consume. Tool wrappers that call Stripe, Salesforce, or internal gRPC should all carry the same `trace_id` so support can answer "which retrieval chunk led to this refund?" without stitching logs manually.
+
+## Baggage for tenant and experiment context
+
+Span attributes belong on every span; **baggage** propagates cross-cutting context to downstream services without repeating attributes on each hop:
+
+```python
+from opentelemetry import baggage
+baggage.set_baggage("tenant_id", tenant_id)
+baggage.set_baggage("prompt_variant", experiment_arm)
+```
+
+Downstream retrieval and ranking services log tenant-aware metrics even when they do not own the root span. Keep baggage small — IDs and enums, not prompts. Large baggage hurts performance and leaks data across service boundaries.
+
+## Alerts from trace-derived signals, not raw logs
+
+Define SLOs on trace aggregates: p95 `agent.run` duration, error rate on `agent.tool.*` spans, token count p99 per tenant, count of traces with more than twelve LLM spans (likely loops). Alert when guardrail block rate exceeds baseline by 3σ — often prompt injection or a bad content deploy, not random noise.
+
+During incidents, filter traces by `gen_ai.response.finish_reasons` containing `length` — context truncation explains many "agent forgot" reports better than model quality regressions.
+
+## Comparing traces for regressions
+
+Before promoting a prompt or model change, run fifty scenarios in staging and **diff trace shape** against baseline: span count, tool names invoked, total tokens, guardrail outcomes. A prompt tweak that adds two extra LLM rounds per request is a cost regression even if eval scores improve slightly. Store baseline trace fingerprints per scenario in CI artifacts; fail the deploy job when fingerprint drift exceeds tolerance without an approved exception.
+
+Waterfall review habit: child spans should sum to parent duration minus idle time. A fat `agent.run` with thin children means missing instrumentation — often the gap is synchronous retrieval or an unwrapped retry loop burning wall clock invisibly.
+
 ## Common production mistakes
 
 Teams get observability tracing spans wrong in predictable ways:

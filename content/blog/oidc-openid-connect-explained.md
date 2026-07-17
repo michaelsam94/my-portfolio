@@ -3,7 +3,7 @@ title: "OpenID Connect, Explained"
 slug: "oidc-openid-connect-explained"
 description: "OpenID Connect demystified: ID tokens vs access tokens, authorization code flow, discovery, claims, and how OIDC layers identity on OAuth 2.0 for modern apps."
 datePublished: "2025-08-08"
-dateModified: "2025-08-08"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "OAuth", "Web"]
 keywords: "OpenID Connect explained, OIDC vs OAuth, ID token, authorization code flow, OIDC discovery"
 faq:
@@ -200,6 +200,49 @@ We moved from localStorage access tokens to BFF + rotating refresh — XSS could
 - **Ignoring logout** — OIDC RP-initiated logout and front-channel/back-channel specs exist; implement or sessions linger at provider
 
 Rotate signing keys gracefully: cache JWKS with `kid` lookup but refresh on signature failure in case of provider key rotation. Log authentication failures with `error`, `error_description`, and `state` — never log authorization codes or refresh tokens. For multi-tenant SaaS, map `sub` plus `iss` as composite primary key; the same person logging in via Google and email-password OIDC will have different `sub` values. Document session length policy: ID tokens expire in minutes; application sessions may last days via refresh tokens stored server-side. Compliance reviews often ask for RP-initiated logout — implement end-session endpoint redirects even if most users just close the tab. Test clock skew by advancing container time during integration tests; brittle `exp` validation breaks logins silently in VMs with drifted clocks.
+
+## Nonce, state, and CSRF hardening
+
+The authorize redirect must include cryptographically random `state` and `nonce` stored server-side or in sealed session cookies — not localStorage:
+
+```javascript
+const state = crypto.randomUUID();
+const nonce = crypto.randomUUID();
+await sealedSession.set({ state, nonce, codeVerifier: verifier });
+```
+
+On callback, reject if `state` mismatches — that blocks login CSRF where an attacker tricks a victim into completing auth for the attacker's account. Validate `nonce` inside the ID token to bind the token to this authorize request.
+
+## Multiple identity providers and account linking
+
+Enterprise apps offer Google + Microsoft + email-password. Each issuer produces a different `sub` for the same human. Store:
+
+```sql
+CREATE TABLE user_identities (
+  user_id UUID REFERENCES users(id),
+  issuer TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  PRIMARY KEY (issuer, subject)
+);
+```
+
+Link identities only after verifying email ownership or explicit user consent — never auto-merge on email match alone (typo-squatting and recycled inboxes break that assumption).
+
+## Refresh token rotation attacks
+
+When refresh tokens rotate on each use, detect reuse — if an old refresh token appears after a new one was issued, revoke the entire token family (OAuth 2.0 Security BCP). Log `grant_type`, `client_id`, and `ip` on token endpoint failures for breach detection.
+
+## Machine-to-machine vs user OIDC
+
+Client credentials OAuth is not OIDC — no ID token. Architectures mixing user sessions and service accounts should separate middleware paths. M2M tokens must not access user-specific APIs without explicit delegation scopes.
+
+## JWKS caching edge cases
+
+Key rotation with overlapping `kid` values requires fetching JWKS when unknown `kid` appears — cache TTL alone misses rotation window. Set max cache 1h with `kid` miss trigger refresh.
+
+## Enterprise IdP quirks
+
+Azure AD multi-tenant apps need `issuer` validation per tenant — `iss` includes tenant GUID. Google workspace hd parameter restricts domain — validate `hd` claim matches allowed workspace on B2B login.
 
 ## Resources
 

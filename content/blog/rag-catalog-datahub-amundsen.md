@@ -1,111 +1,300 @@
 ---
 title: "RAG: Catalog Datahub Amundsen"
 slug: "rag-catalog-datahub-amundsen"
-description: "Catalog Datahub Amundsen: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "DataHub and Amundsen metadata catalogs help RAG teams discover which tables, documents, and embeddings exist—lineage from source to chunk, ownership, and freshness signals for retrieval quality."
 datePublished: "2025-03-08"
-dateModified: "2025-03-08"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Catalog"]
-keywords: "rag, catalog, datahub, amundsen, ai, production, engineering, architecture"
+keywords: "DataHub, Amundsen, data catalog, RAG metadata, lineage, document discovery, embedding registry, data governance, knowledge base inventory"
 faq:
-  - q: "What is Catalog Datahub Amundsen?"
-    a: "Catalog Datahub Amundsen covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Catalog Datahub Amundsen?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Catalog Datahub Amundsen?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Catalog Datahub Amundsen fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Catalog Datahub Amundsen should be observable in production and safe to change in small diffs."
+  - q: "Why does a RAG pipeline need a data catalog?"
+    a: "RAG corpora span dozens of source systems—Confluence, S3 buckets, Postgres tables, SharePoint libraries. Without a catalog, teams cannot answer which documents are indexed, who owns them, when they were last ingested, or what downstream retrieval collections depend on a given source. Catalogs make corpus inventory auditable."
+  - q: "DataHub vs Amundsen for RAG metadata—which should I choose?"
+    a: "DataHub (LinkedIn) has stronger real-time lineage, schema evolution tracking, and a richer API for programmatic ingestion—better for large teams with complex pipelines. Amundsen (Lyft) has simpler deployment and excellent search UX—better for smaller teams prioritizing discoverability over lineage depth. Both can model document-level assets for RAG."
+  - q: "How do you model RAG-specific assets in a data catalog?"
+    a: "Extend standard table/file entities with custom aspects: chunk_count, embedding_model_version, retrieval_collection_id, last_ingest_timestamp, and source_authorization_tier. Link source documents to derived chunk tables and vector index collections via lineage edges."
 ---
-Catalog Datahub Amundsen is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+An engineer debugged a RAG hallucination by tracing the bad answer to a chunk sourced from a Confluence page last edited eighteen months ago. The page owner had left the company. Nobody knew the page was indexed because ingestion was automated and the corpus had grown to 400,000 documents across twelve source systems. There was no inventory, no ownership metadata, and no way to query "show me all HR documents older than one year in the retrieval index."
 
-When catalog datahub amundsen is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Data catalogs—DataHub and Amundsen being the two most widely deployed open-source options—solve the discoverability and governance gap that RAG pipelines create at scale. They were built for analytics data assets but adapt cleanly to document corpora, embedding registries, and retrieval collection metadata.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The RAG metadata problem catalogs solve
 
-Solid AI engineering turns catalog datahub amundsen from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag catalog datahub amundsen bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for catalog datahub amundsen, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag catalog datahub amundsen flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for catalog datahub amundsen in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag catalog datahub amundsen changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Catalog Datahub Amundsen: typed boundary + structured errors
-export async function handleCatalogDatahubAmundsen(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-catalog-datahub-amundsen");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+RAG pipelines generate a derived asset graph:
 
 ```
+Source systems → Ingestion jobs → Raw document store → Chunking → Embedding → Vector index → Retrieval collections
+```
 
+Each edge is a transformation. Each node has metadata that affects retrieval quality:
 
-## Operational concerns
+- **Source freshness** — stale documents produce stale answers
+- **Ownership** — who approves reindex when source changes
+- **Authorization tier** — which retrieval collections may include this source
+- **Embedding model version** — reindex required when model changes
+- **Lineage** — if upstream table changes, which chunks are affected
 
-Alert on user-visible symptoms for catalog datahub amundsen — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Without a catalog, this graph lives in tribal knowledge, scattered YAML configs, and ingestion job logs. Catalogs centralize it.
 
-Production rag catalog datahub amundsen work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## DataHub architecture for RAG assets
 
-Rollouts for catalog datahub amundsen benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+[DataHub](https://datahubproject.io/) uses a metadata graph model with entities, aspects, and relationships ingested via REST API, Kafka, or Python SDK.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+### Modeling document sources
 
-## Security and compliance angles
+Register each source system as a dataset entity:
 
-Even when catalog datahub amundsen is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```python
+# ingestion/register_confluence_source.py
+from datahub.emitter.mce_builder import make_dataset_urn
+from datahub.emitter.rest_emitter import DatahubRestEmitter
+from datahub.metadata.schema_classes import (
+    DatasetPropertiesClass,
+    GlobalTagsClass,
+    TagAssociationClass,
+)
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag catalog datahub amundsen so security reviews do not rely on tribal knowledge.
+emitter = DatahubRestEmitter(gms_server="http://datahub-gms:8080")
 
-## Testing strategy
+for space in confluence_spaces:
+    urn = make_dataset_urn(platform="confluence", name=space.key, env="PROD")
+    emitter.emit_mcp({
+        "entityType": "dataset",
+        "entityUrn": urn,
+        "aspectName": "datasetProperties",
+        "aspect": DatasetPropertiesClass(
+            name=space.name,
+            description=space.description,
+            customProperties={
+                "rag_collection": f"confluence-{space.key}",
+                "authorization_tier": space.classification,
+                "document_count": str(space.page_count),
+            },
+        ),
+    })
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that catalog datahub amundsen depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+### Custom aspects for RAG metadata
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+DataHub supports custom aspect schemas. Define RAG-specific metadata:
 
-## Migration and evolution
+```yaml
+# schemas/rag_corpus_aspect.yaml
+aspectName: ragCorpusInfo
+entityTypes:
+  - dataset
+fields:
+  - name: chunkCount
+    type: number
+  - name: embeddingModelVersion
+    type: string
+  - name: lastIngestTimestamp
+    type: string
+  - name: retrievalCollectionIds
+    type: array
+    items: string
+  - name: avgChunkTokens
+    type: number
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag catalog datahub amundsen functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Attach to datasets after each ingestion run:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where catalog datahub amundsen spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```python
+emitter.emit_aspect(
+    entity_urn=source_urn,
+    aspect={
+        "chunkCount": 12450,
+        "embeddingModelVersion": "text-embedding-3-large-v1",
+        "lastIngestTimestamp": "2026-07-15T08:00:00Z",
+        "retrievalCollectionIds": ["general-kb", "engineering-runbooks"],
+        "avgChunkTokens": 512,
+    },
+    aspect_name="ragCorpusInfo",
+)
+```
 
-## Related concepts
+### Lineage from source to vector index
 
-Catalog Datahub Amundsen intersects with broader ai topics — see companion notes on [rag-catalog patterns](https://blog.michaelsam94.com/rag-catalog/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+DataHub lineage connects upstream sources to downstream derived assets:
 
-## The takeaway
+```python
+from datahub.emitter.mce_builder import make_dataset_urn
+from datahub.metadata.schema_classes import UpstreamClass, UpstreamLineageClass
 
-Catalog Datahub Amundsen rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag catalog datahub amundsen becomes a maintainable asset instead of incident fuel.
+source_urn = make_dataset_urn(platform="confluence", name="ENG", env="PROD")
+chunk_table_urn = make_dataset_urn(platform="postgres", name="rag.chunks_confluence_eng", env="PROD")
+index_urn = make_dataset_urn(platform="pinecone", name="prod/general-kb", env="PROD")
+
+emitter.emit_aspect(
+    entity_urn=chunk_table_urn,
+    aspect=UpstreamLineageClass(upstreams=[
+        UpstreamClass(dataset=source_urn, type="TRANSFORMED"),
+    ]),
+)
+
+emitter.emit_aspect(
+    entity_urn=index_urn,
+    aspect=UpstreamLineageClass(upstreams=[
+        UpstreamClass(dataset=chunk_table_urn, type="TRANSFORMED"),
+    ]),
+)
+```
+
+Now "what depends on this Confluence space?" is a graph query, not an archaeology expedition.
+
+## Amundsen for RAG discoverability
+
+[Amundsen](https://www.amundsen.io/) prioritizes search UX and simpler deployment. It models tables (and extensible resources) with descriptions, tags, owners, and programmatic descriptions.
+
+### Extending Amundsen for document assets
+
+Amundsen's databuilder framework ingests from custom extractors:
+
+```python
+# databuilder/extractors/rag_corpus_extractor.py
+from databuilder.extractor.base_extractor import Extractor
+from databuilder.models.table import Table, Column
+
+class RagCorpusExtractor(Extractor):
+    def init(self, conf):
+        self.collections = load_rag_collections()
+
+    def get_model_to_extract(self, record_iterator):
+        for coll in self.collections:
+            yield Table(
+                database="rag",
+                cluster="production",
+                schema="corpus",
+                name=coll.id,
+                description=coll.description,
+                tags=[coll.authorization_tier, f"model:{coll.embedding_version}"],
+                owners=[Owner(email=coll.owner_email, label="owner")],
+            )
+            yield Column(
+                database="rag", cluster="production", schema="corpus",
+                table_name=coll.id,
+                name="chunk_count",
+                description=str(coll.chunk_count),
+                col_type="integer",
+            )
+```
+
+Users search "HR documents" in Amundsen UI and find the corpus entity with owner, last updated, and link to ingestion job.
+
+## Operational workflows enabled by catalog integration
+
+### Stale document audits
+
+Query catalog for documents where `lastIngestTimestamp` > 90 days and `sourceLastModified` is older:
+
+```sql
+-- DataHub GraphQL or search API equivalent
+SELECT urn, customProperties.source_url, ragCorpusInfo.lastIngestTimestamp
+FROM datasets
+WHERE platform = 'confluence'
+  AND ragCorpusInfo.lastIngestTimestamp < NOW() - INTERVAL '90 days'
+```
+
+Feed results into reindex queue or owner notification workflow.
+
+### Embedding model migration planning
+
+When upgrading embedding model:
+
+1. Query all datasets with `embeddingModelVersion != 'new-version'`
+2. Lineage query finds affected vector index collections
+3. Generate reindex job list with chunk counts for capacity forecasting
+4. Track migration progress by updating aspect after each collection completes
+
+### Authorization review
+
+Map retrieval collections to source authorization tiers:
+
+```
+retrieval_collection "customer-support" 
+  → sources: [confluence-CS (public), zendesk-articles (public)]
+  → MUST NOT include: confluence-HR (confidential)
+```
+
+Catalog lineage makes incorrect inclusions visible during security review.
+
+### Incident response
+
+When a source system has bad data (incorrect policy page published):
+
+1. Find dataset URN in catalog
+2. Lineage query: which indexes contain chunks from this source?
+3. Trigger targeted invalidation for those collections
+4. Notify retrieval collection owners from catalog metadata
+
+## Ingestion automation patterns
+
+Keep catalog metadata fresh by wiring ingestion jobs to emit metadata:
+
+```python
+# ingestion/pipeline.py
+async def ingest_collection(source_config: SourceConfig):
+    chunks = await extract_and_chunk(source_config)
+    await embed_and_index(chunks, source_config.collection_id)
+
+    # Always update catalog after successful ingest
+    await datahub_client.emit_rag_corpus_info(
+        source_urn=source_config.urn,
+        chunk_count=len(chunks),
+        embedding_model_version=EMBEDDING_MODEL_VERSION,
+        last_ingest_timestamp=datetime.utcnow().isoformat(),
+        retrieval_collection_ids=source_config.target_collections,
+    )
+```
+
+Failed ingestion should emit a `DataQualityWarning` aspect, not silently skip catalog update.
+
+## DataHub vs Amundsen decision matrix
+
+| Criterion | DataHub | Amundsen |
+|-----------|---------|----------|
+| Lineage depth | Excellent (column-level) | Good (table-level) |
+| Real-time updates | Kafka-based streaming | Batch ingestion |
+| Custom metadata | Flexible aspect schema | Extensible via models |
+| Search UX | Good (improving) | Excellent |
+| Deployment complexity | Higher (Kafka, ES, MySQL) | Lower |
+| API richness | Comprehensive REST/GraphQL | Adequate |
+| Community/ecosystem | Larger, active | Stable, smaller |
+
+For RAG teams already running DataHub for analytics, extend it. Starting fresh with primarily document assets, Amundsen's simpler ops may win.
+
+## Governance and compliance
+
+Catalogs support audit questions regulators ask:
+
+- What personal data sources feed the RAG index? (tag `pii:true`)
+- Who approved inclusion of each source? (ownership + approval workflow)
+- When was each source last verified accurate? (`lastVerifiedTimestamp`)
+- What is the blast radius of retiring a source? (downstream lineage)
+
+Integrate catalog with data retention policies: sources marked for deletion trigger lineage-based index purge.
+
+## Getting started
+
+1. Inventory current RAG sources in a spreadsheet (bridge step)
+2. Deploy DataHub or Amundsen in staging
+3. Write extractor for largest source system
+4. Add custom RAG aspect with chunk count and embedding version
+5. Wire ingestion pipeline to emit metadata on every run
+6. Build stale document audit query
+7. Expand to all sources over 4–6 weeks
+
+A catalog does not fix retrieval quality directly—it makes the corpus legible so quality problems become manageable.
+
+## Cross-team workflows enabled by catalog metadata
+
+When product managers ask "which documents feed the customer support RAG collection," the catalog answers in seconds via lineage graph—not a three-day engineering investigation. Legal teams query for PII-tagged sources before GDPR audits. New engineers onboarding to the RAG platform search Amundsen for corpus ownership instead of Slack archaeology.
+
+Establish catalog hygiene rituals: weekly stale-source reports to owners, monthly embedding-version audit before model upgrades, quarterly authorization-tier review aligned with security team. Catalogs decay without ownership—assign a platform engineer as catalog maintainer with SLAs for metadata freshness after each ingestion deploy.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [DataHub documentation](https://datahubproject.io/docs/)
+- [Amundsen documentation](https://www.amundsen.io/amundsen/)
+- DataHub Python SDK ingestion examples
+- OpenMetadata as alternative catalog option

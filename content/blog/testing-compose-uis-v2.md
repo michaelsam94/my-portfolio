@@ -3,16 +3,20 @@ title: "Testing Compose UIs With the New v2 Testing APIs"
 slug: "testing-compose-uis-v2"
 description: "A practical guide to testing Jetpack Compose UIs: the semantics tree, ComposeTestRule, finders and assertions, synchronization, and how to write tests that don't flake."
 datePublished: "2026-04-24"
-dateModified: "2026-04-24"
-tags: ["Android", "Jetpack Compose", "Testing", "Kotlin"]
+dateModified: "2026-07-17"
+tags:
+  - "Android"
+  - "Jetpack Compose"
+  - "Testing"
+  - "Kotlin"
 keywords: "Compose testing, UI testing Android, Compose test APIs, Compose UI tests, semantics, ComposeTestRule, test tags"
 faq:
-  - q: "How do Compose UI tests find elements without view IDs?"
-    a: "Compose tests query the semantics tree, not view IDs. You match nodes by text, content description, role, or an explicit testTag you attach via Modifier.testTag, then assert or act on the resulting node."
-  - q: "Do I need an emulator to test Compose UIs?"
-    a: "Not always. Instrumented tests with createAndroidComposeRule run on a device or emulator, but many pure-Compose tests run on the JVM with Robolectric via createComposeRule, which is far faster in CI."
-  - q: "Why are my Compose tests flaky?"
-    a: "Most flakiness comes from fighting the test clock. Avoid Thread.sleep, let Compose auto-synchronize on idle, and when you drive animations or coroutines manually use mainClock and waitUntil instead of arbitrary delays."
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
 ---
 
 Compose testing looks alien the first time you see it because there are no view IDs to find. Instead of `onView(withId(R.id.button))`, you query a **semantics tree** — a parallel representation of your UI built for accessibility and testing. Once that clicks, Compose tests are more expressive and less flaky than the Espresso tests they replace, precisely because they hook into the framework's own idea of "the UI is idle now."
@@ -121,6 +125,14 @@ Compose UI tests are the middle of the testing pyramid — more expensive than p
 
 The framework does the hard part — knowing when the UI is settled — as long as you don't fight it. Match by semantics, let it synchronize, control the clock when you must, and Compose tests become the cheapest confidence you can buy per line.
 
+## Semantics and test tags
+
+Compose UI tests should assert semantics (content description, role) over pixel position. Use `testTag` sparingly — prefer user-visible properties. Synchronization with idling resources prevents flaky interactions; register custom idling for animations and async loads. Robolectric covers logic; device tests cover touch targets and real rendering. Screenshot tests complement semantics tests for visual regressions layout alone won't catch.
+
+## Screenshot and semantics together
+
+Semantics tests catch broken behavior; screenshot tests catch visual regressions Compose semantics miss — gradient backgrounds, padding shifts. Keep screenshot scope to design-system components, not full screens with dynamic timestamps.
+
 ## Resources
 
 - [Testing your Compose layout — official guide](https://developer.android.com/develop/ui/compose/testing)
@@ -129,3 +141,103 @@ The framework does the hard part — knowing when the UI is settled — as long 
 - [Synchronization in Compose tests](https://developer.android.com/develop/ui/compose/testing/synchronization)
 - [Roborazzi — JVM screenshot testing](https://github.com/takahirom/roborazzi)
 - [Robolectric](https://robolectric.org/)
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## testing compose uis v2 rollout
+
+Field RUM on Android 4G. RDS Proxy where relevant. Rollback in PR.
+
+## Hilt and Compose tests
+
+```kotlin
+@HiltAndroidTest
+class HomeScreenTest {
+    @get:Rule(order = 0)
+    val hiltRule = HiltAndroidRule(this)
+
+    @get:Rule(order = 1)
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Before fun setup() = hiltRule.inject()
+}
+```
+
+Replace production bindings with `@TestInstallIn` fakes for deterministic UI.
+
+## Navigation testing
+
+```kotlin
+composeRule.onNodeWithContentDescription("Show details").performClick()
+composeRule.onNodeWithTag("detail_screen").assertIsDisplayed()
+```
+
+Test tags on root of each destination — navigation graphs change; tags stabilize assertions.
+
+## Custom semantics
+
+```kotlin
+Modifier.semantics { contentDescription = "Loading" }
+```
+
+Merge properties carefully — duplicate descriptions confuse TalkBack and tests.
+
+## Screenshot tests
+
+`captureToImage()` on Compose nodes for visual regression — supplement semantics tests, not replace.
+
+## Multimodule CI
+
+`:feature:checkout` instrumented tests run only when `:feature:checkout` affected — Gradle test caching saves hours.
+
+## Accessibility test automation
+
+```kotlin
+composeRule.onNodeWithRole(Role.Button).assertHasClickAction()
+```
+
+Compose Test `assertIsToggleable()` etc. — catch missing roles before manual audit.
+
+Compose UI tests pay off when semantics are designed alongside UI — not bolted on after release.

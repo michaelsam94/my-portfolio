@@ -3,8 +3,8 @@ title: "Output Filtering and Safe Completions"
 slug: "llm-safety-output-filtering"
 description: "Filter LLM outputs before they reach users: moderation classifiers, regex and schema validation, streaming interruption, policy engines, and safe completion patterns for production."
 datePublished: "2025-03-09"
-dateModified: "2025-03-09"
-tags: ["AI", "LLM", "Security", "Safety"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM output filtering, safe completions AI, output moderation LLM, streaming content filter, LLM response validation"
 faq:
   - q: "Should output filtering happen before or after streaming to the user?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I filter structured LLM outputs like JSON?"
     a: "Validate against a strict schema (JSON Schema, Pydantic) after generation — reject and retry on failure. Strip markdown fences before parsing. For tool arguments, validate types, ranges, and allowlists before execution. Structured output mode from providers reduces parse failures but still requires semantic validation."
 ---
-
 The coding assistant streamed a complete AWS access key into the chat bubble before the moderation job running on the finished response could flag it. Output filtering that runs only on `completion.done` is too late for streaming UIs — users screenshot tokens in seconds. Safe completions require treating model output as untrusted data that passes through validation, moderation, and policy gates before display, tool execution, or storage — regardless of how confident the model sounded generating it.
 
 ## Output filtering pipeline
@@ -185,17 +184,6 @@ Track:
 
 Maintain golden-set evaluations — known harmful prompts must produce blocked or safe outputs after model updates.
 
-## Common production mistakes
-
-Teams get safety output filtering wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-LLM features around safety output filtering break in production when prompts assume deterministic output, context windows are sized for dev datasets, or token costs are never budgeted per user session. Always log prompt hash, model version, and latency—not raw prompts with PII.
-
 ## Resources
 
 - [OpenAI Moderation API](https://platform.openai.com/docs/guides/moderation)
@@ -203,3 +191,17 @@ LLM features around safety output filtering break in production when prompts ass
 - [Microsoft Azure Content Safety](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/)
 - [JSON Schema specification](https://json-schema.org/)
 - [OWASP LLM Top 10 — Improper Output Handling](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+
+## Production notes for LLM stacks
+
+When `llm-safety-output-filtering` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `output filtering and safe completions` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

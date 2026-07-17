@@ -1,0 +1,401 @@
+{
+  "results": [
+    {
+      "slug": "llm-pci-dss-scope-reduction",
+      "status": "rewritten",
+      "words": 1449,
+      "first_heading": "Scope follows data, not intentions",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-performance-budget-ci-gate",
+      "status": "rewritten",
+      "words": 1450,
+      "first_heading": "Budget table",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-personalization-signals-ranking",
+      "status": "rewritten",
+      "words": 1392,
+      "first_heading": "Signal taxonomy",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-pii-tokenization-vault",
+      "status": "rewritten",
+      "words": 1427,
+      "first_heading": "Vault vs redaction",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-pkce-public-clients",
+      "status": "rewritten",
+      "words": 1381,
+      "first_heading": "Flow",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-pod-security-standards",
+      "status": "rewritten",
+      "words": 1389,
+      "first_heading": "PSS profiles for inference",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-poison-message-detection",
+      "status": "rewritten",
+      "words": 1423,
+      "first_heading": "Identifying poison",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-policy-as-code-opa",
+      "status": "rewritten",
+      "words": 1385,
+      "first_heading": "Policy scope",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-postmortem-blameless-culture",
+      "status": "rewritten",
+      "words": 1408,
+      "first_heading": "Blameless vs accountability",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-preemptible-workload-checkpoint",
+      "status": "rewritten",
+      "words": 1351,
+      "first_heading": "Workload fit",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-pricing-optimization-dynamic",
+      "status": "rewritten",
+      "words": 1415,
+      "first_heading": "Signals",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-probabilistic-early-expiration",
+      "status": "rewritten",
+      "words": 1397,
+      "first_heading": "Problem",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-producer-acknowledgment-tradeoffs",
+      "status": "rewritten",
+      "words": 1395,
+      "first_heading": "acks=all",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-progressive-delivery-metrics",
+      "status": "rewritten",
+      "words": 1408,
+      "first_heading": "Canary basket",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-protobuf-evolution-compatibility",
+      "status": "rewritten",
+      "words": 1399,
+      "first_heading": "Wire rules",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-provenance-content-credentials",
+      "status": "rewritten",
+      "words": 1397,
+      "first_heading": "Generation metadata",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-pseudo-localization-testing",
+      "status": "rewritten",
+      "words": 1400,
+      "first_heading": "Expansion",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-query-plan-analysis",
+      "status": "rewritten",
+      "words": 1396,
+      "first_heading": "EXPLAIN triggers",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-query-understanding-nlu",
+      "status": "rewritten",
+      "words": 1383,
+      "first_heading": "Routing",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-rate-limit-token-bucket",
+      "status": "rewritten",
+      "words": 1355,
+      "first_heading": "Bucket vs window",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-reconciliation-batch-jobs",
+      "status": "rewritten",
+      "words": 1382,
+      "first_heading": "Daily diff",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-refresh-token-rotation-detect",
+      "status": "rewritten",
+      "words": 1336,
+      "first_heading": "Rotation",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-replay-attack-prevention",
+      "status": "rewritten",
+      "words": 1370,
+      "first_heading": "Signed requests",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-replication-lag-monitoring",
+      "status": "rewritten",
+      "words": 1382,
+      "first_heading": "SLI",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-reranker-latency-budget",
+      "status": "rewritten",
+      "words": 1392,
+      "first_heading": "Budget",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-responsible-ai-review",
+      "status": "rewritten",
+      "words": 1381,
+      "first_heading": "Triggers",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-reverse-etl-activation",
+      "status": "rewritten",
+      "words": 1380,
+      "first_heading": "Pattern",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-row-level-security-policies",
+      "status": "rewritten",
+      "words": 1333,
+      "first_heading": "RLS",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-runbook-as-code",
+      "status": "rewritten",
+      "words": 1382,
+      "first_heading": "Structure",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-runtime-security-falco",
+      "status": "rewritten",
+      "words": 1381,
+      "first_heading": "Rules",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-saga-orchestration-choreography",
+      "status": "rewritten",
+      "words": 1376,
+      "first_heading": "Orchestration",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-same-site-cookie-policy",
+      "status": "rewritten",
+      "words": 1331,
+      "first_heading": "Same-origin",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-sanctions-screening-api",
+      "status": "rewritten",
+      "words": 1388,
+      "first_heading": "Timing",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-sbom-generation-ci",
+      "status": "rewritten",
+      "words": 1501,
+      "first_heading": "What \"done\" looks like",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-scheduled-job-leader-election",
+      "status": "rewritten",
+      "words": 1544,
+      "first_heading": "Jobs that need a leader",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-schema-migration-zero-downtime",
+      "status": "rewritten",
+      "words": 1484,
+      "first_heading": "The constraint: rolling deploys",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-schema-registry-avro",
+      "status": "rewritten",
+      "words": 1500,
+      "first_heading": "What belongs in the registry",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-scope-minimization-principle",
+      "status": "rewritten",
+      "words": 1510,
+      "first_heading": "The failure mode you're designing against",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-screen-reader-live-regions",
+      "status": "rewritten",
+      "words": 1527,
+      "first_heading": "How live regions work",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-scroll-driven-animations-css",
+      "status": "rewritten",
+      "words": 1465,
+      "first_heading": "Time-based vs scroll-driven",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-secrets-scanning-precommit",
+      "status": "rewritten",
+      "words": 1512,
+      "first_heading": "What to scan for",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-semantic-layer-metrics",
+      "status": "rewritten",
+      "words": 1472,
+      "first_heading": "Why LLM services need this more than BI dashboards",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-server-components-cache-revalidate",
+      "status": "rewritten",
+      "words": 1467,
+      "first_heading": "What to cache vs keep dynamic",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-serverless-cold-start-mitigation",
+      "status": "rewritten",
+      "words": 1476,
+      "first_heading": "Cold start anatomy",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-service-account-least-privilege",
+      "status": "rewritten",
+      "words": 1496,
+      "first_heading": "Identity per workload",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-service-mesh-mtls-strict",
+      "status": "rewritten",
+      "words": 1477,
+      "first_heading": "LLM service topology in mesh",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-serving-quantization-awq-gptq",
+      "status": "rewritten",
+      "words": 1371,
+      "first_heading": "AWQ vs GPTQ",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-serving-speculative-decoding-draft",
+      "status": "rewritten",
+      "words": 1353,
+      "first_heading": "Acceptance rate is the metric",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-serving-structured-output-outlines",
+      "status": "rewritten",
+      "words": 1332,
+      "first_heading": "Grammar-constrained decoding",
+      "banned_template": false
+    },
+    {
+      "slug": "llm-serving-tensor-parallelism",
+      "status": "rewritten",
+      "words": 1393,
+      "first_heading": "When TP applies",
+      "banned_template": false
+    }
+  ],
+  "summary": {
+    "rewritten": 50,
+    "skipped": 0,
+    "samples": [
+      {
+        "slug": "llm-pci-dss-scope-reduction",
+        "words": 1449,
+        "first_heading": "Scope follows data, not intentions"
+      },
+      {
+        "slug": "llm-performance-budget-ci-gate",
+        "words": 1450,
+        "first_heading": "Budget table"
+      },
+      {
+        "slug": "llm-personalization-signals-ranking",
+        "words": 1392,
+        "first_heading": "Signal taxonomy"
+      },
+      {
+        "slug": "llm-pii-tokenization-vault",
+        "words": 1427,
+        "first_heading": "Vault vs redaction"
+      },
+      {
+        "slug": "llm-pkce-public-clients",
+        "words": 1381,
+        "first_heading": "Flow"
+      },
+      {
+        "slug": "llm-pod-security-standards",
+        "words": 1389,
+        "first_heading": "PSS profiles for inference"
+      },
+      {
+        "slug": "llm-poison-message-detection",
+        "words": 1423,
+        "first_heading": "Identifying poison"
+      },
+      {
+        "slug": "llm-policy-as-code-opa",
+        "words": 1385,
+        "first_heading": "Policy scope"
+      }
+    ],
+    "under_1200": []
+  }
+}

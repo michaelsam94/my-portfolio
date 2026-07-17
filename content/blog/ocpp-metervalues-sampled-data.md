@@ -3,7 +3,7 @@ title: "MeterValues and Sampled Data"
 slug: "ocpp-metervalues-sampled-data"
 description: "Configure OCPP MeterValues and sampled data: measurands, sampling intervals, clock-aligned reporting, and billing-grade energy measurement."
 datePublished: "2025-11-02"
-dateModified: "2025-11-02"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Energy"]
 keywords: "OCPP MeterValues, sampled data OCPP, measurands OCPP, energy metering EV charging, clock-aligned MeterValues, OCPP billing data"
 faq:
@@ -260,6 +260,41 @@ Partition by month on timestamp. Index on (transaction_id, measurand, timestamp)
 - Sample interval ≤60s for billing-grade Register measurements
 - UTC timestamps enforced on all MeterValues
 - Partition and index strategy for time-series query performance
+
+## Signed metering and Eichrecht context
+
+In regulated markets (Germany Eichrecht, UK AFC), billing-grade meters require **signed** energy readings — OCPP alone does not sign MeterValues. Integrate with hardware secure elements or external calibrated meters; export signed totals via vendor extension or separate OCPI CDR fields.
+
+For non-regulated sites, still treat `Energy.Active.Import.Register` as the legal billing source and keep periodic Power samples for operations only. Display instantaneous kW to users; invoice on integrated kWh.
+
+## Handling meter rollover and replacement
+
+Meters reset or roll over at 999,999.9 kWh. Detect jumps:
+
+```python
+def adjust_for_rollover(prev, curr, max_register=999999.9):
+    if curr < prev and (prev - curr) > max_register * 0.9:
+        return curr + (max_register - prev)
+    return curr - prev
+```
+
+When physical meter replacement mid-session is impossible, end transaction at replacement, start new transaction with `meterStart` at zero, link both in billing with a `meter_swap` reason code.
+
+## Sampling under poor connectivity
+
+Reduce `MeterValueSampleInterval` offline only if storage allows — but never below what billing auditors require. A pragmatic split: 60s online, 300s offline for Power; always capture `Transaction.Begin` and `Transaction.End` Register readings locally even when CSMS is unreachable.
+
+## Aligning clock-aligned samples to grid intervals
+
+Utilities often want readings on :00, :15, :30, :45. Configure `ClockAlignedDataInterval` and verify charger aligns to UTC or local utility timezone explicitly — mixed timezone sites produce unreconcilable grid reports.
+
+## Export formats for analytics teams
+
+Beyond SQL storage, expose Parquet export with `(station_id, connector_id, timestamp, measurand, value, context)` — data science teams join with weather and tariff tables without scraping JSON logs.
+
+## Compression for historical archive
+
+After 90 days, roll minute-level Register samples to 15-minute max/last for analytics retention — keep Transaction.Begin/End at full precision for billing disputes. Document compression policy for regulators asking about meter traceability.
 
 ## Resources
 

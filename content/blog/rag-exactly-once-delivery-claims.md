@@ -1,111 +1,194 @@
 ---
 title: "RAG: Exactly Once Delivery Claims"
 slug: "rag-exactly-once-delivery-claims"
-description: "Exactly Once Delivery Claims: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Debunking exactly-once delivery in RAG pipelines — idempotent consumers, transactional outbox, and what Kafka EOS actually guarantees."
 datePublished: "2024-11-17"
-dateModified: "2024-11-17"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Exactly"]
-keywords: "rag, exactly, once, delivery, claims, ai, production, engineering, architecture"
+keywords: "rag, exactly, once, delivery, ai, production, engineering, architecture"
 faq:
-  - q: "What is Exactly Once Delivery Claims?"
-    a: "Exactly Once Delivery Claims covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Exactly Once Delivery Claims?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Exactly Once Delivery Claims?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Exactly Once Delivery Claims fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Exactly Once Delivery Claims should be observable in production and safe to change in small diffs."
+  - q: "Is exactly-once delivery achievable in RAG ingestion pipelines?"
+    a: "End-to-end exactly-once is not achievable in distributed systems with external side effects. Embedding APIs and vector upserts are side effects—you can achieve effectively-once processing via idempotent consumer design, deduplication keys, and transactional outbox patterns so duplicates do not create duplicate vectors or double-charged API calls."
+  - q: "What does Kafka exactly-once semantics actually mean?"
+    a: "EOS means exactly-once processing within Kafka streams when using transactions between consume-transform-produce on Kafka topics—it does not extend to side effects writing to Pinecone or OpenAI. Treat broker EOS as eliminating duplicate Kafka messages, not duplicate embeddings in your index."
+  - q: "How should RAG workers deduplicate document processing?"
+    a: "Use deterministic IDs: hash(source_uri + content_hash + chunk_index) for vectors, store processed document version in a dedup table with unique constraint, and pass idempotency keys to embedding APIs where supported. Replays become safe no-ops instead of duplicate chunks."
 ---
-Exactly Once Delivery Claims is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Marketing claimed "exactly-once document indexing." Finance counted embedding API calls and found 2.3× expected volume during backlog replays. The Kafka cluster had `enable.idempotence=true` and transactional producers; workers still double-upserted vectors because consumption committed before Pinecone acknowledged—and retries after crash re-embedded identical chunks. Exactly-once **delivery** became exactly-twice **billing** while search returned duplicate hits with different internal IDs.
 
-When exactly once delivery claims is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+**Exactly-once delivery** is the most misunderstood promise in streaming systems. Vendors and blog posts imply end-to-end guarantees; distributed systems textbooks say otherwise. RAG pipelines with costly embedding side effects must design for **at-least-once delivery with idempotent effects**—honest engineering beats marketing claims.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The impossibility result (practical version)
 
-Solid AI engineering turns exactly once delivery claims from a recurring argument into a documented pattern with tests and an owner.
+Consider:
 
-## Design principles that survive production
+1. Worker consumes message M
+2. Worker calls embedding API (side effect)
+3. Worker upserts vectors (side effect)
+4. Worker commits offset
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag exactly once delivery claims bugs hide.
+Crash between any steps yields duplicate or missed processing unless external systems participate in a distributed transaction—which embedding APIs do not offer.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for exactly once delivery claims, you do not yet understand the behavior you shipped.
+**Exactly-once** in the wild means one of:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+- Exactly-once within broker boundary (Kafka transactions)
+- Effectively-once via idempotency (same outcome if processed 1 or N times)
+- Deduped visibility (user sees one result; duplicates suppressed at read)
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag exactly once delivery claims flows so duplicates are harmless or detectable.
+RAG needs **effectively-once indexing**.
 
-## Implementation patterns
+## Kafka exactly-once: scope and limits
 
-A practical baseline for exactly once delivery claims in ai stacks:
+Kafka EOS (0.11+):
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+- Idempotent producer (`enable.idempotence=true`) dedupes producer retries
+- Transactions atomicity: consume from input topic + produce to output topic
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag exactly once delivery claims changes safer because business rules stay isolated from transport details.
+Works for **Kafka → Kafka** stream processing. Stops at:
 
-```typescript
-// Exactly Once Delivery Claims: typed boundary + structured errors
-export async function handleExactlyOnceDeliveryClaims(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-exactly-once-delivery-claims");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```python
+# NOT covered by Kafka EOS
+embedding = openai.embed(text)      # external API
+pinecone.upsert(embedding)          # external DB
 ```
 
+Document this in architecture reviews when someone enables transactions expecting magic.
 
-## Operational concerns
+## Idempotent consumer pattern for RAG
 
-Alert on user-visible symptoms for exactly once delivery claims — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+### Deterministic vector IDs
 
-Production rag exactly once delivery claims work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+def chunk_vector_id(doc_uri: str, content_hash: str, chunk_index: int) -> str:
+    raw = f"{doc_uri}|{content_hash}|{chunk_index}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
-Rollouts for exactly once delivery claims benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+def upsert_chunks(chunks):
+    for c in chunks:
+        vid = chunk_vector_id(c.uri, c.content_hash, c.index)
+        index.upsert(id=vid, values=c.embedding, metadata=c.meta)  # overwrite = idempotent
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Replay same document → same IDs → replace not duplicate.
 
-## Security and compliance angles
+### Processed document ledger
 
-Even when exactly once delivery claims is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+CREATE TABLE ingest_dedup (
+  corpus_id TEXT,
+  document_id TEXT,
+  content_hash TEXT,
+  processed_at TIMESTAMPTZ,
+  PRIMARY KEY (corpus_id, document_id, content_hash)
+);
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag exactly once delivery claims so security reviews do not rely on tribal knowledge.
+Consumer checks ledger in same transaction as marking complete—or use INSERT ON CONFLICT DO NOTHING and skip if no row inserted.
 
-## Testing strategy
+### Idempotency keys for embedding APIs
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that exactly once delivery claims depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+OpenAI and others accept `Idempotency-Key` header—reuse key derived from `content_hash + model_version` so network retries do not double-charge.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Transactional outbox pattern
 
-## Migration and evolution
+Problem: DB commit and message publish are not atomic.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag exactly once delivery claims functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Outbox**: write event to `outbox` table in same DB transaction as business state; separate relay publishes to queue.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where exactly once delivery claims spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```
+BEGIN;
+  INSERT INTO documents ...;
+  INSERT INTO outbox (payload) VALUES (...);
+COMMIT;
+-- relay reads outbox → Kafka → workers
+```
 
-## Related concepts
+Worker idempotency handles relay duplicates. No lost messages if crash after COMMIT.
 
-Exactly Once Delivery Claims intersects with broader ai topics — see companion notes on [rag-exactly patterns](https://blog.michaelsam94.com/rag-exactly/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+For RAG: sync job records document metadata + outbox `IndexDocument` command; projectors consume reliably.
 
-## The takeaway
+## Ordering and partition keys
 
-Exactly Once Delivery Claims rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag exactly once delivery claims becomes a maintainable asset instead of incident fuel.
+Per-document ordering: partition Kafka by `document_id`. Parallelism across documents; single consumer sequence per doc prevents chunk B before chunk A races.
 
-## Resources
+Global order unnecessary for most corpora—do not single-partition entire topic for "ordering" unless required.
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+## Claiming EOS in SLAs and docs
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+Honest language for stakeholders:
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+| Claim | Accurate statement |
+|-------|-------------------|
+| "Exactly-once indexing" | "Idempotent indexing; duplicates suppressed" |
+| "No duplicate vectors" | "Deterministic IDs with upsert semantics" |
+| "Kafka EOS enabled" | "No duplicate Kafka messages between internal topics" |
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Sales and legal appreciate precision after billing disputes.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+## Testing duplicate delivery
+
+Chaos tests:
+
+- Kill worker after embed, before upsert—verify replay single vector
+- Kill after upsert, before offset commit—verify ledger skip or idempotent upsert
+- Publish duplicate messages manually—verify one index entry
+
+Measure embedding API call count vs documents processed—ratio should approach 1.0 steady state, spike only during intentional reindex.
+
+## DLQ interaction
+
+Permanent failures go to DLQ after retries—separate from duplicate concern. Ledger records `failed_permanent` to prevent infinite retry loops on poison docs.
+
+Replay from DLQ uses same idempotency keys—safe by design.
+
+## Cost attribution
+
+Track:
+
+- `embedding_calls_total`
+- `documents_processed_unique` (ledger inserts)
+- `duplicate_suppressed_total`
+
+Dashboard ratio exposes broken idempotency before finance does.
+
+Exactly-once delivery claims collapse under RAG's external side effects unless you engineer idempotency explicitly. Kafka transactions help internal streaming; deterministic vector IDs, dedup ledgers, outbox publishing, and embedding idempotency keys deliver what users actually need—each document indexed once in effect, replays that do not multiply cost, and search results free of duplicate chunks from retry artifacts.
+
+## Sagas and compensating transactions
+
+When embedding succeeds but vector upsert fails persistently, **saga orchestrator** emits compensating `EmbeddingAttemptRevoked` event and marks ledger `failed`—support manual retry from DLQ without assuming clean state. Long-running ingest benefits from explicit saga state machine vs implicit retry loops.
+
+Document which steps are compensable (delete orphan vectors by ID) vs require human intervention (embedding billed non-refundably).
+
+## Observability for delivery semantics
+
+Dashboard panels: `at_least_once_deliveries`, `idempotent_skips`, `effectively_once_rate = unique_docs_processed / messages_consumed`. Target effectively-once rate > 0.999 during steady state. Alert when idempotent skip rate drops suddenly—may indicate broken dedup table rather than improved reliability.
+
+## Financial reconciliation with embedding vendors
+
+Monthly invoice reconciliation: embedding API bill vs `embedding_calls_unique` ledger count. Discrepancy >0.5% triggers finance ticket—investigate duplicate calls from broken idempotency vs vendor billing error.
+
+Idempotency key retention matches vendor dedup window (often 24h)—document alignment so retries after window do not double-charge while still safe at vector layer via deterministic IDs.
+
+## Cross-team vocabulary training
+
+Engineering, product, and sales must share vocabulary slide: **at-least-once delivery**, **idempotent processing**, **effectively-once outcomes**. Quarterly onboarding quiz for new PMs prevents roadmap promises of "guaranteed no duplicate indexing" in customer RFPs.
+
+Legal reviews customer contracts for exactly-once language—replace with SLA on duplicate rate measurable via ledger metrics (`duplicate_vector_rate < 0.001%`) achieving same buyer confidence with honest metrics.
+
+## Platform standards document
+
+Publish internal **messaging semantics standard** mandating idempotency keys on all consumer handlers touching billable or user-visible state. Code review checklist item: "Does this handler safe under redelivery?" New RAG pipeline services scaffold with dedup table migration and deterministic ID helper—same way APIs scaffold OpenAPI validation. Standards beat post-hoc audits finding duplicate vectors after launch.
+
+Platform guild maintains reference implementation in Java and Python copied into new services—reduces subtle bugs in hand-rolled dedup logic that tests miss because test harness delivers exactly-once unlike production Kafka.
+
+Platform onboarding for new RAG ingest services includes 30-minute lab: deliberately crash consumer mid-batch, observe duplicate message delivery, verify index unchanged and embedding call count stable. Hands-on beats architecture slide for teaching idempotency expectations inherited from Kafka marketing.
+
+Finance and engineering should share one dashboard for duplicate suppression rate and embedding spend—aligned incentives prevent teams hiding redelivery problems to avoid acknowledging wasted API budget after claiming exactly-once delivery in roadmap documents.
+
+Idempotency is a property of the whole pipeline, not a Kafka checkbox. Document delivery semantics at service boundaries in OpenAPI and AsyncAPI specs so integrators know which guarantees extend across HTTP callbacks versus message consumers versus webhook retries from embedding vendors.
+
+Run duplicate-delivery chaos tests in staging after every Kafka cluster upgrade or consumer framework major bump—regressions in offset commit semantics have shipped from upstream libraries without headline release notes, and RAG ingest pipelines are expensive places to discover them. Treat those tests as release gates, not optional hygiene.
+
+## Integration notes for exactly once delivery claims
+
+This rarely lives alone. Map upstream dependencies (auth, data stores, queues) and downstream consumers before you harden the happy path. Sequence the rollout: observability first, then flags, then the risky behavior change. That order turns rollback into a flag flip instead of a reverse migration under pressure. Keep the integration diagram in the same repo as the code so it cannot rot in a slide deck.

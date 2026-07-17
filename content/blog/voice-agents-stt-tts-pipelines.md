@@ -3,16 +3,107 @@ title: "Voice Agents: Building STT and TTS Pipelines"
 slug: "voice-agents-stt-tts-pipelines"
 description: "How to build a real-time voice agent: streaming STT, LLM turn-taking, TTS, and the latency budget, VAD, and barge-in details that make it feel like a conversation."
 datePublished: "2026-02-12"
-dateModified: "2026-02-12"
-tags: ["Voice AI", "Speech to Text", "Text to Speech", "Real-Time"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "speech to text, text to speech, voice agents, STT TTS pipeline, voice AI, streaming ASR, voice activity detection"
 faq:
-  - q: "What is the latency target for a natural voice agent?"
-    a: "Aim for under 800ms from the user finishing speaking to the agent starting to speak, ideally near 500ms. Humans notice gaps beyond about one second as awkward, so the whole STT-to-LLM-to-TTS chain has to be streamed and overlapped, not run sequentially."
-  - q: "Do I need a speech-to-speech model or a pipeline of STT, LLM, and TTS?"
-    a: "A cascaded STT-LLM-TTS pipeline gives you the most control, easy tool calling, and swappable components, and it's what most production agents use. Native speech-to-speech models offer lower latency and richer prosody but less control and harder debugging. Start cascaded."
-  - q: "What is barge-in and why does it matter?"
-    a: "Barge-in is letting the user interrupt the agent mid-sentence. Without it, a voice agent feels robotic and frustrating. Implementing it means detecting speech while playing TTS, immediately stopping playback, and discarding the rest of the queued response."
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Voice Agents: Building STT and TTS Pipelines"
+slug: "voice-agents-stt-tts-pipelines"
+description: "How to build a real-time voice agent: streaming STT, LLM turn-taking, TTS, and the latency budget, VAD, and barge-in details that make it feel like a conversation."
+datePublished: "2026-02-12"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "speech to text, text to speech, voice agents, STT TTS pipeline, voice AI, streaming ASR, voice activity detection"
+faq:
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "voice-agents-stt-tts-pipelines"
+slug: "voice-agents-stt-tts-pipelines"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "voice-agents-stt-tts-pipelines"
+faq:
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "voice-agents-stt-tts-pipelines"
+slug: "voice-agents-stt-tts-pipelines"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "voice-agents-stt-tts-pipelines"
+faq:
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "voice-agents-stt-tts-pipelines"
+slug: "voice-agents-stt-tts-pipelines"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "voice-agents-stt-tts-pipelines"
+faq:
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Voice Agents: Building STT and TTS Pipelines"
+slug: "voice-agents-stt-tts-pipelines"
+description: "How to build a real-time voice agent: streaming STT, LLM turn-taking, TTS, and the latency budget, VAD, and barge-in details that make it feel like a conversation."
+datePublished: "2026-02-12"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "speech to text, text to speech, voice agents, STT TTS pipeline, voice AI, streaming ASR, voice activity detection"
+faq:
+  - q: "What is the main production risk with voice agents stt tts pipelines?"
+    a: "Teams ship without field measurement—voice agents stt tts pipelines failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize voice agents stt tts pipelines?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate voice agents stt tts pipelines changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 A voice agent that feels natural is mostly an exercise in hiding latency. The models — speech-to-text, an LLM, text-to-speech — are the easy part; each has a good hosted option. The hard part is stitching them into a loop that responds in under a second, lets the user interrupt, and doesn't talk over background noise. Get the plumbing wrong and even great models produce a stilted, walkie-talkie experience.
@@ -84,6 +175,42 @@ Newer native speech-to-speech models (audio in, audio out, no text in the middle
 - **Graceful degradation** on poor networks: buffer, and have a fallback message rather than a frozen agent when a stage times out. Flaky mobile networks are the norm, not the exception — see [handling flaky networks on mobile](https://blog.michaelsam94.com/handling-flaky-networks-mobile/).
 
 Build it as a streaming, overlapped pipeline with VAD, endpointing, barge-in, and echo cancellation treated as first-class, and the models will do the rest. The engineering that makes voice feel human is almost entirely in the timing.
+
+## Latency breakdown instrumentation
+
+Log structured timestamps per session:
+
+```json
+{
+  "utterance_end": 1710000000100,
+  "stt_final": 1710000000250,
+  "llm_first_token": 1710000000450,
+  "tts_first_byte": 1710000000520,
+  "audio_play_start": 1710000000580
+}
+```
+
+Aggregate p50/p95 per stage weekly. Teams optimize LLM while STT dominates—data prevents misfocus.
+
+## Multi-language and code-switching
+
+STT models vary by locale—route by user language setting, not browser default alone. Code-switching (English product terms in Hindi sentences) challenges monolingual models; choose STT with multilingual training or accept higher error rate with confirmation prompts ("Did you say X?").
+
+TTS voice selection affects brand—cache generated audio for fixed system phrases (greeting, error messages) to skip synthesis latency on every session open.
+
+## Barge-in and half-duplex
+
+Users interrupt TTS playback — detect VAD during playback and cancel TTS stream. Half-duplex without barge-in feels like phone tree; full-duplex needs echo cancellation. Log barge-in rate — high rate may mean TTS too slow or prompts too long.
+
+## SSML and prosody for brand voice
+
+Plain TTS sounds robotic on error messages — SSML breaks and emphasis for critical phrases. Cache SSML templates for fixed system strings to skip synthesis latency on every session open.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

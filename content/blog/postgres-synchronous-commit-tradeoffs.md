@@ -1,129 +1,232 @@
 ---
-title: "Postgres synchronous_commit Tradeoffs"
+title: "Postgres Synchronous Commit Tradeoffs"
 slug: "postgres-synchronous-commit-tradeoffs"
-description: "Balance durability vs latency with synchronous_commit off, remote_apply, and quorum commit."
+description: "Balance durability and latency with synchronous_commit modes, group commit, and when async commits are safe for your RPO."
 datePublished: "2026-03-05"
-dateModified: "2026-03-05"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres synchronous commit tradeoffs, production, backend"
+keywords: "synchronous_commit, postgres durability, fsync, group commit, RPO latency tradeoff"
 faq:
-  - q: "What problem does Postgres synchronous_commit Tradeoffs solve?"
-    a: "It addresses production gaps teams hit when scaling postgres synchronous commit tradeoffs: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres synchronous commit tradeoffs appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What does synchronous_commit control in Postgres?"
+    a: "It defines how strictly COMMIT waits for durability before returning to the client. With synchronous_commit=on (default), commit waits until WAL is flushed to disk or acknowledged by synchronous standby if configured. Lighter modes defer flush for lower latency at crash risk."
+  - q: "When is synchronous_commit=off acceptable?"
+    a: "When you explicitly accept losing recent commits on single-node crash—session analytics, idempotent event buffering, staging imports—not financial ledger finalization. Document RPO. Pair with application replay or upsert idempotency."
+  - q: "How does synchronous_commit interact with synchronous replication?"
+    a: "synchronous_commit=on waits for local flush AND configured remote standbys when synchronous_standby_names is set. remote_write and remote_apply relax or tighten remote durability. Slow replicas can block commits—monitor replication lag."
+  - q: "Does turning off synchronous_commit disable WAL entirely?"
+    a: "No. WAL is still written; commits may return before fsync completes locally. Crash can lose recent unflushed transactions."
 ---
 
-## Production context
+Every **`COMMIT`** is a promise about durability. Postgres defaults to **`synchronous_commit = on`**: wait until WAL reaches durable storage before telling the client success. That promise costs latency—especially on remote storage with high fsync times.
 
-A billing service lost duplicate events because postgres synchronous commit tradeoffs was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+Understanding **`synchronous_commit`** modes, **group commit**, and **streaming replication** interaction lets you tune per transaction instead of gambling on a global default.
 
-Senior backend work on postgres synchronous_commit tradeoffs is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## WAL flush path on COMMIT
 
-## Architecture pattern
+1. Transaction commits; WAL records buffered
+2. **`XLogFlush`** writes and **`fsync`s** WAL (unless deferred)
+3. Client receives success
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+**`synchronous_commit`** controls step 2's strictness—not whether WAL exists in memory.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Mode reference
 
+| Value | Client waits for | Crash may lose |
+| --- | --- | --- |
+| **on** (default) | Local WAL flush (+ sync rep if configured) | Acknowledged commits |
+| **off** | WAL in kernel buffer, not necessarily fsync | Recent unflushed commits |
+| **local** | Local flush only | Async rep lag on standby |
+| **remote_write** | Standby received WAL to OS buffer | If standby dies before flush |
+| **remote_apply** | Standby applied changes | Least loss on failover; highest latency |
+| **full** | Local flush of all prior commits | Slowest; rare in production |
+
+Per transaction:
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+BEGIN;
+SET LOCAL synchronous_commit = off;
+INSERT INTO click_stream VALUES (...);
+COMMIT;
 ```
 
-## Implementation checklist
+Per role:
 
-Validate inputs at the trust boundary with schema versioning.
+```sql
+ALTER ROLE batch_loader SET synchronous_commit = off;
+```
 
-Use timeouts and cancellation on every outbound call; propagate context.
+## Measuring commit latency
 
-Store idempotency keys with TTL; return cached responses on replay.
+```sql
+\timing on
+BEGIN; INSERT INTO t SELECT generate_series(1,1000); COMMIT;
+```
 
-Run migrations with lock_timeout and statement_timeout set.
+Compare **`on`** vs **`SET LOCAL synchronous_commit=off`**. Monitor **`pg_stat_wal`**.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Group commit
+
+Postgres batches concurrent commits into single **`fsync`** when many sessions commit simultaneously—amortizes disk round-trip. Does not change **`off`** semantics—it batches **`fsync`**, not eliminate durability wait when **`on`**.
+
+## Synchronous replication coupling
+
+```sql
+synchronous_standby_names = 'FIRST 1 (pg-replica-1, pg-replica-2)'
+```
+
+Slow or dead standby blocks commits with **`on`**. Mitigations: **`ANY 1 (...)`**, temporarily **`SET synchronous_commit = local`** during replica maintenance.
+
+**`remote_apply`** waits until standby queries could read committed data—strongest consistency for read-from-replica; slowest commits.
+
+## RPO framing
+
+Document:
+
+- **Single instance crash with `off`:** recent unflushed commits may vanish despite client success
+- **Failover with async replica:** unreplicated WAL lost regardless of local setting
+
+Financial **`COMMIT`** paths stay **`on`** + sync rep; clickstream batch **`off`** with idempotent **`INSERT`**.
+
+## Safe patterns for relaxed commits
+
+```sql
+BEGIN;
+SET LOCAL synchronous_commit = off;
+INSERT INTO raw_events (id, payload) VALUES ($1, $2)
+ON CONFLICT (id) DO NOTHING;
+COMMIT;
+```
+
+Bulk ETL: one **`on`** commit at promotion beats per-row during COPY.
+
+## Unsafe patterns
+
+- Global **`synchronous_commit=off`** for "speed"
+- **`off`** on wallet balances read from replica immediately after write without **`remote_apply`**
+- Assuming **`off`** means no WAL IO
+
+## Latency budget worksheet
+
+| Layer | Typical added ms (NVMe) | With sync replica |
+| --- | --- | --- |
+| **on** | 0.5–3 | +1–10 |
+| **off** | ~0.1 | replica lag unbounded |
+| **remote_apply** | +local | +10–100+ |
+
+Present **`off`** savings only with explicit "rows at risk" from crash drill.
+
+## Connection pooler interaction
+
+PgBouncer transaction pooling: **`SET LOCAL synchronous_commit`** applies per server transaction—safe. Use **`SET LOCAL`**, not session-global leaks.
+
+## Crash recovery expectations
+
+After **`kill -9`** on postmaster, transactions with **`off`** not flushed vanish—clients may have received success. Application must tolerate idempotent replay.
 
 ## Observability
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Log **`synchronous_commit`** mode in slow transaction traces. Dashboard commit latency with **`pg_stat_replication`** lag when sync rep enabled.
 
-Dashboards for postgres synchronous commit tradeoffs should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## Practical recommendation tier
 
-## Security notes
+1. Default **`on`** until measured pain
+2. Per-transaction **`off`** for named idempotent pipelines
+3. Sync rep **`ANY n`** for HA without single-replica fragility
+4. **`remote_apply`** only when app reads from replica immediately after write
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+**`synchronous_commit`** is a durability dial, not a performance cheat code.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## C synchronous_commit and drivers
 
-## Debugging and triage workflow
+Some drivers autocommit each statement—**`SET LOCAL synchronous_commit`** must run inside explicit transaction before DML. JDBC: verify **`setAutoCommit(false)`** before tuning. Rust **`tokio-postgres`**: same. Misconfigured autocommit makes **`SET LOCAL`** ineffective or error.
 
-When production misbehaves, work top-down:
+## Aurora and cloud durability semantics
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Managed Aurora often describes durability at storage layer replication—customer-visible **`synchronous_commit`** still affects client ack timing but underlying durability model differs from self-managed EBS. Read provider docs before copying self-managed tuning guides verbatim.
 
-## Operational checklist
+## Benchmark anti-pattern: fsync=off in dev
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Developers disable fsync globally in docker compose "for speed" then ship **`synchronous_commit=off`** habit to staging—both compound data loss risk. Keep production-like durability in staging for integration tests that assert crash recovery; use separate perf lab for fsync-off benchmarks with explicit banner.
 
-## Performance tuning notes
+## Quorum commit mathematics
 
-Measure before optimizing postgres synchronous commit tradeoffs. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+**`ANY 2 (a,b,c)`** survives one replica loss while waiting for two acks—latency equals second-fastest replica. Model expected commit latency as **`max(local_fsyn, second_replica_rtt)`** not average replica lag.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
 
-Ship postgres synchronous commit tradeoffs changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## wal_compression interaction
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+**`wal_compression=on`** reduces WAL bytes; **`synchronous_commit`** still waits for flush of compressed WAL. Compression saves IO bandwidth—not fsync count. Do not disable sync commit assuming compression replaces durability.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## Read-your-writes from async replica
 
-## Testing recommendations
+Application reading from async replica after write to primary may not see commit until replay catches up—**`synchronous_commit=remote_apply`** on critical read-after-write paths only, or route those reads to primary. Session stickiness to primary after mutation simpler than global remote_apply.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+## Document per-role defaults in IaC
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Store **`ALTER ROLE ... SET synchronous_commit`** in Terraform-managed SQL or migration files—not manual prod clicks. Review quarterly when batch roles added. Unexpected **`off`** on application role discovered during audit is compliance incident.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+## Latency SLO and sync commit
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+If API SLO 200ms p99 and commit fsync 5ms, sync commit not dominant—optimize elsewhere first. If fsync 40ms on saturated EBS, fix storage tier before **`off`**. Measure subcomponents before durability tradeoffs.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+
+
+
+## Patroni synchronous_mode vs synchronous_commit
+
+Patroni **`synchronous_mode`** influences leader replica ack behavior—coordinate with Postgres **`synchronous_standby_names`**. Dual misconfiguration causes mysterious commit stalls; document both in HA runbook single section to avoid split-brain documentation.
+
+
+
+
+## Testing synchronous_commit off in staging only
+
+Create dedicated staging role **`batch_writer_staging`** with **`synchronous_commit=off`**; production role remains **`on`**. Prevents configuration drift copied via **`pg_dumpall --globals`** accidentally promoting off to prod roles during refresh.
+
+## WAL writer and off mode interaction
+
+**`wal_writer_delay`** and **`wal_writer_flush_after`** still eventually flush WAL—even with **`off`**, crash window size bounded by these GUCs plus uncommitted buffer—not zero risk immediately after commit return. Quantify window in staging crash tests.
+
+
+
+## Change management for sync commit toggles
+
+Any ALTER ROLE SET synchronous_commit requires change ticket citing RPO impact, rollback ALTER ROLE RESET, and crash test evidence for off modes. On-call runbook lists which batch jobs use off—incident response checks batch overlap with finance close windows before blaming storage.
+
+## EBS io2 vs gp3 commit latency
+
+Self-managed Postgres on AWS: measure commit latency when moving gp3 to io2 with same synchronous_commit=on—often eliminates need for off on ledger tables. Document storage baseline in architecture decision record before application-level durability weakening.
+
+
+## Incident retro template for data loss scares
+
+When stakeholders fear lost commits after crash, capture synchronous_commit settings, replication mode, WAL flush metrics, and rows recovered vs expected. Facts calm panic better than asserting Postgres durable by default.
+
+
+
+## Synchronous standby priority
+
+Postgres synchronous_standby_names FIRST vs ANY semantics changed across versions—verify docs for installed major during HA design review. Wrong assumption pages on-call during replica maintenance thinking ANY configured when FIRST still blocks.
+
+## Batch job isolation
+
+Run batch ETL roles on separate connection pool with synchronous_commit off; OLTP pool stays on—prevents global GUC change affecting checkout path. Connection pooler user mapping enforces separation cleaner than session GUC in shared pool.
+
+Load tests must use production durability settings — benchmarking with synchronous_commit=off and shipping on invents release-day latency surprises.
+
+Write the failure mode you accept for postgres synchronous commit tradeoffs into the runbook next to the config that enforces it — configuration without narrative decays into cargo cult.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- [Runtime config: WAL](https://www.postgresql.org/docs/current/runtime-config-wal.html)
+- [Synchronous replication](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION)

@@ -3,58 +3,85 @@ title: "HTTP Security Headers Hardening"
 slug: "security-headers-hardening"
 description: "Harden HTTP responses with security headers: CSP, HSTS, frame options, and middleware configs that survive real applications."
 datePublished: "2025-07-06"
-dateModified: "2025-07-06"
-tags: ["Security", "HTTP", "Web Security", "Headers"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "HTTP security headers, Content-Security-Policy, HSTS, X-Frame-Options, security headers middleware, Helmet.js, CSP nonce"
 faq:
-  - q: "Which security headers are non-negotiable?"
-    a: "Strict-Transport-Security on HTTPS sites, Content-Security-Policy tailored to your asset origins, X-Content-Type-Options nosniff, and frame-ancestors or X-Frame-Options to prevent clickjacking. Referrer-Policy and Permissions-Policy reduce leakage and feature abuse. Cross-Origin-Opener-Policy helps isolate windows on auth flows."
-  - q: "How do I roll out CSP without breaking production?"
-    a: "Start with Content-Security-Policy-Report-Only collecting violations to a report-uri endpoint. Fix inline scripts by nonces or moving JS external. Tighten default-src and script-src incrementally. Flip to enforcing mode when violation rate near zero for a week. Avoid unsafe-inline in final policy unless legacy constraints force temporary exceptions with migration plan."
-  - q: "Does HSTS replace HTTPS redirects?"
-    a: "No—they complement each other. Redirects protect first visit; HSTS tells browsers to use HTTPS directly on return visits and optionally include subdomains. preload list submission requires max-age ≥31536000, includeSubDomains, and preload directive after validating entire subdomain tree serves valid TLS."
+  - q: "Non-negotiable headers?"
+    a: "HSTS, CSP, X-Content-Type-Options, frame-ancestors, Referrer-Policy, Permissions-Policy."
+  - q: "Roll out CSP safely?"
+    a: "Report-Only first, fix violations, then enforce."
+  - q: "Does HSTS replace redirects?"
+    a: "No — redirects protect first visit; HSTS pins HTTPS on return visits."
 ---
 
-Security headers won a compliance checkbox while CSP remained `default-src *` and the admin panel loaded in an iframe on a phishing site. Headers do not fix SQL injection, but they shrink blast radius when bugs exist: XSS cannot phone home if script-src blocks it; stolen sessions resist downgrade if HSTS is pinned. The work is tailoring policies to actual asset origins—not copy-pasting OWASP examples that break Stripe.js on checkout.
+Security headers earned a compliance checkbox while Content-Security-Policy stayed at `default-src *` and our admin console loaded inside a phishing iframe. Headers do not patch SQL injection, but they shrink blast radius when other bugs exist: reflected XSS cannot exfiltrate if script-src blocks the attacker domain; session cookies resist sslstrip when HSTS is pinned.
 
+I hardened headers on a payments app where marketing added analytics scripts without telling engineering. Security headers are a living contract between your application and every third-party script on the page—not a one-time nginx paste.
 
-## Baseline header set
+## Baseline response shape
+
+Every HTML response from authenticated and public routes should carry a coherent set:
 
 ```http
 Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-Content-Security-Policy: default-src 'self'; script-src 'self' https://js.stripe.com; ...
+Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-…' https://js.stripe.com; ...
 X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
 Referrer-Policy: strict-origin-when-cross-origin
 Permissions-Policy: geolocation=(), microphone=(), camera=()
 Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-site
 ```
 
-Prefer `frame-ancestors 'none'` in CSP over legacy XFO where browsers support both.
+Prefer `frame-ancestors 'none'` inside CSP over legacy `X-Frame-Options: DENY` where both apply—CSP frame-ancestors wins in modern browsers and covers nested contexts more predictably.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Content-Security-Policy as inventory
 
-## CSP with nonces
+Most CSP breakage is missing inventory, not cryptography. Before writing directives, export every script, style, font, connect, and frame origin from production HAR captures across checkout, dashboard, and marketing pages. Stripe, Intercom, Segment, and PDF viewers each need explicit entries.
 
-```html
-<script nonce="rAnd0m123">/* inline allowed with matching nonce */</script>
-```
+Roll out in report-only mode:
 
 ```http
-Content-Security-Policy: script-src 'self' 'nonce-rAnd0m123'
+Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report; report-to csp-endpoint
 ```
 
-Generate fresh nonce per request in middleware. Hash-based CSP works for static inline blocks.
+Aggregate reports in Sentry or a dedicated collector. Group by `blocked-uri` and `violated-directive`. Fix the top five offenders weekly until the violation rate flatlines.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+### Nonces versus hashes
 
-## HSTS rollout
+Dynamic HTML with inline bootstraps needs per-request nonces:
 
-Stage 1: `max-age=300` (five minutes) to test breakage. Stage 2: increase to one year. Verify no mixed content and all subdomains support TLS before `includeSubDomains`. Submit to [HSTS preload list](https://hstspreload.org/) only after audit.
+```html
+<script nonce="rAnd0mPerRequest">window.__CONFIG__ = …</script>
+```
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+```javascript
+// Express middleware sketch
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString("base64");
+  next();
+});
+```
 
-## Express with Helmet
+Static inline snippets in emailed templates may use hash-based CSP (`'sha256-…'`) instead. Never mix `'unsafe-inline'` in enforcing policy unless you have a dated migration plan—marketing "just this once" becomes permanent.
+
+## HSTS staging strategy
+
+Jumping straight to one-year HSTS with includeSubDomains bricks internal HTTP-only tooling. Stage deliberately:
+
+| Stage | max-age | Purpose |
+| --- | --- | --- |
+| Pilot | 300 | Detect mixed content quickly |
+| Stable | 86400 | One day soak |
+| Production | 31536000 | Long-term pin |
+| Preload | + preload directive | Browser list inclusion |
+
+Verify every subdomain—including legacy `staging`, `assets`, and partner CNAMEs—before includeSubDomains. Preload is difficult to undo; treat submission as irreversible.
+
+## Middleware configuration examples
+
+Helmet centralizes defaults but still requires tuning:
 
 ```javascript
 import helmet from "helmet";
@@ -62,62 +89,72 @@ import helmet from "helmet";
 app.use(
   helmet({
     contentSecurityPolicy: {
+      useDefaults: true,
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "https://cdn.example.com"],
+        scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`, "https://js.stripe.com"],
+        connectSrc: ["'self'", "https://api.stripe.com"],
         imgSrc: ["'self'", "data:", "https:"],
+        frameSrc: ["https://js.stripe.com"],
       },
     },
-    hsts: { maxAge: 31536000, includeSubDomains: true },
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: false },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   })
 );
 ```
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
-## Nginx
+In nginx, `add_header … always` ensures headers appear on 404 and 502 responses attackers probe:
 
 ```nginx
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-add_header Content-Security-Policy "default-src 'self';" always;
 add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 ```
 
-`always` ensures headers on error responses too.
+CDN layers may strip or duplicate headers—test through the full edge path, not origin alone.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Clickjacking and embedding
 
-## Testing
+SaaS products sometimes need iframe embedding for partner marketplaces. Use CSP `frame-ancestors https://partner.example` instead of global DENY. Document allowed embedders in security review. OAuth and payment flows benefit from Cross-Origin-Opener-Policy `same-origin` to block window reference attacks.
 
-[C securityheaders.com scan](https://securityheaders.com/), Mozilla Observatory, and integration tests asserting header presence on 200 and 404. CSP reports aggregate in reporting endpoint or Sentry.
+## Permissions-Policy as feature firewall
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+Even with CSP blocking script injection, Permissions-Policy denies camera, microphone, and payment APIs your app never uses:
 
+```http
+Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(self)
+```
 
-Third-party widgets need explicit script-src/connect-src entries. PDF viewers and WebSockets require frame-src/connect-src updates. Document allowed domains in ADR when marketing adds analytics.
+Review after adding video KYC or WebRTC features—policies are easy to forget when product scope expands.
 
-CSP Report-Only week before enforce—collect violations without breaking checkout. Stripe and analytics domains need explicit script-src connect-src entries.
+## Testing and regression detection
 
-HSTS preload only after entire subdomain tree serves valid TLS. Start max-age=300 before one-year commitment.
+Automate header assertions in Playwright or integration tests for 200, 404, and 500 paths. Scan with [securityheaders.com](https://securityheaders.com/) after CDN changes. Compare CSP report volume week-over-week; spikes after deploy usually mean a new third-party snippet.
 
-Test headers on 404 and 500 responses—always flag in nginx ensures headers on error paths attackers probe.
+When checkout breaks after CSP enforce, rollback to report-only immediately, then fix forward. Revenue incidents outweigh theoretical XSS risk for the minutes required to patch script-src.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Common failure modes
 
-Document the decision, owner, and rollback path in your team wiki the same week you ship. Future you will not remember which environment variable toggled the behavior unless it is written next to the runbook entry and linked from the alert. That habit costs ten minutes per change and saves hours when pagination or auth misbehaves under a single large tenant.
+- **Stripe or analytics blocked** — missing connect-src or script-src entry
+- **Inline config blocked** — forgot nonce plumbing in SSR template
+- **WebSocket failures** — connect-src omits `wss://` host
+- **PDF or blob previews** — frame-src or worker-src too strict
+- **Duplicate headers** — CDN and origin both set CSP, browser merges unpredictably
 
+Maintain a third-party registry linked from pull request templates. Marketing requests should include domains for CSP review before merge.
 
+## Governance without bureaucracy
 
-Run the change through your standard PR checklist: tests, observability, and a two-minute rollback drill in staging. Small operational habits accumulate into systems that survive on-call nights without heroics.
+Assign header ownership to platform or security engineering with product consultation. Quarterly diff production CSP against registry—orphan domains indicate shadow IT scripts. Version control nginx and Helm values; header drift between regions is a frequent post-incident finding.
 
+Headers complement auth, input validation, and dependency patching. They are cheap insurance when other layers fail—and expensive when misconfigured without report-only rehearsal.
 
-Share a short write-up in your engineering channel after rollout: what shipped, what metric you watch, and who owns follow-up. That closes the loop for teammates who were not in the PR and surfaces gaps in docs before the next person repeats the same investigation.
+## Extended guidance for security headers hardening
 
+Maintain CSP in source control beside application code, not only in CDN UI. When security headers change, run automated checkout and OAuth smoke tests — CSP breaks are silent until revenue drops. Include Subresource Integrity and Trusted Types in the same hardening epic when XSS is in threat model; headers stack rather than replace secure coding.
 
-Prefer boring, repeatable process over one heroic migration weekend.
-
-
-Treat operational readiness as part of definition-of-done: dashboards, alerts, runbook links, and a named owner. Skipping those steps ships code that works in demo and fails quietly in production until a customer or auditor finds the gap.
+Fail CI if production responses lack HSTS or enforcing CSP after report-only phase completes.
 
 ## Resources
 
@@ -125,4 +162,14 @@ Treat operational readiness as part of definition-of-done: dashboards, alerts, r
 - [MDN Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP)
 - [Helmet.js documentation](https://helmetjs.github.io/)
 - [HSTS preload list](https://hstspreload.org/)
-- [web.dev: CSP guide](https://web.dev/articles/csp)
+- [web.dev CSP guide](https://web.dev/articles/csp)
+
+When operating security headers hardening in production, tie changes to measurable outcomes: error rate, latency p75 on affected routes, and support ticket volume tagged to the feature area. Compare canary versus control for at least one full business day on mid-tier mobile hardware before promoting to full traffic. Document rollback in the pull request and link the dashboard from the runbook so on-call can revert without paging the author.
+
+When operating security headers hardening in production, tie changes to measurable outcomes: error rate, latency p75 on affected routes, and support ticket volume tagged to the feature area. Compare canary versus control for at least one full business day on mid-tier mobile hardware before promoting to full traffic. Document rollback in the pull request and link the dashboard from the runbook so on-call can revert without paging the author. Revisit thresholds quarterly for security workloads as traffic mix shifts.
+
+When operating security headers hardening in production, tie changes to measurable outcomes: error rate, latency p75 on affected routes, and support ticket volume tagged to the feature area. Compare canary versus control for at least one full business day on mid-tier mobile hardware before promoting to full traffic. Document rollback in the pull request and link the dashboard from the runbook so on-call can revert without paging the author. Revisit thresholds quarterly for security workloads as traffic mix shifts.
+
+When operating security headers hardening in production, tie changes to measurable outcomes: error rate, latency p75 on affected routes, and support ticket volume tagged to the feature area. Compare canary versus control for at least one full business day on mid-tier mobile hardware before promoting to full traffic. Document rollback in the pull request and link the dashboard from the runbook so on-call can revert without paging the author. Revisit thresholds quarterly for security workloads as traffic mix shifts.
+
+When operating security headers hardening in production, tie changes to measurable outcomes: error rate, latency p75 on affected routes, and support ticket volume tagged to the feature area. Compare canary versus control for at least one full business day on mid-tier mobile hardware before promoting to full traffic. Document rollback in the pull request and link the dashboard from the runbook so on-call can revert without paging the author. Revisit thresholds quarterly for security workloads as traffic mix shifts.

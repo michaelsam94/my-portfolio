@@ -189,6 +189,30 @@ When subagent delegation patterns misbehaves in production, work top-down instea
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Budget inheritance across delegation depth
+
+Parent agents passing subtasks without decrementing shared token budget allow exponential depth — subagent calls subagent until timeout. Pass `remaining_budget` in delegation context; hard-stop at depth three unless human approves. Log delegation tree as span attributes for post-incident tracing.
+
+## Result aggregation contracts
+
+Subagents returning unstructured prose force parent re-parsing. Define JSON schema for subagent outputs (`findings`, `confidence`, `sources`) and validate before merge. Invalid subagent JSON should fail the parent step, not silently truncate.
+
+## Production validation for Subagent Delegation Patterns Supplement 0
+
+Ship behind a flag when touching Subagent Delegation Patterns Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Subagent Delegation Patterns Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
+## Production validation for Subagent Delegation Patterns Supplement 1
+
+Ship behind a flag when touching Subagent Delegation Patterns Supplement 1; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Subagent Delegation Patterns Supplement 1. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [Multi-agent orchestration patterns](https://blog.michaelsam94.com/multi-agent-orchestration-orchestrator-workers/)

@@ -140,6 +140,16 @@ Before enabling `android-exoplayer-offline-download` for all users:
 
 Ship incrementally. Treat every Android change as an experiment with a hypothesis, measurement plan, and rollback — not a one-way door based on a single blog post.
 
+## Exoplayer Offline Download on Samsung and Pixel divergence
+
+Exercise exoplayer offline download on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching exoplayer; regressions above 8% block release for `android-exoplayer-offline-download`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Exoplayer Offline Download" should map to a single runbook section with known workarounds.
+
+## Offline regression gates for Play Vitals
+
+Before promoting `android-exoplayer-offline-download` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if download path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Android Developers documentation](https://developer.android.com/)

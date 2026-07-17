@@ -3,16 +3,146 @@ title: "Native Form Validation"
 slug: "web-forms-native-validation"
 description: "Use HTML5 constraint validation for forms: required, pattern, input types, Constraint Validation API, custom messages, and when to add JavaScript validation."
 datePublished: "2026-05-04"
-dateModified: "2026-05-04"
-tags: ["Web", "HTML", "Forms", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "form validation, HTML5 validation, Constraint Validation API, required, pattern, novalidate, checkValidity"
 faq:
-  - q: "When should I rely on native validation versus a JavaScript library?"
-    a: "Use native validation for standard constraints — required fields, email format, number ranges, URL patterns, and maxlength. It works without JavaScript, provides accessible error messages via the browser, and blocks form submission automatically. Add JavaScript validation only for cross-field rules (password confirmation), async checks (username availability), or complex business logic that HTML attributes cannot express."
-  - q: "How do I customize the browser's default validation messages?"
-    a: "Listen for the invalid event on each input and call setCustomValidity() with your message. Clear it with setCustomValidity('') on input events so the field re-validates as the user types. Never suppress native validation entirely unless you replicate all accessibility behavior in your custom UI."
-  - q: "Does native validation work with server-side rendering and progressive enhancement?"
-    a: "Yes. Native validation is the progressive enhancement baseline. Forms with required, type, pattern, and min/max attributes validate in any browser without JavaScript. Server-side validation remains mandatory — client validation is a UX improvement, not a security control. Always validate and sanitize on the server."
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Native Form Validation"
+slug: "web-forms-native-validation"
+description: "Use HTML5 constraint validation for forms: required, pattern, input types, Constraint Validation API, custom messages, and when to add JavaScript validation."
+datePublished: "2026-05-04"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "form validation, HTML5 validation, Constraint Validation API, required, pattern, novalidate, checkValidity"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-forms-native-validation"
+slug: "web-forms-native-validation"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-forms-native-validation"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-forms-native-validation"
+slug: "web-forms-native-validation"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-forms-native-validation"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-forms-native-validation"
+slug: "web-forms-native-validation"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-forms-native-validation"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-forms-native-validation"
+slug: "web-forms-native-validation"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-forms-native-validation"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-forms-native-validation"
+slug: "web-forms-native-validation"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-forms-native-validation"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Native Form Validation"
+slug: "web-forms-native-validation"
+description: "Use HTML5 constraint validation for forms: required, pattern, input types, Constraint Validation API, custom messages, and when to add JavaScript validation."
+datePublished: "2026-05-04"
+dateModified: "2026-07-17"
+tags:
+  - "Web"
+  - "HTML"
+  - "Forms"
+  - "Frontend"
+keywords: "form validation, HTML5 validation, Constraint Validation API, required, pattern, novalidate, checkValidity"
+faq:
+  - q: "What is the main production risk with web forms native validation?"
+    a: "Teams ship without field measurement—web forms native validation failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web forms native validation?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web forms native validation changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Our signup form imported a 45KB validation library to check that email fields contained an `@` symbol. The browser already did that with `type="email"`. We removed the library, switched to native constraints with custom messages via the Constraint Validation API, and the form worked with JavaScript disabled while giving us styled error states when JS was available.
@@ -216,25 +346,62 @@ When custom validation UI replaces native tooltips, announce errors with ARIA li
 <div role="alert" aria-live="polite" id="email-error"></div>
 ```
 
-## Measuring success in production
+## Integration with design systems
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Design system inputs should expose `validity` state to CSS:
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+```css
+.ds-input:user-invalid { border-color: var(--error); }
+.ds-input:user-valid { border-color: var(--success-subtle); }
+```
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Pair with `aria-invalid` toggled in `invalid` event listener—native and ARIA stay synchronized.
 
-## Additional production considerations
+## Server-side mirror
 
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
+Duplicate rules server-side—never trust client validation alone. Share constraint definitions via OpenAPI or shared Zod schema code-generated to HTML attributes where possible.
 
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
+## Progressive enhancement without JS
 
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
+Without JS, native validation still works on submit—ensure form works with full page POST for critical flows (login, payment) even in enhanced SPA mode.
 
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
+## Constraint Validation API events
 
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
+Listen `invalid` on form, set custom message with `setCustomValidity`, call `reportValidity()` on submit. `:user-invalid` pseudo-class styles errors only after interaction — better UX than red on first keystroke.
+
+## Share rules with Zod
+
+Generate HTML attributes from Zod schema — single source for client native and server validation. `minLength`, `pattern`, `type=email` mirror Zod constraints.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

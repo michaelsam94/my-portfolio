@@ -1,111 +1,253 @@
 ---
 title: "AI Agents: Partial Indexes Filtered"
 slug: "agent-partial-indexes-filtered"
-description: "Partial Indexes Filtered: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Filtered partial indexes keep agent memory and tool-run tables fast by indexing only hot rows — active sessions, pending approvals, and unsynced embeddings — without maintaining dead weight."
 datePublished: "2024-12-01"
 dateModified: "2024-12-01"
 tags: ["AI", "Agent", "Partial"]
-keywords: "agent, partial, indexes, filtered, ai, production, engineering, architecture"
+keywords: "partial index PostgreSQL, filtered index, agent memory schema, pgvector index, hot row indexing, agent session metadata"
 faq:
-  - q: "What is Partial Indexes Filtered?"
-    a: "Partial Indexes Filtered covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Partial Indexes Filtered?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Partial Indexes Filtered?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Partial Indexes Filtered fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Partial Indexes Filtered should be observable in production and safe to change in small diffs."
+  - q: "What is a partial (filtered) index in PostgreSQL?"
+    a: "A partial index indexes only rows matching a WHERE predicate — for example `WHERE status = 'active'`. Queries that include the same predicate can use a smaller, faster index while cold archived rows stay on the heap unindexed."
+  - q: "Why are partial indexes especially useful for agent workloads?"
+    a: "Agent tables skew heavily toward a small hot set: open sessions, queued tool runs, and embeddings awaiting sync. The long tail of completed runs is huge but rarely queried. Partial indexes target the hot set without paying write amplification on every archived insert."
+  - q: "Can I combine partial indexes with pgvector?"
+    a: "Yes. Create a partial HNSW or IVFFlat index on `(embedding) WHERE status = 'ready' AND deleted_at IS NULL`. Queries must repeat those predicates in SQL or the planner may ignore the index."
+  - q: "When should I avoid partial indexes?"
+    a: "Skip them when query predicates drift constantly, when more than ~30% of rows match the filter anyway, or when ORMs generate SQL that omits the indexed predicate — an unused partial index is just maintenance overhead with extra confusion in EXPLAIN plans."
 ---
-Partial Indexes Filtered is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+Agent platforms accumulate rows faster than intuition suggests. A single coding agent run inserts tool call records, retrieval traces, token accounting rows, and embedding queue entries. After ninety days, less than 2% of those rows answer production queries — yet they dominated index size on a project I debugged last winter, where every lookup on `session_id` scanned a bloated B-tree that mostly pointed at archived conversations.
 
-When partial indexes filtered is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Partial indexes — PostgreSQL calls them *partial*, SQL Server says *filtered*, the idea is the same — index **a slice of the table** defined by a predicate. For agent infrastructure, that slice is almost always the hot path: active sessions, pending work, live embeddings.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Anatomy of agent table skew
 
-Solid AI engineering turns partial indexes filtered from a recurring argument into a documented pattern with tests and an owner.
+Typical shapes:
 
-## Design principles that survive production
+| Table | Hot slice | Cold tail |
+|-------|-----------|-----------|
+| `agent_sessions` | `status IN ('active','awaiting_user')` | millions of `closed` |
+| `tool_invocations` | `state = 'pending_approval'` | completed / failed history |
+| `embedding_jobs` | `synced_at IS NULL` | successfully synced docs |
+| `memory_facts` | `valid_until IS NULL OR valid_until > now()` | expired memories |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent partial indexes filtered bugs hide.
+Without partial indexes, you choose between indexing everything (slow writes, fat indexes) or indexing nothing (slow reads on the hot slice). Partial indexes split the difference deliberately.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for partial indexes filtered, you do not yet understand the behavior you shipped.
+## Creating filtered indexes for session lookup
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+```sql
+-- Full index (avoid): every closed session bloats the tree
+-- CREATE INDEX agent_sessions_user_idx ON agent_sessions (user_id, updated_at DESC);
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent partial indexes filtered flows so duplicates are harmless or detectable.
+-- Partial: only sessions the agent runtime actually lists
+CREATE INDEX CONCURRENTLY agent_sessions_user_active_idx
+  ON agent_sessions (user_id, updated_at DESC)
+  WHERE status IN ('active', 'awaiting_user');
 
-## Implementation patterns
-
-A practical baseline for partial indexes filtered in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent partial indexes filtered changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Partial Indexes Filtered: typed boundary + structured errors
-export async function handlePartialIndexesFiltered(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-partial-indexes-filtered");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+-- Pending tool approvals — tiny index, high selectivity
+CREATE INDEX CONCURRENTLY tool_invocations_pending_idx
+  ON tool_invocations (session_id, created_at)
+  WHERE state = 'pending_approval';
 ```
 
+Application queries must mirror the predicate:
 
-## Operational concerns
+```sql
+SELECT id, agent_name, updated_at
+FROM agent_sessions
+WHERE user_id = $1
+  AND status IN ('active', 'awaiting_user')
+ORDER BY updated_at DESC
+LIMIT 20;
+```
 
-Alert on user-visible symptoms for partial indexes filtered — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+If a developer drops the `status` filter "to simplify the query," PostgreSQL falls back to a sequential scan or a less selective index. Code review should treat predicate omission as a performance bug.
 
-Production agent partial indexes filtered work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Partial indexes with pgvector
 
-Rollouts for partial indexes filtered benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Vector search on all historical embeddings is wasteful when only `ready` rows are searchable:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
 
-## Security and compliance angles
+ALTER TABLE document_chunks
+  ADD COLUMN embedding vector(1536),
+  ADD COLUMN index_status text NOT NULL DEFAULT 'pending';
 
-Even when partial indexes filtered is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+CREATE INDEX CONCURRENTLY document_chunks_embedding_ready_idx
+  ON document_chunks
+  USING hnsw (embedding vector_cosine_ops)
+  WHERE index_status = 'ready' AND deleted_at IS NULL;
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent partial indexes filtered so security reviews do not rely on tribal knowledge.
+Retrieval query:
 
-## Testing strategy
+```sql
+SELECT chunk_id, doc_id, 1 - (embedding <=> $1::vector) AS score
+FROM document_chunks
+WHERE index_status = 'ready'
+  AND deleted_at IS NULL
+  AND tenant_id = $2
+ORDER BY embedding <=> $1::vector
+LIMIT 10;
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that partial indexes filtered depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+When a chunk is soft-deleted, it falls out of the partial index automatically on the next vacuum — no separate vector deletion job unless your provider requires explicit tombstone handling.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Predicate design rules
 
-## Migration and evolution
+**Match real query filters, not aspirational ones.** The predicate should appear in every production query that needs the index. If analytics sometimes scans all statuses, give analytics a separate reporting replica — do not widen the partial predicate to accommodate rare reports.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent partial indexes filtered functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+**Prefer stable enum values over time functions.** `WHERE status = 'active'` is planner-friendly. `WHERE last_seen > now() - interval '7 days'` works but requires index definitions that align with how you express the filter, and autovacuum stats get noisier.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where partial indexes filtered spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+**Keep predicates sargable.** Avoid functions on indexed columns inside the partial WHERE unless you also express queries identically.
 
-## Related concepts
+**Watch selectivity.** Partial indexes shine when the filtered set is under ~10–20% of the table. Beyond ~30%, a full index is often simpler and nearly as small relative to heap size.
 
-Partial Indexes Filtered intersects with broader ai topics — see companion notes on [agent-partial patterns](https://blog.michaelsam94.com/agent-partial/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Measuring before and after
 
-## The takeaway
+Workflow that caught a silent regression:
 
-Partial Indexes Filtered rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent partial indexes filtered becomes a maintainable asset instead of incident fuel.
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id FROM agent_sessions
+WHERE user_id = 'usr_abc'
+  AND status IN ('active', 'awaiting_user')
+ORDER BY updated_at DESC
+LIMIT 20;
+```
+
+Before partial index: `Seq Scan` with filter removing 480,000 rows. After: `Index Scan using agent_sessions_user_active_idx` with `Buffers: shared hit=4`.
+
+Track index size:
+
+```sql
+SELECT indexrelname, pg_size_pretty(pg_relation_size(indexrelid))
+FROM pg_stat_user_indexes
+WHERE relname = 'agent_sessions';
+```
+
+The partial index should be orders of magnitude smaller than a full `(user_id, updated_at)` index on the same table.
+
+## Write amplification and ingest pipelines
+
+Each index adds work on INSERT/UPDATE. Partial indexes reduce that work for cold rows:
+
+- Archiving a session (`status = 'closed'`) removes it from the partial index on the next update — one index touch instead of maintaining a hot-tree entry forever.
+- Completed embedding jobs stop touching the HNSW graph once `index_status` flips to `ready`... actually wait, they stay in the ready index. Better pattern: move synced jobs to `index_status = 'archived'` excluded from the partial index, keeping the HNSW graph small.
+
+```sql
+UPDATE embedding_jobs
+SET index_status = 'archived', synced_at = now()
+WHERE id = $1;
+```
+
+Batch archival jobs prevent the hot partial index from creeping toward full-table coverage.
+
+## ORM footguns
+
+Django example — force the filter into the queryset manager:
+
+```python
+class ActiveSessionManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            status__in=["active", "awaiting_user"]
+        )
+
+class AgentSession(models.Model):
+    objects = models.Manager()  # full table for admin
+    active = ActiveSessionManager()
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["user_id", "-updated_at"],
+                name="sessions_user_active_idx",
+                condition=models.Q(status__in=["active", "awaiting_user"]),
+            )
+        ]
+```
+
+Prisma and TypeORM lack native partial index DSL — use migration SQL. Document the predicate in a comment block above the model so the next migration does not accidentally recreate a full index with the same name.
+
+## Unique constraints on hot subsets
+
+Partial **unique** indexes enforce invariants only where they matter:
+
+```sql
+-- One active run per session
+CREATE UNIQUE INDEX CONCURRENTLY one_active_run_per_session
+  ON agent_runs (session_id)
+  WHERE finished_at IS NULL;
+```
+
+This beats application-level checks race-prone under concurrent tool loops.
+
+## Monitoring and maintenance
+
+Alert when:
+
+- `idx_scan` on partial indexes flatlines while related endpoint latency climbs — predicate mismatch
+- Partial index size approaches full index size — hot slice definition is too wide
+- Autovacuum lag on tables with heavy partial index updates during bulk imports
+
+Reindex partial indexes after large bulk status flips (`UPDATE ... SET status = 'closed' WHERE ...` touching 40% of rows). `REINDEX INDEX CONCURRENTLY` avoids long write locks.
+
+## Comparison to partitioning
+
+Partitioning splits physical storage by key; partial indexes filter logically within one table. They complement each other:
+
+- Partition by month for retention drops
+- Partial index within the current month partition for `status = 'active'`
+
+Do not partition solely for hot/cold when a partial index solves read latency with less operational overhead.
+
+## Worked example: agent memory facts table
+
+Consider `memory_facts` where agents store extracted preferences (`"user prefers dark mode"`) with optional expiry:
+
+```sql
+CREATE TABLE memory_facts (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   text NOT NULL,
+  tenant_id    text NOT NULL,
+  fact_key     text NOT NULL,
+  fact_value   text NOT NULL,
+  valid_until  timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Hot path: fetch live facts for prompt assembly
+CREATE INDEX CONCURRENTLY memory_facts_session_live_idx
+  ON memory_facts (session_id, fact_key)
+  WHERE valid_until IS NULL OR valid_until > now();
+
+-- Hot path: tenant-scoped dedupe while fact is live
+CREATE UNIQUE INDEX CONCURRENTLY memory_facts_dedupe_live_idx
+  ON memory_facts (tenant_id, session_id, fact_key)
+  WHERE valid_until IS NULL;
+```
+
+Prompt assembly query:
+
+```sql
+SELECT fact_key, fact_value
+FROM memory_facts
+WHERE session_id = $1
+  AND (valid_until IS NULL OR valid_until > now());
+```
+
+When a fact expires, a nightly job sets `valid_until = now()` on stale rows. Those rows fall out of the partial index on update — no explicit index delete step. Expired facts remain queryable for audit via sequential scan on reporting replicas with different indexes, keeping OLTP paths lean.
+
+## Bottom line
+
+Filtered partial indexes are a precision instrument for agent metadata tables where the hot row count is tiny and the historical pile is enormous. Define predicates from production query text, verify with `EXPLAIN ANALYZE`, and treat ORM queries that omit the filter as defects. The index maintenance you do not do on archived agent runs is latency budget returned to live sessions.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL partial indexes documentation](https://www.postgresql.org/docs/current/indexes-partial.html)
+- [pgvector indexing options](https://github.com/pgvector/pgvector#indexing)
+- [PostgreSQL EXPLAIN guide](https://www.postgresql.org/docs/current/using-explain.html)
+- [Use The Index, Luke — partial indexes](https://use-the-index-luke.com/sql/where-clause/partial-indexes)
+- [PostgreSQL index-only scans and visibility map](https://www.postgresql.org/docs/current/indexes-index-only-scans.html)

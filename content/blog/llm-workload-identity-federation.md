@@ -1,111 +1,230 @@
 ---
 title: "Workload Identity Federation"
 slug: "llm-workload-identity-federation"
-description: "Workload Identity Federation: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-10-18"
-dateModified: "2025-10-18"
-tags: ["AI", "Llm", "Workload"]
-keywords: "llm, workload, identity, federation, ai, production, engineering, architecture"
+description: "Grant agent runtimes short-lived cloud credentials without long-lived keys: OIDC federation, Kubernetes service accounts, AWS IRSA/GCP WIF, and scoped IAM for tool access for teams running LLM features in production."
+datePublished: "2025-10-19"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "workload identity federation agent, OIDC AWS IRSA agent tools, GCP workload identity, agent cloud credentials"
 faq:
-  - q: "What is Workload Identity Federation?"
-    a: "Workload Identity Federation covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Workload Identity Federation?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Workload Identity Federation?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Workload Identity Federation fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Workload Identity Federation should be observable in production and safe to change in small diffs."
+  - q: "Why not store AWS access keys in agent tool environment variables?"
+    a: "Long-lived keys in agent pods leak via logs, heap dumps, and compromised sandboxes. Federation exchanges Kubernetes or cloud OIDC tokens for short-lived STS credentials scoped to the exact tool role — rotation is automatic."
+  - q: "How do you scope IAM for agent tools per tenant?"
+    a: "Session tags or external ID in AssumeRole trust — map tenant_id to IAM policy conditions on S3 prefixes `s3://bucket/${aws:PrincipalTag/tenant_id}/*`. Never share one broad role across all tenants."
+  - q: "Does workload identity apply to serverless agent workers?"
+    a: "Yes — Lambda execution roles, Cloud Run service accounts, and Fly.io OIDC to cloud providers all follow the same pattern: runtime identity → federated token → cloud API access."
+  - q: "What about agents calling third-party SaaS APIs?"
+    a: "Federation is for your cloud resources. SaaS uses OAuth client credentials or vault-stored tokens with rotation — separate from IRSA/WIF but same principle: no eternal secrets in agent memory."
 ---
-Workload Identity Federation sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Agent tool runners need S3 read access for RAG, Secrets Manager for API keys, and maybe DynamoDB for session state. Embedding `AKIA...` in the orchestrator config means every sandbox escape or log scrape becomes cloud admin theater. **Workload identity federation** binds credentials to the running workload identity — Kubernetes service account, Lambda ARN, Cloud Run revision — and mints **short-lived** tokens via OIDC trust, no static keys on disk.
 
-When workload identity federation is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
-
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns workload identity federation from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm workload identity federation bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for workload identity federation, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm workload identity federation flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for workload identity federation in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm workload identity federation changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Workload Identity Federation: typed boundary + structured errors
-export async function handleWorkloadIdentityFederation(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-workload-identity-federation");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Identity chain
 
 ```
+Agent tool pod (K8s)
+  serviceAccount: agent-tool-runner
+  OIDC JWT (aud=sts.amazonaws.com)
+         │
+         ▼
+   AWS STS AssumeRoleWithWebIdentity
+         │
+         ▼
+   Temp creds (15min–1hr)
+   Role: agent-tool-tenant-scoped
+         │
+         ▼
+   S3 GetObject s3://kb/tenant_42/*
+```
 
+Same pattern on GCP (Workload Identity Federation) and Azure (Federated Identity Credentials).
 
-## Operational concerns
+## AWS IRSA setup sketch
 
-Runbooks for workload identity federation should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Trust policy on IAM role:
 
-Production llm workload identity federation work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.region.amazonaws.com/id/EXAMPLE"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "oidc.eks.region.amazonaws.com/id/EXAMPLE:sub": "system:serviceaccount:agents:tool-runner",
+        "oidc.eks.region.amazonaws.com/id/EXAMPLE:aud": "sts.amazonaws.com"
+      }
+    }
+  }]
+}
+```
 
-Rollouts for workload identity federation benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Pod annotation:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tool-runner
+  namespace: agents
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-tool-runner
+```
 
-## Security and compliance angles
+SDK picks up creds automatically — no env vars.
 
-Even when workload identity federation is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Tenant-scoped session tags
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm workload identity federation so security reviews do not rely on tribal knowledge.
+Multi-tenant agent platform — one role, ABAC via tags:
 
-## Testing strategy
+```python
+import boto3
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that workload identity federation depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+def s3_client_for_tenant(tenant_id: str):
+    sts = boto3.client("sts")
+    creds = sts.assume_role(
+        RoleArn=TOOL_ROLE_ARN,
+        RoleSessionName=f"agent-{tenant_id[:8]}",
+        Tags=[{"Key": "tenant_id", "Value": tenant_id}],
+        DurationSeconds=3600,
+    )["Credentials"]
+    return boto3.client(
+        "s3",
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds["SessionToken"],
+    )
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+IAM policy:
 
-## Migration and evolution
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject"],
+  "Resource": "arn:aws:s3:::agent-kb/*",
+  "Condition": {
+    "StringLike": {
+      "s3:prefix": ["${aws:PrincipalTag/tenant_id}/*"]
+    }
+  }
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm workload identity federation functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Agent orchestrator passes `tenant_id` — LLM never selects IAM scope.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where workload identity federation spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## GCP Workload Identity Federation
 
-## Related concepts
+External K8s → GCP without service account keys:
 
-Workload Identity Federation intersects with broader ai topics — see companion notes on [llm-workload patterns](https://blog.michaelsam94.com/llm-workload/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```yaml
+# K8s SA annotated to GCP SA
+annotations:
+  iam.gke.io/gcp-service-account: agent-tools@project.iam.gserviceaccount.com
+```
 
-## The takeaway
+Or non-GKE OIDC:
 
-Workload Identity Federation rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm workload identity federation becomes a maintainable asset instead of incident fuel.
+```python
+from google.auth import identity_pool
+
+credentials = identity_pool.Credentials.from_info({
+    "type": "external_account",
+    "audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/k8s",
+    "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+    "token_url": "https://sts.googleapis.com/v1/token",
+    "service_account_impersonation_url": "...",
+})
+```
+
+## Agent tool gateway pattern
+
+Tools don't call AWS directly from LLM sandbox — orchestrator broker:
+
+```python
+@tool("read_knowledge_document")
+def read_kb(doc_id: str, ctx: ToolContext) -> str:
+    s3 = s3_client_for_tenant(ctx.tenant_id)
+    key = f"{ctx.tenant_id}/docs/{doc_id}"
+    obj = s3.get_object(Bucket=KB_BUCKET, Key=key)
+    return obj["Body"].read().decode()
+```
+
+Sandbox has no cloud creds; only orchestrator process holds federated identity.
+
+## Credential lifetime and refresh
+
+| Cloud | Default TTL | Agent implication |
+|-------|-------------|-------------------|
+| AWS STS | 15 min–12 hr | Refresh before long tool batch |
+| GCP SA | 1 hr | SDK auto-refresh |
+| Azure | 1–24 hr | Managed identity refresh |
+
+Long-running agent runs (>1hr) must refresh or subprocess per activity with fresh creds.
+
+## Audit and least privilege
+
+CloudTrail / GCP Audit Logs record `roleSessionName` and session tags — correlate to `run_id` by naming convention `agent-run_9f3`.
+
+Role permissions: start with read-only; add write per tool after review. Deny `iam:*`, `s3:ListAllMyBuckets`, metadata SSRF paths.
+
+## Anti-patterns
+
+- Mounting node IAM role on agent pods — blast radius entire cluster.
+- Same S3 bucket prefix for all tenants without ABAC.
+- Passing cloud creds into code interpreter sandbox.
+- Eternal `AWS_ACCESS_KEY_ID` in CI for agent deploy — use OIDC GitHub Actions to AWS.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [AWS — IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
+- [GCP — Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
+- [Azure — Workload identity federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation)
+- [Kubernetes — Service Accounts](https://kubernetes.io/docs/concepts/security/service-accounts/)
+- [OWASP — Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.

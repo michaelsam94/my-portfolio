@@ -114,6 +114,28 @@ Teams get camerax image analysis wrong in predictable ways:
 
 Shipping camerax image analysis on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## BackpressureStrategy keep-only-latest
+
+MLKit barcode at 30fps analysis chokes on KEEP_EVERY_FRAME — use `STRATEGY_KEEP_ONLY_LATEST` and accept dropped frames. Rotation metadata must match analysis resolution or models see skewed aspect ratios.
+
+## CPU vs GPU delegate
+
+MLKit auto-selects delegate; force CPU on devices with known GPU driver bugs (maintain blocklist from Crashlytics). ImageAnalysis single-thread executor prevents analyzer reentrancy crashes.
+
+## Camerax Image Analysis Supplement 0 on Samsung and Pixel divergence
+
+Exercise camerax image analysis supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching camerax; regressions above 8% block release for `android-camerax-image-analysis-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Camerax Image Analysis Supplement 0" should map to a single runbook section with known workarounds.
+
+## Analysis regression gates for Play Vitals
+
+Before promoting `android-camerax-image-analysis-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing camerax with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing camerax image analysis supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [ImageAnalysis (CameraX)](https://developer.android.com/media/camera/camerax/analyze)

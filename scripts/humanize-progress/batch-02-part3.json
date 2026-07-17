@@ -1,0 +1,335 @@
+{
+  "batch": "02-part3",
+  "slice": [
+    650,
+    699
+  ],
+  "total": 50,
+  "rewritten": 50,
+  "errors": 0,
+  "under_1200_words": 0,
+  "template_markers_remaining": 0,
+  "target_words": 1200,
+  "completed_at": "2026-07-17",
+  "word_stats": {
+    "min": 1200,
+    "max": 1246,
+    "avg": 1220.8
+  },
+  "samples": [
+    {
+      "slug": "android-sideeffect-vs-launchedeffect",
+      "status": "rewritten",
+      "words": 1229,
+      "template_free": true
+    },
+    {
+      "slug": "android-single-top-launch-behavior",
+      "status": "rewritten",
+      "words": 1230,
+      "template_free": true
+    }
+  ],
+  "results": [
+    {
+      "slug": "android-sideeffect-vs-launchedeffect",
+      "status": "rewritten",
+      "words": 1229,
+      "template_free": true
+    },
+    {
+      "slug": "android-single-top-launch-behavior",
+      "status": "rewritten",
+      "words": 1230,
+      "template_free": true
+    },
+    {
+      "slug": "android-sms-retriever-api-otp",
+      "status": "rewritten",
+      "words": 1209,
+      "template_free": true
+    },
+    {
+      "slug": "android-soft-input-mode-handling",
+      "status": "rewritten",
+      "words": 1210,
+      "template_free": true
+    },
+    {
+      "slug": "android-splash-screen-api",
+      "status": "rewritten",
+      "words": 1227,
+      "template_free": true
+    },
+    {
+      "slug": "android-splashscreen-api-migration",
+      "status": "rewritten",
+      "words": 1225,
+      "template_free": true
+    },
+    {
+      "slug": "android-split-screen-state-restoration",
+      "status": "rewritten",
+      "words": 1224,
+      "template_free": true
+    },
+    {
+      "slug": "android-sse-server-sent-events",
+      "status": "rewritten",
+      "words": 1223,
+      "template_free": true
+    },
+    {
+      "slug": "android-ssl-pinning-rotation",
+      "status": "rewritten",
+      "words": 1203,
+      "template_free": true
+    },
+    {
+      "slug": "android-startup-tracing-perfetto",
+      "status": "rewritten",
+      "words": 1208,
+      "template_free": true
+    },
+    {
+      "slug": "android-storage-access-framework",
+      "status": "rewritten",
+      "words": 1206,
+      "template_free": true
+    },
+    {
+      "slug": "android-store-listing-experiments",
+      "status": "rewritten",
+      "words": 1229,
+      "template_free": true
+    },
+    {
+      "slug": "android-strict-null-safety-java-interop",
+      "status": "rewritten",
+      "words": 1218,
+      "template_free": true
+    },
+    {
+      "slug": "android-strictmode-compose-disk-reads",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-strictmode-debugging",
+      "status": "rewritten",
+      "words": 1246,
+      "template_free": true
+    },
+    {
+      "slug": "android-stylus-handwriting-input",
+      "status": "rewritten",
+      "words": 1226,
+      "template_free": true
+    },
+    {
+      "slug": "android-sync-engine-custom-design",
+      "status": "rewritten",
+      "words": 1239,
+      "template_free": true
+    },
+    {
+      "slug": "android-syncadapter-legacy-migration",
+      "status": "rewritten",
+      "words": 1240,
+      "template_free": true
+    },
+    {
+      "slug": "android-tamper-detection-runtime-checks",
+      "status": "rewritten",
+      "words": 1232,
+      "template_free": true
+    },
+    {
+      "slug": "android-task-affinity-back-stack",
+      "status": "rewritten",
+      "words": 1231,
+      "template_free": true
+    },
+    {
+      "slug": "android-task-hijacking-prevention",
+      "status": "rewritten",
+      "words": 1208,
+      "template_free": true
+    },
+    {
+      "slug": "android-testing-robolectric",
+      "status": "rewritten",
+      "words": 1242,
+      "template_free": true
+    },
+    {
+      "slug": "android-text-recognition-mlkit-ocr",
+      "status": "rewritten",
+      "words": 1203,
+      "template_free": true
+    },
+    {
+      "slug": "android-thread-border-router",
+      "status": "rewritten",
+      "words": 1216,
+      "template_free": true
+    },
+    {
+      "slug": "android-timestamp-vector-clocks",
+      "status": "rewritten",
+      "words": 1206,
+      "template_free": true
+    },
+    {
+      "slug": "android-tracing-composition-recomposition",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-traffic-stats-monitoring",
+      "status": "rewritten",
+      "words": 1240,
+      "template_free": true
+    },
+    {
+      "slug": "android-trusted-web-activity-pwa",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-tv-leanback-compose",
+      "status": "rewritten",
+      "words": 1202,
+      "template_free": true
+    },
+    {
+      "slug": "android-usb-accessory-mode",
+      "status": "rewritten",
+      "words": 1216,
+      "template_free": true
+    },
+    {
+      "slug": "android-uwb-ranging-api",
+      "status": "rewritten",
+      "words": 1211,
+      "template_free": true
+    },
+    {
+      "slug": "android-uwb-secure-ranging",
+      "status": "rewritten",
+      "words": 1201,
+      "template_free": true
+    },
+    {
+      "slug": "android-uwb-ultra-wideband",
+      "status": "rewritten",
+      "words": 1210,
+      "template_free": true
+    },
+    {
+      "slug": "android-vibration-composition-effects",
+      "status": "rewritten",
+      "words": 1205,
+      "template_free": true
+    },
+    {
+      "slug": "android-view-binding-vs-compose-migration",
+      "status": "rewritten",
+      "words": 1202,
+      "template_free": true
+    },
+    {
+      "slug": "android-viewmodel-factory-hilt-assist",
+      "status": "rewritten",
+      "words": 1219,
+      "template_free": true
+    },
+    {
+      "slug": "android-viewmodel-savedstate-combined",
+      "status": "rewritten",
+      "words": 1233,
+      "template_free": true
+    },
+    {
+      "slug": "android-viewmodel-scoping-navigation",
+      "status": "rewritten",
+      "words": 1210,
+      "template_free": true
+    },
+    {
+      "slug": "android-voice-interaction-service",
+      "status": "rewritten",
+      "words": 1221,
+      "template_free": true
+    },
+    {
+      "slug": "android-vpn-service-basics",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-vulkan-mobile-basics",
+      "status": "rewritten",
+      "words": 1241,
+      "template_free": true
+    },
+    {
+      "slug": "android-wakelock-modern-alternatives",
+      "status": "rewritten",
+      "words": 1210,
+      "template_free": true
+    },
+    {
+      "slug": "android-wear-os-compose-tiles",
+      "status": "rewritten",
+      "words": 1233,
+      "template_free": true
+    },
+    {
+      "slug": "android-wearos-complications",
+      "status": "rewritten",
+      "words": 1215,
+      "template_free": true
+    },
+    {
+      "slug": "android-wearos-compose-tiles",
+      "status": "rewritten",
+      "words": 1215,
+      "template_free": true
+    },
+    {
+      "slug": "android-websocket-okhttp-reconnection",
+      "status": "rewritten",
+      "words": 1200,
+      "template_free": true
+    },
+    {
+      "slug": "android-webview-javascript-bridge-security",
+      "status": "rewritten",
+      "words": 1216,
+      "template_free": true
+    },
+    {
+      "slug": "android-webview-security-hardening",
+      "status": "rewritten",
+      "words": 1220,
+      "template_free": true
+    },
+    {
+      "slug": "android-widgets-glance-complications",
+      "status": "rewritten",
+      "words": 1240,
+      "template_free": true
+    },
+    {
+      "slug": "android-wifi-direct-p2p",
+      "status": "rewritten",
+      "words": 1204,
+      "template_free": true
+    }
+  ]
+}

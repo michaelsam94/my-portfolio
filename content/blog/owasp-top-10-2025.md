@@ -3,7 +3,7 @@ title: "The OWASP Top 10 for Engineers"
 slug: "owasp-top-10-2025"
 description: "OWASP Top 10 2025 explained for builders: broken access control, security misconfiguration, injection, and concrete mitigations in modern web stacks."
 datePublished: "2026-01-27"
-dateModified: "2026-01-27"
+dateModified: "2026-07-17"
 tags: ["Security", "OWASP", "Web Security", "Engineering"]
 keywords: "OWASP Top 10 2025, web application security, broken access control, injection prevention, security misconfiguration"
 faq:
@@ -140,6 +140,41 @@ When top 10 2025 misbehaves in production, work top-down instead of guessing:
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## A01 Broken Access Control — API depth
+
+Horizontal privilege escalation via predictable IDs (`/api/invoice/1042`) still tops pen tests. Enforce object-level authorization on every handler — middleware auth alone is insufficient. Integration tests that user A cannot fetch user B's resources by ID permutation.
+
+## A03 Supply chain — SBOM in CI
+
+Generate CycloneDX SBOM per build; diff against known CVEs (Grype, Dependency-Track). Pin GitHub Actions to SHA; dependabot for transitive npm/pypi. OWASP 2025 emphasizes build pipeline integrity post-SolarWinds/XZ.
+
+## Mapping OWASP to CI gates
+
+| Risk | Automated gate |
+|------|----------------|
+| Injection | SAST + parameterized query lint |
+| Misconfiguration | Checkov/tfsec on IaC |
+| Vulnerable components | OSV scanner fail on critical |
+| Logging failures | Structured log schema test |
+
+Manual pen test annually; automated gates catch regressions weekly.
+
+## A10 Mishandling of Exceptional Conditions
+
+New 2025 category — verbose stack traces to users, inconsistent error JSON enabling enumeration, missing rate limits on password reset. Map to unified error envelope: `{code, message, request_id}` without internal paths.
+
+## Security champions per squad
+
+OWASP training alone doesn't stick — embed champion in each team reviewing PRs for authz gaps. Champion rotates quarterly to spread knowledge; checklist derived from OWASP categories relevant to squad stack.
+
+## LLM-specific injection (A03 extension)
+
+Prompt injection via user content in RAG apps — treat retrieved docs as untrusted input. Separate system and user channels; output schema validation before tool execution.
+
+## Bug bounty mapping
+
+Map HackerOne taxonomy to OWASP categories in triage — quarterly report to leadership shows concentration in injection vs authz for training investment.
 
 ## Resources
 

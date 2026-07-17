@@ -3,8 +3,8 @@ title: "Server Actions in the App Router"
 slug: "nextjs-app-router-server-actions"
 description: "Use Next.js Server Actions for form mutations and data updates: progressive enhancement, validation, revalidation, and security patterns."
 datePublished: "2025-08-22"
-dateModified: "2025-08-22"
-tags: ["Web", "Next.js", "React", "Full Stack"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js Server Actions, App Router mutations, useFormState, server-side form handling, revalidatePath, progressive enhancement"
 faq:
   - q: "When should I use Server Actions instead of API routes?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I prevent CSRF attacks on Server Actions?"
     a: "Next.js validates the Origin header and sets encrypted action IDs automatically in production. Do not disable these checks. For additional protection, include a CSRF token in forms handling sensitive operations."
 ---
-
 You added a "Save profile" form and reached for `fetch('/api/profile', { method: 'PATCH' })` out of habit. In the App Router, Server Actions let you call an async function on the server directly from a form or event handler—no API route boilerplate, no client-side fetch wrapper, and the form works before hydration completes. The mental model shift is treating server mutations like regular functions with `"use server"` at the top of the file.
 
 ## Defining a Server Action
@@ -229,17 +228,6 @@ Tag-based revalidation scales better — one product update doesn't invalidate t
 
 Pair with [Next.js metadata SEO API](https://blog.michaelsam94.com/nextjs-metadata-seo-api/) when server actions update content that affects page metadata.
 
-## Common production mistakes
-
-Teams get app router server actions wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of app router server actions fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [Next.js Server Actions docs](https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations) — official guide
@@ -247,3 +235,17 @@ Production implementations of app router server actions fail when staging mirror
 - [React useFormState](https://react.dev/reference/react-dom/hooks/useFormState) — action result state
 - [Next.js revalidatePath](https://nextjs.org/docs/app/api-reference/functions/revalidatePath) — cache invalidation
 - [Zod validation library](https://zod.dev/) — input schema validation
+
+## Production notes for LLM stacks
+
+When `nextjs-app-router-server-actions` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `server actions in the app router` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

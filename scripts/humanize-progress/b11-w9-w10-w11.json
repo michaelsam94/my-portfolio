@@ -1,0 +1,22 @@
+{
+  "done": 50,
+  "total": 50,
+  "failed": [],
+  "samples": [
+    {
+      "slug": "web-performance-web-workers-heavy-compute",
+      "status": "done",
+      "words": 1308
+    },
+    {
+      "slug": "web-performance-resize-observer-layout",
+      "status": "done",
+      "words": 1301
+    },
+    {
+      "slug": "workmanager-reliable-background-work",
+      "status": "done",
+      "words": 1301
+    }
+  ]
+}

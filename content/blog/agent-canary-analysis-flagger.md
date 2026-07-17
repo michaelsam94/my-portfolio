@@ -1,115 +1,231 @@
 ---
 title: "AI Agents: Canary Analysis Flagger"
 slug: "agent-canary-analysis-flagger"
-description: "Canary Analysis Flagger: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Flagger automates canary promotion by comparing Prometheus metrics between primary and canary—here is how to wire it for agent latency, token cost, and eval-score gates on Kubernetes."
 datePublished: "2026-03-06"
 dateModified: "2026-03-06"
 tags: ["AI", "Agent", "Canary"]
-keywords: "agent, canary, analysis, flagger, ai, production, engineering, architecture"
+keywords: "Flagger, canary analysis, progressive delivery, Flux, Kubernetes, Prometheus metrics, agent deployment, automated rollback, Istio, Linkerd"
 faq:
-  - q: "What is Canary Analysis Flagger?"
-    a: "Canary Analysis Flagger covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Canary Analysis Flagger?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Canary Analysis Flagger?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Canary Analysis Flagger fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Canary Analysis Flagger should be observable in production and safe to change in small diffs."
+  - q: "What does Flagger actually do during a canary deploy?"
+    a: "Flagger watches a Kubernetes Deployment (or similar workload), shifts traffic incrementally to a canary version, queries Prometheus for configured success metrics, and either promotes the canary to primary or rolls back—all without manual kubectl steps. It integrates with Istio, Linkerd, NGINX, Contour, and App Mesh for traffic splitting."
+  - q: "Which metrics should gate agent canary promotion?"
+    a: "Use a layered set: infrastructure metrics (5xx rate, p95 latency), agent-specific metrics (tokens per request, retrieval hit rate, tool error rate), and quality metrics (offline eval score or shadow-traffic comparison). Never promote on availability alone—an agent can be 'up' but hallucinating more."
+  - q: "How is Flagger different from a feature flag for model routing?"
+    a: "Feature flags control which code path executes for a user cohort; Flagger controls deployment lifecycle and traffic weight between image versions. Use flags for A/B testing prompts or models; use Flagger for safe rollout of the service binary that hosts those flags."
+  - q: "Can Flagger rollback on custom LLM eval metrics?"
+    a: "Yes, if eval scores are exported to Prometheus—either from a shadow pipeline that scores canary responses or from a post-hoc batch job that writes gauges. Flagger's MetricTemplate CRD accepts any PromQL query; the constraint is statistical stability at low canary traffic percentages."
 ---
-Canary Analysis Flagger sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Shipping a new agent orchestrator version feels routine until the canary starts burning 40% more tokens per session and nobody notices for twenty minutes. Manual canary checks do not scale when releases happen daily and quality regressions show up in cost dashboards before error rates move. [Flagger](https://flagger.app/)—the progressive delivery controller originally built at Weaveworks—automates the promote-or-rollback decision by comparing metrics between primary and canary pods during a controlled traffic shift.
 
-When canary analysis flagger is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+This post is a practical guide to running Flagger against agent services: which metrics matter, how to structure Canary CRDs, and where automated analysis breaks down for non-deterministic LLM outputs.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Flagger in the agent deployment stack
 
-Solid AI engineering turns canary analysis flagger from a recurring argument into a documented pattern with tests and an owner.
+A typical agent service runs as a Kubernetes Deployment behind a service mesh or ingress controller. Without Flagger, teams either big-bang deploy (risky) or manually shift Istio VirtualService weights while staring at Grafana (error-prone). Flagger closes the loop:
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent canary analysis flagger bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for canary analysis flagger, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent canary analysis flagger flows so duplicates are harmless or detectable.
-
-## Key terms
-
-**canary** — Canary releases route a small traffic slice to a new version before full rollout, limiting blast radius.
-
-## Implementation patterns
-
-A practical baseline for canary analysis flagger in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent canary analysis flagger changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Canary Analysis Flagger: typed boundary + structured errors
-export async function handleCanaryAnalysisFlagger(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-canary-analysis-flagger");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```mermaid
+flowchart LR
+  CI[CI builds image] --> Deploy[Deploy canary pods]
+  Deploy --> Flagger[Flagger Canary CR]
+  Flagger --> Split[Traffic split 5→50%]
+  Split --> Prom[Prometheus metrics]
+  Prom --> Analysis{Thresholds met?}
+  Analysis -->|yes| Promote[Promote canary]
+  Analysis -->|no| Rollback[Rollback weights]
 ```
 
+Flagger owns the iteration loop: increase weight, wait analysis interval, check metrics, repeat or abort. Your CI pipeline only needs to update the Deployment image tag; Flagger handles the rest via GitOps (Flux) or direct cluster watches.
 
-## Operational concerns
+## Defining a Canary resource for agent workloads
 
-Game-day exercises for canary analysis flagger beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Below is a representative `Canary` manifest for an agent API deployed with Istio. Adjust service names and metric queries to your observability stack.
 
-Production agent canary analysis flagger work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```yaml
+# flagger/canary-agent-orchestrator.yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: agent-orchestrator
+  namespace: agents
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agent-orchestrator
+  service:
+    port: 8080
+    targetPort: 8080
+    gateways:
+      - public-gateway
+    hosts:
+      - agent-api.internal.example
+  analysis:
+    interval: 2m
+    threshold: 5          # max failed metric checks before rollback
+    maxWeight: 50
+    stepWeight: 10
+    metrics:
+      - name: request-success-rate
+        templateRef:
+          name: agent-success-rate
+          namespace: agents
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: request-duration
+        templateRef:
+          name: agent-latency-p95
+          namespace: agents
+        thresholdRange:
+          max: 2500        # ms; agent p95 SLO
+        interval: 1m
+      - name: token-cost-ratio
+        templateRef:
+          name: agent-token-ratio
+          namespace: agents
+        thresholdRange:
+          max: 110           # canary ≤ 110% of primary token cost
+        interval: 2m
+    webhooks:
+      - name: offline-eval-gate
+        type: rollout
+        url: http://eval-runner.agents.svc/eval/canary
+        timeout: 5m
+        metadata:
+          model: gpt-4o-mini-eval-set-v3
+```
 
-Rollouts for canary analysis flagger benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+The `MetricTemplate` objects referenced above contain PromQL that compares canary vs primary:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```yaml
+# flagger/metric-templates.yaml
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: agent-token-ratio
+  namespace: agents
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.monitoring:9090
+  query: |
+    (
+      sum(rate(agent_tokens_total{namespace="agents", pod=~"agent-orchestrator-primary.*"}[5m]))
+      /
+      sum(rate(agent_requests_total{namespace="agents", pod=~"agent-orchestrator-primary.*"}[5m]))
+    )
+    /
+    (
+      sum(rate(agent_tokens_total{namespace="agents", pod=~"agent-orchestrator-canary.*"}[5m]))
+      /
+      sum(rate(agent_requests_total{namespace="agents", pod=~"agent-orchestrator-canary.*"}[5m]))
+    ) * 100
+```
 
-## Security and compliance angles
+The ratio query expresses "canary tokens per request as a percentage of primary." Threshold `max: 110` means rollback if canary costs more than 10% extra per request—a common regression when a code change accidentally doubles retrieval fan-out.
 
-Even when canary analysis flagger is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Metrics that actually catch agent regressions
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent canary analysis flagger so security reviews do not rely on tribal knowledge.
+Infrastructure metrics alone miss the failures users care about. Layer your analysis:
 
-## Testing strategy
+**Availability and latency.** Standard `5xx` rate and histogram p95/p99. Agent latencies are bimodal—short tool-less turns vs long multi-hop chains—so consider separate metrics by `route=chat` vs `route=agent_loop`.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that canary analysis flagger depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Cost proxies.** `tokens_total`, embedding API call count, retrieval QPS. Cost regressions often precede latency SLO breaches because the system is doing more work, not failing faster.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**Quality signals.** Harder but essential:
+- Shadow scoring: duplicate canary traffic to an eval service that runs deterministic checks (JSON schema validity, citation presence, toxicity classifier).
+- Golden-set webhook: before final promotion, Flagger calls your eval runner against a fixed prompt set; response must beat a baseline score.
 
-## Migration and evolution
+```typescript
+// eval/canary-webhook-handler.ts
+import express from "express";
+import { runGoldenSet } from "./golden-set";
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent canary analysis flagger functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+const app = express();
+app.use(express.json());
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where canary analysis flagger spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+app.post("/eval/canary", async (req, res) => {
+  const { metadata } = req.body;
+  const canaryUrl = process.env.CANARY_BASE_URL!;
+  const results = await runGoldenSet(canaryUrl, metadata.model);
 
-## Related concepts
+  const passRate = results.filter((r) => r.passed).length / results.length;
+  const avgScore = results.reduce((s, r) => s + r.score, 0) / results.length;
 
-Canary Analysis Flagger intersects with broader ai topics — see companion notes on [agent-canary patterns](https://blog.michaelsam94.com/agent-canary/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  // Flagger expects HTTP 200 with optional JSON body
+  if (passRate < 0.95 || avgScore < 0.88) {
+    return res.status(200).json({
+      status: "failed",
+      reason: `passRate=${passRate}, avgScore=${avgScore}`,
+    });
+  }
+  res.json({ status: "ok", passRate, avgScore });
+});
+```
 
-## The takeaway
+## Traffic management nuances for streaming agents
 
-Canary Analysis Flagger rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent canary analysis flagger becomes a maintainable asset instead of incident fuel.
+SSE and WebSocket connections stick to pods. When Flagger shifts weights mid-session, existing streams stay on the old pod while new connections hit the canary mix. Two mitigations:
+
+**Connection draining.** Set `spec.service.retries` and pod `preStop` hooks that wait for active streams to finish before terminating primary pods during promotion.
+
+**Session affinity for eval only.** Route eval traffic without sticky sessions so golden-set requests actually hit canary pods. Production user traffic can remain stateless at the load balancer.
+
+For gRPC agent backends, confirm your mesh supports weighted routing on streaming RPCs—some ingress controllers only balance unary calls correctly.
+
+## Statistical pitfalls at low canary weight
+
+At 5% traffic, metric variance is high. A single enterprise customer running a 200k-token batch job through the canary can spike token ratio and trigger false rollback.
+
+Mitigations:
+
+- **Minimum request count gate.** Use Flagger's `request-success-rate` with a minimum sample annotation or custom PromQL `>= 100` clamp.
+- **Cohort canaries.** Shift internal-tenant traffic first via header match rules before exposing external users.
+- **Longer analysis intervals** for cost metrics (2–5 min) vs latency (30–60 s).
+
+Document expected false-positive rate. Occasional rollback on noise beats silent promotion of a bad build—but too many false rollbacks train teams to bypass automation.
+
+## GitOps integration with Flux
+
+Flagger pairs naturally with Flux CD. Flux applies the Deployment image change; Flagger detects the pod template drift and starts canary analysis without a separate pipeline stage. Keep Canary CRDs in the same Git repo as the Deployment so metric thresholds are reviewed in PRs alongside code changes.
+
+Promotion updates the primary Deployment spec in-cluster; Flux can mirror that back to Git (image automation) or you treat promotion as runtime state. Pick one model—fighting GitOps revert loops during canary promotion is a common footgun.
+
+## Runbook: when Flagger rollback fires
+
+1. **Check Flagger events:** `kubectl -n agents describe canary agent-orchestrator`
+2. **Identify failing metric** in the Canary status conditions.
+3. **Compare primary vs canary** dashboards filtered by pod label.
+4. **Preserve canary pods** for debugging—do not delete the ReplicaSet immediately.
+5. **File incident** with metric snapshot; fix forward or revert image in Git.
+
+If rollback fails—mesh misconfiguration, stuck weights—manual override:
+
+```bash
+kubectl -n agents annotate canary/agent-orchestrator \
+  flagger.app/manual-gating=disabled
+# Reset VirtualService weights via mesh admin tools
+```
+
+## When not to use Flagger
+
+Flagger excels at **version-level** rollouts of stateless services. Poor fits:
+
+- Prompt-only changes stored in a database (use feature flags or config canaries).
+- Embedding model swaps that require index rebuilds (batch migration, not traffic split).
+- Single-replica dev clusters where canary analysis lacks statistical power.
+
+For prompt and model config, run shadow traffic through the new config and export comparison metrics to Prometheus—then let Flagger gate the **deployment** that enables the new config path.
+
+## Closing
+
+Flagger turns agent canary deploys from a Grafana vigil into an automated contract: if token cost, latency, and eval quality stay within bounds, promote; otherwise rollback before users absorb the regression. The engineering work is choosing metrics that proxy user-visible quality and exporting them reliably—not wiring the traffic split, which Flagger handles once the CRDs are right.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Flagger documentation — Canary CRD reference](https://docs.flagger.app/usage/how-it-works)
+- [Flagger MetricTemplate provider guide](https://docs.flagger.app/usage/metrics)
+- [Flux CD integration with Flagger](https://fluxcd.io/flux/guides/flagger/)
+- [Istio traffic shifting with Flagger](https://docs.flagger.app/tutorials/istio-progressive-delivery)
+- [Google SRE — Automated Canary Analysis principles](https://sre.google/workbook/canarying-releases/)

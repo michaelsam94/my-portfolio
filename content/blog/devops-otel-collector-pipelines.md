@@ -3,113 +3,186 @@ title: "OpenTelemetry Collector Pipeline Design"
 slug: "devops-otel-collector-pipelines"
 description: "Route traces, metrics, and logs through OTel collectors with processors and exporters."
 datePublished: "2026-06-04"
-dateModified: "2026-06-04"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Observability"
   - "Platform"
 keywords: "OpenTelemetry Collector, pipelines"
 faq:
-  - q: "What is OpenTelemetry Collector Pipeline Design?"
-    a: "OpenTelemetry Collector Pipeline Design covers operational practices for OpenTelemetry Collector in production observability environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize OpenTelemetry Collector Pipeline Design?"
-    a: "When standardizing observability on OpenTelemetry."
-  - q: "What mistakes break OpenTelemetry Collector Pipeline Design?"
-    a: "Single collector deployment—no HA during node drain."
+  - q: "Agent vs gateway collector?"
+    a: "Agent on node for telemetry + batch; gateway for tail sampling and export fanout."
+  - q: "Processor order matters?"
+    a: "memory_limiter before batch; attributes before tail_sampling; filter early to drop noise."
+  - q: "Exporter overload?"
+    a: "Queue settings and retry—collector OOM drops spans silently without memory_limiter."
+  - q: "Pipeline per tenant?"
+    a: "Separate exporters for PCI vs non-PCI telemetry—never mix in one pipeline without scrubbing."
 ---
+Collector OOM dropped spans during peak; processor order fix—memory_limiter before batch—and separate PCI pipeline stopped compliance scramble.
 
-App agents exported directly to vendor—egress cost and no tail sampling.
+## Agent vs gateway
 
-This post walks through **OpenTelemetry Collector Pipeline Design** for platform and SRE teams shipping reliable infrastructure. Route traces, metrics, and logs through OTel collectors with processors and exporters. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+DaemonSet agent receivers plus batch; gateway tail sampling and multi-exporter fanout.
 
-## Problem framing: OpenTelemetry Collector Pipeline Design
+Production teams running otel collector pipelines learned that agent vs gateway regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-App agents exported directly to vendor—egress cost and no tail sampling.
+Runbook for agent vs gateway: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument agent vs gateway with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Platform teams treat **OpenTelemetry Collector** as solved after the first successful deploy. Production disagrees: edge cases around otel collector pipelines, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day for agent vs gateway: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-## Design principles for OpenTelemetry Collector
+Ownership for agent vs gateway belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-Explicit contracts beat tribal knowledge. Document who owns OpenTelemetry Collector configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in agent vs gateway configs.
 
+Capacity note: estimate peak concurrency for agent vs gateway, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-A common failure mode: Single collector deployment—no HA during node drain. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Security review for otel collector pipelines: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
+FinOps tie-in for agent vs gateway: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-```yaml
-# PrometheusRule / experiment hook for devops-otel-collector-pipelines
-groups:
-  - name: otel_collector_pipelines
-    rules:
-      - alert: Otel_Collector_PipelinesHighErrorRate
-        expr: rate(http_errors_total{job="otel_collector_pipelines"}[5m]) > 0.05
-        for: 10m
-        labels:
-          severity: page
-```
+## Processor chain
 
-## Implementation walkthrough
+memory_limiter, attributes, filter, batch, tail_sampling order documented—wrong order drops or duplicates.
 
-Start with the smallest production-safe slice of **OpenTelemetry Collector Pipeline Design**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Production teams running otel collector pipelines learned that processor chain regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
+Runbook for processor chain: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for OpenTelemetry Collector.
+Instrument processor chain with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Operational concerns in production
+Game day for processor chain: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Day-two operations for observability work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Ownership for processor chain belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in processor chain configs.
 
-Run game days or fault injection in staging quarterly for otel collector pipelines. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Capacity note: estimate peak concurrency for processor chain, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-## Security and compliance angles
+Security review for otel collector pipelines: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-Even when OpenTelemetry Collector Pipeline Design is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when OpenTelemetry Collector accepts configuration from multiple teams.
+FinOps tie-in for processor chain: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
+## Exporter backpressure
 
-For regulated workloads, maintain an immutable audit trail: who changed OpenTelemetry Collector settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+queue and retry settings; monitoring dropped spans metric on collector.
 
-## Integration with platform standards
+Production teams running otel collector pipelines learned that exporter backpressure regressions
+appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
+replay used production timestamps.
 
-Align OpenTelemetry Collector with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Runbook for exporter backpressure: confirm blast radius, identify last config change, execute
+single-step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during
+Sev-1.
 
+Instrument exporter backpressure with low-cardinality metrics tied to user-visible SLIs—error rate,
+tail latency, freshness—not vanity gauges that never correlated with past pages.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Game day for exporter backpressure: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
+Ownership for exporter backpressure belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## What to measure after rollout
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in exporter backpressure configs.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Capacity note: estimate peak concurrency for exporter backpressure, apply 1.5–2× headroom against
+cloud quotas before launch week—not during first outage.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Security review for otel collector pipelines: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Documentation your team should maintain
+FinOps tie-in for exporter backpressure: attribute cloud spend to owning team via tags; monthly
+review of cost drivers prevents silent bill growth after config drift.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+## Pipeline isolation
 
-## Pre-production checklist
+PCI telemetry separate exporters—scrubbing processor on shared pipeline risky.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Production teams running otel collector pipelines learned that pipeline isolation regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+Runbook for pipeline isolation: confirm blast radius, identify last config change, execute single-
+step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Instrument pipeline isolation with low-cardinality metrics tied to user-visible SLIs—error rate,
+tail latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Common questions from reviewers
+Game day for pipeline isolation: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Ownership for pipeline isolation belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## Version and compatibility notes
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in pipeline isolation configs.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Capacity note: estimate peak concurrency for pipeline isolation, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
+Security review for otel collector pipelines: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Resources
+FinOps tie-in for pipeline isolation: attribute cloud spend to owning team via tags; monthly review
+of cost drivers prevents silent bill growth after config drift.
 
-- https://prometheus.io/docs/
-- https://opentelemetry.io/docs/
+## Scaling gateway
+
+HPA on collector gateway CPU and queue depth—not only agent count.
+
+Production teams running otel collector pipelines learned that scaling gateway regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
+
+Runbook for scaling gateway: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+
+Instrument scaling gateway with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
+
+Game day for scaling gateway: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
+
+Ownership for scaling gateway belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
+
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in scaling gateway configs.
+
+Capacity note: estimate peak concurrency for scaling gateway, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
+
+Security review for otel collector pipelines: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
+
+FinOps tie-in for scaling gateway: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.

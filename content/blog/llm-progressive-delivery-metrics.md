@@ -1,111 +1,220 @@
 ---
 title: "Progressive Delivery Metrics"
 slug: "llm-progressive-delivery-metrics"
-description: "Progressive Delivery Metrics: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2026-03-07"
-dateModified: "2026-03-07"
-tags: ["AI", "Llm", "Progressive"]
-keywords: "llm, progressive, delivery, metrics, ai, production, engineering, architecture"
+description: "Which metrics should gate a canary promotion when you ship agent prompt changes, retrieval configs, or model swaps—and which ones look healthy while quality silently regresses for teams running LLM features in production."
+datePublished: "2026-03-09"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "progressive delivery metrics, canary analysis, flagger, error budget, agent rollout, golden signals, statistical canary gates"
 faq:
-  - q: "What is Progressive Delivery Metrics?"
-    a: "Progressive Delivery Metrics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Progressive Delivery Metrics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Progressive Delivery Metrics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Progressive Delivery Metrics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Progressive Delivery Metrics should be observable in production and safe to change in small diffs."
+  - q: "Why isn't error rate enough to promote an agent canary?"
+    a: "HTTP 200 with a worse answer still counts as success. Agent regressions often show up in tool failure rate, human override rate, retrieval empty-hit ratio, or cost per resolved task before traditional error metrics move. A canary gate needs at least one quality proxy aligned to user outcomes."
+  - q: "How long should a canary bake before promotion?"
+    a: "Long enough to capture diurnal traffic and enough sessions per cohort—often 30–120 minutes for high-traffic services, longer for B2B tenants with sparse usage. Agent workloads need minimum sample sizes on session-level metrics; promoting after 50 requests when your SLO is defined on 10k sessions/day yields false confidence."
+  - q: "What is a false-positive rollback in progressive delivery?"
+    a: "Automated rollback triggered by noise: a single noisy tenant, an A/B cohort imbalance, or a metric lacking baseline variance estimates. Mitigate with multi-window burn rates, minimum sample thresholds, and segmentation (exclude internal tenants from gates)."
+  - q: "Should eval harness scores block production rollouts?"
+    a: "Use offline eval as a pre-canary gate, not a substitute for production metrics. Online canaries catch retrieval drift, tool auth expiry, and tenant-specific document corpora that golden sets miss. Pair both: eval blocks obvious regressions; production metrics validate real traffic."
 ---
-Progressive Delivery Metrics is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The Slack message arrived eleven minutes into a canary: "Rollback complete — p99 latency green, error rate flat." By afternoon, support volume spiked. Users were not hitting 500s; they were hitting a new prompt version that confidently misread date formats in uploaded invoices, triggering wrong tool arguments. The progressive delivery controller had done exactly what we told it to do. We just told it to watch the wrong numbers.
 
-When progressive delivery metrics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Progressive delivery without metrics tuned to your product is traffic shifting with extra steps. For agent services, the gap between "healthy infrastructure" and "healthy outcomes" is wider than for CRUD APIs because success is semantic, not syntactic. This article is about the measurements that should drive promotion, pause, and rollback when you ship agent changes—not the generic RED dashboard every template copies.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The promotion decision in one picture
 
-Solid AI engineering turns progressive delivery metrics from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm progressive delivery metrics bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for progressive delivery metrics, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm progressive delivery metrics flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for progressive delivery metrics in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm progressive delivery metrics changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Progressive Delivery Metrics: typed boundary + structured errors
-export async function handleProgressiveDeliveryMetrics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-progressive-delivery-metrics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Think of progressive delivery as a state machine fed by measurements:
 
 ```
+Deploy canary (5% traffic)
+        │
+        ▼
+   Collect metrics ──► Compare canary vs baseline
+        │                      │
+        │                      ├── Within thresholds → increase weight
+        │                      ├── Inconclusive (low N) → hold
+        │                      └── Breach → rollback
+        ▼
+   Repeat until 100% or abort
+```
 
+The controller (Flagger, Argo Rollouts, Spinnaker, homegrown) is only as good as the PromQL or Datadog queries you plug in. Agent teams need queries that encode business meaning, not just pod restarts.
 
-## Operational concerns
+## Golden signals, agent edition
 
-Runbooks for progressive delivery metrics should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Classic golden signals—latency, traffic, errors, saturation—still matter. They tell you the new container is not melting. Add **outcome-adjacent** signals before you wire automation:
 
-Production llm progressive delivery metrics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+| Signal | What it catches | Example query shape |
+|--------|-----------------|---------------------|
+| Tool error rate | Broken integrations, schema drift | `tool_errors / tool_invocations` by version |
+| Empty retrieval rate | Index lag, bad embeddings deploy | `retrieval_hits==0 / retrieval_queries` |
+| Human override rate | Wrong answers users reject | `thumbs_down + manual_edits / sessions` |
+| Cost per successful task | Runaway token usage | `sum(tokens)*price / tasks_completed` |
+| Time-to-first-token p95 | Streaming regressions | histogram quantile on stream start |
 
-Rollouts for progressive delivery metrics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Pick two infrastructure signals and two outcome signals minimum for automated promotion. Infrastructure alone optimizes for the invoice-date incident.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Metrics that lie during canaries
 
-## Security and compliance angles
+**Global averages hide cohort skew.** If canary traffic routes by user ID hash but enterprise tenants cluster in bucket 3, your 5% slice might be 40% of revenue. Segment gates by `tenant_tier` or run canaries per cohort.
 
-Even when progressive delivery metrics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+**Low volume triggers false stability.** Agent sessions are long-tailed. A metric like "hallucination reports" with three events in the bake window has unbounded relative error. Enforce `min_samples`:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm progressive delivery metrics so security reviews do not rely on tribal knowledge.
+```yaml
+# Flagger MetricTemplate sketch — agent tool error gate
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: agent-tool-error-rate
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus:9090
+  query: |
+    sum(rate(agent_tool_errors_total{version="{{ version }}"}[5m]))
+    /
+    sum(rate(agent_tool_invocations_total{version="{{ version }}"}[5m]))
+```
 
-## Testing strategy
+Pair that rate query with a companion check on `sum(increase(agent_tool_invocations_total[30m])) > 200` before allowing promotion.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that progressive delivery metrics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Concurrent experiments pollute baselines.** Shipping a retrieval model canary while a separate feature flag changes UI copy confounds override-rate metrics. Maintain an experiment registry; block overlapping changes on shared outcome metrics.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**SLO burn without directionality.** A canary that is *better* than baseline can still mask rising variance. Track **delta** (canary minus stable) with confidence intervals, not just absolute burn.
 
-## Migration and evolution
+## Building a promotion function that scales with you
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm progressive delivery metrics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Start manual, automate second. Week one: a dashboard panel with side-by-side stable vs canary for six charts. Week four: encode thresholds in YAML.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where progressive delivery metrics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```typescript
+// Rollout gate evaluator — pure logic, easy to unit test
+type CohortMetrics = {
+  toolErrorRate: number;
+  emptyRetrievalRate: number;
+  overrideRate: number;
+  p95LatencyMs: number;
+  sessionCount: number;
+};
 
-## Related concepts
+type GateThresholds = {
+  maxToolErrorDelta: number;      // e.g. 0.02 = +2 percentage points
+  maxOverrideDelta: number;
+  maxLatencyDeltaMs: number;
+  minSessions: number;
+};
 
-Progressive Delivery Metrics intersects with broader ai topics — see companion notes on [llm-progressive patterns](https://blog.michaelsam94.com/llm-progressive/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+export function evaluateCanaryPromotion(
+  stable: CohortMetrics,
+  canary: CohortMetrics,
+  thresholds: GateThresholds,
+): "promote" | "hold" | "rollback" {
+  if (canary.sessionCount < thresholds.minSessions) return "hold";
 
-## The takeaway
+  if (canary.toolErrorRate - stable.toolErrorRate > thresholds.maxToolErrorDelta) {
+    return "rollback";
+  }
+  if (canary.overrideRate - stable.overrideRate > thresholds.maxOverrideDelta) {
+    return "rollback";
+  }
+  if (canary.p95LatencyMs - stable.p95LatencyMs > thresholds.maxLatencyDeltaMs) {
+    return "rollback";
+  }
+  return "promote";
+}
+```
 
-Progressive Delivery Metrics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm progressive delivery metrics becomes a maintainable asset instead of incident fuel.
+Keep business rules in testable functions; keep PromQL in metric templates. Mixing them produces runbooks nobody trusts.
+
+For **multi-step progressive delivery** (5% → 25% → 50% → 100%), tighten thresholds at higher weights. A +1% override delta at 5% might be noise; at 50% it is revenue.
+
+## Agent-specific dimensions to label every metric
+
+Without labels, canaries cannot compare apples to apples. Standardize:
+
+- `agent_version` or `prompt_hash`
+- `model_id` (including retrieval embedding model)
+- `deployment_id` / `rollout_id`
+- `tenant_id` (for segmentation, not always in high-cardinality alerts)
+
+Emit these from the orchestration layer, not from ad hoc log parsing later. Retrofitting labels after an incident is painful.
+
+Trace exemplars help: link a spike in `tool_error_rate` to three failing traces with the same `tool_name=calendar.create`. That shortens rollback postmortems from hours to minutes.
+
+## Wiring metrics into CI before production
+
+Progressive delivery is not only a prod concern. Block merges when offline checks fail, then use online metrics as confirmation:
+
+1. **Pre-merge**: golden eval set regression > 2% on primary metric → fail CI.
+2. **Post-deploy canary**: online tool error delta → auto rollback.
+3. **Post-promotion**: 24-hour burn rate alert on cost per task.
+
+```bash
+# Example: compare eval artifact from main vs branch before deploy
+python scripts/compare_eval.py \
+  --baseline artifacts/eval-main.json \
+  --candidate artifacts/eval-branch.json \
+  --max-regression 0.02 \
+  --primary-metric task_success_rate
+```
+
+The script exits non-zero; the deploy pipeline never reaches the cluster. Canary metrics then guard against surprises your golden set missed.
+
+## A dashboard layout that on-call actually uses
+
+Row 1: **Traffic split** (stable vs canary RPS, session count).  
+Row 2: **Infrastructure** (p95 latency, 5xx rate, CPU).  
+Row 3: **Agent outcomes** (tool errors, empty retrieval, overrides).  
+Row 4: **Economics** (tokens per session, cost estimate).  
+Row 5: **Rollout state** (weight, time in stage, last gate decision).
+
+Annotate deploy timestamps on every panel. On-call engineers should not correlate by memory.
+
+## When to roll back manually despite green metrics
+
+Automate most rollbacks, but keep human override for:
+
+- Legal or safety reports referencing the new version
+- Sudden spikes in a metric you forgot to gate (add it tomorrow)
+- Qualitative feedback from a design partner tenant in the canary slice
+
+Progressive delivery metrics are a living list. Each incident should add one query or one label, not one emergency policy exception.
+
+## Statistical rigor without a PhD
+
+You do not need Bayesian A/B platforms on day one, but avoid eyeballing two line charts. Practical middle ground:
+
+**Fixed-horizon comparison.** Decide bake duration before deploy (e.g. 45 minutes). Compare canary vs stable only at the end. Peeking early invites false rollbacks.
+
+**Relative uplift caps.** Define rollback when canary exceeds stable by X% **relative** for rate metrics: `(canary - stable) / stable > 0.15` on override rate, not absolute 0.5% which means different things at low base rates.
+
+**Sequential sampling guard.** If your controller supports it, require minimum exposures:
+
+```promql
+sum(increase(agent_sessions_total{variant="canary"}[45m])) >= 500
+```
+
+Below 500 sessions, gate returns `hold` regardless of deltas—prevents a single enterprise tenant from dominating the decision.
+
+**Holm-Bonferroni for multiple metrics.** Checking six metrics at α=0.05 inflates false positives. Either prioritize one primary metric for automation and treat others as advisory, or adjust alpha downward when gating on multiple queries simultaneously.
+
+Document which metrics are **blocking** versus **informational** in the Rollout CRD README. On-call should not debate philosophy during a rollback.
+
+## Post-rollout learning loop
+
+After every automated rollback, capture:
+
+1. Which query fired
+2. Canary and stable values at decision time
+3. Session count and top tenant contributors
+4. Whether manual investigation confirmed a real regression
+
+Feed confirmed regressions into offline eval sets. Feed false positives into threshold tuning tickets. Progressive delivery metrics mature through this loop—not through copying another team's PromQL verbatim.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Flagger — Canary CRD and metric templates](https://docs.flager.app/usage/how-it-works/)
+- [Argo Rollouts — Analysis runs](https://argo-rollouts.readthedocs.io/en/stable/features/analysis/)
+- [Google SRE — Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/)
+- [Prometheus histograms and quantiles](https://prometheus.io/docs/practices/histograms/)
+- [LaunchDarkly — Release Guardians (metric-driven flags)](https://docs.launchdarkly.com/home/releases/release-guardians)

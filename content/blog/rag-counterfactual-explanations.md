@@ -1,111 +1,219 @@
 ---
-title: "RAG: Counterfactual Explanations"
+title: "Counterfactual Explanations for ML Models"
 slug: "rag-counterfactual-explanations"
-description: "Counterfactual Explanations: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Generate actionable counterfactual explanations for agent decisions — minimal input changes, feasibility constraints, diversity sampling, and audit-ready UX for regulated workflows."
 datePublished: "2025-05-24"
-dateModified: "2025-05-24"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Counterfactual"]
-keywords: "rag, counterfactual, explanations, ai, production, engineering, architecture"
+keywords: "counterfactual explanations, XAI agents, actionable recourse, DiCE algorithm, model interpretability, agent decision audit"
 faq:
-  - q: "What is Counterfactual Explanations?"
-    a: "Counterfactual Explanations covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Counterfactual Explanations?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Counterfactual Explanations?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Counterfactual Explanations fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Counterfactual Explanations should be observable in production and safe to change in small diffs."
+  - q: "What makes a counterfactual explanation useful for agent users?"
+    a: "A useful counterfactual names the smallest change to inputs that would flip the agent's decision to an acceptable outcome — 'if annual_income were $52k instead of $48k, approval would succeed' — and respects feasibility (no 'change your age to 25'). Users need actionable recourse, not abstract feature attributions."
+  - q: "Can LLM agents generate counterfactuals without a trained classifier?"
+    a: "LLMs can narrate plausible counterfactuals from prompt context, but they hallucinate constraints unless grounded in a deterministic policy engine or surrogate model. Production stacks pair LLM phrasing with validated counterfactual search over structured features — never trust free-form counterfactuals for credit, hiring, or medical triage without verification."
+  - q: "How do you prevent discriminatory counterfactual suggestions?"
+    a: "Mark legally protected attributes as immutable in the search space (race, gender, age in many jurisdictions). Audit generated counterfactuals for proxy leakage — zip code substituting for race. Run fairness tests: counterfactual cost distributions should not differ systematically across demographic groups."
 ---
-Counterfactual Explanations sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+A loan agent denied the application in four seconds. The user asked why. The agent returned SHAP values: `debt_to_income` contributed −0.31, `credit_utilization` −0.22. Correct, opaque, and useless — the applicant cannot "adjust SHAP." What they needed was a **counterfactual**: "If you pay down card balance by $1,400 (utilization 78% → 62%), approval probability crosses threshold." Counterfactual explanations answer the closest-world question: *what minimal change would have produced a different outcome?*
 
-When counterfactual explanations is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+For agent systems making consequential decisions — underwriting, insurance quotes, access control, medical triage routing — counterfactuals bridge model output and human action. Feature attributions describe the past; counterfactuals prescribe feasible futures. This post covers search algorithms, constraint modeling, LLM grounding, and operational patterns that keep explanations auditable.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Counterfactuals vs attributions vs contrastive examples
 
-Solid AI engineering turns counterfactual explanations from a recurring argument into a documented pattern with tests and an owner.
+| Method | Question answered | User actionability |
+|--------|-------------------|-------------------|
+| Feature attribution (SHAP, LIME) | Which inputs pushed the score? | Low — no magnitude path |
+| Contrastive example | What similar case got approved? | Medium — may not be reachable |
+| Counterfactual | What change flips the decision? | High — if feasible |
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag counterfactual explanations bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for counterfactual explanations, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag counterfactual explanations flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for counterfactual explanations in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag counterfactual explanations changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Counterfactual Explanations: typed boundary + structured errors
-export async function handleCounterfactualExplanations(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-counterfactual-explanations");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Counterfactuals require a **decision boundary** — binary or score threshold — and a **search space** over mutable features. Agent wrappers often expose natural language decisions; underneath, a structured scorer or rules engine must exist for valid counterfactual search.
 
 ```
+Original x ──► model f(x) ──► deny (score 0.42, threshold 0.50)
+                    │
+                    ▼
+         search min ||x' - x|| s.t. f(x') ≥ 0.50
+                    │
+                    ▼
+         x' = x with {utilization: 0.62, inquiries: 1}
+         "Reduce utilization by $1,400; wait 30 days on new inquiry"
+```
 
+## DiCE-style search over structured features
 
-## Operational concerns
+[Diverse Counterfactual Explanations (DiCE)](https://arxiv.org/abs/1905.07857) generates multiple valid counterfactuals by optimizing proximity, sparsity, and diversity jointly. Production implementations rarely use the library verbatim but follow its pattern:
 
-Game-day exercises for counterfactual explanations beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+```python
+# explanations/counterfactual_search.py
+from dataclasses import dataclass
+import numpy as np
 
-Production rag counterfactual explanations work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+@dataclass
+class FeatureSpec:
+    name: str
+    value: float
+    mutable: bool
+    min_val: float
+    max_val: float
+    dtype: str  # "continuous" | "categorical"
 
-Rollouts for counterfactual explanations benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+IMMUTABLE = {"age", "race", "gender", "zip_code"}  # jurisdiction-specific
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+def generate_counterfactuals(
+    features: list[FeatureSpec],
+    predict_fn,
+    target_class: int = 1,
+    n: int = 5,
+    max_iter: int = 2000,
+) -> list[dict]:
+    x0 = np.array([f.value for f in features])
+    mutable_idx = [i for i, f in enumerate(features) if f.mutable and f.name not in IMMUTABLE]
+    rng = np.random.default_rng(42)
+    candidates = []
 
-## Security and compliance angles
+    for _ in range(max_iter):
+        x_prime = x0.copy()
+        # Sparse perturbation: change 1–3 features
+        k = rng.integers(1, min(4, len(mutable_idx) + 1))
+        chosen = rng.choice(mutable_idx, size=k, replace=False)
+        for j in chosen:
+            spec = features[j]
+            if spec.dtype == "continuous":
+                delta = rng.normal(0, 0.1 * (spec.max_val - spec.min_val))
+                x_prime[j] = np.clip(x0[j] + delta, spec.min_val, spec.max_val)
+            else:
+                x_prime[j] = rng.integers(spec.min_val, spec.max_val + 1)
 
-Even when counterfactual explanations is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+        if predict_fn(x_prime) >= target_class:
+            dist = np.sum(np.abs(x_prime - x0) / (np.array([f.max_val - f.min_val + 1e-9 for f in features])))
+            candidates.append((dist, x_prime))
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag counterfactual explanations so security reviews do not rely on tribal knowledge.
+    candidates.sort(key=lambda t: t[0])
+    # Diversity filter: drop counterfactuals too similar in feature space
+    diverse = []
+    for dist, xp in candidates:
+        if all(np.mean(np.abs(xp - d) > 0.05) for d in diverse):
+            diverse.append(xp)
+        if len(diverse) >= n:
+            break
+    return [dict(zip([f.name for f in features], xp)) for xp in diverse]
+```
 
-## Testing strategy
+Wrap `predict_fn` with the same preprocessing pipeline as production — counterfactuals on raw user input that bypass scaling produce fantasy edits.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that counterfactual explanations depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Feasibility and actionability constraints
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Mathematically valid counterfactuals often violate reality:
 
-## Migration and evolution
+- "Increase income by $200k" — not actionable this week
+- "Change employment_status to 'tenured professor'" — categorical leap
+- "Set age to 21" — illegal suggestion in credit contexts
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag counterfactual explanations functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Layer **feasibility scores** after search:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where counterfactual explanations spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```python
+def feasibility_score(original: dict, counterfactual: dict, rules: list) -> float:
+    score = 1.0
+    for rule in rules:
+        score *= rule(original, counterfactual)
+    return score
 
-## Related concepts
+def income_delta_cap(original, cf, max_pct=0.15):
+    delta = cf["annual_income"] - original["annual_income"]
+    if delta > max_pct * original["annual_income"]:
+        return 0.0
+    return 1.0
+```
 
-Counterfactual Explanations intersects with broader ai topics — see companion notes on [rag-counterfactual patterns](https://blog.michaelsam94.com/rag-counterfactual/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Rank displayed counterfactuals by `proximity × feasibility`, not proximity alone. Log rejected infeasible candidates for compliance review — regulators ask what you *did not* show.
+
+## Grounding LLM agents in verified counterfactuals
+
+Agent UX often demands natural language. Never let the LLM invent numeric counterfactuals.
+
+Pipeline:
+
+1. Structured decision service returns `{decision, score, features}`.
+2. Counterfactual engine searches over mutable features.
+3. LLM receives **frozen** counterfactual JSON and rephrases for the user.
+4. Validator checks LLM output against JSON — reject regeneration if numbers drift.
+
+```typescript
+const systemPrompt = `You explain loan decisions using ONLY the counterfactuals in COUNTERFACTUALS_JSON.
+Do not invent new numbers, features, or policy rules. If asked about immutable attributes, state they cannot be changed per policy.`;
+
+async function explainDecision(sessionId: string, decision: Decision) {
+  const cfs = await counterfactualService.generate(decision.featureVector, {
+    desiredOutcome: "approve",
+    count: 3,
+  });
+
+  const llmResponse = await agent.complete({
+    system: systemPrompt,
+    user: `Decision: ${decision.outcome}. COUNTERFACTUALS_JSON: ${JSON.stringify(cfs)}`,
+  });
+
+  assertNumbersMatch(llmResponse, cfs); // strip and compare
+  await auditLog.write({ sessionId, decision, cfs, llmResponse });
+  return llmResponse;
+}
+```
+
+This pattern survives model upgrades — the search layer is deterministic; the LLM is presentation.
+
+## Diversity and user trust
+
+Single counterfactuals feel coercive ("the only way is pay $1,400"). Multiple paths build trust:
+
+- **Path A** — pay down utilization (fast, requires liquidity)
+- **Path B** — add co-signer (relational cost)
+- **Path C** — wait 60 days for inquiry to age off (time cost)
+
+DiCE's diversity objective penalizes counterfactuals that change the same features. In UI, label tradeoffs explicitly; hide internal feature names users do not recognize (`revolving_balance` → "total credit card balance").
+
+## Evaluation metrics
+
+Offline:
+
+- **Validity rate** — % counterfactuals that actually flip `predict_fn`
+- **Sparsity** — mean number of changed features
+- **Proximity** — normalized L1 distance
+- **Actionability** — % passing feasibility rules
+
+Online:
+
+- User follow-through rate on suggested actions (with consent)
+- Support ticket volume on "why denied" themes
+- Disparate impact of suggested actions across groups
+
+Run counterfactual eval in CI when the scorer model version changes — explanation quality regresses silently otherwise.
+
+## Audit, retention, and regulation
+
+Store `{input_hash, model_version, counterfactuals[], timestamp, immutable_set}` for each explanation request. GDPR and FCRA contexts may treat explanations as part of adverse action notices — retention policies apply.
+
+For tool chains, propagate `explanation_id` so downstream tools do not re-generate conflicting counterfactuals mid-session.
+
+Red-team: prompt injection asking the agent to suggest changing protected attributes. Immutable feature enforcement must live in search code, not prompt instructions alone.
+
+## Latency budgets and caching in production
+
+Counterfactual search is CPU-bound for tree ensembles; GPU for neural scorers. Budget 100–500ms per explanation request; cache by `(model_version, feature_vector_hash, desired_outcome)` for repeat queries in the same session.
+
+Feature flag `counterfactual_explanations_v2` when changing search parameters — A/B test comprehension, not just validity rate.
+
+Alert when validity rate drops below 95% — usually a training-serving skew bug.
+
+Session-level consistency matters: if an agent generates counterfactuals mid-conversation and the user acts on one path, subsequent turns must not contradict earlier suggested edits. Pin `counterfactual_set_id` on the session and invalidate when the underlying scorer model version changes.
 
 ## The takeaway
 
-Counterfactual Explanations rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag counterfactual explanations becomes a maintainable asset instead of incident fuel.
+Counterfactual explanations turn agent denials into paths forward — when search is constrained, verified, and separated from LLM narration. Build on structured scorers, enforce immutable attributes in code, rank by feasibility, surface diverse options, and audit everything. Attribution charts impress data scientists; counterfactuals reduce support tickets and satisfy regulators asking "what could they have done differently?"
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [DiCE: Diverse Counterfactual Explanations (arxiv)](https://arxiv.org/abs/1905.07857)
+- [Interpretable Machine Learning — Counterfactual Explanations chapter](https://christophm.github.io/interpretable-ml-book/counterfactual.html)
+- [IBM AI Explainability 360 — DiCE implementation](https://aix360.mybluemix.net/)
+- [EU AI Act — transparency obligations summary](https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai)
+- [FCRA adverse action notice requirements (CFPB)](https://www.consumerfinance.gov/compliance/compliance-resources/fair-credit-reporting-act/)

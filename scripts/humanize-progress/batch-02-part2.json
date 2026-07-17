@@ -1,0 +1,395 @@
+{
+  "batch": "02-part2",
+  "slice": [
+    600,
+    649
+  ],
+  "total": 50,
+  "ok": 50,
+  "needs_rewrite": 0,
+  "rewritten": 0,
+  "skipped": 0,
+  "errors": 0,
+  "under_1200_words": 0,
+  "template_markers_remaining": 0,
+  "target_words": 1200,
+  "completed_at": "2026-07-17",
+  "all_word_stats": {
+    "min": 1201,
+    "max": 1334,
+    "avg": 1226.9
+  },
+  "word_stats": {
+    "min": 1201,
+    "max": 1334,
+    "avg": 1226.9
+  },
+  "samples": [
+    {
+      "slug": "android-play-billing-acknowledge-purchases",
+      "status": "ok",
+      "words": 1240,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-billing-consumables-testing",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    }
+  ],
+  "results": [
+    {
+      "slug": "android-play-billing-acknowledge-purchases",
+      "status": "ok",
+      "words": 1240,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-billing-consumables-testing",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-billing-offer-tags",
+      "status": "ok",
+      "words": 1201,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-billing-subscription-lifecycle",
+      "status": "ok",
+      "words": 1226,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-console-vitals-debugging",
+      "status": "ok",
+      "words": 1334,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-feature-delivery-on-demand",
+      "status": "ok",
+      "words": 1204,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-integrity-api",
+      "status": "ok",
+      "words": 1202,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-play-integrity-standard-request",
+      "status": "ok",
+      "words": 1213,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-pre-launch-report-fixes",
+      "status": "ok",
+      "words": 1225,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-predictive-back-gesture",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-print-framework-integration",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-privacy-sandbox",
+      "status": "ok",
+      "words": 1204,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-process-death-state-restoration",
+      "status": "ok",
+      "words": 1210,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-profileinstaller-startup",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-proguard-rules-compose",
+      "status": "ok",
+      "words": 1247,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-push-fcm-data-messages",
+      "status": "ok",
+      "words": 1216,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-r8-proguard-optimization",
+      "status": "ok",
+      "words": 1224,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-receiver-exported-security",
+      "status": "ok",
+      "words": 1244,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-recyclerview-diffutil-performance",
+      "status": "ok",
+      "words": 1247,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-remember-coroutine-scope-pitfalls",
+      "status": "ok",
+      "words": 1210,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-render-effect-blur",
+      "status": "ok",
+      "words": 1247,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-retrofit-error-handling",
+      "status": "ok",
+      "words": 1224,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-robolectric-compose-tests",
+      "status": "ok",
+      "words": 1247,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-roborazzi-screenshot-tests",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-auto-migrations",
+      "status": "ok",
+      "words": 1232,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-flow-dispatchers",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-fts-search-ranking",
+      "status": "ok",
+      "words": 1242,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-full-text-search-fts",
+      "status": "ok",
+      "words": 1238,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-migrations-testing",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-multimap-relations",
+      "status": "ok",
+      "words": 1224,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-paging-source-local",
+      "status": "ok",
+      "words": 1225,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-relations-multimap",
+      "status": "ok",
+      "words": 1216,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-transaction-patterns",
+      "status": "ok",
+      "words": 1224,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-room-type-converters-dates",
+      "status": "ok",
+      "words": 1210,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-root-detection-tampering",
+      "status": "ok",
+      "words": 1227,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-safer-intents-validation",
+      "status": "ok",
+      "words": 1244,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-safety-net-play-integrity-migration",
+      "status": "ok",
+      "words": 1221,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-saved-state-registry-custom",
+      "status": "ok",
+      "words": 1225,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-savedstatehandle-process-death",
+      "status": "ok",
+      "words": 1216,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-scoped-storage-media-store",
+      "status": "ok",
+      "words": 1210,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-screen-capture-prevention",
+      "status": "ok",
+      "words": 1234,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-screenshot-detection-api",
+      "status": "ok",
+      "words": 1216,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-screenshot-testing-paparazzi",
+      "status": "ok",
+      "words": 1244,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-security-keystore-encrypted-storage",
+      "status": "ok",
+      "words": 1243,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-sensor-batch-processing",
+      "status": "ok",
+      "words": 1234,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-serial-port-communication",
+      "status": "ok",
+      "words": 1244,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-servicelocator-antipattern-di",
+      "status": "ok",
+      "words": 1216,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-share-sheet-direct-share",
+      "status": "ok",
+      "words": 1242,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-short-service-exemption",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-shortcuts-static-dynamic",
+      "status": "ok",
+      "words": 1217,
+      "reason": "ok",
+      "template_free": true
+    }
+  ]
+}

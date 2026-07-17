@@ -1,111 +1,239 @@
 ---
-title: "RAG: Context Pruning Heuristics"
+title: "Context Pruning Heuristics for RAG Systems"
 slug: "rag-context-pruning-heuristics"
-description: "Context Pruning Heuristics: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Heuristic and scored pruning strategies that trim agent context windows without losing task-critical facts — recency bias, relevance scoring, tool-result compaction, and eval-gated rollouts."
 datePublished: "2025-06-13"
-dateModified: "2025-06-13"
-tags: ["AI", "Rag", "Context"]
-keywords: "rag, context, pruning, heuristics, ai, production, engineering, architecture"
+dateModified: "2026-07-17"
+tags: ["AI Agents", "Context", "LLM", "Optimization"]
+keywords: "context pruning agent, token window management, RAG context trimming, agent memory heuristics, long context optimization"
 faq:
-  - q: "What is Context Pruning Heuristics?"
-    a: "Context Pruning Heuristics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Context Pruning Heuristics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Context Pruning Heuristics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Context Pruning Heuristics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Context Pruning Heuristics should be observable in production and safe to change in small diffs."
+  - q: "When should pruning run relative to retrieval and tool calls?"
+    a: "Prune after tool results land and before the next model call — never mid-generation. Run a lightweight token estimate every turn; trigger pruning when projected usage exceeds 75–85% of the window minus reserved output tokens."
+  - q: "Are heuristics enough or do you need an LLM summarizer?"
+    a: "Heuristics handle 80% of volume: drop duplicate chunks, cap tool JSON arrays, and evict stale turns by recency. Reserve LLM summarization for dialogue segments where semantic compression matters and heuristics would delete named entities or IDs."
+  - q: "How do you prevent pruning from breaking multi-step tasks?"
+    a: "Maintain a protected facts block — order IDs, file paths, user confirmations — extracted before any pruning runs. Never prune tool call arguments, system prompts, or the last N turns involved in the active sub-task."
 ---
-Context Pruning Heuristics is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When context pruning heuristics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+A support agent on turn forty still remembers the user's billing address from turn two — but also carries the full JSON payload of twelve failed API calls, four redundant RAG chunks about password resets, and a tool trace nobody will read again. The model does not need all of it. **Context pruning heuristics** decide what stays, what compacts, and what disappears — fast enough to run every turn, deterministic enough to debug, and conservative enough that you do not amputate the invoice number mid-refund.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Pruning is not summarization. Summarization is lossy and expensive. Heuristics are rules and scores applied to structured context segments before you spend tokens on a compression model pass. The best production stacks layer both: heuristics first, summarization only where heuristics cannot preserve semantics cheaply.
 
-Solid AI engineering turns context pruning heuristics from a recurring argument into a documented pattern with tests and an owner.
+## Segment your context before pruning anything
 
-## Design principles that survive production
+Treat the agent prompt as a stack of independent segments, each with its own retention policy:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag context pruning heuristics bugs hide.
+| Segment | Typical share | Default retention |
+|---------|---------------|-------------------|
+| System prompt + tool schemas | 15–25% | Never prune |
+| Protected facts (extracted JSON) | 2–5% | Never prune |
+| Active sub-task turns (last K) | 10–20% | Keep full fidelity |
+| Older dialogue | 15–30% | Summarize or drop |
+| Tool results | 25–45% | Field-prune, cap size |
+| RAG retrieved chunks | 10–20% | Score and dedupe |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for context pruning heuristics, you do not yet understand the behavior you shipped.
+If you prune without segmentation, you will eventually delete a system instruction or a pending tool call — the two failure modes that produce the wildest agent behavior.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Heuristic tier 1: deterministic eviction rules
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag context pruning heuristics flows so duplicates are harmless or detectable.
+These rules require no embeddings and no model calls. Apply them in order:
 
-## Implementation patterns
+**Recency floor.** Never prune the last `K` user–assistant turn pairs (typically K=4–8 depending on task depth). Active slot-filling and clarification loops live here.
 
-A practical baseline for context pruning heuristics in ai stacks:
+**Tool argument preservation.** Any message containing a `tool_calls` block or `tool_call_id` response stays until the sub-task completes or the retrieved chunk is promoted into protected facts.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+**Duplicate chunk removal.** Hash normalized chunk text (lowercase, whitespace collapsed). Drop duplicates keeping the highest retrieval score.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag context pruning heuristics changes safer because business rules stay isolated from transport details.
+**Stale turn eviction.** Turns older than `T` minutes with no reference in protected facts and no entity overlap with the current user message are candidates for removal. Start with T=30 for chat, T=120 for long research sessions.
 
-```typescript
-// Context Pruning Heuristics: typed boundary + structured errors
-export async function handleContextPruningHeuristics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-context-pruning-heuristics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+**Array and payload caps.** Tool results returning JSON arrays get truncated: keep first N items plus total count metadata. Default N=20 for list endpoints, N=5 for log dumps.
 
+```python
+# pruning/heuristics.py
+from dataclasses import dataclass
+from hashlib import sha256
+import json
+
+@dataclass
+class ContextSegment:
+    kind: str          # system | facts | dialogue | tool | rag
+    content: str
+    tokens: int
+    turn_index: int
+    retrieval_score: float = 0.0
+    protected: bool = False
+
+def dedupe_rag_chunks(segments: list[ContextSegment]) -> list[ContextSegment]:
+    seen: set[str] = set()
+    kept: list[ContextSegment] = []
+    for seg in sorted(segments, key=lambda s: -s.retrieval_score):
+        if seg.kind != "rag":
+            kept.append(seg)
+            continue
+        key = sha256(seg.content.lower().split()).hexdigest()
+        if key not in seen:
+            seen.add(key)
+            kept.append(seg)
+    return kept
+
+def cap_tool_json(segment: ContextSegment, max_items: int = 20) -> ContextSegment:
+    if segment.kind != "tool":
+        return segment
+    try:
+        data = json.loads(segment.content)
+        if isinstance(data, list) and len(data) > max_items:
+            trimmed = data[:max_items]
+            segment.content = json.dumps({
+                "items": trimmed,
+                "_pruned": True,
+                "_original_count": len(data),
+            })
+    except json.JSONDecodeError:
+        pass
+    return segment
 ```
 
+These rules alone recover 30–50% of token budget on tool-heavy agents without touching dialogue.
 
-## Operational concerns
+## Heuristic tier 2: relevance scoring
 
-Game-day exercises for context pruning heuristics beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+When deterministic rules are not enough to hit your budget target, score each prunable segment against the current user intent and drop lowest scores until you fit.
 
-Production rag context pruning heuristics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Query overlap score.** Tokenize the current user message and each segment. Score = |intersection| / |segment tokens|. Cheap and surprisingly effective for evicting unrelated RAG chunks.
 
-Rollouts for context pruning heuristics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Entity persistence.** Extract entities (IDs, emails, amounts) from protected facts and the current message. Boost score for segments sharing entities; penalize segments with zero overlap when facts block is non-empty.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Tool lineage.** Segments produced by tools invoked in the last two turns get a +0.3 score boost. Users often refer to "that list" or "the error above" — lineage prevents premature eviction.
 
-## Security and compliance angles
+**Recency decay.** Multiply score by `exp(-λ * turns_ago)` with λ≈0.15. Smooth preference for recent context without hard cutoffs.
 
-Even when context pruning heuristics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```python
+import math
+import re
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag context pruning heuristics so security reviews do not rely on tribal knowledge.
+ENTITY_PATTERN = re.compile(r"\b[A-Z]{2,}-\d+\b|\b[\w.+-]+@[\w-]+\.\w+\b")
 
-## Testing strategy
+def relevance_score(segment: ContextSegment, user_msg: str, facts: set[str]) -> float:
+    user_tokens = set(user_msg.lower().split())
+    seg_tokens = set(segment.content.lower().split())
+    overlap = len(user_tokens & seg_tokens) / max(len(seg_tokens), 1)
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that context pruning heuristics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+    seg_entities = set(ENTITY_PATTERN.findall(segment.content))
+    fact_overlap = len(seg_entities & facts) / max(len(seg_entities), 1) if seg_entities else 0
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+    recency = math.exp(-0.15 * (100 - segment.turn_index))  # higher turn_index = more recent
+    lineage_boost = 0.3 if segment.kind == "tool" and segment.turn_index >= 98 else 0
 
-## Migration and evolution
+    return overlap + 0.5 * fact_overlap + 0.2 * recency + lineage_boost
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag context pruning heuristics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+def prune_to_budget(
+    segments: list[ContextSegment],
+    budget_tokens: int,
+    user_msg: str,
+    facts: set[str],
+) -> list[ContextSegment]:
+    protected = [s for s in segments if s.protected]
+    prunable = [s for s in segments if not s.protected]
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where context pruning heuristics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+    protected_tokens = sum(s.tokens for s in protected)
+    remaining = budget_tokens - protected_tokens
 
-## Related concepts
+    prunable.sort(key=lambda s: relevance_score(s, user_msg, facts), reverse=True)
+    kept, used = [], 0
+    for seg in prunable:
+        if used + seg.tokens <= remaining:
+            kept.append(seg)
+            used += seg.tokens
+    return protected + kept
+```
 
-Context Pruning Heuristics intersects with broader ai topics — see companion notes on [rag-context patterns](https://blog.michaelsam94.com/rag-context/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Log every pruned segment ID and score to your observability stack. When users say "the agent forgot X," you need to answer whether X was pruned at turn 37 and why its score was 0.04.
+
+## Protected facts extraction
+
+Heuristics fail when critical strings live only in prose. Extract before pruning:
+
+```python
+from pydantic import BaseModel
+
+class ProtectedFacts(BaseModel):
+    order_ids: list[str] = []
+    confirmed_values: dict[str, str] = {}
+    open_questions: list[str] = []
+
+def extract_facts(messages: list[dict]) -> ProtectedFacts:
+    # Rule-based pass: regex for IDs, amounts, dates
+    # Optional small-model pass on last 6 turns for open_questions
+    ...
+```
+
+Inject `ProtectedFacts` as a compact JSON block marked `protected=True`. Even if every dialogue turn from turn 10 is evicted, the agent still sees `order_ids: ["ORD-8842"]`.
+
+## When to escalate from heuristics to summarization
+
+Trigger LLM summarization only when:
+
+1. Heuristic pruning still exceeds budget by >10%
+2. The segments to evict include dialogue (not just tool/RAG bloat)
+3. Protected facts extraction ran and the summary prompt explicitly lists facts to preserve
+
+Summarize in chunks of 6–10 turns, producing 150–300 token summaries. Append summaries as a single `kind=dialogue_summary` segment rather than mutating original messages — you want auditability.
+
+Never summarize tool call arguments or user confirmations worded as "yes, charge $500."
+
+## Budget allocation and reserved output tokens
+
+Pruning targets **input budget**, not the full context window:
+
+```
+input_budget = context_window - max_output_tokens - safety_margin
+```
+
+Reserve output tokens explicitly. Agents that plan multi-step tool chains need 2–4k output headroom. Pruning to 128k total then requesting 8k output causes mid-stream truncation — a different failure mode that looks like "the agent stopped mid-sentence."
+
+Safety margin: 512–1024 tokens for tokenizer mismatch between your counter and the provider's.
+
+## Eval gates before changing heuristics
+
+Any change to K (recency floor), score weights, or array caps needs regression testing:
+
+1. **Golden trajectories** — 50–200 recorded multi-turn sessions with expected tool calls and final answers
+2. **Pruning diff report** — what each heuristic removed vs baseline
+3. **Success rate delta** — automated grader or human label on sample
+4. **Re-ask detector** — flag sessions where user repeats the same question within 3 turns post-pruning change
+
+Ship heuristic changes behind feature flags per tenant. Compare `agent.pruning.tokens_saved_p50` against `agent.task.success_rate` weekly.
+
+## Operational telemetry
+
+Instrument these metrics from day one:
+
+- `context.tokens.before_pruning` / `context.tokens.after_pruning`
+- `context.segments.pruned_count` by kind (tool, rag, dialogue)
+- `context.pruning.triggered` — boolean per turn
+- `context.facts.extracted_count`
+- `context.budget.exceeded_attempts` — pruning could not fit budget; emergency truncation fired
+
+Alert when `budget.exceeded_attempts` rises above 1% of turns — your tool schemas or RAG chunk size is wrong upstream, not your pruning logic.
+
+## Anti-patterns that cause incidents
+
+**Pruning the system prompt to save tokens.** Some teams dynamically shorten tool schemas under pressure. That changes tool selection behavior silently. Shrink schemas at design time, not runtime.
+
+**Global summarization without facts sidecar.** Summaries hallucinate IDs. Always extract first.
+
+**Same heuristics for all agent types.** Research agents need long RAG retention; transactional agents need long tool lineage. Parameterize K, T, and score weights per agent profile.
+
+**Pruning without user-visible latency budget.** Scoring 200 segments with embedding calls every turn adds 200ms. Heuristics tier 1 should complete in <5ms; tier 2 lexical scoring in <20ms. Embeddings belong offline or every N turns, not every message.
 
 ## The takeaway
 
-Context Pruning Heuristics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag context pruning heuristics becomes a maintainable asset instead of incident fuel.
+Context pruning heuristics keep long-running agents inside token budgets without waiting for an expensive summarizer on every turn. Segment the prompt, protect facts and active turns, apply deterministic rules first, score what remains, and gate every parameter change with golden trajectories. The goal is not minimum tokens — it is maximum task success per dollar with debuggable, auditable decisions about what the agent still remembers.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Lost in the Middle — context window position bias](https://arxiv.org/abs/2307.03172)
+- [LangChain — Conversation buffer window memory](https://python.langchain.com/docs/modules/memory/types/buffer_window/)
+- [Anthropic — Prompt caching and long context](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+- [OpenAI — tiktoken token counting](https://github.com/openai/tiktoken)
+- [LlamaIndex — Node postprocessors for retrieval](https://docs.llamaindex.ai/en/stable/module_guides/querying/node_postprocessors/)

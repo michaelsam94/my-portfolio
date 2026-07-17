@@ -3,7 +3,7 @@ title: "Taming Metric Cardinality"
 slug: "observability-metrics-cardinality"
 description: "Control Prometheus metric cardinality: label design, cardinality explosion patterns, recording rules, and cost management for high-cardinality telemetry."
 datePublished: "2025-10-09"
-dateModified: "2025-10-09"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Observability", "Performance", "Operations"]
 keywords: "metric cardinality, Prometheus cardinality, high cardinality metrics, label design Prometheus, cardinality explosion, metrics cost control"
 faq:
@@ -216,7 +216,46 @@ Teams get metrics cardinality wrong in predictable ways:
 - **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
 - **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
 
-Observability for metrics cardinality fails when dashboards exist but nobody owns alert routing, high-cardinality labels explode metrics cost, and logs lack trace correlation so incidents become grep archaeology.
+Never export per-user or per-prompt labels to Prometheus — push billing aggregates to the warehouse instead.
+
+## LLM-specific cardinality traps
+
+Model routers tempt teams to label histograms with `prompt_version`, `tenant_id`, and `tool_name` on every span metric. Keep metrics bounded: `model`, `route`, `status_class`, `region`. Store prompt versions in logs/traces with sampling, not in time series that multiply with every deploy.
+
+## Recording rules and aggregation
+
+Use Prometheus recording rules or Mimir aggregations to pre-compute high-traffic queries without high-cardinality labels. Example: sum rate by `service`, `route`, `status` — never by `user_id`. Review recording rule output cardinality in staging before promoting; a bad rule can explode series count faster than raw scrapes.
+
+## Otel Collector cardinality limiter
+
+```yaml
+processors:
+  cardinality/drop:
+    metric_names:
+      match_type: regexp
+      regexp: ".*"
+    label_limits:
+      label_name: user_id
+      max_label_values: 0  # drop label
+```
+
+Reject at ingest before TSDB crash—pair with CI lint on application metric definitions.
+
+## Ownership model
+
+Each metric `__name__` in top 50 series count has named owner in catalog. Weekly Slack bot posts cardinality leaderboard—shame works better than surprise 28GB RAM Prometheus.
+
+## Downsampling vs dropping labels
+
+Cortex/Mimir downsampling reduces long-term retention cost but does not fix cardinality explosion—still need label hygiene at source.
+
+## PromQL subquery cardinality explosions
+
+`group by (user_id) (...)` in ad-hoc queries does not create series—but recording rules accidentally grouping by high-cardinality label do. Review recording rule PRs for forbidden labels same as instrumentation PRs.
+
+## Federation and remote write duplicates
+
+Dual remote write to two vendors accidentally with different label rewrite rules duplicates effective cardinality cost—audit remote_write configs quarterly.
 
 ## Resources
 

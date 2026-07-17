@@ -3,7 +3,7 @@ title: "The Three Pillars of Observability"
 slug: "observability-three-pillars"
 description: "Understand the three pillars of observability—metrics, logs, and traces—and how to combine them for effective production debugging and SRE workflows."
 datePublished: "2025-10-18"
-dateModified: "2025-10-18"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Observability", "SRE", "Architecture"]
 keywords: "three pillars observability, metrics logs traces, observability stack, monitoring vs observability, production debugging, telemetry pillars"
 faq:

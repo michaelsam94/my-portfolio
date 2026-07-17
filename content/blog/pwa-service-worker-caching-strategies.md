@@ -3,23 +3,23 @@ title: "Service Worker Caching Strategies"
 slug: "pwa-service-worker-caching-strategies"
 description: "Cache-first vs network-first decision matrix — versioning, cache busting, and offline fallbacks."
 datePublished: "2026-12-08"
-dateModified: "2026-12-08"
+dateModified: "2026-07-17"
 tags: ["PWA", "Service Worker", "Caching"]
 keywords: "service worker caching strategies, cache first network first, PWA offline"
 faq:
-  - q: "What is Service Worker Caching Strategies?"
-    a: "Service Worker Caching Strategies is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Service Worker Caching Strategies?"
-    a: "Adopt Service Worker Caching Strategies when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Service Worker Caching Strategies?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "Which caching strategy for hashed static assets?"
+    a: "Cache-first. Filenames include content hashes so cached files are immutable until deploy."
+  - q: "Should authenticated API responses be cached?"
+    a: "Generally no, or cache per-user with strict cache names and short TTL. Shared caches leak personalized data."
+  - q: "What is stale-while-revalidate?"
+    a: "Serve cached response immediately while fetching fresh data in background to update cache for next visit."
 ---
 
 The gap between reading about service worker caching strategies and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
 
-## Architecture and boundaries
+## Strategy per asset class
 
 Before changing implementation details, draw the boundary diagram. Service Worker Caching Strategies touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
 
@@ -38,7 +38,7 @@ Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
 
 Document which metrics you expect to move. If service worker caching strategies is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
+## Cache versioning and cleanup
 
 Start with the smallest change that proves the approach. For service worker caching strategies, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
 
@@ -65,7 +65,7 @@ Validate in staging with production-like data volumes. Empty caches and syntheti
 
 For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
 
-## Accessibility requirements
+## Avoiding broken offline a11y assets
 
 Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
 
@@ -77,7 +77,7 @@ Performance optimizations that break keyboard navigation or screen reader announ
 
 Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Cache poisoning and scope
 
 Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
 
@@ -103,31 +103,33 @@ Layer tests to match risk:
 
 Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
 
-## Common production mistakes
 
-Teams get service worker caching strategies wrong in predictable ways:
+## Range requests and media
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+Video/audio range requests need custom strategy — cache-first breaks seeking. Use network-first for `.mp4` or delegate to Media Source Extensions without SW interception.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Vary header awareness
 
-## Debugging and triage workflow
+Responses with `Vary: Authorization` must not share cache entries across users — use cache key plugin including authorization hash or network-only for those URLs.
 
-When service worker caching strategies misbehaves in production, work top-down:
+## opaque response handling
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+Cross-origin resources without CORS may cache as opaque — 7MB quota impact on mobile. Prefer CORS-enabled CDN for fonts and icons SW caches.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## POST request interception
+
+Never cache POST — some teams accidentally register broad fetch handlers. Explicitly exclude non-GET in SW router first line guard.
+
+## Production rollout notes
+
+Review Cache-Control from origin on every API change — backend team shipping no-store on previously cacheable catalog breaks SW strategy silently. Add contract test between frontend SW config and backend cache headers in CI.
+## Stale content user override
+
+Offer pull-to-refresh on stale-while-revalidate views — power users learn to refresh when prices look wrong without clearing entire site data. RUM event on manual refresh after stale display informs cache TTL tuning.
+
+## Closing operational guidance
+
+Document cache strategy per route in frontend ARCHITECTURE.md table — on-call should not read entire sw.js during outage to learn if catalog is SWR or network-first. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

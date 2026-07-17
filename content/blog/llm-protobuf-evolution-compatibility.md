@@ -1,40 +1,22 @@
 ---
 title: "Protobuf Evolution Compatibility"
 slug: "llm-protobuf-evolution-compatibility"
-description: "Protobuf Evolution Compatibility: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "How to evolve agent event schemas, tool RPC payloads, and streaming token frames in Protocol Buffers without breaking consumers mid-rollout."
 datePublished: "2025-02-10"
-dateModified: "2025-02-10"
-tags: ["AI", "Llm", "Protobuf"]
+dateModified: "2026-07-17"
+tags:
 keywords: "llm, protobuf, evolution, compatibility, ai, production, engineering, architecture"
 faq:
-  - q: "What is Protobuf Evolution Compatibility?"
-    a: "Protobuf Evolution Compatibility covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Protobuf Evolution Compatibility?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Protobuf Evolution Compatibility?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Protobuf Evolution Compatibility fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Protobuf Evolution Compatibility should be observable in production and safe to change in small diffs."
+  - q: "Can I rename a protobuf field without breaking wire compatibility?"
+    a: "Yes, if the field number stays the same and you only change the name in .proto source. Generated code changes, but on-the-wire bytes are unchanged. Renumbering a field is a breaking change—old binaries will misinterpret payloads."
+  - q: "What is the safest way to add a new field to an agent ToolRequest message?"
+    a: "Assign the next unused field number, mark it optional (proto3 optional or explicit presence), default safely, and deploy consumers before producers if the field is required for new behavior. Never reuse a retired field number; reserve it with a comment or reserved statement."
+  - q: "How do oneof fields affect evolution?"
+    a: "Adding a new oneof variant is backward compatible if clients ignore unknown fields. Changing which fields share a oneof, or moving an existing field into a oneof, is breaking. Agent tool argument unions often start as oneof—plan variant additions as additive only."
+  - q: "Should agent teams use JSON or protobuf for external webhooks?"
+    a: "JSON over HTTP for third-party integrators who cannot compile schemas; protobuf internally between your services. If you expose JSON mapped from proto, document that unknown JSON fields are ignored and never rely on JSON field name changes without version bumps."
 ---
 Protobuf Evolution Compatibility is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
-
-When protobuf evolution compatibility is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
-
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns protobuf evolution compatibility from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm protobuf evolution compatibility bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for protobuf evolution compatibility, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm protobuf evolution compatibility flows so duplicates are harmless or detectable.
-
 ## Implementation patterns
 
 A practical baseline for protobuf evolution compatibility in ai stacks:
@@ -90,14 +72,6 @@ Legacy systems rarely block greenfield designs; they constrain sequencing. Stran
 
 Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where protobuf evolution compatibility spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
 
-## Related concepts
-
-Protobuf Evolution Compatibility intersects with broader ai topics — see companion notes on [llm-protobuf patterns](https://blog.michaelsam94.com/llm-protobuf/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
-
-## The takeaway
-
-Protobuf Evolution Compatibility rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm protobuf evolution compatibility becomes a maintainable asset instead of incident fuel.
-
 ## Resources
 
 - [platform.openai.com/docs/](https://platform.openai.com/docs/)
@@ -109,3 +83,38 @@ Protobuf Evolution Compatibility rewards disciplined boring engineering: clear c
 - [huggingface.co/docs](https://huggingface.co/docs)
 
 - [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+
+## Production notes for LLM stacks
+
+When `llm-protobuf-evolution-compatibility` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `protobuf evolution compatibility` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Production notes for LLM stacks
+
+When `llm-protobuf-evolution-compatibility` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `protobuf evolution compatibility` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+
+For `llm-protobuf-evolution-compatibility`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `llm-protobuf-evolution-compatibility`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `llm-protobuf-evolution-compatibility`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.

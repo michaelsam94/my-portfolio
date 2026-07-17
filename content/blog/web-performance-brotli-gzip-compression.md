@@ -3,136 +3,183 @@ title: "Brotli vs Gzip Compression Strategy"
 slug: "web-performance-brotli-gzip-compression"
 description: "Brotli at level 4-6 for text assets — precompressed static files, CDN negotiation, and CPU trade-offs."
 datePublished: "2027-02-03"
-dateModified: "2027-02-03"
-tags: ["Performance", "Network", "Compression"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "Brotli vs gzip, compression web assets, CDN compression"
 faq:
-  - q: "What is Brotli vs Gzip Compression Strategy?"
-    a: "Brotli vs Gzip Compression Strategy is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Brotli vs Gzip Compression Strategy?"
-    a: "Adopt Brotli vs Gzip Compression Strategy when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Brotli vs Gzip Compression Strategy?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "Brotli or gzip for dynamic HTML?"
+    a: "Usually gzip for small dynamic HTML responses. Precompressed Brotli for static build artifacts served via brotli_static or CDN. Dynamic Brotli at high levels rarely pays off versus origin CPU cost."
+  - q: "What Brotli compression level for static assets?"
+    a: "Levels 4–6 balance compression ratio and encode time. Level 11 is for offline build pipelines only — never at request time on the origin during traffic spikes."
+  - q: "How do you verify compression in production?"
+    a: "curl -H 'Accept-Encoding: br' -I against static URLs and confirm Content-Encoding. Log encoding and transfer bytes in RUM separately for HTML documents versus cached static assets."
 ---
+Switching static assets to Brotli level 11 on the origin spiked CPU and slowed TTFB during traffic peaks — precompressing at level 5 at build time and serving `.br` files via `brotli_static` from nginx cut transfer bytes 28% without melting the origin. Compression strategy is not "maximum level everywhere"; it is matching algorithm, level, and timing to asset type and infrastructure.
 
-The gap between reading about brotli vs gzip compression strategy and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+## Negotiation flow
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+Browsers send `Accept-Encoding: gzip, deflate, br`. Server picks best mutually supported algorithm and sets `Content-Encoding`. CDNs often compress at edge; origins may precompress static files and serve with `gzip_static` / `brotli_static`.
 
-## Architecture and boundaries
-
-Before changing implementation details, draw the boundary diagram. Brotli vs Gzip Compression Strategy touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
-
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
+```bash
+curl -sI -H 'Accept-Encoding: br' https://cdn.example.com/assets/app.js | grep -i content-encoding
+# content-encoding: br
 ```
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+Verify both br and gzip fallbacks — older clients and some corporate proxies still need gzip.
 
-Document which metrics you expect to move. If brotli vs gzip compression strategy is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
+## Precompute versus on-the-fly
 
-## Implementation patterns
+| Approach | Best for | Risk |
+|----------|----------|------|
+| Build-time `.br` + `.gz` | JS, CSS, SVG, JSON static | Stale if deploy pipeline skips step |
+| CDN edge compression | Cacheable assets | CPU at edge during cold miss |
+| Origin dynamic gzip | Small HTML responses | Acceptable at low levels |
+| Origin dynamic Brotli high level | Rarely worth it | TTFB regression under load |
 
-Start with the smallest change that proves the approach. For brotli vs gzip compression strategy, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+Precompress at build:
 
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("web_performance_brotli_gzip_compression");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
+```bash
+find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
+  -exec brotli -q 5 -k {} \; \
+  -exec gzip -k -9 {} \;
 ```
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
+nginx:
+
+```nginx
+brotli_static on;
+gzip_static on;
 ```
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+## Brotli level tradeoffs
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+Higher levels squeeze fewer additional bytes per exponentially more CPU. Offline level 11 for monthly static bundles can make sense; online level 11 on every request does not.
 
-## Accessibility requirements
+Practical static targets: Brotli 4–6, gzip 6–9 for fallback. Measure bytes saved versus encode milliseconds on your largest chunk files.
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+## Dynamic HTML responses
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+HTML documents are often short-lived and uncacheable — compressing with gzip level 4–6 on the fly is typical. Dynamic Brotli at high levels adds latency users feel as slower TTFB before first byte arrives.
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+Separate policies in config:
 
-## Security and privacy considerations
+```nginx
+location /assets/ { brotli_static on; gzip_static on; }
+location / { gzip on; gzip_comp_level 5; brotli off; }
+```
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+## CDN configuration
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+Enable compression for text/* MIME types. Exclude already-compressed formats (jpeg, png, webp, avif, woff2). Some CDNs recompress origin gzip — disable double compression.
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+Set `Vary: Accept-Encoding` correctly so caches do not serve gzip body to br clients. Purge test after policy changes.
 
-## Testing strategy
+## Measuring bytes and CPU together
 
-Layer tests to match risk:
+Dashboard:
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+- Transfer size p50/p75 by content type and encoding
+- Origin CPU correlation with compression level changes
+- TTFB before/after enabling dynamic Brotli
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+A 5% byte reduction that adds 40ms TTFB is a net loss for LCP on HTML. Static JS may tolerate more aggressive compression because cache hit ratio amortizes encode cost at build time.
 
-## Common production mistakes
+## Small file overhead
 
-Teams get brotli vs gzip compression strategy wrong in predictable ways:
+Compressing sub-1KB responses sometimes increases size due to headers — many servers set minimum length thresholds. Do not compress already tiny 404 bodies if overhead exceeds savings.
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+## HTTP/2 and HTTP/3 interaction
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+Multiplexing reduces head-of-line blocking but does not remove parse cost — smaller compressed assets still win. HPACK/QPACK header compression is separate from body compression — do not conflate.
 
-## Debugging and triage workflow
+## Security: BREACH and CRIME
 
-When brotli vs gzip compression strategy misbehaves in production, work top-down:
+Compression side channels on secret-bearing responses (tokens in HTML) were historical concerns — avoid reflecting secrets in compressible responses combined with user input. Most static JS/CSS compression carries no BREACH risk; be cautious compressing personalized HTML with embedded secrets.
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+## Rollback when CPU spikes
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+If origin CPU alarms after enabling dynamic Brotli, rollback compression level first, then disable dynamic Brotli on HTML while keeping static precompressed assets. Feature-flag CDN compression policies per property.
 
-## Resources
+Document owner and rollback in infrastructure PR — compression changes are performance incidents waiting to happen during Black Friday.
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+## CI verification
+
+Asset pipeline fails if `.br` sibling missing for each `.js` and `.css` output. Lighthouse CI tracks transfer size regressions when someone disables compression in staging config copied to prod.
+
+## Checklist summary
+
+| Asset type | Recommendation |
+|------------|----------------|
+| JS/CSS bundles | Precomputed Brotli 5 + gzip fallback |
+| HTML (dynamic) | gzip level 5, moderate |
+| Images | Do not Brotli — use modern formats |
+| API JSON | gzip on if >1KB, profile CPU |
+
+Compression wins come from precomputed static assets and sensible levels — not from turning Brotli to eleven on every response and calling it optimization.
+
+## WASM and binary assets
+
+Do not compress already compressed wasm bundles twice at high CPU cost — negligible byte win. Focus Brotli budget on JS/CSS/SVG/JSON text.
+
+## Edge workers and compression
+
+Workers that transform HTML at edge may compress output — ensure `Content-Encoding` matches body. Double gzip causes browser decode errors visible as blank pages in older clients.
+
+## Monitoring alert thresholds
+
+Alert when average compressed JS size jumps 15% week-over-week — often signals someone committed uncompressed debug bundles to production artifact path.
+
+## Preload and compression interaction
+
+`Link: rel=preload` responses should use same encoding negotiation as final resource fetch — mismatched encoding on preload wastes bandwidth without helping LCP.
+
+## Compression and service workers
+
+Service worker caches must store decompressed responses or respect Content-Encoding consistently — caching gzip bytes and serving to client expecting identity causes intermittent decode failures.
+
+## Lambda and serverless compression
+
+Enable compression at API Gateway or CloudFront, not inside short-lived Lambda for static JSON — CPU billing spikes when every invocation compresses same payload instead of CDN doing it once.
+
+## Asset pipeline regression tests
+
+CI compares total compressed bundle size against main branch — fail PR when gzip plus brotli total grows ten percent without approved justification.
+
+## Font and image MIME exclusions
+
+Ensure compress filter excludes woff2, avif, webp, jpeg — double compression wastes CPU with zero byte savings. Review nginx gzip_types after adding new text-based formats like application/manifest+json.
+
+## HTTP/3 and QPACK
+
+Body compression independent of QPACK header compression — verify both enabled on HTTP/3 endpoints. Misconfigured HTTP/3 without Brotli on static assets leaves performance on table.
+
+## Origin shield and mid-tier caches
+
+Mid-tier cache hit serves precompressed object — origin never recompresses on shield miss. Configure shield to store both encodings from origin upload at deploy time.
+
+## Additional context (1)
+
+We shipped web performance brotli gzip compression and discovered the gap between documentation and production the hard way. Document which routes or tenants you changed first, and keep rollback paths in the PR description before promoting beyond canary traffic.
+
+## Additional context (2)
+
+We shipped web performance brotli gzip compression and discovered the gap between documentation and production the hard way. Document which routes or tenants you changed first, and keep rollback paths in the PR description before promoting beyond canary traffic.
+
+## Precompress text assets in CI
+
+Serve Brotli for static JS/CSS/HTML with gzip fallback. Precompress in CI rather than max quality on-the-fly at peak CPU. Skip recompressing PNG/JPEG/ZIP/WASM. Moderate levels for dynamic HTML protect TTFB.
+
+Caches must Vary on Accept-Encoding. CI should fail if edge text responses lack content encoding. Canary regions before global enable. Fix cacheability before expecting compression to save uncacheable HTML.
+
+## Operations note 1 for web performance brotli gzip compression
+
+Name the owner, dashboard, and rollback for web performance brotli gzip compression. Add one automated check for the failure path. Prefer progressive delivery. Require a compatibility note when web performance brotli gzip compression changes cross team boundaries. Rehearse rollback once in staging.
+
+## Operations note 2 for web performance brotli gzip compression
+
+Name the owner, dashboard, and rollback for web performance brotli gzip compression. Add one automated check for the failure path. Prefer progressive delivery. Require a compatibility note when web performance brotli gzip compression changes cross team boundaries. Rehearse rollback once in staging.
+
+## Operations note 3 for web performance brotli gzip compression
+
+Name the owner, dashboard, and rollback for web performance brotli gzip compression. Add one automated check for the failure path. Prefer progressive delivery. Require a compatibility note when web performance brotli gzip compression changes cross team boundaries. Rehearse rollback once in staging.

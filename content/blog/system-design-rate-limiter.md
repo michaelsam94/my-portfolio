@@ -1,201 +1,145 @@
 ---
 title: "System Design: Distributed Rate Limiter"
 slug: "system-design-rate-limiter"
-description: "Design a distributed rate limiter using token bucket and sliding window algorithms, with Redis-backed counters that enforce limits across multiple API gateway instances."
+description: "Design a distributed rate limiter using token bucket and sliding window algorithms, with Redis-backed counters that enforce limits across API gateway instances."
 datePublished: "2025-11-09"
-dateModified: "2025-11-09"
-tags: ["System Design", "Rate Limiting", "Architecture", "Backend"]
-keywords: "distributed rate limiter design, token bucket algorithm, sliding window counter, Redis rate limiting, API rate limit architecture"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "distributed rate limiter design, token bucket algorithm, sliding window counter, Redis rate limiting"
 faq:
-  - q: "What is the difference between token bucket and sliding window rate limiting?"
-    a: "Token bucket allows bursts up to bucket capacity while maintaining an average rate — a bucket of 100 tokens refilling at 10/sec permits 100 immediate requests then throttles to 10/sec. Sliding window counts requests in a rolling time window — exactly 100 requests in any 60-second period, no burst above 100. Token bucket is smoother for user experience; sliding window is stricter for hard limits like API quotas."
-  - q: "How do you implement rate limiting across multiple servers?"
-    a: "Centralize counter state in a shared store (Redis) that all API gateway instances read and write. Each request atomically increments a counter and checks against the limit. Redis INCR with EXPIRE or Lua scripts for atomic check-and-increment prevent race conditions. Local in-memory counters work for approximate limiting but fail when requests hit different instances."
-  - q: "What HTTP status code should rate-limited requests return?"
-    a: "429 Too Many Requests with Retry-After header indicating seconds until the client can retry. Include X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers so clients can self-throttle. For API products, return rate limit info on successful responses too — clients shouldn't have to hit the limit to discover their quota."
+  - q: "Token bucket vs sliding window?"
+    a: "Token bucket allows controlled bursts; sliding window enforces hard cap in rolling period."
+  - q: "Multi-server rate limiting?"
+    a: "Central Redis with atomic Lua scripts; all gateways read/write shared counters."
+  - q: "HTTP status for rate limits?"
+    a: "429 with Retry-After and X-RateLimit-* headers on success responses too."
+faqAnswers:
+  - question: "When is system design rate limiter the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for system design rate limiter?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back system design rate limiter safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
+Fifty thousand requests per minute from one API key starved the database until Redis token bucket returned 429 and everyone else recovered.
 
-Our public API had no rate limiting. A misconfigured integration script sent 50,000 requests per minute from a single API key, starving database connections for every other customer. We added rate limiting in an afternoon with Redis — token bucket per API key, 1000 requests per minute default. The script got 429 responses. Everyone else kept working. The fix cost one Redis instance and fifty lines of Lua.
+## Symptoms users report
 
-A distributed rate limiter protects your API from abuse, ensures fair usage across tenants, and prevents cascading failures when one client overwhelms shared resources. The challenge is enforcing limits consistently when requests arrive at any of dozens of stateless API gateway instances.
+Production engineering for distributed rate limiting across API gateway instances. Review 1: teams that treat distributed rate limiting across API gateway instances as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-## Rate limiting algorithms
+## How to confirm root cause
 
-**Fixed window:**
+Production engineering for distributed rate limiting across API gateway instances. Review 2: teams that treat distributed rate limiting across API gateway instances as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-Count requests in fixed time buckets (e.g., minute 0:00-0:59). Simple but allows 2x burst at window boundaries — 100 requests at 0:59 and 100 at 1:00.
+## Fix that sticks
 
-**Sliding window log:**
+            Ship the smallest vertical slice first — one route, one widget, one webhook endpoint — with rollback documented before expanding scope. Local in-memory counters without shared state — limits fail across instances That mistake is expensive because it only surfaces under real traffic mixes.
 
-Store timestamp of each request. Count requests in the last N seconds. Accurate but memory-heavy — stores one entry per request.
+            ```typescript
+            // Operational hook for distributed rate limiting across API gateway instances
+export async function applyPattern(ctx: RequestContext) {
+  const start = performance.now();
+  try {
+    return await execute(ctx);
+  } finally {
+    reportMetric("system-design-rate-limiter", performance.now() - start);
+  }
+}
+            ```
 
-**Sliding window counter (recommended):**
+            Wire metrics at the same time as the feature. If you cannot answer "did this make users faster or safer?" within a week of launch, the change is not finished.
 
-Hybrid of fixed window and sliding window. Weighted count from current and previous window:
+## Reference patterns
 
-```
-count = prev_window_count * (1 - elapsed/window_size) + curr_window_count
-```
+            Ship the smallest vertical slice first — one route, one widget, one webhook endpoint — with rollback documented before expanding scope. Local in-memory counters without shared state — limits fail across instances That mistake is expensive because it only surfaces under real traffic mixes.
 
-**Token bucket:**
+            ```typescript
+            // Operational hook for distributed rate limiting across API gateway instances
+export async function applyPattern(ctx: RequestContext) {
+  const start = performance.now();
+  try {
+    return await execute(ctx);
+  } finally {
+    reportMetric("system-design-rate-limiter", performance.now() - start);
+  }
+}
+            ```
 
-Bucket holds N tokens, refilling at rate R per second. Each request consumes one token. Allows bursts up to bucket size while maintaining average rate.
+            Wire metrics at the same time as the feature. If you cannot answer "did this make users faster or safer?" within a week of launch, the change is not finished.
 
-## Redis-backed token bucket
+## Prevention for the next launch
 
-```lua
--- token_bucket.lua
-local key = KEYS[1]
-local capacity = tonumber(ARGV[1])
-local refill_rate = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
-local requested = tonumber(ARGV[4])
+Production engineering for distributed rate limiting across API gateway instances. Review 5: teams that treat distributed rate limiting across API gateway instances as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-local bucket = redis.call('HMGET', key, 'tokens', 'last_refill')
-local tokens = tonumber(bucket[1]) or capacity
-local last_refill = tonumber(bucket[2]) or now
+## Monitoring checklist
 
-local elapsed = now - last_refill
-tokens = math.min(capacity, tokens + elapsed * refill_rate)
+Leading indicators catch regressions before tweets do: error rate, queue depth, validation failures, p75 latency sliced by route and device class. Lagging indicators — support tickets, churn, audit findings — confirm whether leading metrics matched user pain.
 
-if tokens >= requested then
-    tokens = tokens - requested
-    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
-    redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
-    return {1, tokens}  -- allowed, remaining tokens
-else
-    return {0, tokens}  -- denied, current tokens
-end
-```
+For distributed rate limiting across API gateway instances, log correlation IDs across client beacons and server logs. Compare canary vs control during rollout. Roll forward only when p75 field metrics hold for at least one full business day in the target geography.
 
-```python
-async def is_allowed(key: str, capacity: int = 100, refill_rate: float = 1.0) -> tuple[bool, float]:
-    result = await redis.evalsha(
-        TOKEN_BUCKET_SHA,
-        keys=[f"ratelimit:{key}"],
-        args=[capacity, refill_rate, time.time(), 1]
-    )
-    allowed, remaining = result
-    return bool(allowed), remaining
-```
+## Lessons for the team
 
-The Lua script executes atomically — no race condition between read and write even with concurrent requests from multiple gateway instances.
+Fifty thousand requests per minute from one API key starved the database until Redis token bucket returned 429 and everyone else recovered.. If I were prioritizing one action this sprint: pick the single user journey where distributed rate limiting across API gateway instances hurts most, instrument it, fix the invariant, and only then generalize.
 
-## Sliding window counter implementation
+Performance and reliability work compounds when tied to business metrics — conversion, support volume, integration churn — not abstract Lighthouse scores alone.
 
-```python
-async def sliding_window_count(key: str, limit: int, window_seconds: int) -> tuple[bool, int]:
-    now = time.time()
-    current_window = int(now // window_seconds)
-    previous_window = current_window - 1
-    elapsed_in_window = now % window_seconds
+## Related reading and specs
 
-    current_key = f"ratelimit:{key}:{current_window}"
-    previous_key = f"ratelimit:{key}:{previous_window}"
+Consult MDN and web.dev for API semantics — tutorials often skip edge cases that matter in production. Link runbooks from dashboards, not wikis buried three clicks deep.
 
-    current_count = int(await redis.get(current_key) or 0)
-    previous_count = int(await redis.get(previous_key) or 0)
+## Coordination with backend and platform
 
-    weight = 1 - (elapsed_in_window / window_seconds)
-    estimated_count = previous_count * weight + current_count
+Distributed Rate Limiting Across Api Gateway Instances rarely lives entirely in the browser or client. Align cache TTLs, API error shapes, and deploy windows with the teams owning those systems — otherwise you optimize one layer while another invalidates gains.
 
-    if estimated_count >= limit:
-        return False, max(0, limit - int(estimated_count))
+## Operating distributed rate limiting across API gateway instances after traffic shifts (review 1)
 
-    pipe = redis.pipeline()
-    pipe.incr(current_key)
-    pipe.expire(current_key, window_seconds * 2)
-    await pipe.execute()
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
 
-    return True, max(0, limit - int(estimated_count) - 1)
-```
+When distributed rate limiting across API gateway instances touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
 
-Memory efficient — two counters per key regardless of request volume.
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
 
-## Integration with API gateway
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
 
-Rate limiting runs as middleware before request processing:
+## Operating distributed rate limiting across API gateway instances after traffic shifts (review 2)
 
-```python
-async def rate_limit_middleware(request, call_next):
-    api_key = request.headers.get("X-API-Key")
-    tier = await get_tier(api_key)  # free: 100/min, pro: 1000/min, enterprise: 10000/min
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
 
-    allowed, remaining = await is_allowed(
-        key=f"api:{api_key}",
-        capacity=tier.limit,
-        refill_rate=tier.limit / 60
-    )
+When distributed rate limiting across API gateway instances touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
 
-    if not allowed:
-        return JSONResponse(
-            status_code=429,
-            content={"error": "Rate limit exceeded"},
-            headers={
-                "Retry-After": str(tier.window_seconds),
-                "X-RateLimit-Limit": str(tier.limit),
-                "X-RateLimit-Remaining": "0",
-            }
-        )
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
 
-    response = await call_next(request)
-    response.headers["X-RateLimit-Limit"] = str(tier.limit)
-    response.headers["X-RateLimit-Remaining"] = str(int(remaining))
-    return response
-```
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
 
-## Multi-dimensional rate limiting
+## Operating distributed rate limiting across API gateway instances after traffic shifts (review 3)
 
-Production APIs limit on multiple dimensions simultaneously:
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
 
-```python
-limits = [
-    ("api_key", api_key, 1000, 60),       # 1000/min per API key
-    ("ip", client_ip, 100, 60),            # 100/min per IP
-    ("endpoint", f"{api_key}:{path}", 100, 60),  # 100/min per endpoint
-    ("global", "api", 100000, 60),         # 100K/min global
-]
+When distributed rate limiting across API gateway instances touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
 
-for dimension, key, limit, window in limits:
-    allowed, _ = await sliding_window_count(key, limit, window)
-    if not allowed:
-        return rate_limit_response(dimension)
-```
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
 
-A request must pass all dimensions. Global limits protect shared infrastructure; per-key limits ensure fair usage; per-IP limits catch key-less abuse.
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
 
-## Handling Redis failures
+## Operating distributed rate limiting across API gateway instances after traffic shifts (review 4)
 
-Rate limiter Redis downtime shouldn't take down your API:
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
 
-- **Fail open:** Allow requests when Redis is unreachable. Log the failure. Accept temporary over-admission over total outage.
-- **Local fallback:** Maintain an approximate in-memory counter as backup. Less accurate but prevents complete bypass.
-- **Circuit breaker:** After N Redis failures, stop trying for M seconds and use local fallback.
+When distributed rate limiting across API gateway instances touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
 
-```python
-async def is_allowed_with_fallback(key, capacity, refill_rate):
-    try:
-        return await is_allowed(key, capacity, refill_rate)
-    except RedisConnectionError:
-        logger.warning("Redis unavailable, using local fallback")
-        return local_limiter.check(key, capacity, refill_rate)
-```
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
 
-## Common production mistakes
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
 
-Teams get rate limiter wrong in predictable ways:
+## Extended guidance (1)
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+**Context:** Distributed rate limiting across api gateway instances affects users when when protecting apis from abuse and ensuring fair usage across tenants. Avoid the failure mode where teams local in-memory counters without shared state — limits fail across instances.
 
-System design for rate limiter breaks at scale when hot keys, thundering herds, and cache stampedes are discovered during launch week instead of load test week.
+Ship the smallest vertical slice with one leading metric — latency, recall, conversion, or accessibility findings. Baseline field p75 on mid-tier mobile hardware before merge; compare after a full business day in target regions. Wire rollback via feature flag or cache purge documented in the PR.
 
-## Resources
+Edge cases include corporate proxies, Save-Data clients, ad blockers, and battery savers. Exercise keyboard-only paths, refresh mid-flow, and back navigation when the surface touches auth or checkout. Security review covers CSP, PII in URLs, and third-party scripts even for UI-only changes.
 
-- [Redis rate limiting patterns](https://redis.io/docs/reference/patterns/rate-limiter/)
-- [Token bucket algorithm — Wikipedia](https://en.wikipedia.org/wiki/Token_bucket)
-- [Stripe rate limiter blog post](https://stripe.com/blog/rate-limiters)
-- [Cloudflare rate limiting architecture](https://blog.cloudflare.com/counting-things-a-lot-of-different-things/)
-- [IETF draft: RateLimit header fields for HTTP](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers)
+Coordinate with platform and backend so cache TTLs and error response shapes do not erase frontend wins. Schedule quarterly re-baseline after browser releases and traffic mix shifts.
+
+Document trade-offs in the pull request: if you chose speed over strict correctness, or strictness over iteration velocity, the next engineer needs that context during incident response. Link dashboards from the runbook header so on-call does not hunt wikis during outages.

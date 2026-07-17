@@ -3,113 +3,178 @@ title: "eBPF Observability with Cilium Hubble"
 slug: "devops-ebpf-observability-cilium"
 description: "Use Hubble for L3/L7 flow visibility and policy verification."
 datePublished: "2026-06-14"
-dateModified: "2026-06-14"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Observability"
   - "Security"
 keywords: "Cilium Hubble, eBPF"
 faq:
-  - q: "What is eBPF Observability?"
-    a: "eBPF Observability covers operational practices for Cilium Hubble in production observability environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize eBPF Observability?"
-    a: "When running Cilium CNI and debugging network policy."
-  - q: "What mistakes break eBPF Observability?"
-    a: "Hubble metrics without retention plan—short debug window only."
+  - q: "How is Hubble different from tcpdump?"
+    a: "Hubble aggregates L3/L7 flows with policy verdict labels cluster-wide—not one interface at a time."
+  - q: "How verify NetworkPolicy with Hubble?"
+    a: "Compare flows marked forwarded vs dropped against intended selectors—hostNetwork pods may bypass expected policy."
+  - q: "What is a Hubble metrics retention mistake?"
+    a: "Short debug retention without Prometheus export—incidents need trend context beyond minutes."
+  - q: "Does eBPF observability add overhead?"
+    a: "Usually low, but monitor drop counters on high packets-per-second nodes during rollout."
 ---
+NetworkPolicy YAML looked correct—Hubble showed DNS traffic bypass via a hostNetwork pod.
 
-NetworkPolicy looked correct—Hubble showed DNS bypass via hostNetwork pod.
+## Hubble relay
 
-This post walks through **eBPF Observability with Cilium Hubble** for platform and SRE teams shipping reliable infrastructure. Use Hubble for L3/L7 flow visibility and policy verification. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+Aggregate flows cluster-wide; search by pod labels during policy incidents.
 
-## Problem framing: eBPF Observability with Cilium Hubble
+A production team running ebpf observability cilium discovered that hubble relay failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-NetworkPolicy looked correct—Hubble showed DNS bypass via hostNetwork pod.
+Runbook entry for hubble relay: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
+For ebpf observability cilium, instrument hubble relay with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-Platform teams treat **Cilium Hubble** as solved after the first successful deploy. Production disagrees: edge cases around ebpf observability cilium, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day scenario for hubble relay: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-## Design principles for Cilium Hubble
+Ownership for hubble relay belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-Explicit contracts beat tribal knowledge. Document who owns Cilium Hubble configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management for ebpf observability cilium: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in hubble relay
+configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for hubble relay, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-A common failure mode: Hubble metrics without retention plan—short debug window only. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+## Verdict analysis
 
+Compare FORWARDED vs DROPPED against intended selectors—hostNetwork exceptions documented.
 
-```yaml
-# PrometheusRule / experiment hook for devops-ebpf-observability-cilium
-groups:
-  - name: ebpf_observability_cilium
-    rules:
-      - alert: Ebpf_Observability_CiliumHighErrorRate
-        expr: rate(http_errors_total{job="ebpf_observability_cilium"}[5m]) > 0.05
-        for: 10m
-        labels:
-          severity: page
-```
+A production team running ebpf observability cilium discovered that verdict analysis failures show
+up only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-## Implementation walkthrough
+Runbook entry for verdict analysis: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Start with the smallest production-safe slice of **eBPF Observability with Cilium Hubble**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+For ebpf observability cilium, instrument verdict analysis with low-cardinality metrics tied to
+user-visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid
+paging on vanity gauges that never correlated with past incidents.
 
+Game day scenario for verdict analysis: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for Cilium Hubble.
+Ownership for verdict analysis belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
 
-## Operational concerns in production
+Change management for ebpf observability cilium: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in verdict analysis
+configs that authors no longer notice.
 
-Day-two operations for observability work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Capacity planning note: estimate peak QPS or job concurrency for verdict analysis, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
 
+## L7 visibility
 
-Run game days or fault injection in staging quarterly for ebpf observability cilium. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+HTTP visibility requires pod annotations—balance cardinality against debug value.
 
-## Security and compliance angles
+A production team running ebpf observability cilium discovered that l7 visibility failures show up
+only when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Even when eBPF Observability with Cilium Hubble is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when Cilium Hubble accepts configuration from multiple teams.
+Runbook entry for l7 visibility: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
+For ebpf observability cilium, instrument l7 visibility with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-For regulated workloads, maintain an immutable audit trail: who changed Cilium Hubble settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Game day scenario for l7 visibility: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-## Integration with platform standards
+Ownership for l7 visibility belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-Align Cilium Hubble with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Change management for ebpf observability cilium: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in l7 visibility
+configs that authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for l7 visibility, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+## Alerting
 
+Unexpected egress to non-allowlisted CIDR from tier-one namespaces.
 
-## What to measure after rollout
+A production team running ebpf observability cilium discovered that alerting failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Runbook entry for alerting: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+For ebpf observability cilium, instrument alerting with low-cardinality metrics tied to user-visible
+outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging on
+vanity gauges that never correlated with past incidents.
 
-## Documentation your team should maintain
+Game day scenario for alerting: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Ownership for alerting belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Pre-production checklist
+Change management for ebpf observability cilium: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in alerting configs
+that authors no longer notice.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Capacity planning note: estimate peak QPS or job concurrency for alerting, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+## Retention
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Export Hubble metrics to Prometheus with retention matching post-incident review—not minutes only.
 
-## Common questions from reviewers
+A production team running ebpf observability cilium discovered that retention failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Runbook entry for retention: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
-## Version and compatibility notes
+For ebpf observability cilium, instrument retention with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Game day scenario for retention: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
 
+Ownership for retention belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
 
-## Resources
+Change management for ebpf observability cilium: require peer review from someone outside the
+authoring team before production promotion—fresh eyes catch assumptions embedded in retention
+configs that authors no longer notice.
 
-- https://prometheus.io/docs/
-- https://opentelemetry.io/docs/
+Capacity planning note: estimate peak QPS or job concurrency for retention, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
+
+Use Hubble to compare NetworkPolicy verdicts against intended selectors—hostNetwork pods may bypass policies that YAML suggests block traffic. Export Hubble metrics to Prometheus with retention matching incident review needs, not minutes-long UI defaults only.

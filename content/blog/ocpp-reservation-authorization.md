@@ -3,7 +3,7 @@ title: "Reservations and Authorization in OCPP"
 slug: "ocpp-reservation-authorization"
 description: "Implement OCPP reservations and authorization: ReserveNow, ID tag validation, local auth lists, parent ID tags, and handling concurrent access."
 datePublished: "2025-11-05"
-dateModified: "2025-11-05"
+dateModified: "2026-07-17"
 tags: ["IoT", "EV Charging", "OCPP", "Security"]
 keywords: "OCPP reservation, ReserveNow OCPP, ID tag authorization, OCPP authorization, local auth list, EV charging access control, parent ID tag OCPP"
 faq:
@@ -238,16 +238,55 @@ Log all reservation state transitions — disputes about no-shows require audit 
 - Plug & Charge certificate validation with OCSP
 - Offline authorization policy explicit (allow vs deny unknown tags)
 
-## Common production mistakes
+## Authorization edge cases from the field
 
-Teams get ocpp reservation authorization wrong in predictable ways:
+- **Stale cache after card theft report** — force `ClearCache` on affected sites when EMSP sends block list updates.
+- **Reservation ID collision after CSMS restore** — reservation IDs must be globally unique per station; restore from backup can reuse IDs; increment from max on recovery.
+- **MAC address auth on free chargers** — `NoAuthorization` mode still needs abuse rate limits per connector.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## OCPI token alignment for roaming
 
-Production implementations of ocpp reservation authorization fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Roaming drivers present EMSP tokens that your local auth list may not include. Flow:
+
+```
+RFID tap → lookup local list (miss) → OCPI real-time authorize → cache Accepted for TTL
+         → OCPP Authorize → StartTransaction
+```
+
+Cache roaming authorizations with short TTL (5–15 minutes) — EMSP can revoke contracts mid-session rarely, but blocked accounts should propagate within minutes. Log `authorization_source: local | ocpi | csms` on each session for settlement disputes.
+
+## GroupId and fleet policies
+
+OCPP 2.0.1 `IdTokenInfo` may include `groupIdToken` for fleet grouping. Use it for concurrent session limits:
+
+```python
+def max_concurrent_sessions(id_token_info):
+    group = id_token_info.get("groupIdToken")
+    if group and group.id_token.startswith("FLEET-"):
+        return 4  # fleet policy
+    return 1
+```
+
+Parent ID tags and group tokens interact — document precedence in your auth module so billing and concurrency rules do not contradict.
+
+## Contract certificate validation latency
+
+Plug & Charge OCSP checks add 200–800ms to authorization. Cache OCSP responses per contract certificate with TTL under nextUpdate. Timeout path: reject with user-visible "try RFID" rather than silent fail — drivers blame charger, not PKI.
+
+## Authorization analytics
+
+Dashboard: `Invalid` rate by site, `ConcurrentTx` by fleet account, reservation no-show rate by app channel. Spikes in `Invalid` after marketing campaign often mean stale local list, not fraud.
+
+## QR and app-initiated reservation
+
+Mobile app reservations use same `reservationId` as RFID — CSMS must bind reservation to `idTag` or `idToken` consistently. Deep link opens app → confirms reservation → charger shows Reserved before driver arrives.
+
+## Waitlist when reserved connector occupied
+
+When reserved connector still occupied at expiry, offer alternate connector via app push if available — OCPP `ReserveNow` on backup connector requires CSMS orchestration. Log user acceptance rate for waitlist offers.
+## Reservation deposit integration
+
+Paid reservations tie `ReserveNow` to payment capture — cancel before window refunds deposit via CSMS billing module linked to `reservationId`.
 
 ## Resources
 

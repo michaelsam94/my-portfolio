@@ -1,111 +1,186 @@
 ---
-title: "AI Agents: Sso Saml Metadata Rotation"
+title: "AI Agents: SSO SAML Metadata Rotation"
 slug: "agent-sso-saml-metadata-rotation"
-description: "Sso Saml Metadata Rotation: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-12-28"
-dateModified: "2025-12-28"
-tags: ["AI", "Agent", "Sso"]
-keywords: "agent, sso, saml, metadata, rotation, ai, production, engineering, architecture"
+description: "Rotate IdP signing certificates for agent admin SSO without downtime — dual-key overlap, SP metadata refresh, and debugging SAML signature failures after corporate IdP updates."
+datePublished: "2025-11-04"
+dateModified: "2026-07-17"
+tags: ["AI", "Agent", "Security", "SSO"]
+keywords: "SAML metadata rotation, IdP certificate rollover, agent SSO, SP metadata, Okta Azure AD SAML"
 faq:
-  - q: "What is Sso Saml Metadata Rotation?"
-    a: "Sso Saml Metadata Rotation covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Sso Saml Metadata Rotation?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Sso Saml Metadata Rotation?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Sso Saml Metadata Rotation fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Sso Saml Metadata Rotation should be observable in production and safe to change in small diffs."
+  - q: "How long should IdP signing certificates overlap during SAML rotation?"
+    a: "Minimum 7–14 days where IdP publishes both old and new signing cert in metadata and accepts responses validated with either. Agent SP must load all certs from metadata — not pin single X509 in config file."
+  - q: "Who initiates SAML metadata rotation — IdP or agent SP?"
+    a: "Usually IdP admin rotates signing cert on schedule (Okta, Azure AD, Google Workspace). Agent platform as SP consumes IdP metadata URL and must refresh automatically. SP signing cert rotation is separate — update IdP with new SP metadata before old SP cert expires."
+  - q: "What breaks when metadata rotation is mishandled?"
+    a: "All agent admin logins fail with SAML signature validation error — often overnight when IdP switches primary cert without SP picking up new metadata. Enterprise tenants cannot access agent dashboards or tool configuration."
+  - q: "How do I test SAML rotation before production?"
+    a: "Staging IdP metadata URL, automated test login via Playwright after metadata fetch, monitor auth_success_rate during overlap window. Notify enterprise tenants of rotation window — not required for auto-refresh if implemented correctly."
 ---
-Sso Saml Metadata Rotation sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Enterprise tenant Okta rotated SAML signing certificates on a Sunday without telling anyone. Monday 9 AM: every admin login to the agent control plane failed with `SAML response signature invalid`. The SP pinned a single IdP X509 cert in environment variables from 2024. IdP metadata had carried two certs for two weeks — nobody fetched metadata dynamically. Thirty-seven tenants locked out until ops manually pasted new cert and redeployed.
 
-When sso saml metadata rotation is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent platforms selling to enterprises integrate SAML SSO for admin consoles, tenant configuration, and audit-sensitive tool management. IdPs rotate signing certificates on security schedule. Service providers must consume fresh metadata and trust multiple signing keys during overlap — not static cert files.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## SAML metadata roles
 
-Solid AI engineering turns sso saml metadata rotation from a recurring argument into a documented pattern with tests and an owner.
+| Party | Metadata contains |
+|---|---|
+| IdP (Okta, Azure AD) | SSO URL, signing certs, entity ID |
+| SP (agent platform) | ACS URL, SP entity ID, optional SP signing cert |
 
-## Design principles that survive production
+## Dynamic metadata fetch
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent sso saml metadata rotation bugs hide.
+```python
+def get_idp_signing_certs(tenant_id: str) -> list[str]:
+    url = tenant_config[tenant_id]["idp_metadata_url"]
+    xml = requests.get(url, timeout=10).text
+    return parse_signing_certs(xml)
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for sso saml metadata rotation, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent sso saml metadata rotation flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for sso saml metadata rotation in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent sso saml metadata rotation changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Sso Saml Metadata Rotation: typed boundary + structured errors
-export async function handleSsoSamlMetadataRotation(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-sso-saml-metadata-rotation");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+def verify_saml_response(tenant_id: str, saml_xml: bytes):
+    certs = get_idp_signing_certs(tenant_id)
+    for cert_pem in certs:
+        try:
+            return XMLVerifier().verify(saml_xml, x509_cert=cert_pem)
+        except InvalidSignature:
+            continue
+    raise SAMLValidationError("No matching IdP signing cert")
 ```
 
+Try all certs — overlap window requires both old and new.
 
-## Operational concerns
+## Rotation timeline
 
-Alert on user-visible symptoms for sso saml metadata rotation — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+| Day | IdP signs with | SP must trust |
+|---|---|---|
+| 0–6 | A (primary) | A, B |
+| 7–13 | B (primary) | A, B |
+| 14+ | B | B |
 
-Production agent sso saml metadata rotation work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## SP metadata rotation
 
-Rollouts for sso saml metadata rotation benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+When agent SP signing cert expires: generate new keypair, publish metadata with both SP certs during overlap, upload to each tenant IdP admin console, switch default signing key, remove old cert after IdP confirms.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Automate SP metadata endpoint: `GET https://agent.example.com/saml/metadata/{tenant_slug}`
 
-## Security and compliance angles
+## Multi-tenant metadata refresh job
 
-Even when sso saml metadata rotation is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```python
+def refresh_all_tenant_metadata():
+    for tenant in tenants_with_saml():
+        try:
+            certs = fetch_and_parse(tenant.idp_metadata_url)
+            store.update_signing_certs(tenant.id, certs)
+        except Exception as e:
+            alert(f"saml_metadata_refresh_failed tenant={tenant.id} err={e}")
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent sso saml metadata rotation so security reviews do not rely on tribal knowledge.
+Run hourly — not only on login failure.
 
-## Testing strategy
+## Debugging signature failures
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that sso saml metadata rotation depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+| Error | Likely cause |
+|---|---|
+| Signature invalid | Stale cert, clock skew |
+| Audience mismatch | Wrong SP entity ID in IdP config |
+| Assertion expired | NTP drift >5 min |
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Enable SAML debug logging without logging full assertion PII.
 
-## Migration and evolution
+## Clock skew handling
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent sso saml metadata rotation functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```python
+ALLOWED_SKEW = timedelta(minutes=5)
+if not (not_before - ALLOWED_SKEW <= now <= not_on_or_after + ALLOWED_SKEW):
+    raise SAMLValidationError("Assertion window")
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where sso saml metadata rotation spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Sync NTP on agent auth pods before IdP rotation week.
 
-## Related concepts
+## Agent embed SSO
 
-Sso Saml Metadata Rotation intersects with broader ai topics — see companion notes on [agent-sso patterns](https://blog.michaelsam94.com/agent-sso/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Iframe embed SSO may use separate SP entity ID per embed origin — metadata rotation must update all registered ACS URLs in IdP. Document per-tenant IdP config checklist including embed-specific apps.
 
-## The takeaway
+## IdP-specific notes
 
-Sso Saml Metadata Rotation rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent sso saml metadata rotation becomes a maintainable asset instead of incident fuel.
+| IdP | Metadata refresh tip |
+|---|---|
+| Okta | Use org metadata URL not stale app cache |
+| Azure AD | FederationMetadata.xml rotates on schedule |
+| Google | Automate fetch — download link expires |
+
+## Monitoring and alerts
+
+Track `saml_login_success_rate` by tenant and `saml_signature_failure_total`. Page when success rate drops below 95% for enterprise tenant during business hours.
+
+## Metadata cache headers
+
+Fetch IdP metadata with `Cache-Control: no-cache` request header even if CDN serves long max-age — stale edge copy during rotation overlap causes signature failures until TTL expires.
+
+## Encrypted assertions and SP decryption key rotation
+
+When IdP encrypts assertions, SP decryption cert rotation requires dual decryption keys in SP metadata during overlap — mirror IdP signing rotation pattern. Store SP private keys in cloud KMS; agent admin pods mount signing material via CSI, not unencrypted Kubernetes Secret at rest.
+
+## Federation metadata for multi-region agent admin
+
+Geo-routed admin consoles (`admin.us`, `admin.eu`) must publish consistent SP entity ID or use per-region entity IDs documented in tenant config. Metadata refresh job keyed by `tenant_id + region` prevents EU tenant trusting US-only cert after failover drill.
+
+## Break-glass local admin during SAML outage
+
+Maintain break-glass OIDC or hardware-key local admin behind separate URL and IP allowlist — not a disabled SAML bypass in the main ACS code path. Quarterly drill: simulate IdP metadata fetch failure and verify break-glass login completes within RTO target.
+
+## Separation from tool OAuth tokens
+
+SAML session authenticates human admin to agent console. Tool connections use OAuth refresh tokens stored separately. Runbook must distinguish IdP SAML cert rotation from OAuth client secret rotation — on-call conflating the two extends outages.
+
+## Compliance evidence
+
+Export rotation audit log: metadata fetch timestamps, cert fingerprints added/removed. Retain metadata XML snapshots in immutable object storage for thirteen months for SOC2 auditor requests.
+
+## Runbook excerpt
+
+1. Confirm IdP rotation schedule with tenant
+2. Verify metadata URL returns two certs
+3. Force metadata refresh in staging — test login
+4. Monitor production auth metrics 48h through switch day
+5. Post-rotation: confirm old cert removed from metadata fetch
+
+Static cert env vars are rotation incidents waiting for Monday morning.
+
+## Metadata URL TLS and redirect traps
+
+IdP metadata fetchers must follow HTTPS redirects cautiously — HTTP to HTTPS upgrade is fine; cross-domain redirect may indicate compromise. Pin metadata URL hostname in tenant config; reject fetch if final URL host differs from configured host without explicit admin approval.
+
+## Agent embed and SAML ACS URLs
+
+Iframe-embedded agent admin panels require separate SP entity ID or SameSite=None cookie strategy — metadata rotation must update all registered ACS URLs in IdP, including embed-specific apps. Missing one URL surfaces as works in main console, fails in Salesforce embed support tickets. Treat embed ACS URLs as first-class rotation checklist items alongside primary admin console URLs.
+
+## Clock skew and NotOnOrAfter failures
+
+SAML assertion validity windows are tight — SP servers more than 120 seconds skewed from IdP NTP reject valid assertions with `SubjectConfirmation` expiry errors that look like signature failures. Monitor `chrony` or `systemd-timesyncd` on agent admin API nodes; alert before cert rotation week.
+
+## Metadata URL TLS and redirect traps
+
+IdP metadata fetchers must follow HTTPS redirects cautiously — HTTP→HTTPS upgrade is fine; cross-domain redirect may indicate compromise. Pin metadata URL hostname in tenant config; reject fetch if final URL host differs from configured host without explicit admin approval.
+
+## Encrypted assertions and SP private key rotation
+
+When IdP encrypts assertions, SP decryption cert rotation requires dual decryption keys in SP metadata during overlap — mirror IdP signing rotation pattern. Store SP private keys in HSM or cloud KMS; agent admin pods should mount signing material via CSI, not Kubernetes Secret at rest unencrypted.
+
+## Federation metadata for multi-region agent admin
+
+Geo-routed admin consoles (`admin.us`, `admin.eu`) must publish consistent SP entity ID or use per-region entity IDs documented in tenant config. IdP metadata refresh job keyed by `tenant_id + region` prevents EU tenant trusting US-only cert after failover drill.
+
+## Break-glass local admin during SAML outage
+
+Maintain break-glass OIDC or hardware-key local admin behind separate URL and IP allowlist — not disabled SAML bypass in main ACS code path. Quarterly drill: simulate IdP metadata fetch failure and verify break-glass login completes within RTO target without reintroducing permanent backdoor credentials.
+
+## Compliance evidence for enterprise audits
+
+Export rotation audit log: metadata fetch timestamps, cert fingerprints added/removed, assertion validation failure counts. SOC2 auditors ask for proof of dual-key overlap — retain metadata XML snapshots in immutable object storage for 13 months.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Okta SAML certificate rotation](https://help.okta.com/en-us/content/topics/apps/apps_cert_rotation.htm)
+- [Microsoft Entra SAML signing cert rollover](https://learn.microsoft.com/en-us/entra/identity-platform/howto-saml-protocol-reference)
+- [SAML 2.0 Metadata spec (OASIS)](https://docs.oasis-open.org/security/saml/v2.0/saml-metadata-2.0-os.pdf)
+- [python3-saml / OneLogin toolkit](https://github.com/SAML-Toolkits/python3-saml)
+- [SSOReady SAML debugging guide](https://ssoready.com/docs)

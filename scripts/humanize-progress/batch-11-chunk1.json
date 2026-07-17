@@ -1,0 +1,320 @@
+{
+  "done": 23,
+  "skipped": 36,
+  "under_1200": 0,
+  "samples": [
+    {
+      "slug": "threat-modeling-data-flow-diagrams",
+      "status": "done",
+      "words": 1344
+    },
+    {
+      "slug": "testing-property-based-testing",
+      "status": "done",
+      "words": 1343
+    },
+    {
+      "slug": "testing-mutation-testing",
+      "status": "done",
+      "words": 1337
+    }
+  ],
+  "results": [
+    {
+      "slug": "synthetic-data-generation-llms",
+      "status": "skipped",
+      "words": 1321
+    },
+    {
+      "slug": "system-design-chat-messaging",
+      "status": "skipped",
+      "words": 1209
+    },
+    {
+      "slug": "system-design-distributed-cache",
+      "status": "skipped",
+      "words": 1300
+    },
+    {
+      "slug": "system-design-ecommerce-checkout",
+      "status": "done",
+      "words": 1243
+    },
+    {
+      "slug": "system-design-file-storage-dropbox",
+      "status": "done",
+      "words": 1307
+    },
+    {
+      "slug": "system-design-metrics-monitoring",
+      "status": "done",
+      "words": 1332
+    },
+    {
+      "slug": "system-design-news-feed",
+      "status": "skipped",
+      "words": 1506
+    },
+    {
+      "slug": "system-design-notification-system",
+      "status": "skipped",
+      "words": 1467
+    },
+    {
+      "slug": "system-design-payment-system",
+      "status": "skipped",
+      "words": 1330
+    },
+    {
+      "slug": "system-design-rate-limiter",
+      "status": "skipped",
+      "words": 1380
+    },
+    {
+      "slug": "system-design-ride-sharing",
+      "status": "skipped",
+      "words": 1321
+    },
+    {
+      "slug": "system-design-search-autocomplete",
+      "status": "skipped",
+      "words": 1448
+    },
+    {
+      "slug": "system-design-ticketing-booking",
+      "status": "skipped",
+      "words": 1424
+    },
+    {
+      "slug": "system-design-url-shortener",
+      "status": "skipped",
+      "words": 1336
+    },
+    {
+      "slug": "system-design-video-streaming",
+      "status": "skipped",
+      "words": 1359
+    },
+    {
+      "slug": "tanstack-query-patterns",
+      "status": "skipped",
+      "words": 1355
+    },
+    {
+      "slug": "technical-writing-for-engineers",
+      "status": "skipped",
+      "words": 1352
+    },
+    {
+      "slug": "terraform-drift-detection",
+      "status": "skipped",
+      "words": 1324
+    },
+    {
+      "slug": "terraform-modules-composition",
+      "status": "skipped",
+      "words": 1347
+    },
+    {
+      "slug": "terraform-state-management-backends",
+      "status": "skipped",
+      "words": 1361
+    },
+    {
+      "slug": "terraform-testing-policy-as-code",
+      "status": "skipped",
+      "words": 1310
+    },
+    {
+      "slug": "terraform-workspaces-environments",
+      "status": "skipped",
+      "words": 1415
+    },
+    {
+      "slug": "testing-compose-uis-v2",
+      "status": "skipped",
+      "words": 1345
+    },
+    {
+      "slug": "testing-contract-testing-microservices",
+      "status": "done",
+      "words": 1336
+    },
+    {
+      "slug": "testing-coroutines-flows-turbine",
+      "status": "done",
+      "words": 1282
+    },
+    {
+      "slug": "testing-flaky-tests-root-causes",
+      "status": "done",
+      "words": 1281
+    },
+    {
+      "slug": "testing-mutation-testing",
+      "status": "done",
+      "words": 1337
+    },
+    {
+      "slug": "testing-playwright-e2e",
+      "status": "done",
+      "words": 1219
+    },
+    {
+      "slug": "testing-property-based-testing",
+      "status": "done",
+      "words": 1343
+    },
+    {
+      "slug": "testing-pyramid-vs-trophy",
+      "status": "done",
+      "words": 1302
+    },
+    {
+      "slug": "testing-snapshot-testing-tradeoffs",
+      "status": "done",
+      "words": 1231
+    },
+    {
+      "slug": "testing-test-data-builders",
+      "status": "done",
+      "words": 1333
+    },
+    {
+      "slug": "testing-test-doubles-mocks-stubs",
+      "status": "done",
+      "words": 1206
+    },
+    {
+      "slug": "testing-unit-vs-integration-balance",
+      "status": "done",
+      "words": 1301
+    },
+    {
+      "slug": "testing-vitest-react-testing-library",
+      "status": "done",
+      "words": 1269
+    },
+    {
+      "slug": "threat-modeling-data-flow-diagrams",
+      "status": "done",
+      "words": 1344
+    },
+    {
+      "slug": "threat-modeling-stride",
+      "status": "done",
+      "words": 1235
+    },
+    {
+      "slug": "time-series-databases-iot",
+      "status": "done",
+      "words": 1288
+    },
+    {
+      "slug": "timeseries-downsampling-retention",
+      "status": "done",
+      "words": 1238
+    },
+    {
+      "slug": "timeseries-influxdb-vs-timescale",
+      "status": "done",
+      "words": 1316
+    },
+    {
+      "slug": "timeseries-prometheus-remote-write",
+      "status": "done",
+      "words": 1328
+    },
+    {
+      "slug": "tokenization-bpe-explained",
+      "status": "done",
+      "words": 1317
+    },
+    {
+      "slug": "transformer-attention-explained",
+      "status": "skipped",
+      "words": 1272
+    },
+    {
+      "slug": "typescript-branded-types-safety",
+      "status": "skipped",
+      "words": 1321
+    },
+    {
+      "slug": "typescript-conditional-mapped-types",
+      "status": "skipped",
+      "words": 1308
+    },
+    {
+      "slug": "typescript-const-type-parameters",
+      "status": "skipped",
+      "words": 1336
+    },
+    {
+      "slug": "typescript-discriminated-unions",
+      "status": "done",
+      "words": 1265
+    },
+    {
+      "slug": "typescript-generics-constraints",
+      "status": "skipped",
+      "words": 1260
+    },
+    {
+      "slug": "typescript-module-augmentation-globals",
+      "status": "skipped",
+      "words": 1226
+    },
+    {
+      "slug": "typescript-path-mapping-monorepo",
+      "status": "skipped",
+      "words": 1247
+    },
+    {
+      "slug": "typescript-result-type-error-handling",
+      "status": "skipped",
+      "words": 1306
+    },
+    {
+      "slug": "typescript-satisfies-operator",
+      "status": "skipped",
+      "words": 1273
+    },
+    {
+      "slug": "typescript-strict-mode-migration",
+      "status": "skipped",
+      "words": 1224
+    },
+    {
+      "slug": "typescript-strict-null-checks-migration",
+      "status": "skipped",
+      "words": 1306
+    },
+    {
+      "slug": "typescript-template-literal-types",
+      "status": "skipped",
+      "words": 1283
+    },
+    {
+      "slug": "typescript-type-guards-narrowing",
+      "status": "skipped",
+      "words": 1318
+    },
+    {
+      "slug": "typescript-utility-types-app-patterns",
+      "status": "skipped",
+      "words": 1327
+    },
+    {
+      "slug": "typescript-zod-runtime-validation",
+      "status": "skipped",
+      "words": 1295
+    },
+    {
+      "slug": "using-ai-coding-agents-senior-engineer",
+      "status": "skipped",
+      "words": 1261
+    }
+  ],
+  "completed_at": "2026-07-17T10:54:37.131722+00:00"
+}

@@ -3,23 +3,23 @@ title: "Right to Erasure UI Flows"
 slug: "privacy-right-to-erasure-ui"
 description: "Self-service account deletion UX — confirmation steps, grace period, and downstream system orchestration visibility."
 datePublished: "2026-10-28"
-dateModified: "2026-10-28"
+dateModified: "2026-07-17"
 tags: ["Privacy", "GDPR", "UX"]
 keywords: "right to erasure UI, account deletion UX, GDPR delete account"
 faq:
-  - q: "What is Right to Erasure UI Flows?"
-    a: "Right to Erasure UI Flows is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Right to Erasure UI Flows?"
-    a: "Adopt Right to Erasure UI Flows when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Right to Erasure UI Flows?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "What should delete-account UX include?"
+    a: "Re-authentication, plain-language consequences, retention exceptions for invoices legally held seven years, typed DELETE confirmation, and email when async deletion completes across processors."
+  - q: "How long can erasure take?"
+    a: "GDPR allows reasonable time when backups involved — show in-progress state up to 30 days; webhook downstream systems and display checklist Removed from N of M systems."
+  - q: "Can users re-register immediately after delete?"
+    a: "Wait until server deletion completes — partial delete allows resurrecting account with old PII if email reclaimed before backup rotation finishes."
 ---
 
 The gap between reading about right to erasure ui flows and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
 
-## Architecture and boundaries
+## Erasure request entry points
 
 Before changing implementation details, draw the boundary diagram. Right to Erasure UI Flows touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
 
@@ -38,7 +38,7 @@ Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
 
 Document which metrics you expect to move. If right to erasure ui flows is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
+## Status tracking for delete requests
 
 Start with the smallest change that proves the approach. For right to erasure ui flows, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
 
@@ -65,7 +65,7 @@ Validate in staging with production-like data volumes. Empty caches and syntheti
 
 For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
 
-## Accessibility requirements
+## Clear irreversible actions
 
 Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
 
@@ -77,7 +77,7 @@ Performance optimizations that break keyboard navigation or screen reader announ
 
 Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Verifying requester identity
 
 Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
 
@@ -128,6 +128,22 @@ When right to erasure ui flows misbehaves in production, work top-down:
 6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
 
 Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+
+## Erasure request UX flow
+
+In-app settings Delete account → re-authenticate → explain retention exceptions for invoices → confirm with typed DELETE.
+
+## Async deletion feedback
+
+Email when deletion completes — process may take 30 days for backup rotation. Show in-progress state.
+
+## Downstream processor notification
+
+Webhook to analytics and CRM deletion endpoints — UI shows checklist progress Removed from 4 of 4 systems.
+
+## Field notes on privacy right to erasure ui
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

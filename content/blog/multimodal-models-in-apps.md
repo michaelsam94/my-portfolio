@@ -3,8 +3,8 @@ title: "Multimodal Models in Apps: Vision Plus Text"
 slug: "multimodal-models-in-apps"
 description: "How to build with vision-language models: sending images to multimodal LLMs, OCR and document understanding, structured extraction, and the cost and latency traps."
 datePublished: "2026-02-24"
-dateModified: "2026-02-24"
-tags: ["Multimodal AI", "Vision", "LLM", "Mobile"]
+dateModified: "2026-07-17"
+tags:
 keywords: "multimodal AI, vision language models, image understanding, multimodal apps, VLM, OCR AI"
 faq:
   - q: "What is a vision-language model?"
@@ -14,7 +14,6 @@ faq:
   - q: "How much do images cost in a multimodal API call?"
     a: "Images are billed as tokens based on resolution — a high-detail image can cost hundreds to over a thousand tokens. Downscaling images to the smallest resolution that preserves the detail you need is the main lever for controlling multimodal cost and latency."
 ---
-
 Multimodal models turned "read the image and tell me what's in it" from a research project into an API call. A vision-language model (VLM) takes an image and text in the same context, so a single request can read a receipt into structured fields, answer a question about a chart, describe a photo for accessibility, or spot a defect in a product image. For app developers, that collapses what used to be a pipeline of specialized CV models into one flexible endpoint.
 
 The flexibility is real, and so are the traps: images are expensive in tokens, resolution handling is fiddly, and a VLM will confidently misread a blurry number rather than admit it can't see it. This is a practical look at building multimodal features that work — how to send images, when a VLM beats classic OCR, how to get structured data out, and where the cost and reliability landmines are buried.

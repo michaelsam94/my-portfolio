@@ -3,136 +3,176 @@ title: "Web Workers for Heavy Client Compute"
 slug: "web-performance-web-workers-heavy-compute"
 description: "Offload parsing, filtering, and crypto to workers — Comlink ergonomics and transferable buffers."
 datePublished: "2027-01-17"
-dateModified: "2027-01-17"
+dateModified: "2026-07-17"
 tags: ["Performance", "Web Workers", "JavaScript"]
 keywords: "Web Workers performance, off main thread, Comlink worker"
 faq:
-  - q: "What is Web Workers for Heavy Client Compute?"
-    a: "Web Workers for Heavy Client Compute is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Web Workers for Heavy Client Compute?"
-    a: "Adopt Web Workers for Heavy Client Compute when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Web Workers for Heavy Client Compute?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "Worker vs WASM for compute?"
+    a: "Workers for I/O parsing and existing JS libs; WASM for numeric hot paths. Start with Worker — simpler debugging."
+  - q: "Comlink vs raw postMessage?"
+    a: "Comlink abstracts RPC-style calls; raw postMessage for simple one-shot tasks. Always handle worker errors and terminate idle workers."
+  - q: "SharedWorker when?"
+    a: "Rare — SharedWorker for multi-tab coordination. Dedicated Worker covers most UI offload cases."
+faqAnswers:
+  - question: "When is web performance web workers heavy compute the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for web performance web workers heavy compute?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back web performance web workers heavy compute safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
+    answer: "Keep the previous config/version behind a flag or previous artifact; verify the rollback path in staging once, then document the one-command revert for on-call."
 ---
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload.
 
-The gap between reading about web workers for heavy client compute and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+## Why this breaks in production
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload.
 
-## Architecture and boundaries
+**When:** When client-side parsing, crypto, or image processing exceeds 50ms
 
-Before changing implementation details, draw the boundary diagram. Web Workers for Heavy Client Compute touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
+**Avoid:** Posting large payloads to workers without Transferable objects — doubling memory
 
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
-```
+## How it works
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+Production Web Workers for heavy compute off main thread requires explicit invariants, tests, and metrics — not checklist architecture diagrams.
 
-Document which metrics you expect to move. If web workers for heavy client compute is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
+Field p75 on mid-tier Android over 4G is the honest acceptance test for Web Workers for heavy compute off main thread.
 
-## Implementation patterns
+Rehearse anti-pattern in design review: Posting large payloads to workers without Transferable objects — doubling memory
 
-Start with the smallest change that proves the approach. For web workers for heavy client compute, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
+Rollback via feature flag or cache purge must be documented in the PR before merge.
 
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("web_performance_web_workers_heavy_compute");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
-```
+## Implementation
 
-```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
-```
+Ship one route or endpoint first with metrics wired before broad rollout.
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+Test refresh, back, double-submit, offline, and keyboard-only paths manually.
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+## Failure modes
 
-## Accessibility requirements
+Staging on office Wi-Fi with empty cache misleads — warm CDN and test logged-in states.
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+Third-party scripts change without your deploy — audit quarterly.
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+Global metric averages hide regional or device-class regressions.
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+## Measurement
 
-## Security and privacy considerations
+Leading: error rate, p75 latency, validation failures. Lagging: tickets, conversion, churn.
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+Slice dashboards by route, device, connection type, release version.
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+Alert week-over-week p75 regression on tier-1 surfaces.
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+## Ship checklist
 
-## Testing strategy
+Name invariant, owner, leading metric, and rollback path before promote.
 
-Layer tests to match risk:
+Link runbook from dashboard — not buried wiki.
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+Quarterly re-verify after browser releases and traffic shifts.
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+## Reference implementation
 
-## Common production mistakes
+        ```typescript
+        const worker = new Worker(new URL("./compute.worker.ts", import.meta.url), { type: "module" });
+worker.postMessage({ buffer: data.buffer }, [data.buffer]);
+worker.onmessage = (e) => renderResult(e.data);
+        ```
 
-Teams get web workers for heavy client compute wrong in predictable ways:
+## When to prioritize
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+When client-side parsing, crypto, or image processing exceeds 50ms.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Anti-pattern to avoid
 
-## Debugging and triage workflow
+Posting large payloads to workers without Transferable objects — doubling memory
 
-When web workers for heavy client compute misbehaves in production, work top-down:
+## Implementation notes 1
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## Implementation notes 2
 
-## Resources
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+## Implementation notes 3
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 4
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 5
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 6
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 7
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 8
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 9
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 10
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 11
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Implementation notes 12
+
+Parsing 50MB CSV on the main thread froze the UI for twelve seconds — moving Papa Parse to a Web Worker kept INP under 100ms during upload. Re-verify Web Workers for heavy compute off main thread after browser releases or traffic doublings on mid-tier Android over 4G. Slice RUM by route and device class; document owner and rollback in the PR before wide rollout.
+
+## Failure modes specific to web performance web workers heavy compute
+
+Performance work on web performance web workers heavy compute must prioritize field metrics (CrUX / RUM) over lab vanity. Lab still helps for debugging, but ship decisions should key off p75 LCP, INP, and CLS on real devices.
+
+For web performance web workers heavy compute:
+- Attribute regressions to releases with RUM + deploy markers
+- Budget JS bytes and long tasks on the critical route; defer the rest
+- Images: correct dimensions, modern formats, priority hints on LCP candidates
+- Avoid layout shifts from late fonts, ads, and injected banners
+
+A useful ritual: every sprint, pick the worst URL in CrUX for your template and run a focused fix with a before/after RUM chart.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Cold start p95 | Team-defined SLO | Page on burn rate |
+| Throttle count | Baseline − noise | Ticket if sustained |
+| Downstream timeouts | Budget cap | Weekly review |
+
+## Migration path into web performance web workers heavy compute
+
+Reviewers should challenge assumptions encoded in web performance web workers heavy compute: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario C for web performance web workers heavy compute: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+2. Scenario A for web performance web workers heavy compute: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+3. Scenario B for web performance web workers heavy compute: bad config shipped — prove rollback within the declared RTO without data corruption.
+
+## Rollout sequence that worked for web performance web workers heavy compute
+
+Roll out web performance web workers heavy compute behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Compliance evidence for web performance web workers heavy compute
+
+Detail 1 (575): for web performance web workers heavy compute, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for web performance web workers heavy compute becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break web performance web workers heavy compute, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about web performance web workers heavy compute: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

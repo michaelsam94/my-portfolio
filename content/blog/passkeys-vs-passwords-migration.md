@@ -3,7 +3,7 @@ title: "Migrating from Passwords to Passkeys"
 slug: "passkeys-vs-passwords-migration"
 description: "Migrate users from passwords to passkeys: WebAuthn rollout strategy, fallback flows, account recovery, and backend changes without locking out existing users."
 datePublished: "2026-01-30"
-dateModified: "2026-01-30"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "Passkeys", "WebAuthn"]
 keywords: "passkey migration, WebAuthn rollout, passwordless authentication, FIDO2 passkeys, passkey fallback"
 faq:
@@ -221,6 +221,31 @@ Remove password fallback only when passkey login rate exceeds 80% of active user
 - Migration funnel tracked: offered → started → completed → login rate
 - Password fallback retained until passkey login rate >80% for 30 days
 - Browser support matrix published on help center before launch
+
+## Communicating passkeys to users
+
+Copy matters more than crypto. Avoid "Replace your password with a passkey" on day one. Use:
+
+- "Sign in faster with Face ID / fingerprint"
+- "Add a passkey — works on this phone and syncs to your iCloud account"
+
+Tooltips explaining **which device** holds the passkey reduce family-PC confusion. Show `friendly_name` from WebAuthn registration in account settings.
+
+## Analytics for migration funnel
+
+Track funnel events: `passkey_offer_shown`, `passkey_registered`, `passkey_login_success`, `passkey_login_fallback_password`. Plateau in registration often means UX friction, not security skepticism — A/B test prompt timing (post-login vs settings-only).
+
+## Enterprise SSO coexistence
+
+B2B apps with SAML SSO may defer passkeys until workforce IdP supports FIDO2 delegation. Document: passkeys for native app + consumer tier; SSO for corporate domain users. Don't block SAML users from optional passkey enrollment for personal devices.
+
+## Support tooling for passkey lockout
+
+Support agents verify identity via video + government ID before deleting all credentials — self-serve "lost passkey" flows are phishing targets. Audit credential deletion with ticket ID.
+
+## Conditional UI autofill
+
+`mediation: 'conditional'` shows passkey autofill hint on login fields — increases discovery without dedicated button. Test Safari and Chrome Android differences; fallback button always visible.
 
 ## Resources
 

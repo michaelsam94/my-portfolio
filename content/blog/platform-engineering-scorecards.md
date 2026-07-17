@@ -3,7 +3,7 @@ title: "Service Scorecards and Maturity"
 slug: "platform-engineering-scorecards"
 description: "Build service scorecards that drive improvement: DORA metrics, reliability tiers, security baselines, and maturity models without becoming a blame spreadsheet."
 datePublished: "2026-02-23"
-dateModified: "2026-02-23"
+dateModified: "2026-07-17"
 tags: ["Platform Engineering", "SRE", "Metrics", "DevOps"]
 keywords: "service scorecard, engineering maturity model, DORA metrics, service catalog metrics, platform engineering KPIs"
 faq:
@@ -141,29 +141,58 @@ Weight scorecard metrics by user pain — 100% test coverage matters less than d
 
 DORA metrics per team, not vanity "100% doc coverage" — executives understand deployment frequency; they don't understand linter scores.
 
-## Common production mistakes
 
-Teams get scorecards wrong in predictable ways:
+## Weighting checks by service tier
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Tier 1 checkout might weight: SLO 30%, security 25%, deploy automation 20%, observability 15%, docs 10%. Tier 3 batch flips docs weight near zero. Publish weight formula.
 
-Production implementations of scorecards fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Scorecard-driven platform roadmap
 
-## Debugging and triage workflow
+When 60% of Tier 1 services fail distributed tracing enabled, platform ships OTel bump in golden path template rather than nagging 40 teams.
 
-When scorecards misbehaves in production, work top-down instead of guessing:
+## Historical trending
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Store weekly score snapshots. Graph pct_tier1_level3_observability over quarters for exec reviews.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Integration with incident data
+
+Join PagerDuty incident count per service with scorecard grade. Low observability plus high incidents prioritizes runbook work with incident commander endorsement.
+
+## Executive rollup without blame
+
+Present quarterly: percent Tier-1 services at Level 3+ per capability domain, trend arrow, platform initiatives tied to lowest domain. Never rank individual engineers — rank capability gaps. "Observability lagging security" justifies OTel investment better than "Team X is D grade."
+
+## Automating doc freshness checks
+
+Link runbook URL in catalog; weekly crawler asserts HTTP 200 and modified date within 90 days. Stale runbook fails scorecard check automatically — no self-reported checkbox.
+
+## Normalizing scores across org size
+
+Raw DORA numbers unfairly compare 3-person team to 40-person product line. Normalize deployment frequency per engineer or per service. Scorecard shows service-level maturity, team rollup separate — exec sees portfolio trend, team sees actionable service list.
+
+## Custom checks without plugin hell
+
+Not everything fits Backstage Scorecards plugin — custom cron job queries GitHub API for CODEOWNERS file existence, posts JSON to catalog annotation. Keep checks in Git as YAML either way; avoid spreadsheet side channel reappearing because one check was "too hard" to automate.
+
+## Linking scorecards to OKRs
+
+Platform OKR "80% Tier-1 services with SLO" maps directly to scorecard check has_slo — executives see one number, engineers see per-service gap list. Misalignment when OKR uses manual survey while scorecard automated — pick one source of truth.
+
+## Scorecard API for CI gates
+
+Tier-1 services below observability Level 3 block prod deploy in CI — pipeline queries catalog scorecard API, fails with link to platform office hours. Hard gate controversial but moved needle when soft nudge ignored for two quarters; start with warn then enforce after remediation sprint.
+
+## Closing notes
+
+Scorecard checks should include runbook link HTTP 200 and on-call rotation configured in PagerDuty — operational readiness beyond green CI.
+
+## Additional guidance
+
+Service tier metadata drives scorecard weights — checkout Tier-1 failing SLO check ranks above internal cron missing README. Automate tier assignment in catalog from domain tag or manual architect approval; stale tier defaults misallocate platform remediation effort toward low-impact services displaying red grades executives misinterpret as customer-facing risk.
+
+Export scorecard pass rate to executive quarterly deck as trend line not snapshot — flat pass rate during headcount doubling indicates platform kept pace; declining pass rate triggers headcount or scope discussion with engineering leadership backed by data not anecdotal platform team frustration.
+
+Treat scorecard regressions after template deprecation as platform bug — not team negligence — when eighty percent of services fail new check simultaneously.
 
 ## Resources
 

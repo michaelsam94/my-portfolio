@@ -3,8 +3,9 @@ title: "The Transformer Attention Mechanism"
 slug: "transformer-attention-explained"
 description: "How transformer self-attention works: query-key-value projections, scaled dot-product attention, multi-head attention, positional encoding, and why it replaced RNNs."
 datePublished: "2026-02-09"
-dateModified: "2026-02-09"
-tags: ["AI", "LLM", "Machine Learning", "Deep Learning"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "transformer attention, self-attention, multi-head attention, query key value, scaled dot-product, positional encoding"
 faq:
   - q: "What problem does self-attention solve that RNNs could not?"
@@ -13,8 +14,14 @@ faq:
     a: "Each input token is projected into three vectors: a query (what am I looking for?), a key (what do I contain?), and a value (what information do I provide if selected?). Attention scores are computed by comparing each query against all keys, producing weights that determine how much of each value to include in the output. It's analogous to a soft lookup: the query searches the keys, and the weighted values are the result."
   - q: "Why do transformers need positional encoding?"
     a: "Self-attention is permutation-invariant — it treats the input as an unordered set. Without positional information, 'dog bites man' and 'man bites dog' produce identical representations. Positional encoding injects token order, either through fixed sinusoidal functions or learned embeddings added to the input. Modern models like RoPE (rotary positional embedding) bake position into the attention computation itself for better extrapolation to longer sequences."
+faqAnswers:
+  - question: "When is transformer attention explained the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for transformer attention explained?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back transformer attention explained safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Before transformers, I spent weeks training an LSTM for document classification and watched it plateau at 82% accuracy while taking eight hours per epoch. Switching to a fine-tuned BERT — which is transformer all the way down — hit 91% in 40 minutes. The difference wasn't hyperparameter tuning. It was the attention mechanism letting every word see every other word directly, instead of compressing context through a fixed-size hidden state one token at a time. That architectural shift is why every modern LLM, vision transformer, and speech model uses attention as its core compute pattern.
 
 ## The core idea: soft lookup over the sequence
@@ -123,6 +130,10 @@ You don't implement attention from scratch — frameworks handle it. But underst
 - **Why prompt structure affects quality** — tokens attend globally, so relevant context should be positioned where the model can attend to it effectively
 - **Why attention visualization helps debugging** — inspecting weights shows what the model focuses on
 
+## Quadratic context economics
+
+Attention scales O(n²) in sequence length — context window limits, KV cache for inference throughput, Flash Attention for memory. RoPE enables length extrapolation in modern open models. Practitioners feel this in API cost and latency before they implement attention manually.
+
 ## Resources
 
 - [Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/abs/1706.03762)
@@ -130,3 +141,43 @@ You don't implement attention from scratch — frameworks handle it. But underst
 - [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864)
 - [PyTorch nn.MultiheadAttention](https://pytorch.org/docs/stable/generated/torch.nn.MultiheadAttention.html)
 - [KV Cache explained (Hugging Face)](https://huggingface.co/docs/transformers/en/kv_cache)
+
+## Deep dive: transformer self-attention mechanism (1)
+
+Attention is not magic — it is weighted lookup where queries find relevant keys and blend values, parallelized as matrix multiply.
+
+When implementing or debugging attention-based models and context limits. Guard against: O(n²) memory surprise at long context — standard attention does not scale without FlashAttention or sparse patterns
+
+**Q:** Q K V?
+
+**A:** Query searches; Key matched against; Value blended output — softmax weights the combination.
+
+## Deep dive: transformer self-attention mechanism (2)
+
+Attention is not magic — it is weighted lookup where queries find relevant keys and blend values, parallelized as matrix multiply.
+
+When implementing or debugging attention-based models and context limits. Guard against: O(n²) memory surprise at long context — standard attention does not scale without FlashAttention or sparse patterns
+
+**Q:** Multi-head?
+
+**A:** Parallel attention subspaces concatenated — different heads learn different relationship types.
+
+## Deep dive: transformer self-attention mechanism (3)
+
+Attention is not magic — it is weighted lookup where queries find relevant keys and blend values, parallelized as matrix multiply.
+
+When implementing or debugging attention-based models and context limits. Guard against: O(n²) memory surprise at long context — standard attention does not scale without FlashAttention or sparse patterns
+
+**Q:** KV cache?
+
+**A:** Inference caches keys/values for prior tokens — memory grows linearly with generation length.
+
+## Deep dive: transformer self-attention mechanism (4)
+
+Attention is not magic — it is weighted lookup where queries find relevant keys and blend values, parallelized as matrix multiply.
+
+When implementing or debugging attention-based models and context limits. Guard against: O(n²) memory surprise at long context — standard attention does not scale without FlashAttention or sparse patterns
+
+**Q:** KV cache?
+
+**A:** Inference caches keys/values for prior tokens — memory grows linearly with generation length.

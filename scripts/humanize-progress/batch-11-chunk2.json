@@ -1,0 +1,302 @@
+{
+  "done": 59,
+  "skipped": 0,
+  "under_1200": 59,
+  "results": [
+    {
+      "slug": "variable-fonts-performance-ux",
+      "words": 379,
+      "status": "done"
+    },
+    {
+      "slug": "vector-databases-in-production",
+      "words": 375,
+      "status": "done"
+    },
+    {
+      "slug": "vector-db-filtering-pre-post",
+      "words": 362,
+      "status": "done"
+    },
+    {
+      "slug": "vector-db-pgvector-postgres",
+      "words": 351,
+      "status": "done"
+    },
+    {
+      "slug": "vector-db-sharding-scaling",
+      "words": 349,
+      "status": "done"
+    },
+    {
+      "slug": "vector-search-hnsw-tuning",
+      "words": 353,
+      "status": "done"
+    },
+    {
+      "slug": "vector-search-ivf-pq-index",
+      "words": 370,
+      "status": "done"
+    },
+    {
+      "slug": "vex-vulnerability-triage-sbom",
+      "words": 353,
+      "status": "done"
+    },
+    {
+      "slug": "view-transitions-api",
+      "words": 344,
+      "status": "done"
+    },
+    {
+      "slug": "voice-agents-stt-tts-pipelines",
+      "words": 360,
+      "status": "done"
+    },
+    {
+      "slug": "vue-3-composition-api-patterns",
+      "words": 348,
+      "status": "done"
+    },
+    {
+      "slug": "wasm-workloads-kubernetes",
+      "words": 350,
+      "status": "done"
+    },
+    {
+      "slug": "wcag-22-new-criteria-implementation",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-accessibility-aria-patterns",
+      "words": 361,
+      "status": "done"
+    },
+    {
+      "slug": "web-accessibility-keyboard-navigation",
+      "words": 363,
+      "status": "done"
+    },
+    {
+      "slug": "web-accessibility-screen-reader-testing",
+      "words": 360,
+      "status": "done"
+    },
+    {
+      "slug": "web-color-functions-oklch",
+      "words": 359,
+      "status": "done"
+    },
+    {
+      "slug": "web-components-2026",
+      "words": 348,
+      "status": "done"
+    },
+    {
+      "slug": "web-components-form-association",
+      "words": 351,
+      "status": "done"
+    },
+    {
+      "slug": "web-components-shadow-dom",
+      "words": 345,
+      "status": "done"
+    },
+    {
+      "slug": "web-dialog-element-modal",
+      "words": 347,
+      "status": "done"
+    },
+    {
+      "slug": "web-forms-native-validation",
+      "words": 347,
+      "status": "done"
+    },
+    {
+      "slug": "web-htmx-server-driven-ui",
+      "words": 356,
+      "status": "done"
+    },
+    {
+      "slug": "web-islands-partial-hydration",
+      "words": 355,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-404-page-product-sites",
+      "words": 373,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-attribution-reporting-api",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-back-forward-cache",
+      "words": 354,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-breadcrumb-navigation-seo",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-brotli-gzip-compression",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-bundle-splitting",
+      "words": 351,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-captcha-alternatives-ux",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-code-splitting-granularity",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-command-palette-keyboard",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-composite-layers-gpu",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-core-web-vitals",
+      "words": 362,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-data-table-virtualization",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-debounce-throttle-input",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-document-visibility-api",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-early-hints-103",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-element-timing-lcp",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-empty-state-design",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-error-recovery-retry-ui",
+      "words": 373,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-filter-chip-interfaces",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-font-loading",
+      "words": 347,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-http2-multiplexing-assets",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-http3-quic-benefits",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-image-formats-avif",
+      "words": 358,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-import-maps-cdn",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-inline-validation-timing",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-inp-interaction",
+      "words": 357,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-intersection-observer-debounce",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-islands-architecture",
+      "words": 359,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-layout-shift-debugging",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-lcp-optimization",
+      "words": 351,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-loading-state-hierarchy",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-long-tasks-monitoring",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-main-thread-work",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-maintenance-mode-page",
+      "words": 366,
+      "status": "done"
+    },
+    {
+      "slug": "web-performance-memory-leak-detection",
+      "words": 366,
+      "status": "done"
+    }
+  ]
+}

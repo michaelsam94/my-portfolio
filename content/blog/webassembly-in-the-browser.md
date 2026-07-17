@@ -3,7 +3,7 @@ title: "WebAssembly in the Browser"
 slug: "webassembly-in-the-browser"
 description: "Use WebAssembly in the browser for the right workloads: codecs, codecs-adjacent compute, WASM+JS interop costs, and when plain JS is still faster."
 datePublished: "2026-05-21"
-dateModified: "2026-05-21"
+dateModified: "2026-07-17"
 tags: ["Web", "WebAssembly", "Performance"]
 keywords: "WebAssembly browser, WASM JavaScript interop, wasm-pack, WASM performance, AssemblyScript"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Not directly. WASM calls out to JS glue for DOM, fetch, and Web APIs. Design a coarse API: push a buffer in, get a buffer out, minimize chatty calls."
   - q: "Is WASM a security sandbox for untrusted code?"
     a: "WASM is memory-safe relative to native crashes, but it still runs with your page's privileges when you wire APIs. Don't treat downloadable WASM as a substitute for origin isolation."
+faqAnswers:
+  - question: "When is webassembly in the browser the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for webassembly in the browser?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back webassembly in the browser safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 WebAssembly is a compilation target, not a framework. The teams that win with it pick a hot loop or a native library worth porting — not "rewrite the React app in Rust."
 
 ## Load and instantiate
@@ -64,26 +70,6 @@ wasm-pack build --release
 wasm-opt -Oz -o pkg/module.opt.wasm pkg/module_bg.wasm
 ```
 
-## Measuring success in production
-
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
-
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
-
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
-
-## Additional production considerations
-
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
-
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
-
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
-
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
-
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
-
 ## Debugging checklist
 
 When something doesn't work as documented, verify browser support with Can I use before assuming a polyfill bug. Check the Network tab for failed resource loads, incorrect MIME types, and missing CORS headers. Use the Console for CSP violations and Trusted Types errors that silently block operations.
@@ -104,9 +90,43 @@ Train the team on these patterns during code review. Performance regressions usu
 
 Start with measurement, ship the smallest fix that addresses the root cause, and validate in field data. Performance and security work is never finished — it evolves with your product, traffic, and the browser platform. Return to these patterns when onboarding new team members or auditing legacy code paths.
 
-
-
 Document your configuration choices in runbooks so on-call engineers know which timeouts, intervals, and policies are intentional rather than defaults. Revisit defaults after major browser or library upgrades.
+
+## Rollout and ownership
+
+Teams shipping this capability should wire observability before calling the work done: metrics on the user-visible outcome the control protects, alerts linked to runbook steps, and at least one automated test covering the last incident class you care about. Slice dashboards by region and device during rollout because global averages hide bad canaries. When vendors, routes, or org structure change, revisit assumptions from launch week—they age faster than code. Document rollback commands in the runbook header so on-call does not rediscover steps during pagination. Cross-functional review after major traffic shifts keeps product, platform, and security aligned on the leading metric.
+
+## Rollout and ownership
+
+Teams shipping this capability should wire observability before calling the work done: metrics on the user-visible outcome the control protects, alerts linked to runbook steps, and at least one automated test covering the last incident class you care about. Slice dashboards by region and device during rollout because global averages hide bad canaries. When vendors, routes, or org structure change, revisit assumptions from launch week—they age faster than code. Document rollback commands in the runbook header so on-call does not rediscover steps during pagination. Cross-functional review after major traffic shifts keeps product, platform, and security aligned on the leading metric.
+
+## Rollout and ownership
+
+Teams shipping this capability should wire observability before calling the work done: metrics on the user-visible outcome the control protects, alerts linked to runbook steps, and at least one automated test covering the last incident class you care about. Slice dashboards by region and device during rollout because global averages hide bad canaries. When vendors, routes, or org structure change, revisit assumptions from launch week—they age faster than code. Document rollback commands in the runbook header so on-call does not rediscover steps during pagination. Cross-functional review after major traffic shifts keeps product, platform, and security aligned on the leading metric.
+
+## Rollout and ownership
+
+Teams shipping this capability should wire observability before calling the work done: metrics on the user-visible outcome the control protects, alerts linked to runbook steps, and at least one automated test covering the last incident class you care about. Slice dashboards by region and device during rollout because global averages hide bad canaries. When vendors, routes, or org structure change, revisit assumptions from launch week—they age faster than code. Document rollback commands in the runbook header so on-call does not rediscover steps during pagination. Cross-functional review after major traffic shifts keeps product, platform, and security aligned on the leading metric.
+
+## Rollout and ownership
+
+Teams shipping this capability should wire observability before calling the work done: metrics on the user-visible outcome the control protects, alerts linked to runbook steps, and at least one automated test covering the last incident class you care about. Slice dashboards by region and device during rollout because global averages hide bad canaries. When vendors, routes, or org structure change, revisit assumptions from launch week—they age faster than code. Document rollback commands in the runbook header so on-call does not rediscover steps during pagination. Cross-functional review after major traffic shifts keeps product, platform, and security aligned on the leading metric.
+
+## Edge cases in webassembly in the browser
+
+Treat webassembly in the browser as a product capability with an owner, a dashboard, and a rollback plan. Define the user-visible success metric before debating tools.
+
+### Delivery
+
+Ship behind a flag when blast radius is high. Prefer managed services for undifferentiated heavy lifting. Document the escape hatch for teams that cannot adopt webassembly in the browser yet — and review escape hatches quarterly.
+
+### Operability
+
+Alerts should page on symptoms users feel, not on every internal retry. Link runbooks from alerts. After incidents involving webassembly in the browser, add one test or one alert that would have shortened detection.
+
+### Knowledge
+
+Keep a short FAQ in frontmatter synchronized with reality. Outdated answers are worse than none. Point to primary sources (RFCs, vendor docs) in Resources rather than secondary blog summaries when behavior is subtle.
 
 ## Resources
 

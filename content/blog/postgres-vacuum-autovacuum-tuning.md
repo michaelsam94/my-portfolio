@@ -3,7 +3,7 @@ title: "Tuning VACUUM and autovacuum"
 slug: "postgres-vacuum-autovacuum-tuning"
 description: "Tune PostgreSQL VACUUM and autovacuum: bloat, dead tuples, wraparound prevention, per-table settings, and monitoring vacuum lag before queries slow down."
 datePublished: "2026-04-06"
-dateModified: "2026-04-06"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Operations"]
 keywords: "PostgreSQL autovacuum tuning, VACUUM bloat, dead tuples Postgres, vacuum wraparound, pg_stat_user_tables vacuum"
 faq:
@@ -146,29 +146,72 @@ Track table bloat percentage weekly on top ten largest tables — trending bloat
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
 
-Teams get vacuum autovacuum tuning wrong in predictable ways:
+## autovacuum_vacuum_scale_factor
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Default 0.2 means 20% dead tuples trigger vacuum — on 100M row table, 20M dead tuples before vacuum. Lower scale factor on large hot tables to 0.02.
 
-Postgres work on vacuum autovacuum tuning causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Index bloat vs heap bloat
 
-## Debugging and triage workflow
+n_dead_tup rising with stable n_live_tup — autovacuum not keeping up. Increase autovacuum_max_workers before aggressive VACUUM FULL.
 
-When vacuum autovacuum tuning misbehaves in production, work top-down instead of guessing:
+## Transaction id wraparound
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Monitor age(datfrozenxid) — emergency vacuum when approaching 2 billion. Long transactions block vacuum freeze — alert on xact_start over 24h.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## VACUUM vs ANALYZE scheduling
+
+Bulk load followed by ANALYZE only — planner wrong until stats refresh. VACUUM after large DELETE before ANALYZE.
+
+## autovacuum_vacuum_cost_delay tuning
+
+On SSD storage, lower cost_delay for hot tables — vacuum completes before wraparound emergency. NVMe can tolerate aggressive autovacuum_vacuum_cost_limit increase per table OPTIONS.
+
+## Monitoring bloat with pgstattuple
+
+SELECT * FROM pgstattuple('events') on largest table monthly — dead_tuple_pct over 20% with autovacuum running suggests autovacuum not keeping up or long transactions blocking. pg_repack online rewrite alternative to VACUUM FULL for heap bloat without long lock.
+
+## aggressive autovacuum for hot tables
+
+```sql
+ALTER TABLE events SET (
+  autovacuum_vacuum_scale_factor = 0.01,
+  autovacuum_analyze_scale_factor = 0.005,
+  autovacuum_vacuum_cost_limit = 2000
+);
+```
+
+Tune per table after measuring n_dead_tup on pg_stat_user_tables — one size fits all leaves hot tables bloated while cold tables over-vacuumed.
+
+## freeze_max_age monitoring
+
+Alert when relfrozenxid age > 75% of autovacuum_freeze_max_age — proactive vacuum freeze before emergency wraparound autovacuum interrupts production IO.
+
+## Manual VACUUM (ANALYZE) after bulk load
+
+COPY 10M rows then immediate ANALYZE — planner chooses seq scan on empty stats underestimating rows. VACUUM ANALYZE after bulk delete too — dead tuples and stats both stale.
+
+## autovacuum worker saturation
+
+pg_stat_progress_vacuum shows multiple workers busy — if all workers occupied, hot table waits — increase autovacuum_max_workers temporarily during bloat incident after verifying IO headroom on storage.
+
+## pgstattuple after vacuum
+
+Run pgstattuple on table after aggressive autovacuum — dead_tuple_pct should near zero. If not, long transaction blocking vacuum visible in pg_stat_activity with xact_start old — pg_cancel_backend or application fix long session.
+
+## Closing notes
+
+Graph autovacuum duration and dead tuple count on dashboard next to API latency — visual correlation convinces product to accept brief autovacuum tuning maintenance when bloat causes seq scan regression.
+
+## Additional guidance
+
+Tables with heavy UPDATE to indexed jsonb columns experience faster dead tuple accumulation — per-table autovacuum aggressive settings on those tables only rather than global autovacuum tuning affecting whole cluster IO profile during peak hours when global aggressive vacuum would compete with checkout query IO on same storage volume.
+
+Monitor autovacuum wraparound protection priority in pg_stat_progress_vacuum — emergency vacuum during wraparound crisis contends IO with production traffic; proactive per-table tuning prevents reaching wraparound forced autovacuum mode that ignores cost delay limits causing latency spike visible to all users simultaneously.
+
+Alert on pg_stat_user_tables n_dead_tup above five percent of n_live_tup for Tier-1 tables — triggers autovacuum tuning review before sequential scan regression hits checkout queries.
+
+Graph dead_tuple_pct next to p95 query latency on checkout tables — visual correlation accelerates approval for autovacuum parameter change affecting IO during business hours maintenance window.
 
 ## Resources
 

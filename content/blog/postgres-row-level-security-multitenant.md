@@ -3,7 +3,7 @@ title: "Row-Level Security for Multi-Tenancy"
 slug: "postgres-row-level-security-multitenant"
 description: "Implement multi-tenant isolation with PostgreSQL RLS: policies, session variables, bypass pitfalls, performance, and comparison with schema-per-tenant."
 datePublished: "2026-04-02"
-dateModified: "2026-04-02"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Security", "Multi-Tenancy"]
 keywords: "PostgreSQL row level security, RLS multi-tenant, tenant isolation Postgres, RLS policy, BYPASSRLS security"
 faq:
@@ -149,29 +149,62 @@ Export RLS policy definitions to Git via pg_dump or custom script — policies c
 
 Document which database roles bypass RLS in your service catalog — auditors and new engineers both need a single source of truth for effective tenant isolation scope.
 
-## Common production mistakes
 
-Teams get row level security multitenant wrong in predictable ways:
+## RLS policy pattern
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY; policy tenant_isolation USING tenant_id = current_setting app.tenant_id. Set app.tenant_id per request in middleware.
 
-Postgres work on row level security multitenant causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Bypass roles
 
-## Debugging and triage workflow
+Migration role and admin BI user need BYPASSRLS sparingly — audit log every connection using bypass role. Application role never bypasses.
 
-When row level security multitenant misbehaves in production, work top-down instead of guessing:
+## Performance with RLS
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Planner injects policy qual into every query — index on tenant_id mandatory. Policy calling subquery per row kills performance.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Testing RLS in CI
+
+Integration test sets tenant A, inserts row, switches tenant B, asserts SELECT returns empty.
+
+## Connection pool and SET tenant
+
+PgBouncer transaction mode resets session state between transactions — SET LOCAL app.tenant_id inside transaction or pass tenant in every query predicate from application without session variable. Middleware setting session var must run on same connection as query — poolers break naive SET at connection acquire.
+
+## Supabase-style RLS patterns
+
+auth.uid() in policy for user-owned rows; service role bypasses for admin API. Map to your JWT claims in policy USING clause — document claim name in platform auth guide.
+
+## FORCE ROW LEVEL SECURITY
+
+Table owner bypasses RLS unless FORCE ROW LEVEL SECURITY — enable on tables accessed by migration superuser role accidentally in app code path. Integration test connects as app role not superuser — catches missing FORCE in staging.
+
+## Policy for INSERT WITH CHECK
+
+USING filters SELECT/UPDATE/DELETE; INSERT needs WITH CHECK same predicate — INSERT with wrong tenant_id silently blocked or error depending on policy. Test INSERT path separately from SELECT in RLS test suite.
+
+## Performance: subquery in policy
+
+Policy referencing EXISTS subquery on large table runs per row — materialize tenant membership in JWT claim or session table indexed by user_id instead of correlated subquery per row on orders table.
+
+## SECURITY INVOKER views on RLS tables
+
+View owner bypass nuance — PG15 security_invoker views evaluate RLS as querying user. Without invoker, view owner bypass exposes tenant data through view — audit all views joining tenant tables.
+
+## Supabase realtime and RLS
+
+Realtime channel respects RLS — subscription only receives rows visible under policy. Custom websocket server must replicate same tenant filter manually or leak cross-tenant events; audit push code path separately from REST API RLS tests.
+
+## Closing notes
+
+Pen test annually attempts cross-tenant SELECT with forged tenant header — RLS test suite complements external validation; missing FORCE ROW LEVEL SECURITY on new table caught before pen test when CI covers INSERT and SELECT paths.
+
+## Additional guidance
+
+Application middleware sets app.tenant_id using JWT claim validated by auth service — never trust client header alone without signature verification. Integration tests include tampered tenant claim expecting zero rows or 403 from API gateway before request reaches database layer where RLS provides defense in depth not primary authorization for cross-tenant access attempts.
+
+Row security policy audit log via pgAudit logs when BYPASSRLS role queries tenant table — quarterly access review samples pgAudit entries for compliance evidence that break-glass database access remained rare and ticket-linked not routine developer convenience bypassing RLS during feature development laziness.
+
+Annual pen test includes forged tenant_id header attempt — expect zero rows; complements automated RLS integration tests on every schema migration touching tenant tables.
 
 ## Resources
 

@@ -3,8 +3,9 @@ title: "Running Local LLMs On-Device: llama.cpp, Ollama, Quantization"
 slug: "running-local-llms-on-device"
 description: "A practical guide to running local LLMs: llama.cpp, Ollama, GGUF quantization levels, hardware requirements, and how to pick a model that fits your RAM."
 datePublished: "2026-01-15"
-dateModified: "2026-01-15"
-tags: ["Local LLM", "llama.cpp", "Ollama", "Quantization"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "local LLM, llama.cpp, Ollama, quantization, GGUF, on-device AI, run LLM locally"
 faq:
   - q: "What do I need to run an LLM locally?"
@@ -89,6 +90,32 @@ On Apple Silicon, unified memory means the GPU shares system RAM, so a 32GB Mac 
 Local LLMs win on three axes: **privacy** (data never leaves the device), **cost** (no per-token bill), and **offline** operation. They lose on raw capability — a local 8B model is not GPT-class — and on throughput under concurrent load. So the fit is: on-device assistants, private document analysis, offline features, and cost-sensitive high-volume tasks where a smaller model is good enough.
 
 This is exactly the trend reshaping mobile too, where [small language models on mobile](https://blog.michaelsam94.com/small-language-models-on-mobile/) and platform runtimes like [Gemini Nano on Android](https://blog.michaelsam94.com/on-device-ai-android-gemini-nano/) bring the same idea to phones. For privacy-first products, running inference on the user's hardware isn't just a cost optimization — it's an [architecture for privacy](https://blog.michaelsam94.com/on-device-ai-for-privacy/). Start with Ollama to prove the model is good enough, then drop to llama.cpp when you're ready to ship it into something real.
+
+## Model quantization tradeoffs
+
+Q4_K_M fits MacBook RAM but hallucinates more on structured extraction than Q8. Benchmark your actual prompts — MMLU scores mislead. llama.cpp and MLX support different model formats; standardize on GGUF or MLX weights per platform team.
+
+## Privacy and offline guarantees
+
+On-device inference keeps prompts local — document that crash logs may still contain snippets if logging is verbose. Air-gapped deployments need model update mechanism (USB, internal mirror) separate from cloud `ollama pull`. Compliance teams care about data residency; local LLM is not automatic GDPR win if telemetry phones home.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

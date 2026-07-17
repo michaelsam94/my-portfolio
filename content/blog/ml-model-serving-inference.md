@@ -3,8 +3,8 @@ title: "Model Serving and Inference Patterns"
 slug: "ml-model-serving-inference"
 description: "Deploy ML models for production inference: REST APIs, batch prediction, model servers (Triton, TorchServe), A/B testing, and monitoring model drift."
 datePublished: "2025-06-25"
-dateModified: "2025-06-25"
-tags: ["DATA", "ML", "Inference", "MLOps"]
+dateModified: "2026-07-17"
+tags:
 keywords: "ML model serving, model inference production, Triton inference server, TorchServe deployment, model A/B testing, model drift monitoring"
 faq:
   - q: "Should I serve models via REST API or batch inference?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I detect model drift in production?"
     a: "Monitor input feature distributions (PSI — Population Stability Index), prediction distribution shifts, and downstream business metrics (click-through rate, conversion). Alert when PSI exceeds 0.2 or business metrics drop below baseline. Log all inputs and predictions for offline analysis."
 ---
-
 Your data science team trained a fraud detection model with 97% accuracy on the test set. In production, it catches 60% of fraud and flags 15% of legitimate transactions. The model was trained on last year's data. Customer behavior shifted. Feature distributions drifted. Nobody monitored it.
 
 Model serving is where ML meets production engineering. The model file is 5% of the work — the other 95% is building a reliable inference pipeline with proper latency, scaling, monitoring, and rollback capability.

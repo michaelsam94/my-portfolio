@@ -1,0 +1,47 @@
+{
+  "security-http-only-secure-cookies": [
+    ["What does the HttpOnly flag do?", "HttpOnly prevents JavaScript from reading the cookie via document.cookie. If an XSS vulnerability exists, HttpOnly stops the attacker from stealing session tokens through script injection. It does not prevent CSRF or network interception — pair it with Secure and SameSite."],
+    ["When should I use SameSite=Strict vs Lax?", "Strict blocks cookies on all cross-site requests, including top-level navigation from external links — users arriving from email may appear logged out. Lax sends cookies on top-level GET navigations but blocks them on cross-site POST/fetch, which stops most CSRF while preserving normal link-following UX. Use Strict for admin panels; Lax for consumer apps."],
+    ["What is the __Host- cookie prefix?", "__Host- requires Secure, Path=/, and no Domain attribute. Browsers reject the cookie if any condition fails, preventing subdomain scope attacks where a compromised staging.app.com cookie overwrites production. Use it for session cookies on single-domain apps."]
+  ],
+  "security-permissions-policy-headers": [
+    ["What is the Permissions-Policy header?", "Permissions-Policy tells the browser which powerful APIs — camera, microphone, geolocation, payment, USB — are allowed in the page and embedded iframes. It reduces attack surface by denying features your app never uses."],
+    ["How is Permissions-Policy different from Content-Security-Policy?", "CSP controls where scripts load from. Permissions-Policy controls whether browser APIs can be invoked at all. CSP stops injection; Permissions-Policy stops injected script from accessing the camera even if it runs."],
+    ["Can I allow a feature only for specific origins?", "Yes. Syntax like camera=(self \"https://video.example.com\") grants camera to your origin and one iframe. All other origins are denied."]
+  ],
+  "security-referrer-policy-configuration": [
+    ["What does Referrer-Policy control?", "It tells the browser how much of the current page URL to send in the Referer header on navigation and subresource requests — full URL, origin only, or nothing."],
+    ["What is the safest default for most apps?", "strict-origin-when-cross-origin: full URL same-origin, origin only cross-origin HTTPS, nothing on HTTPS→HTTP downgrade. Use no-referrer on admin and password-reset pages."],
+    ["Can Referrer-Policy leak session tokens?", "Yes. Tokens in query strings leak to third parties under permissive policies. Never put secrets in URLs; set strict referrer policy regardless."]
+  ],
+  "security-subresource-integrity-sri": [
+    ["What does SRI protect against?", "SRI ensures a script or stylesheet from a CDN matches the exact content you tested. If the CDN is compromised, the browser refuses to execute it because the hash mismatches."],
+    ["Do bundled first-party scripts need SRI?", "No. Assets you build and serve from your origin pass through your pipeline. SRI matters for third-party scripts loaded via external script src."],
+    ["How do I handle CDN updates?", "Pin versioned URLs, not latest aliases. When upgrading, regenerate the hash in the same PR."]
+  ],
+  "seo-canonical-url-strategies": [
+    ["Should SPAs use rel=canonical in HTML or HTTP headers?", "Both work, but HTML link tags are easier per-route in Next.js metadata APIs. HTTP Link headers help at the CDN edge. Pick one source of truth."],
+    ["How do I handle UTM parameters?", "Strip marketing parameters from canonical URLs. /pricing?utm_source=twitter should canonicalize to /pricing."],
+    ["Do client-side navigations need canonical updates?", "Yes. SPAs must update the canonical tag on each route change or crawlers may index the wrong URL."]
+  ],
+  "seo-core-web-vitals-ranking": [
+    ["Do Core Web Vitals directly determine rankings?", "They are a ranking signal, but modest compared to relevance and authority. Google uses field data from real users (CrUX), not just lab scores."],
+    ["Which Core Web Vital matters most?", "INP replaced FID as the responsiveness metric. LCP remains critical for load perception. Fix whichever fails at p75 in Search Console."],
+    ["Should I optimize lab or field data?", "Field data wins. Use lab tools for debugging; measure success by Search Console CWV report moving from fail to pass."]
+  ],
+  "seo-internal-linking-architecture": [
+    ["How many internal links should a page have?", "No magic number. Every link should help users or crawlers reach relevant content. Orphan pages with zero inlinks rank poorly."],
+    ["Do JavaScript internal links count?", "Google renders JS and follows DOM links, but discovery is slower than static HTML. Put critical nav and breadcrumbs in server-rendered HTML."],
+    ["What is a hub page?", "A page targeting a broad topic that links to detailed spoke pages, consolidating authority and aiding discovery."]
+  ],
+  "seo-javascript-rendering-crawl": [
+    ["Can Google index JavaScript-rendered content?", "Yes, via headless Chromium, but rendering is a second pass that consumes crawl budget. Critical content should appear in initial HTML."],
+    ["What is crawl budget?", "How many URLs Googlebot fetches per day. Large slow sites hit limits; small sites rarely worry."],
+    ["SSR or static generation for SEO?", "Server-render or statically generate indexable pages. CSR alone is fine behind login."]
+  ],
+  "seo-meta-robots-noindex-patterns": [
+    ["noindex vs robots.txt disallow?", "disallow prevents crawling but URLs may still appear as link-only results. noindex excludes from search results while allowing crawl."],
+    ["Should staging use noindex?", "Yes, plus authentication. noindex is not access control."],
+    ["When noindex faceted URLs?", "Multi-filter combinations producing thin duplicate content. Keep base category indexable."]
+  ]
+}

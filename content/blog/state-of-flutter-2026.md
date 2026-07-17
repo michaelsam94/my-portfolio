@@ -3,8 +3,9 @@ title: "The State of Flutter Cross-Platform in 2026"
 slug: "state-of-flutter-2026"
 description: "Where Flutter stands in 2026: Impeller everywhere, Dart's evolution, web and desktop maturity, the WASM story, and an honest take on Flutter vs React Native today."
 datePublished: "2026-05-05"
-dateModified: "2026-05-05"
-tags: ["Flutter", "Dart", "Cross-Platform", "Mobile"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "Flutter 2026, Flutter cross-platform, Flutter vs React Native, Flutter roadmap, Dart, Flutter web, Impeller"
 faq:
   - q: "Is Flutter still worth learning in 2026?"
@@ -59,6 +60,26 @@ The deciding factor is usually **existing expertise**. A React shop will move fa
 The trajectory is clear: better multi-platform fidelity, continued investment in web/WASM, tighter native interop (calling platform APIs and native libraries is less painful than it was), and steady language evolution. Google's continued backing plus a large plugin ecosystem means the "will it be abandoned?" fear that hangs over smaller frameworks doesn't really apply here.
 
 My summary for 2026: Flutter is a first-class choice for cross-platform apps with custom, consistent UI and multi-target reach, now backed by a rendering engine that finally delivers smooth performance out of the box and a language that's a pleasure to use. It's not the right tool for SEO-critical content sites or for teams whose whole world is React. Pick it for what it's genuinely great at, and it rewards you. If you want to talk through whether it fits a specific product, [reach out](https://michaelsam94.com/).
+
+## Impeller as default renderer
+
+Impeller replaces Skia on iOS and Android — shader compilation jank reduced; verify custom shaders and golden tests on Impeller. Web and desktop still differ — test all target platforms in CI matrix, not only Android emulator.
+
+## Dart 3 pattern matching in UI code
+
+Switch on sealed state classes for widget build methods — compiler enforces exhaustiveness. Migration from dynamic maps to typed models reduces runtime crashes in production analytics dashboards built with Flutter.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

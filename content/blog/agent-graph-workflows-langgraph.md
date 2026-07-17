@@ -112,6 +112,33 @@ If your agent is "receive question → search docs → answer," a graph adds cer
 
 The [workflow vs autonomous agent](https://blog.michaelsam94.com/agent-workflow-vs-agent-patterns/) decision is really about how much control flow you need to own versus delegate to the model.
 
+## Subgraphs for reusable pipelines
+
+Production agents repeat the same phases across intents — "research → summarize" appears in refund, shipping, and billing flows. LangGraph supports **subgraphs**: compile a small graph once and embed it as a node in a parent graph. The parent passes slice of state in and merges the subgraph output back:
+
+```python
+research_graph = build_research_subgraph().compile()
+parent.add_node("research", research_graph)
+```
+
+Subgraphs keep individual nodes testable and let teams own a pipeline without copying nodes. Version subgraphs independently; a breaking change to research logic should not require rewiring every top-level intent graph.
+
+## Dynamic edges without giving routing to the model
+
+Conditional edges can read structured outputs from a node — intent classifier JSON, risk score, tool error code — without asking the LLM "what next?":
+
+```python
+def route_by_intent(state: AgentState) -> str:
+    intent = state["classification"]["intent"]
+    return INTENT_TO_NODE.get(intent, "fallback_clarify")
+```
+
+Register edges in code from a table. The model fills `classification` inside a dedicated node with a constrained schema; routing stays deterministic and unit-testable. This pattern avoids the failure mode where the model skips `human_review` because the user sounded impatient.
+
+## Time travel and debugging from checkpoints
+
+Checkpoints are not only for crash recovery. In development, load checkpoint *n* and re-run from node `execute` with modified state — "what if approval had been rejected?" — without replaying expensive research LLM calls. LangGraph's thread history exposes prior states; wire a internal admin UI to list checkpoints per `thread_id` and fork from any point. Production support teams use the same mechanism when a user reports a wrong action mid-workflow: inspect state at the checkpoint before execute, not the final transcript.
+
 ## State schema design
 
 LangGraph state should be typed and versioned — treat it like a database schema:

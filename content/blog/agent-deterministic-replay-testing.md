@@ -168,6 +168,44 @@ jobs:
 
 Replay tests on every PR (<30 seconds, zero cost). Live eval nightly only — catches reasoning drift replay can't detect.
 
+## Multi-turn traces and partial replay
+
+Agents rarely complete in one LLM call. Record the full multi-turn trace as an ordered list of turns, each with `{messages_hash, tools_offered, response}` — not just the final response. In replay mode, assert that turn *n* sends the same message list hash as recorded; a mismatch at turn 2 catches prompt regressions before you waste time debugging turn 5 failures.
+
+For long conversations, support **partial replay**: start from turn 3 using a fixture prefix and inject synthetic state (tool results already in session). That lets you test recovery logic without re-running fifteen recorded turns. Store tool results in fixtures separately from LLM responses so you can swap a tool mock without re-recording the entire conversation when an API schema changes.
+
+## Mocking tools without touching the LLM layer
+
+Not every test needs a full trace. **Tool contract tests** run the orchestrator with a stub LLM that returns predetermined tool calls:
+
+```python
+class StubLLM:
+    async def complete(self, messages, tools):
+        return LLMResponse(tool_calls=[ToolCall("lookup_order", {"id": "4521"})])
+
+async def test_refund_path_calls_correct_tool():
+    tools = SpyToolRegistry()
+    agent = Agent(llm=StubLLM(), tools=tools)
+    await agent.run("I want a refund for order 4521")
+    assert tools.called("create_refund", order_id="4521")
+```
+
+Use stubs for control-flow tests; use recorded fixtures when the model's *choice* of tool matters and you want to lock that behavior across prompt edits.
+
+## Prompt snapshot tests (orchestration-adjacent)
+
+Prompt formatting is "mostly deterministic" — snapshot the rendered system prompt and context template per scenario:
+
+```python
+def test_support_agent_prompt_includes_policy_version():
+    rendered = render_system_prompt(agent_config, user=fixtures.user)
+    assert snapshot == rendered  # pytest-snapshot or inline golden file
+```
+
+When snapshots change, the PR diff shows exactly what the model now sees. Pair with replay tests: snapshot catches template bugs; replay catches behavioral regressions in the loop.
+
+Treat fixture files like API contracts: review diffs in PRs with the same rigor as production schema changes. A new tool call in a golden trace is often correct — but it should never merge unnoticed.
+
 ## Failure modes
 
 - **Fixtures never updated after prompt change** — tests pass but agent behavior regressed

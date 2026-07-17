@@ -1,111 +1,229 @@
 ---
 title: "AI Agents: Cache Aside Vs Read Through"
 slug: "agent-cache-aside-vs-read-through"
-description: "Cache Aside Vs Read Through: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Cache-aside vs read-through patterns for AI agent systems — embedding caches, session context, tool result memoization, stampede prevention, and TTL strategies that balance cost with freshness."
 datePublished: "2026-05-09"
 dateModified: "2026-05-09"
 tags: ["AI", "Agent", "Cache"]
-keywords: "agent, cache, aside, vs, read, through, ai, production, engineering, architecture"
+keywords: "cache-aside, read-through, write-through, agent caching, Redis, embedding cache, cache stampede, LLM cost optimization"
 faq:
-  - q: "What is Cache Aside Vs Read Through?"
-    a: "Cache Aside Vs Read Through covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Cache Aside Vs Read Through?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Cache Aside Vs Read Through?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Cache Aside Vs Read Through fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Cache Aside Vs Read Through should be observable in production and safe to change in small diffs."
+  - q: "When should agent systems use cache-aside instead of read-through?"
+    a: "Use cache-aside when application code already orchestrates complex agent logic and you want explicit control over cache keys, invalidation, and failure fallback — typical for RAG retrieval results and tool outputs. Read-through fits when a cache library or ORM should hide database fetches behind a simple get API, common for session metadata and user preference blobs."
+  - q: "What agent data is safe to cache and what is not?"
+    a: "Safe: embedding vectors for immutable document chunks, idempotent tool read responses, compiled system prompt templates, public knowledge base snippets. Unsafe or short-TTL only: personalized account data, authorization decisions, rate-limit counters, anything whose staleness causes wrong tool writes or cross-tenant leakage."
+  - q: "How do you prevent cache stampedes on hot agent prompts?"
+    a: "Use per-key locks (Redis SETNX), request coalescing (single-flight), jittered TTLs, and stale-while-revalidate for read-heavy embedding lookups. Never let 500 concurrent agent workers miss the same key simultaneously and hammer your vector DB."
+  - q: "Does caching LLM completions violate data retention policies?"
+    a: "It can. Cache keys derived from user PII, and storing completions beyond approved retention, triggers GDPR and enterprise DPA issues. Hash or tokenize keys, encrypt cache values at rest, set TTL aligned with data classification, and exclude regulated payloads from shared caches entirely."
 ---
-Cache Aside Vs Read Through sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+At 9 a.m. every Monday, three thousand agents asked variations of the same question: "What is our PTO policy?" Each variation triggered a full RAG pipeline — embed query, vector search, rerank, LLM summarize — because the team cached nothing, afraid stale HR policy would create liability. Token spend spiked 4×; p95 latency hit eight seconds. The fix was not "cache everything." It was choosing **cache-aside** for retrieval bundles and **read-through** for session context, with TTL and invalidation rules matched to each data type.
 
-When cache aside vs read through is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent workloads are read-heavy, bursty, and expensive. Wrong caching loses money; wrong freshness loses trust. This deep dive compares cache-aside and read-through in agent architectures, with implementation patterns for embeddings, tool results, and conversation state.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Pattern comparison
 
-Solid AI engineering turns cache aside vs read through from a recurring argument into a documented pattern with tests and an owner.
+| Aspect | Cache-aside (lazy loading) | Read-through |
+|--------|---------------------------|--------------|
+| Who loads cache on miss? | Application | Cache layer / library |
+| Write path | App writes DB, app invalidates or updates cache | Often write-through or write-behind paired |
+| Control | Explicit in agent code | Encapsulated behind cache API |
+| Miss behavior | App fetches origin, then populates cache | Cache module fetches origin transparently |
+| Best for | RAG results, tool memoization | Session profiles, config blobs |
 
-## Design principles that survive production
+**Write-through** (sync write to cache and DB) and **write-behind** (async DB write) appear alongside read-through in full-stack caches. Agents mostly care about read patterns because tool **writes** must stay authoritative at the origin.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent cache aside vs read through bugs hide.
+## Cache-aside for agent retrieval and tools
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for cache aside vs read through, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent cache aside vs read through flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for cache aside vs read through in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent cache aside vs read through changes safer because business rules stay isolated from transport details.
+The application checks cache first; on miss, runs retrieval or tool call, then sets cache:
 
 ```typescript
-// Cache Aside Vs Read Through: typed boundary + structured errors
-export async function handleCacheAsideVsReadThrough(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-cache-aside-vs-read-through");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+import { createHash } from "crypto";
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL);
+const RETRIEVAL_TTL_SEC = 3600;
+
+function retrievalCacheKey(
+  tenantId: string,
+  corpusVersion: string,
+  query: string,
+): string {
+  const hash = createHash("sha256")
+    .update(`${tenantId}:${corpusVersion}:${query.toLowerCase().trim()}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `rag:v1:${tenantId}:${hash}`;
 }
 
+export async function getRetrievalBundle(
+  tenantId: string,
+  corpusVersion: string,
+  query: string,
+  fetchFromOrigin: () => Promise<RetrievalBundle>,
+): Promise<RetrievalBundle> {
+  const key = retrievalCacheKey(tenantId, corpusVersion, query);
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached) as RetrievalBundle;
+
+  const lockKey = `${key}:lock`;
+  const acquired = await redis.set(lockKey, "1", "EX", 10, "NX");
+
+  if (!acquired) {
+    // another worker populates — brief wait and retry
+    await sleep(50);
+    const retry = await redis.get(key);
+    if (retry) return JSON.parse(retry) as RetrievalBundle;
+  }
+
+  try {
+    const bundle = await fetchFromOrigin();
+    await redis.set(key, JSON.stringify(bundle), "EX", RETRIEVAL_TTL_SEC);
+    return bundle;
+  } finally {
+    if (acquired) await redis.del(lockKey);
+  }
+}
 ```
 
+**Include `corpusVersion` in keys** — publishing new documents without bumping version serves stale chunks to agents answering compliance questions.
 
-## Operational concerns
+For **tool memoization**, cache only idempotent reads (`get_order_status`, not `cancel_order`). Key by `(tenant, tool, argsHash, toolVersion)`.
 
-Runbooks for cache aside vs read through should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+## Read-through for session and profile data
 
-Production agent cache aside vs read through work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Read-through hides origin fetches behind a cache service interface — useful when many agent microservices need consistent session access:
 
-Rollouts for cache aside vs read through benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```python
+from dataclasses import dataclass
+from typing import Callable, Optional
+import json
+import redis
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+@dataclass
+class SessionContext:
+    user_id: str
+    tenant_id: str
+    locale: str
+    permissions: list[str]
 
-## Security and compliance angles
+class ReadThroughSessionCache:
+    def __init__(
+        self,
+        redis_client: redis.Redis,
+        load_from_db: Callable[[str], Optional[SessionContext]],
+        ttl_seconds: int = 900,
+    ):
+        self.r = redis_client
+        self.load_from_db = load_from_db
+        self.ttl = ttl_seconds
 
-Even when cache aside vs read through is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+    def get(self, session_id: str) -> Optional[SessionContext]:
+        key = f"session:ctx:{session_id}"
+        raw = self.r.get(key)
+        if raw:
+            data = json.loads(raw)
+            return SessionContext(**data)
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent cache aside vs read through so security reviews do not rely on tribal knowledge.
+        ctx = self.load_from_db(session_id)
+        if ctx is None:
+            return None
 
-## Testing strategy
+        self.r.setex(key, self.ttl, json.dumps(ctx.__dict__))
+        return ctx
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that cache aside vs read through depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+    def invalidate(self, session_id: str) -> None:
+        self.r.delete(f"session:ctx:{session_id}")
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+On permission change events, pub/sub invalidation prevents agents acting on stale RBAC for fifteen minutes.
 
-## Migration and evolution
+## Embedding caches: a hybrid reality
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent cache aside vs read through functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Embedding inference is costly. Two-tier strategy:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where cache aside vs read through spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+1. **Cache-aside for query embeddings** — same question within TTL skips embed API.
+2. **Read-through catalog for document embeddings** — ingestion pipeline writes DB + vector index; serving layer read-throughs chunk vectors keyed by `chunk_id` (immutable until re-ingest).
 
-## Related concepts
+Document embeddings rarely use naive TTL expiry; **version-based invalidation** when chunk content hash changes.
 
-Cache Aside Vs Read Through intersects with broader ai topics — see companion notes on [agent-cache patterns](https://blog.michaelsam94.com/agent-cache/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Consistency models agents can tolerate
+
+| Data type | Staleness budget | Pattern |
+|-----------|------------------|---------|
+| Public FAQ chunks | 1–24 hours | Cache-aside + corpus version |
+| User account tier | 0–60 seconds | Read-through + event invalidation |
+| Exchange rates | 5 minutes | Cache-aside with jitter TTL |
+| LLM completion | Usually none | Do not cache personalized outputs |
+
+Agents chaining multiple tools amplify stale reads — cache retrieval only after confirming authorization context matches cached tenant scope.
+
+## Stampede and thundering herd
+
+Hot keys (`system_prompt:global`, viral FAQ) trigger stampedes on expiry. Mitigations:
+
+- **Jitter:** `TTL = base + random(0, base * 0.1)`
+- **Single-flight:** one origin fetch per key (see lock example above)
+- **Stale-while-revalidate:** return expired value immediately, async refresh
+- **Probabilistic early expiration:** refresh before hard expiry under load
+
+Monitor `cache_miss_rate`, `origin_qps_during_miss`, and `lock_wait_ms` — stampede signatures show lock waits spiking with miss rate.
+
+## Security: tenant isolation in shared Redis
+
+Never use `query text alone` as cache key in multi-tenant agents. Always prefix `tenant_id`. For defense in depth:
+
+- Logical DB separation per tier (enterprise vs. shared)
+- Encrypt values containing metadata at rest (Redis ACL + KMS)
+- Disable `KEYS *` in production; use structured key namespaces
+
+Cross-tenant cache poisoning is a critical finding in pen tests — one tenant's retrieved chunks must not appear under another's key namespace.
+
+## Observability
+
+Export metrics:
+
+```
+agent_cache_hits_total{layer="retrieval|session|embed"}
+agent_cache_misses_total{layer="..."}
+agent_cache_latency_seconds{operation="get|set"}
+agent_cache_stampede_lock_waits_total
+```
+
+Correlate cache hit ratio with token spend and origin DB QPS. A rising hit ratio with flat token spend suggests caching wrong layer; flat hit ratio with high spend suggests key churn or TTL too short.
+
+## Choosing between patterns in greenfield agent stacks
+
+**Default recommendation:**
+
+- **Cache-aside** — RAG bundles, tool read memoization, query embeddings, prompt template compilation
+- **Read-through** — session context, user prefs, feature flags consumed by every turn
+- **No cache** — authorization decisions, write tool paths, personalized LLM outputs in regulated flows
+
+Migrate incrementally: add cache-aside to retrieval first (largest cost win), instrument hits, then session read-through if DB session reads exceed 20% of turn latency.
+
+## Failure modes
+
+- **Cache aside without invalidation on write** — HR updates policy; agents cite old PTO for a week
+- **Read-through without circuit breaker** — Redis down blocks all session reads unless bypass exists
+- **Caching error responses** — transient 503 from tool poisons cache; use negative caching with short TTL only
+- **Giant serialized objects** — caching full conversation history in Redis; cache summaries or pointers instead
+
+Always implement **cache bypass** flag for incident debugging.
+
+## Write path interactions: invalidation beats hope
+
+Cache-aside puts invalidation on the application. When an agent tool updates authoritative data — closing a ticket, changing account tier — the write path must delete or version-bump cache keys synchronously before returning success to the user. Miss this once and read-through staleness looks like an model hallucination: the agent confidently cites old state.
+
+For read-through session caches, prefer **event-driven invalidation** over TTL alone. Publish `permissions.changed` events to a fan-out channel; every agent worker subscribed to that tenant drops affected session keys. TTL remains a safety net, not the primary consistency mechanism.
 
 ## The takeaway
 
-Cache Aside Vs Read Through rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent cache aside vs read through becomes a maintainable asset instead of incident fuel.
+Cache-aside gives agent engineers explicit control over what gets memoized — ideal for retrieval and idempotent tools. Read-through simplifies session and profile access across services. Match TTL and invalidation to staleness tolerance, isolate tenants in key design, and prevent stampedes on Monday-morning query storms. Done right, caching cuts token and infra cost without turning agents into enthusiastic repeaters of outdated policy.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Redis caching patterns documentation](https://redis.io/docs/manual/patterns/)
+- [AWS ElastiCache best practices](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/BestPractices.html)
+- [Google SRE — addressing cache stampede](https://sre.google/sre-book/caching/)
+- [CNCF TAG Storage — cache consistency models](https://github.com/cncf/tag-storage)
+- [OpenTelemetry semantic conventions for caches](https://opentelemetry.io/docs/specs/semconv/general/metrics/#cache)

@@ -3,111 +3,170 @@ title: "Automated Rightsizing Recommendations"
 slug: "devops-rightsizing-automation"
 description: "Act on rightsizing reports for VMs, RDS, and K8s requests weekly."
 datePublished: "2026-09-28"
-dateModified: "2026-09-28"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Cost Optimization"
   - "Platform"
 keywords: "rightsizing automation"
 faq:
-  - q: "What is Automated Rightsizing Recommendations?"
-    a: "Automated Rightsizing Recommendations covers operational practices for rightsizing in production cost optimization environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
   - q: "When should teams prioritize Automated Rightsizing Recommendations?"
     a: "Monthly FinOps review cadence minimum."
-  - q: "What mistakes break Automated Rightsizing Recommendations?"
+  - q: "What is the most common mistake with rightsizing?"
     a: "Rightsizing report ignored—no owner assigned per resource."
+  - q: "Showback or chargeback first?"
+    a: "Showback builds behavior change with less political friction. Chargeback once allocation rules are trusted — usually after two quarters of validated tags."
+  - q: "How do we know Automated Rightsizing Recommendations is working?"
+    a: "Define a leading metric tied to rightsizing health and a lagging metric tied to incidents or audit findings. If only lagging metrics exist, you discover problems after customers do."
 ---
+200 idle RDS instances sized for peak 2019 traffic.
+
+## The incident that forced a redesign
+
 
 200 idle RDS instances sized for peak 2019 traffic.
 
-This post walks through **Automated Rightsizing Recommendations** for platform and SRE teams shipping reliable infrastructure. Act on rightsizing reports for VMs, RDS, and K8s requests weekly. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+The post-mortem was not about rightsizing being unknown — it was about rightsizing sitting adjacent to the critical path. Act on rightsizing reports for VMs, RDS, and K8s requests weekly. Teams had a green CI badge and a broken invariant in production.
 
-## Problem framing: Automated Rightsizing Recommendations
-
-200 idle RDS instances sized for peak 2019 traffic.
+## Architecture that matches how data actually flows
 
 
-Platform teams treat **rightsizing** as solved after the first successful deploy. Production disagrees: edge cases around rightsizing automation, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+A durable automated rightsizing recommendations design names three boundaries: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits and replay).
 
-## Design principles for rightsizing
-
-Explicit contracts beat tribal knowledge. Document who owns rightsizing configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
-
-
-A common failure mode: Rightsizing report ignored—no owner assigned per resource. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
-
-
-```sql
--- warehouse / cost guard for devops-rightsizing-automation
-CREATE TABLE analytics.rightsizing_automation_fact (
-  event_id VARCHAR PRIMARY KEY,
-  event_ts TIMESTAMP NOT NULL,
-  team_id VARCHAR
-);
-```
+For Cost Optimization workloads, keep enforcement as close to the write path as possible. Advisory checks that run only in notebooks do not count as gates.
 
 ## Implementation walkthrough
 
-Start with the smallest production-safe slice of **Automated Rightsizing Recommendations**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+
+Ship the smallest production slice of Automated Rightsizing Recommendations: one pipeline, one cluster, or one namespace — with rollback documented before widening scope.
+
+Automate the boring steps so on-call never hand-edits rightsizing settings during an incident. GitOps, versioned checkpoints, and pinned module versions beat runbook heroics.
+
+## Day-two operations
 
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for rightsizing.
+Day-two automated rightsizing recommendations work is ownership rotation, capacity headroom, and alert hygiene. Page on symptoms customers feel — SLA misses, queue age, failed reconciliations — not vanity pod counts.
 
-## Operational concerns in production
+Run quarterly drills: credential expiry, dependency slow-down, partial region loss. Update internal docs with what broke, not generic vendor copy.
 
-Day-two operations for cost optimization work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
-
-
-Run game days or fault injection in staging quarterly for rightsizing automation. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
-
-## Security and compliance angles
-
-Even when Automated Rightsizing Recommendations is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when rightsizing accepts configuration from multiple teams.
+## Failure modes worth rehearsing
 
 
-For regulated workloads, maintain an immutable audit trail: who changed rightsizing settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+The recurring failure: Rightsizing report ignored—no owner assigned per resource. Bake detection into CI, admission, or plan-time policy so the mistake fails before merge.
 
-## Integration with platform standards
+Secondary failures include retry storms, silent partial writes, and dashboards that stay green while downstream consumers read corrupt partitions.
 
-Align rightsizing with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
-
-
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+## Metrics and alerts that catch regressions early
 
 
-## What to measure after rollout
+Track leading indicators for rightsizing: validation pass rate, queue lag, reconciliation errors, error budget burn. Lagging indicators: incidents, audit findings, invoice surprises.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Slice metrics by environment and tenant during rollout — global averages hide bad canaries.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
-
-## Documentation your team should maintain
-
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
-
-## Pre-production checklist
-
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
-
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
-
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
-
-## Common questions from reviewers
-
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
-
-## Version and compatibility notes
-
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+## Reference configuration
 
 
-## Resources
+```python
+# Operational hook for rightsizing
+@task(retries=3, retry_delay=timedelta(minutes=5))
+def run_rightsizing_automation():
+    validate_preconditions()
+    execute()
+    emit_lineage(run_id=ctx.run_id)
+```
 
-- https://kubernetes.io/docs/home/
+## Allocation trust
+
+Cost controls only change behavior when tags and allocation rules match finance's chart of accounts. Validate showback numbers against the invoice before chargeback.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating rightsizing at scale
+
+After the first successful deploy of automated rightsizing recommendations, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of rightsizing settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Cost Optimization pipelines touch ingestion, serving, and finance. Document interfaces where rightsizing gates hand off to downstream owners so failures are not bounced without context.
+
+## Further reading
+
 - https://opentelemetry.io/docs/
-- https://developer.hashicorp.com/terraform/docs

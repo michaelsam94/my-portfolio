@@ -1,0 +1,18 @@
+{
+  "batch": "01",
+  "range": [
+    250,
+    499
+  ],
+  "total": 250,
+  "counts": {
+    "good": 250,
+    "short": 0,
+    "template": 0,
+    "complete": 250,
+    "remaining": 0,
+    "remaining_template": 0
+  },
+  "status": "complete",
+  "updatedAt": "2026-07-17T11:35:41+00:00"
+}

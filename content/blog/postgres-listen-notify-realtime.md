@@ -3,7 +3,7 @@ title: "Real-Time Apps with LISTEN/NOTIFY"
 slug: "postgres-listen-notify-realtime"
 description: "Build real-time features with PostgreSQL LISTEN/NOTIFY: payload limits, connection handling, NOTIFY from triggers, and when to use logical decoding instead."
 datePublished: "2026-03-23"
-dateModified: "2026-03-23"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Real-Time", "Database"]
 keywords: "PostgreSQL LISTEN NOTIFY, Postgres real-time, NOTIFY trigger, logical decoding vs NOTIFY, pubsub Postgres"
 faq:
@@ -180,29 +180,62 @@ Monitor bridge service health separately from API health — NOTIFY pipeline can
 - [ ] LISTEN granted only to bridge role, not app roles
 - [ ] Load test NOTIFY rate against peak write throughput
 
-## Common production mistakes
 
-Teams get listen notify realtime wrong in predictable ways:
+## Payload size limit
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+NOTIFY payload max 8000 bytes — send id only, clients fetch full row via API. Pattern: NOTIFY orders_channel with NEW.id then SELECT by id.
 
-Postgres work on listen notify realtime causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Connection lifecycle with poolers
 
-## Debugging and triage workflow
+LISTEN requires dedicated connection — do not share with PgBouncer transaction pool. Sidecar listener process or LISTEN on direct Postgres connection.
 
-When listen notify realtime misbehaves in production, work top-down instead of guessing:
+## Missed notifications
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Listeners disconnect during network blip — reconcile with periodic poll or outbox table. NOTIFY is best-effort; critical workflows need outbox plus consumer.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Channel namespacing
+
+tenant_{id}_events prevents cross-tenant leakage if client subscribes wrong channel. Validate tenant in payload even when channel scoped.
+
+## Debouncing rapid NOTIFY bursts
+
+Bulk import firing NOTIFY per row overwhelms listeners — batch commits and send one NOTIFY with batch id; clients fetch `WHERE updated_at > $cursor`. Pattern mirrors CDC debouncing.
+
+## LISTEN connection health check
+
+Application heartbeat: if no NOTIFY in 5 minutes on active system, reconnect LISTEN socket — silent disconnect otherwise discovered only when stale UI reported.
+
+## Scaling listeners horizontally
+
+Each listener connection consumes one Postgres backend — 50 websocket servers means 50 LISTEN connections. Consolidate through Redis pub/sub bridge: one LISTEN process NOTIFY→Redis PUBLISH; app servers subscribe Redis — decouples fan-out from Postgres connection count.
+
+## Security: who may LISTEN
+
+Grant LISTEN on specific channel via RLS on pg_notify wrapper function SECURITY DEFINER — raw NOTIFY from untrusted role could spam channels. Application-only NOTIFY through stored procedure validates tenant before pg_notify call.
+
+## NOTIFY payload encoding
+
+JSON payload string must fit 8000 bytes — compress ids array or send version number only. Binary data forbidden — base64 inflates size; send blob id reference instead.
+
+## Fallback polling interval
+
+When NOTIFY missed, client polls every 30s as backstop — websocket push primary. Exponential backoff on poll when no changes reduces load; reset interval on received NOTIFY. Document hybrid push-poll in frontend architecture note for realtime dashboard team.
+
+## Closing notes
+
+Load test NOTIFY rate before peak event — listener single-threaded processing may bottleneck below Postgres NOTIFY capacity; queue depth metric alerts when processing lag exceeds one second.
+
+## Additional guidance
+
+Combine NOTIFY with transactional outbox for critical notifications — NOTIFY after COMMIT in same transaction as outbox insert using trigger; listener processes outbox row id from NOTIFY payload ensuring at-least-once delivery if listener crashes mid-processing without losing event entirely.
+
+PgBouncer does not forward NOTIFY to clients connected through transaction pool — architectural constraint driving Redis bridge pattern or direct Postgres connection for listener workers documented in platform realtime architecture decision record approved by infra team.
+
+Use transactional outbox plus NOTIFY for must-deliver events — NOTIFY alone drops messages if listener disconnected during network partition.
+
+Bridge NOTIFY through Redis when more than ten app servers subscribe — Postgres listener connection count scales poorly compared to pub/sub fan-out pattern.
+
+Listener process should ACK processing by deleting outbox row only after downstream websocket fan-out succeeds — at-least-once delivery without duplicate user notifications requires idempotent client message ids.
 
 ## Resources
 

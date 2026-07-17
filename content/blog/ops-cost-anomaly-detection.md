@@ -3,7 +3,7 @@ title: "Cloud Cost Anomaly Detection"
 slug: "ops-cost-anomaly-detection"
 description: "Detect cloud cost spikes before the invoice arrives: anomaly detection methods, tagging discipline, AWS Cost Anomaly Detection, and alerting thresholds that reduce noise."
 datePublished: "2026-01-02"
-dateModified: "2026-01-02"
+dateModified: "2026-07-17"
 tags: ["DevOps", "FinOps", "Cloud", "Cost Optimization"]
 keywords: "cloud cost anomaly detection, AWS cost anomaly, FinOps alerting, cloud spend monitoring, cost spike detection"
 faq:
@@ -170,6 +170,36 @@ When cost anomaly detection misbehaves in production, work top-down instead of g
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Tagging discipline as prerequisite
+
+Cost anomaly detection fails when 40% of spend sits in `untagged` or `project=legacy`. Enforce tag policies at resource creation (Terraform `default_tags`, AWS SCPs, OPA). Anomaly detectors need dimensions — untagged EC2 spikes are untriagable.
+
+## Seasonality-aware baselines
+
+Static thresholds alert every Monday morning when batch jobs run. Use Prophet, AWS Cost Anomaly Detection, or Datadog with week-over-week comparison:
+
+```
+alert if today_spend > max(7d_same_weekday_p95 * 1.3, 30d_median * 2)
+```
+
+Separate alerts for **unit cost** (per customer) vs **absolute spend** — growth startups trigger absolute alerts while unit economics improve.
+
+## Chargeback and anomaly feedback loop
+
+When anomaly fires, attach owner from tag `team`. Post-incident, file ticket to fix missing tags on resources identified in drill-down — otherwise the same mystery bucket alerts next month.
+
+## Kubernetes cost allocation
+
+Split node cost by namespace using Kubecost or OpenCost — orphan namespaces from deleted teams show up as slow-burn anomalies. Alert on namespace with >$500/week and zero running deployments.
+
+## Reserved capacity vs on-demand drift
+
+RI/SP coverage dropping below 70% triggers finance anomaly — engineers spin opportunistic on-demand GPUs and forget to terminate. Weekly GPU idle scan automated ticket.
+
+## S3 lifecycle anomalies
+
+Sudden Standard storage spike often means logging bucket lost lifecycle policy — detect GB-day growth rate, not just dollar total.
 
 ## Resources
 

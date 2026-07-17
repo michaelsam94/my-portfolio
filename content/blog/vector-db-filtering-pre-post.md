@@ -3,16 +3,107 @@ title: "Pre- vs Post-Filtering in Vector Search"
 slug: "vector-db-filtering-pre-post"
 description: "Choose between pre-filtering and post-filtering in vector search: recall trade-offs, metadata indexes, hybrid query patterns, and when each strategy fits your workload."
 datePublished: "2026-02-25"
-dateModified: "2026-02-25"
-tags: ["AI", "Vector Database", "Search", "RAG"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "pre-filtering, post-filtering, vector search, metadata filter, HNSW, recall, hybrid search"
 faq:
-  - q: "What is the difference between pre-filtering and post-filtering in vector search?"
-    a: "Pre-filtering applies metadata constraints before the vector similarity search runs, so the index only searches within the matching subset. Post-filtering runs the vector search first across all vectors, then discards results that don't match the metadata filter. Pre-filtering is more efficient when the filter is highly selective but can miss results if the filtered subset is too small for the index to traverse effectively. Post-filtering guarantees recall within the top-K but wastes compute on results that get discarded."
-  - q: "When should I use pre-filtering for vector search?"
-    a: "Use pre-filtering when your metadata filter is selective enough to significantly reduce the search space — for example, filtering 10 million vectors down to 50,000 by tenant ID or document type. Most vector databases support pre-filtering through metadata indexes paired with the vector index. It works best when the filtered subset still contains enough vectors for the approximate nearest neighbor algorithm to find good candidates."
-  - q: "Why does post-filtering sometimes return fewer results than requested?"
-    a: "Post-filtering retrieves top-K nearest neighbors first, then applies the filter. If only 3 of the top-100 results match the filter and you requested 10, you get 3. The vector search didn't know about the filter, so it may have ranked matching results at positions 101-500. The fix is either increasing K before filtering (oversampling), switching to pre-filtering, or using a database that supports filtered vector search natively with proper index integration."
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Pre- vs Post-Filtering in Vector Search"
+slug: "vector-db-filtering-pre-post"
+description: "Choose between pre-filtering and post-filtering in vector search: recall trade-offs, metadata indexes, hybrid query patterns, and when each strategy fits your workload."
+datePublished: "2026-02-25"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "pre-filtering, post-filtering, vector search, metadata filter, HNSW, recall, hybrid search"
+faq:
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-filtering-pre-post"
+slug: "vector-db-filtering-pre-post"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-filtering-pre-post"
+faq:
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-filtering-pre-post"
+slug: "vector-db-filtering-pre-post"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-filtering-pre-post"
+faq:
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-filtering-pre-post"
+slug: "vector-db-filtering-pre-post"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-filtering-pre-post"
+faq:
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Pre- vs Post-Filtering in Vector Search"
+slug: "vector-db-filtering-pre-post"
+description: "Choose between pre-filtering and post-filtering in vector search: recall trade-offs, metadata indexes, hybrid query patterns, and when each strategy fits your workload."
+datePublished: "2026-02-25"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "pre-filtering, post-filtering, vector search, metadata filter, HNSW, recall, hybrid search"
+faq:
+  - q: "What is the main production risk with vector db filtering pre post?"
+    a: "Teams ship without field measurement—vector db filtering pre post failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db filtering pre post?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db filtering pre post changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Our RAG pipeline filtered search results by `tenant_id` after retrieval. It asked for top-10, got 10 candidates, and post-filtered down to 2 that matched the tenant. Users saw incomplete answers and we assumed the embedding model was bad. The model was fine — we were throwing away 80% of relevant results because post-filtering with a small K is a recall trap. Understanding when to pre-filter versus post-filter, and how much to oversample, is one of the most impactful tuning decisions in a vector search system.
@@ -149,29 +240,52 @@ def search(query: str, tenant: str, k: int = 10) -> list[Document]:
 - **Multiple filter conditions** — ensure compound indexes cover common filter combinations.
 - **Always measure recall** — create a test set of (query, expected_doc_id, filter) tuples and measure hit rate at K.
 
-## Common production mistakes
+## Production monitoring for filtered search
 
-Teams get vector db filtering pre post wrong in predictable ways:
+Track these metrics per filter type in your vector serving layer:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+- **Filter selectivity** — ratio of vectors matching predicate; alert when tenant corpus shrinks below threshold while global corpus grows
+- **Result count deficit** — queries returning fewer than requested k; histogram by tenant size
+- **Recall@k canary** — nightly job comparing filtered ANN vs brute force on stratified sample
+- **Latency split** — ANN traversal time vs post-filter discard time vs metadata fetch time
 
-Production implementations of vector db filtering pre post fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Dashboard example: p95 latency for `tenant_id` filters on shared index should stay within 2× unfiltered baseline. If latency explodes, payload indexes may be missing on filter fields.
 
-## Debugging and triage workflow
+When migrating from post-filter to pre-filter, run shadow mode for two weeks—log both result sets and diff IDs. Disagreement rate above 5% warrants investigation before cutover.
 
-When vector db filtering pre post misbehaves in production, work top-down instead of guessing:
+## Case study: date-range filters on news archive
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+A media site indexed 20 years of articles with `published_at` metadata. Users searched "similar stories" within last 30 days. Post-filter with k=10 returned zero results 34% of the time because recent articles were globally distant in embedding space from query vector dominated by trending topics.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Fix: pre-filter with `published_at > now() - interval '30 days'` reduced candidate pool to 80k vectors; ANN recall@10 recovered to 94%. Editorial team stopped complaining that "search is broken on recent news."
+
+Date-range filters are almost always pre-filter candidates—the selective predicate is predictable and business-critical.
+
+## Payload indexes for pre-filter
+
+Qdrant and Milvus payload indexes on filter fields — without them pre-filter devolves to brute scan. Postgres pgvector: partial indexes `WHERE tenant_id = X` per large tenant if shared table.
+
+## Recall testing with filters
+
+Nightly job: random queries with tenant filter, compare ANN vs brute force top-20 overlap. Alert if Jaccard similarity drops below 0.85 — index params or filter order regressed.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

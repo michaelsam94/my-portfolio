@@ -3,7 +3,7 @@ title: "Coordinating Work with Advisory Locks"
 slug: "postgres-advisory-locks-patterns"
 description: "Use PostgreSQL advisory locks for distributed coordination: session vs transaction locks, lock IDs, cron deduplication, and avoiding deadlocks with application-level patterns."
 datePublished: "2026-03-06"
-dateModified: "2026-03-06"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Distributed Systems"]
 keywords: "PostgreSQL advisory locks, pg_advisory_lock, distributed lock Postgres, cron deduplication, advisory lock patterns"
 faq:
@@ -139,29 +139,60 @@ Load test lock contention scenarios — two workers racing for same lock ID shou
 
 Include advisory lock acquisition in structured application logs with lock namespace and job ID — debugging production skips without logs reduces to guessing which cron won the race.
 
-## Common production mistakes
 
-Teams get advisory locks patterns wrong in predictable ways:
+## Session vs transaction advisory locks
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+pg_advisory_lock survives until disconnect — dangerous with PgBouncer transaction mode. Prefer pg_advisory_xact_lock scoped to transaction — auto-releases on commit/rollback.
 
-Postgres work on advisory locks patterns causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Lock key namespace design
 
-## Debugging and triage workflow
+Encode domain in high bits, entity id in low bits via hashtext. Document namespace table — two features hashing to same key space deadlock each other.
 
-When advisory locks patterns misbehaves in production, work top-down instead of guessing:
+## Non-blocking try locks for cron
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+pg_try_advisory_lock — if false, another pod running nightly report. Leader election without ZooKeeper for single-row jobs.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Debugging lock waits
+
+pg_locks joined with pg_stat_activity shows advisory lock holders. wait_event advisory in activity view — correlate with long-running batch holding lock during business hours.
+
+## Advisory locks vs row-level locks for job queues
+
+SKIP LOCKED on rows competes with advisory locks for job dequeue. Advisory locks lighter when no row exists yet (schedule slot reservation before insert). Combine: advisory lock per resource during booking flow, row lock on confirm — see exclusion constraint post for final persist.
+
+## Timeout handling in application
+
+Wrap pg_advisory_xact_lock in SET LOCAL lock_timeout = '2s' — fail fast to user rather than hang connection pool. Map lock timeout SQLSTATE to HTTP 503 with Retry-After when contention expected (flash sale inventory).
+
+## pg_advisory_lock key generation
+
+Avoid raw integer keys from user input — hash strings to int64 with hashtext or application-side FNV. Collision across namespaces causes mysterious blocking — document namespace prefix in lock key high bits: `(namespace_id << 32) | resource_id`.
+
+## Observability for lock waits
+
+pg_stat_activity wait_event_type Lock with wait_event advisory — export to Prometheus via postgres_exporter. Alert when advisory wait count >10 for 5 minutes during business hours; often cron overlap or stuck transaction holding lock without timeout.
+
+## Comparison with SELECT FOR UPDATE SKIP LOCKED
+
+Job queue dequeue uses SKIP LOCKED on status=pending rows — advisory locks when no row yet exists to lock (hold slot before insert). Choose advisory for reservation phase, row lock for commit phase in two-phase booking flow.
+
+## Benchmark: advisory vs row lock latency
+
+pgbench custom script comparing pg_advisory_xact_lock vs SELECT FOR UPDATE on dummy row — advisory typically lower overhead when no row exists yet. Document benchmark in ADR choosing advisory for pre-insert slot hold pattern in scheduling service before exclusion constraint added on commit.
+
+## Closing notes
+
+Document lock key namespace in service README table: key type, hashtext input, timeout, and SQLSTATE mapping so on-call resolves contention without reading application source during incident.
+
+## Additional guidance
+
+Session-level advisory locks survive PgBouncer only in session pooling mode — document pool mode in runbook next to any feature using pg_advisory_lock without xact scope. Migration from session to transaction pooling requires refactoring session locks to xact locks or row locks to avoid silent lock loss between transactions.
+
+Load test advisory lock hold duration under peak booking — lock held through slow external payment callback blocks other bookers; shorten critical section to database commit only and move payment wait outside lock scope when measuring contention metrics before choosing advisory versus exclusion constraint approach.
+
+Prefer pg_advisory_xact_lock over session lock whenever PgBouncer transaction pooling is enabled — document in database platform standards.
+
+Set lock_timeout on transactions taking advisory xact lock — fail fast with retryable error instead of holding connection pool slot indefinitely during flash sale contention.
 
 ## Resources
 

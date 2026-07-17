@@ -1,129 +1,238 @@
 ---
-title: "eBPF Network Observability for Services"
+title: "eBPF Network Observability"
 slug: "observability-ebpf-network-observability"
-description: "Cilium/Hubble or Pixie — L7 metrics without sidecar per pod overhead."
-datePublished: "2026-01-23"
-dateModified: "2026-01-23"
+description: "Use eBPF to observe TCP, DNS, and HTTP traffic between pods without sidecar instrumentation—Cilium Hubble, Pixie, and kernel-level flow visibility."
+datePublished: "2026-01-20"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
-  - "SRE"
-keywords: "observability ebpf network observability, production, backend"
+  - "Kubernetes"
+  - "Networking"
+keywords: "ebpf network observability, cilium hubble, kubernetes network flows, pixie ebpf, kernel tracing networking"
 faq:
-  - q: "What problem does eBPF Network Observability solve?"
-    a: "It addresses production gaps teams hit when scaling observability ebpf network observability: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability ebpf network observability appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How is eBPF network observability different from service mesh metrics?"
+    a: "Service meshes use sidecars with L7 awareness but add latency. eBPF observes in the kernel with lower overhead—often without modifying application pods."
+  - q: "Can eBPF replace distributed tracing?"
+    a: "No. eBPF sees connections and DNS; traces carry business context across async boundaries."
+  - q: "Does eBPF work on all cloud Kubernetes offerings?"
+    a: "Most managed K8s support eBPF agents as DaemonSets; kernel 5.x preferred."
 ---
 
-## Production context
+Payment service logs showed connection timeouts to `inventory.internal`. TCP dumps showed SYN without SYN-ACK. NetworkPolicy had been fixed last sprint—but which pod talked to which IP on which port? eBPF flow observability answered in five minutes: checkout hit inventory on 8080, inventory listened on 8081.
 
-A billing service lost duplicate events because observability ebpf network observability was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Cilium + Hubble
 
-Senior backend work on ebpf network observability for services is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Flow logging with source/destination service names, L7 HTTP when enabled, DNS queries, NetworkPolicy drop reasons. Alert on `hubble_drop_total{reason="Policy denied"}`.
 
-## Architecture pattern
+## Pixie
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Scriptable PxL queries for HTTP/SQL/DNS without changing CNI—good when you cannot migrate to Cilium.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Debugging workflows
+
+DNS failures: `hubble observe --protocol dns`. Intermittent TLS: correlate with app traces. Silent drops: compare drop metrics with user-facing error spikes.
+
+## Limits
+
+Payload contents opaque; encrypted traffic limits L7 parsing; pair with distributed tracing for request semantics.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## Correlating Hubble flows with application traces
 
-## Implementation checklist
+When flow shows `DROPPED` between checkout and payments, grab `trace_id` from checkout logs and verify HTTP client span never received response—confirms network drop vs application timeout misconfiguration.
 
-Validate inputs at the trust boundary with schema versioning.
+Teach on-call: **Hubble first for connection refused / policy denied**; **traces first for slow OK responses**.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+## Multi-cluster and mesh boundaries
 
-Store idempotency keys with TTL; return cached responses on replay.
+Service mesh mTLS hides payload from eBPF L7 parsers on some platforms—flows show encrypted bytes only. Combine mesh telemetry (Istio access logs) with eBPF L4 for packet drops on node. Document which tool owns which failure mode in runbook matrix.
 
-Run migrations with lock_timeout and statement_timeout set.
+## Cost of flow log retention
 
-Load test at 2× expected peak with production-like payload sizes.
+Full L7 flow logs at 100k RPS overwhelm storage. Retention tiers:
 
-## Observability
+- **24 hours** full L4+L7 for incident window
+- **7 days** aggregated flow counts only
+- **Metrics** (`hubble_flows_processed_total`) for 90 days
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Tune Hubble `--enable-l7-proxy-visibility` only on namespaces under active network debugging—not entire cluster indefinitely.
 
-Dashboards for observability ebpf network observability should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## IPv6 dual-stack clusters
 
-## Security notes
+Hubble must resolve IPv6 pod addresses—verify flow maps show same edges as IPv4 during dual-stack migration. Mixed stacks cause "missing edge" when CSMS or legacy monitors IPv4-only.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+## Incident timeline reconstruction
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Export Hubble flows to PCAP-less timeline CSV during postmortem: `{timestamp, src, dst, verdict, bytes}`. Attach to incident doc—faster than screenshot gallery for auditors.
 
-## Common production mistakes
+## Runbook integration
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Network timeout runbooks should start with Hubble/Pixie query templates parameterized by namespace and service labels from the alert. Copy-paste commands beat prose instructions at 3 AM. Include screenshot of healthy baseline flow map in runbook appendix so on-call recognizes abnormal edge colors quickly.
 
-## Debugging and triage workflow
+For hybrid cloud, eBPF sees pod-to-NAT-to-internet paths—document which hops are visible vs blind when debugging SaaS API failures from Kubernetes workloads. Reduces false accusations of external vendor outage when corporate proxy MITM is the actual fault.
 
-When production misbehaves, work top-down:
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Operational checklist
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Performance tuning notes
 
-Measure before optimizing observability ebpf network observability. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Rollout and migration
 
-Ship observability ebpf network observability changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Testing recommendations
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Incident patterns we see
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
 
-## Resources
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.

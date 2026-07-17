@@ -3,8 +3,8 @@ title: "Model Distillation for Smaller Models"
 slug: "model-distillation-smaller-faster"
 description: "Distill large language models into smaller, faster students: data generation, loss functions, evaluation traps, and when distillation beats quantization alone."
 datePublished: "2025-07-15"
-dateModified: "2025-07-15"
-tags: ["AI", "Machine Learning", "LLM", "Optimization"]
+dateModified: "2026-07-17"
+tags:
 keywords: "model distillation LLM, knowledge distillation, teacher student model, smaller faster LLM, synthetic training data"
 faq:
   - q: "What is LLM distillation in practice?"
@@ -14,7 +14,6 @@ faq:
   - q: "When does distillation fail?"
     a: "When the student is too small for the task complexity, when teacher outputs are noisy or inconsistent, when evaluation only measures format not correctness, or when the deployment task diverges from distillation data. Always benchmark on held-out real user queries."
 ---
-
 We needed sub-200ms latency for a classification-and-extraction pipeline. GPT-4o hit 94% F1 but cost $0.012 per request at our volume. A 7B base model fine-tuned on 800 labeled examples reached 81% — good enough for nobody. Distillation closed the gap: the teacher labeled 40,000 synthetic examples, a 3B student trained on soft labels reached 91% F1 at one-tenth the latency. Model distillation isn't magic compression; it's transferring behavior from a model you can't afford to run into one you can.
 
 ## Teacher-student distillation basics
@@ -154,3 +153,17 @@ Plan deployment before training finishes. Containerize the student with pinned t
 - [Llama 3.2 model card — distillation notes](https://github.com/meta-llama/llama-models)
 - [OpenAI model distillation guide (GPT-4o mini)](https://platform.openai.com/docs/guides/distillation)
 - [Axolotl fine-tuning framework](https://github.com/axolotl-ai-cloud/axolotl)
+
+## Production notes for LLM stacks
+
+When `model-distillation-smaller-faster` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `model distillation for smaller models` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

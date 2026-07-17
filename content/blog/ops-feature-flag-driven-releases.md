@@ -3,7 +3,7 @@ title: "Feature-Flag-Driven Releases"
 slug: "ops-feature-flag-driven-releases"
 description: "Ship code dark and release with feature flags: trunk-based delivery, flag lifecycle, kill switches, and integrating LaunchDarkly or open-source alternatives into CI/CD."
 datePublished: "2026-01-09"
-dateModified: "2026-01-09"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Feature Flags", "CI/CD", "Release Engineering"]
 keywords: "feature flag driven release, trunk based development, LaunchDarkly CI CD, feature toggle deployment, dark launch"
 faq:
@@ -147,6 +147,41 @@ When feature flag driven releases misbehaves in production, work top-down instea
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Flag taxonomy and lifecycle
+
+| Type | Lifetime | Example |
+|------|----------|---------|
+| Release | Days–weeks | New checkout UI |
+| Ops kill-switch | Permanent | Payment provider toggle |
+| Experiment | Weeks | Pricing A/B |
+| Permission | Permanent | Enterprise tier feature |
+
+Schedule flag removal in ticket system — stale flags create dead code paths and security holes (old auth flow still reachable).
+
+## Backend vs frontend flag coordination
+
+Ship backend changes dark (flag off) before enabling UI — frontend enabling first against old API causes 404 storms. Use **same flag key** across stack or explicit dependency graph in LaunchDarkly/Unleash.
+
+## Audit and compliance
+
+Regulated environments need flag change audit logs — who enabled `skip_fraud_check` in prod? Tie flag changes to approval workflow for kill-switches affecting money movement.
+
+## Kill-switch drills
+
+Quarterly game day: flip `payments_enabled` false in staging, measure time to detect and restore. Production kill-switch without practiced runbook panics teams into enabling wrong flag.
+
+## Flag payload complexity
+
+JSON flag values for routing percentages — validate schema in SDK; malformed flag should fail closed to safe default, not crash checkout initialization.
+
+## Flag-driven schema compatibility
+
+Release flag hides UI for new column — old code path must ignore unknown JSON fields from API. Forward-compatible protobuf/JSON schemas pair with flag rollouts.
+
+## Percentage rollout correlation
+
+LaunchDarkly percentage rollout is per-user stable — good. Random per-request percentage without sticky bucketing breaks canary analysis. Verify SDK sticky behavior.
 
 ## Resources
 

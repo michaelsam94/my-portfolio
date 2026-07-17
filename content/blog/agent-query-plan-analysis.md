@@ -1,111 +1,209 @@
 ---
 title: "AI Agents: Query Plan Analysis"
 slug: "agent-query-plan-analysis"
-description: "Query Plan Analysis: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "How to read EXPLAIN plans for agent tool queries, catch sequential scans on vector metadata tables, and wire plan telemetry into your observability stack before latency spikes hit users."
 datePublished: "2024-11-26"
 dateModified: "2024-11-26"
 tags: ["AI", "Agent", "Query"]
-keywords: "agent, query, plan, analysis, ai, production, engineering, architecture"
+keywords: "EXPLAIN ANALYZE agent queries, PostgreSQL query plan, agent tool SQL latency, index advisor RAG metadata, sequential scan detection"
 faq:
-  - q: "What is Query Plan Analysis?"
-    a: "Query Plan Analysis covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Query Plan Analysis?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Query Plan Analysis?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Query Plan Analysis fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Query Plan Analysis should be observable in production and safe to change in small diffs."
+  - q: "When should an agent pipeline run EXPLAIN on generated SQL?"
+    a: "Run EXPLAIN (not necessarily ANALYZE) on every new tool schema in CI, and run EXPLAIN ANALYZE on sampled production queries weekly. Agent-generated SQL varies by phrasing; a plan that looked fine in staging may regress when the model chooses a different join order after a prompt update."
+  - q: "What is the most common bad plan in agent retrieval stacks?"
+    a: "Nested loop over a large filtered result because the planner underestimated selectivity on JSONB metadata filters (tenant_id, document_status). The fix is usually a partial index matching the agent's default WHERE clause, not rewriting the LLM prompt."
+  - q: "Should agents be allowed to run ANALYZE or CREATE INDEX?"
+    a: "No. Give agents read-only roles with statement_timeout and a row limit. Plan analysis belongs in your middleware: parse the query, EXPLAIN in a sandbox replica, reject or rewrite before execution. Letting the model mutate schema is an incident waiting to happen."
+  - q: "How do you alert on plan regressions without parsing every query?"
+    a: "Track pg_stat_statements mean_exec_time and shared_blks_read per normalized query fingerprint. Alert when p95 latency doubles or shared_blks_read jumps 10x for the same fingerprint. Pair with auto_explain for queries exceeding 500ms."
 ---
-Query Plan Analysis sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When query plan analysis is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The support ticket said the agent was "slow sometimes." p50 latency on the tool-calling path looked fine. p99 told a different story: three seconds on `search_documents`, then 40ms on everything else. The agent wasn't hallucinating — it was issuing perfectly valid SQL that PostgreSQL chose to answer with a sequential scan across 18 million embedding metadata rows because `status = 'published'` wasn't selective enough after last week's bulk import.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Query plan analysis for agent systems is not database DBA cosplay. It is how you keep autonomous tool loops from amplifying a bad join into a quota-burning retry storm.
 
-Solid AI engineering turns query plan analysis from a recurring argument into a documented pattern with tests and an owner.
+## What agents do to your query planner
 
-## Design principles that survive production
+Traditional apps emit SQL from hand-written repositories. Agents emit SQL from natural language, often with:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent query plan analysis bugs hide.
+- **Dynamic filters** — optional JSONB predicates the planner sees for the first time at runtime
+- **Wide SELECT lists** — the model asks for `SELECT *` unless you constrain the tool schema
+- **Repeated similar queries** — each turn may re-run retrieval with slightly different LIMIT or ORDER BY
+- **Fan-out** — one user message triggers five tool calls, each hitting the same table differently
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for query plan analysis, you do not yet understand the behavior you shipped.
+The planner caches statistics, not intentions. When the model shifts from `WHERE tenant_id = $1 AND tag = 'policy'` to `WHERE tenant_id = $1 AND metadata->>'department' = 'legal'`, you may fall off an index cliff without any schema migration.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Reading EXPLAIN like an on-call engineer
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent query plan analysis flows so duplicates are harmless or detectable.
+Start with `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` on production-shaped data volumes, not empty dev tables.
 
-## Implementation patterns
-
-A practical baseline for query plan analysis in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent query plan analysis changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Query Plan Analysis: typed boundary + structured errors
-export async function handleQueryPlanAnalysis(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-query-plan-analysis");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT d.id, d.title, d.chunk_text
+FROM document_chunks d
+JOIN documents doc ON doc.id = d.document_id
+WHERE doc.tenant_id = 'tn_8f2a'
+  AND doc.status = 'published'
+  AND d.embedding <=> $1::vector < 0.35
+ORDER BY d.embedding <=> $1::vector
+LIMIT 20;
 ```
 
+Red flags in agent workloads:
 
-## Operational concerns
+| Node type | Symptom | Typical agent cause |
+|-----------|---------|---------------------|
+| Seq Scan on large heap | Buffers: shared read in thousands | Missing partial index on `(tenant_id, status)` |
+| Nested Loop + Seq Scan inner | Loops: 50000+ | FK join where inner side lacks index |
+| Sort + Limit | Sort Method: external merge Disk | ORDER BY expression not indexed |
+| Bitmap Heap Scan with high rows removed | Rows Removed by Filter high | JSONB path filter not indexed |
 
-Alert on user-visible symptoms for query plan analysis — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+The vector distance operator often dominates cost. If you see an index scan on `embedding` followed by a filter that rejects 90% of rows, your **post-index filter** is the problem — tighten the WHERE clause in the tool definition or add a composite access path.
 
-Production agent query plan analysis work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Middleware: plan gate before execution
 
-Rollouts for query plan analysis benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Never trust the model to self-correct slow SQL. Insert a plan review step in your tool executor:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```typescript
+type PlanVerdict = "allow" | "rewrite" | "reject";
 
-## Security and compliance angles
+interface PlanGateConfig {
+  maxSeqScanRows: number;
+  maxEstimatedCost: number;
+  forbiddenNodes: string[];
+}
 
-Even when query plan analysis is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+async function gateQuery(
+  sql: string,
+  params: unknown[],
+  cfg: PlanGateConfig
+): Promise<{ verdict: PlanVerdict; plan: string; sql: string }> {
+  const planRows = await sandboxDb.query(
+    `EXPLAIN (FORMAT JSON) ${sql}`,
+    params
+  );
+  const plan = planRows[0]["QUERY PLAN"][0];
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent query plan analysis so security reviews do not rely on tribal knowledge.
+  const seqScan = findNode(plan, (n) => n["Node Type"] === "Seq Scan");
+  if (seqScan && (seqScan["Plan Rows"] ?? 0) > cfg.maxSeqScanRows) {
+    return {
+      verdict: "reject",
+      plan: JSON.stringify(plan, null, 2),
+      sql,
+    };
+  }
 
-## Testing strategy
+  if ((plan["Total Cost"] ?? 0) > cfg.maxEstimatedCost) {
+    const rewritten = injectTenantPredicate(sql); // deterministic rewrite
+    return { verdict: "rewrite", plan: JSON.stringify(plan, null, 2), sql: rewritten };
+  }
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that query plan analysis depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+  return { verdict: "allow", plan: JSON.stringify(plan, null, 2), sql };
+}
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Run EXPLAIN against a **sandbox replica** with production statistics (or use `hypopg` for hypothetical indexes in CI). `EXPLAIN ANALYZE` mutates nothing but executes the query — use it only on sampled, rate-limited traffic with read-only roles.
 
-## Migration and evolution
+## Instrumentation that catches regressions early
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent query plan analysis functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Wire these into the same dashboard as agent token usage:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where query plan analysis spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```sql
+-- pg_stat_statements: top agent tool fingerprints
+SELECT
+  queryid,
+  left(query, 120) AS sample,
+  calls,
+  mean_exec_time,
+  shared_blks_read,
+  rows
+FROM pg_stat_statements
+WHERE query LIKE '%document_chunks%'
+ORDER BY mean_exec_time * calls DESC
+LIMIT 20;
+```
 
-## Related concepts
+Enable `auto_explain.log_min_duration = 500` and ship logs to your trace backend. Tag spans with `tool_name`, `tenant_id`, and `query_fingerprint` so you can correlate a prompt deploy with a plan change.
 
-Query Plan Analysis intersects with broader ai topics — see companion notes on [agent-query patterns](https://blog.michaelsam94.com/agent-query/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+For vector-heavy paths, also track **buffers hit ratio** per tool. Agent retrieval that suddenly reads from disk usually means the working set outgrew `shared_buffers` — a capacity signal, not a model quality signal.
 
-## The takeaway
+## Fixing plans without disabling tools
 
-Query Plan Analysis rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent query plan analysis becomes a maintainable asset instead of incident fuel.
+Ordered remediation that works in production:
+
+1. **Constrain the tool schema** — require `tenant_id`, cap `LIMIT`, ban `SELECT *`, whitelist columns
+2. **Add partial indexes** matching default agent filters: `WHERE status = 'published'`
+3. **Refresh statistics** after bulk loads — agents hit stale stats more painfully than batch ETL because traffic is bursty
+4. **Rewrite prompts last** — prompt changes are non-deterministic; indexes are deterministic
+
+```sql
+CREATE INDEX CONCURRENTLY idx_chunks_tenant_published
+ON document_chunks (tenant_id, document_id)
+WHERE EXISTS (
+  SELECT 1 FROM documents d
+  WHERE d.id = document_chunks.document_id
+    AND d.status = 'published'
+);
+```
+
+When the agent needs ad-hoc analytics ("count documents by department this quarter"), route to a **read replica or OLAP sink**, not the OLTP path used for RAG. Mixing analytical plans into sub-100ms retrieval SLOs guarantees pain.
+
+## Closing the loop with evals
+
+Add plan-aware checks to your agent eval suite:
+
+- Golden questions must stay under latency budget **and** under buffer read threshold
+- Fail CI if EXPLAIN shows Seq Scan on tables over your row threshold
+- Store `{question, sql, plan_hash, latency_ms}` for every eval run to diff across model versions
+
+Query plan analysis is unglamorous work. It is also the difference between an agent platform that scales with document count and one where every new customer corpus triggers a latency incident you debug at 2 a.m. by squinting at `EXPLAIN` output in a pager.
+
+## Case study: when the vector index lies
+
+A team shipped HNSW indexes on `embedding` columns and celebrated sub-10ms ANN queries in isolation. Production agent latency stayed at 800ms. EXPLAIN showed the planner choosing a **Bitmap Index Scan** on `(tenant_id)` first, fetching 40,000 chunk IDs, then filtering by vector distance in memory — because the agent's default query always included `tenant_id = $1` and the planner judged that predicate more selective than the approximate nearest-neighbor probe.
+
+The fix was not "better embeddings." They added a two-stage pattern in the tool layer:
+
+```sql
+-- Stage 1: cheap candidate set (indexed)
+WITH candidates AS (
+  SELECT id, embedding
+  FROM document_chunks
+  WHERE tenant_id = $1 AND document_id = ANY($2::uuid[])
+  LIMIT 500
+)
+-- Stage 2: vector sort on small set
+SELECT id, embedding <=> $3 AS dist
+FROM candidates
+ORDER BY dist
+LIMIT 20;
+```
+
+Stage one used a partial index on `(tenant_id, document_id)`. Stage two sorted hundreds of rows, not millions. Agent p95 dropped from 820ms to 45ms without changing the model or prompt.
+
+This pattern generalizes: **pre-filter with btree indexes, rank with vector indexes on the reduced set**. Let EXPLAIN confirm the planner isn't reversing that order because of stale `ANALYZE` stats on `tenant_id`.
+
+## CI gate: fail builds on plan regressions
+
+Wire plan checks into the tool-schema test suite:
+
+```yaml
+# .github/workflows/agent-tools.yml (excerpt)
+- name: Explain golden queries
+  run: |
+    psql "$TEST_DATABASE_URL" -f tests/golden/agent_retrieval.sql
+    python scripts/check_plans.py \
+      --max-seq-scan-rows 10000 \
+      --forbidden "Seq Scan on document_chunks"
+```
+
+`check_plans.py` parses `EXPLAIN (FORMAT JSON)` output and exits non-zero when forbidden nodes appear. Golden SQL files live next to tool definitions — when an engineer adds a new filter column to the tool schema, CI forces them to add an index migration in the same PR.
+
+Store historical plan JSON in object storage keyed by git SHA. Diffing plans across releases surfaces "we didn't change SQL but the planner changed its mind" cases tied to PostgreSQL minor upgrades or statistics drift.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL EXPLAIN documentation](https://www.postgresql.org/docs/current/sql-explain.html)
+- [pg_stat_statements extension](https://www.postgresql.org/docs/current/pgstatstatements.html)
+- [HypoPG — hypothetical indexes for plan testing](https://hypopg.readthedocs.io/en/latest/)
+- [auto_explain module](https://www.postgresql.org/docs/current/auto-explain.html)
+- [pgvector index tuning guide](https://github.com/pgvector/pgvector#indexing)

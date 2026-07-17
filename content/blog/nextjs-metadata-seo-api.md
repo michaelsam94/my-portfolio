@@ -3,8 +3,8 @@ title: "SEO with the Next.js Metadata API"
 slug: "nextjs-metadata-seo-api"
 description: "Implement SEO with Next.js Metadata API: static and dynamic metadata, Open Graph, JSON-LD, sitemaps, and canonical URLs in the App Router."
 datePublished: "2025-08-31"
-dateModified: "2025-08-31"
-tags: ["Web", "Next.js", "SEO", "Frontend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js Metadata API, Next.js SEO, Open Graph Next.js, JSON-LD structured data, dynamic metadata Next.js, sitemap Next.js"
 faq:
   - q: "How do I set page-specific title and description in the App Router?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I add JSON-LD structured data?"
     a: "Return a script tag with type application/ld+json from your page component or layout. Alternatively, include it in the metadata.other field. Validate with Google's Rich Results Test before deploying."
 ---
-
 Search Console shows your product pages indexed with the site-wide title "My App" and no description. In the Pages Router you fixed this with `next/head` per page. The App Router replaces that with the Metadata API—typed, composable, and merged from layouts down to pages. Misconfigure it and every route inherits the root layout defaults, which is why your blog posts share the homepage title tag.
 
 ## Static metadata
@@ -240,21 +239,44 @@ OG images fail silently in production. Checklist:
 
 Pair with [Next.js image optimization](https://blog.michaelsam94.com/nextjs-image-optimization/) for generating OG images dynamically via `ImageResponse`.
 
-## Common production mistakes
+## Production validation (1)
 
-Teams get metadata seo api wrong in predictable ways:
+Ship changes behind feature flags when behavior crosses route or service boundaries. Canary deploy with automatic rollback when error rate or p95 latency regresses beyond SLO budget. Document which metrics prove success—user-visible latency, error ratio, conversion—not only CPU graphs.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
 
-Production implementations of metadata seo api fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Failure modes (2)
 
-## Resources
+Recurring incidents: missing idempotency on retried paths, connection pool exhaustion masquerading as slow queries, retry storms amplifying partial outages. Design explicit timeouts on every outbound call.
 
-- [Next.js Metadata API docs](https://nextjs.org/docs/app/building-your-application/optimizing/metadata) — complete reference
-- [generateMetadata function](https://nextjs.org/docs/app/api-reference/functions/generate-metadata) — dynamic metadata
-- [Next.js sitemap file](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap) — sitemap.ts convention
-- [Google Search Central structured data](https://developers.google.com/search/docs/appearance/structured-data) — JSON-LD guidelines
-- [Open Graph protocol](https://ogp.me/) — OG tag specification
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Observability (3)
+
+Structured logs include trace_id and tenant_id on every error path. Metrics: request rate, error ratio, duration histogram, queue depth or pool wait. Traces: one span per dependency.
+
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Security review (4)
+
+Least-privilege credentials, no PII in logs, fail-closed auth defaults. Secrets rotate without redeploy where possible. Never log raw tokens or authorization headers.
+
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Testing strategy (5)
+
+Integration tests against real Postgres/Redis in CI with Testcontainers. Load test at 2× peak with production-like payloads. Chaos: inject dependency latency and verify degradation matches runbooks.
+
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Rollout checklist (6)
+
+Staging mirrors production topology for cache, pools, and timeouts. Rollback path tested quarterly. On-call runbook fits one page: symptom, dashboard, mitigation, rollback.
+
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Performance tuning (7)
+
+Measure p50/p95 before optimizing. Change one variable at a time—pool size, batch size, TTL, timeout. Profile CPU for JSON serialization and regex; profile IO for N+1 and pool wait.
+
+When operating **Next.js metadata seo api** (`nextjs-metadata-seo-api`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.

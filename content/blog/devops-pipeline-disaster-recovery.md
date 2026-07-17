@@ -3,109 +3,164 @@ title: "Data Pipeline Disaster Recovery Runbooks"
 slug: "devops-pipeline-disaster-recovery"
 description: "Recover orchestrator metadata, replay queues, and restore warehouse from backup."
 datePublished: "2026-09-05"
-dateModified: "2026-09-05"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Data Pipelines"
   - "SRE"
 keywords: "pipeline disaster recovery"
 faq:
-  - q: "What is Data Pipeline Disaster Recovery Runbooks?"
-    a: "Data Pipeline Disaster Recovery Runbooks covers operational practices for pipeline DR in production data pipelines environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
   - q: "When should teams prioritize Data Pipeline Disaster Recovery Runbooks?"
     a: "Before declaring orchestrator critical infrastructure."
-  - q: "What mistakes break Data Pipeline Disaster Recovery Runbooks?"
+  - q: "What is the most common mistake with pipeline DR?"
     a: "DR plan ignores warehouse—replay without idempotency corrupts data."
+  - q: "Should pipeline DR block deploy or only warn?"
+    a: "Block promotion to production tables and downstream consumers that cannot tolerate silent corruption. Warn on staging and dev with the same suite so expectations stay aligned. Finance and ML feature tables should fail closed."
+  - q: "How do you test pipeline DR without slowing every commit?"
+    a: "Run lightweight expectations on samples in PR CI; run full-partition suites on schedule and before merge to main. Cache validation artifacts and parallelize by partition key."
 ---
+Airflow metadata DB lost—no backup, DAG history gone.
+
+## The incident that forced a redesign
+
 
 Airflow metadata DB lost—no backup, DAG history gone.
 
-This post walks through **Data Pipeline Disaster Recovery Runbooks** for platform and SRE teams shipping reliable infrastructure. Recover orchestrator metadata, replay queues, and restore warehouse from backup. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+The post-mortem was not about pipeline DR being unknown — it was about pipeline DR sitting adjacent to the critical path. Recover orchestrator metadata, replay queues, and restore warehouse from backup. Teams had a green CI badge and a broken invariant in production.
 
-## Problem framing: Data Pipeline Disaster Recovery Runbooks
-
-Airflow metadata DB lost—no backup, DAG history gone.
+## Architecture that matches how data actually flows
 
 
-Platform teams treat **pipeline DR** as solved after the first successful deploy. Production disagrees: edge cases around pipeline disaster recovery, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+A durable data pipeline disaster recovery runbooks design names three boundaries: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits and replay).
 
-## Design principles for pipeline DR
-
-Explicit contracts beat tribal knowledge. Document who owns pipeline DR configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
-
-
-A common failure mode: DR plan ignores warehouse—replay without idempotency corrupts data. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
-
-
-```python
-# Airflow / dbt task pattern for devops-pipeline-disaster-recovery
-@task(retries=3, retry_delay=timedelta(minutes=5))
-def run_pipeline_disaster_recovery():
-    validate_schema("pipeline-disaster-recovery")
-    execute_transform("pipeline-disaster-recovery")
-```
+For Data Pipelines workloads, keep enforcement as close to the write path as possible. Advisory checks that run only in notebooks do not count as gates.
 
 ## Implementation walkthrough
 
-Start with the smallest production-safe slice of **Data Pipeline Disaster Recovery Runbooks**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+
+Ship the smallest production slice of Data Pipeline Disaster Recovery Runbooks: one pipeline, one cluster, or one namespace — with rollback documented before widening scope.
+
+Automate the boring steps so on-call never hand-edits pipeline DR settings during an incident. GitOps, versioned checkpoints, and pinned module versions beat runbook heroics.
+
+## Day-two operations
 
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for pipeline DR.
+Day-two data pipeline disaster recovery runbooks work is ownership rotation, capacity headroom, and alert hygiene. Page on symptoms customers feel — SLA misses, queue age, failed reconciliations — not vanity pod counts.
 
-## Operational concerns in production
+Run quarterly drills: credential expiry, dependency slow-down, partial region loss. Update internal docs with what broke, not generic vendor copy.
 
-Day-two operations for data pipelines work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
-
-
-Run game days or fault injection in staging quarterly for pipeline disaster recovery. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
-
-## Security and compliance angles
-
-Even when Data Pipeline Disaster Recovery Runbooks is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when pipeline DR accepts configuration from multiple teams.
+## Failure modes worth rehearsing
 
 
-For regulated workloads, maintain an immutable audit trail: who changed pipeline DR settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+The recurring failure: DR plan ignores warehouse—replay without idempotency corrupts data. Bake detection into CI, admission, or plan-time policy so the mistake fails before merge.
 
-## Integration with platform standards
+Secondary failures include retry storms, silent partial writes, and dashboards that stay green while downstream consumers read corrupt partitions.
 
-Align pipeline DR with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
-
-
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+## Metrics and alerts that catch regressions early
 
 
-## What to measure after rollout
+Track leading indicators for pipeline DR: validation pass rate, queue lag, reconciliation errors, error budget burn. Lagging indicators: incidents, audit findings, invoice surprises.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Slice metrics by environment and tenant during rollout — global averages hide bad canaries.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
-
-## Documentation your team should maintain
-
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
-
-## Pre-production checklist
-
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
-
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
-
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
-
-## Common questions from reviewers
-
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
-
-## Version and compatibility notes
-
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+## Reference configuration
 
 
-## Resources
+```python
+# Operational hook for pipeline DR
+@task(retries=3, retry_delay=timedelta(minutes=5))
+def run_pipeline_disaster_recovery():
+    validate_preconditions()
+    execute()
+    emit_lineage(run_id=ctx.run_id)
+```
 
-- https://airflow.apache.org/docs/
-- https://docs.getdbt.com/
+## Partition-level validation
+
+Sample-only expectations miss full-partition violations — null keys on edge partitions, timezone-boundary duplicates, and late-arriving facts. Schedule full scans before promote and incremental expectations on every run. Store validation results as queryable tables so analysts see history, not only pass/fail in Slack.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating pipeline DR at scale
+
+After the first successful deploy of data pipeline disaster recovery runbooks, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of pipeline DR settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Data Pipelines pipelines touch ingestion, serving, and finance. Document interfaces where pipeline DR gates hand off to downstream owners so failures are not bounced without context.
+
+## Further reading
+
+- https://greatexpectations.io/
+- https://docs.dagster.io/
+- https://openlineage.io/

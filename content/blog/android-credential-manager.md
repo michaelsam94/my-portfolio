@@ -98,6 +98,14 @@ Yes, and with some urgency, because the legacy Google Sign-In and Smart Lock lib
 
 The migration itself is bounded. Replace the Google Sign-In calls with a `GetSignInWithGoogleOption`, fold saved passwords into `GetPasswordOption`, and add the passkey options once your server speaks WebAuthn. The client code shrinks — that's the pleasant surprise. I've done this migration on a production app and came out with *fewer* lines of auth code than I started with, plus passkeys we didn't have before. Front-load the server-side WebAuthn work and the asset links, and the Android side is a good week's work rather than a saga.
 
+## Passkey hybrid transport
+
+Users with passkey on phone signing into web need hybrid transport UI — Credential Manager surfaces QR/cable flow. Test sign-in on Chrome desktop + Android phone pair; fallback to password must not loop infinitely on cancel.
+
+## Provider configuration priority
+
+Multiple password managers register — `CredentialManager.create(context)` picks default; expose in-app settings to open provider chooser when enterprise mandates specific vault.
+
 ## Resources
 
 - [Credential Manager — Android docs](https://developer.android.com/training/sign-in/credential-manager)

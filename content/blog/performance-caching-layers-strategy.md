@@ -3,7 +3,7 @@ title: "A Layered Caching Strategy"
 slug: "performance-caching-layers-strategy"
 description: "Design a multi-layer cache: browser, CDN, application, and database caching with TTL policies, invalidation patterns, and stampede prevention."
 datePublished: "2026-02-06"
-dateModified: "2026-02-06"
+dateModified: "2026-07-17"
 tags: ["Performance", "Caching", "Architecture", "Backend"]
 keywords: "layered caching strategy, CDN cache, Redis application cache, cache invalidation, cache stampede prevention"
 faq:
@@ -165,6 +165,30 @@ When caching layers strategy misbehaves in production, work top-down instead of 
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Cache key design and tenant isolation
+
+Multi-tenant SaaS must never share cache keys without tenant prefix. `cat:shoes:products` becomes `t:{tenant_id}:cat:shoes:products:v3`. A missing prefix leaks catalog data across customers. Document key schema in platform wiki; lint Redis key patterns in code review.
+
+## Personalized overlay pattern
+
+Cache the stable shell, compose personalization at request time. Base homepage shell cached per tenant; user-specific banners fetched small and uncached. Never CDN-cache Set-Cookie responses.
+
+## Thundering herd after deploy
+
+Cold Redis after restart triggers stampede. Pre-warm top 100 keys from yesterday's access log. Stagger TTLs with jitter so keys do not expire simultaneously at minute boundaries.
+
+## Measuring cache effectiveness
+
+Export hit rate per namespace to Prometheus. Alert when cat:* hit rate drops below 85% — often versioning bug or event consumer stopped deleting keys.
+
+## CDN cache key pitfalls
+
+Vary header mistakes cache user-specific HTML for everyone. Authenticated pages usually skip CDN unless cache key includes session — usually not worth it. Test cache HIT/MISS with curl and Age header after deploy.
+
+## Field notes on performance caching layers strategy
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

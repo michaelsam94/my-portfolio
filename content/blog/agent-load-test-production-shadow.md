@@ -7,105 +7,235 @@ dateModified: "2026-03-31"
 tags: ["AI", "Agent", "Load"]
 keywords: "agent, load, test, production, shadow, ai, engineering, architecture"
 faq:
-  - q: "What is Load Test Production Shadow?"
-    a: "Load Test Production Shadow covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Load Test Production Shadow?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Load Test Production Shadow?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Load Test Production Shadow fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Load Test Production Shadow should be observable in production and safe to change in small diffs."
+  - q: "What is shadow load testing in production?"
+    a: "Shadow testing duplicates a slice of real production traffic to a parallel stack — or replays captured requests — without serving responses to users. The shadow path exercises new code, model versions, or infra at production scale and shape while the primary path handles live traffic."
+  - q: "How is shadow testing different from synthetic load testing?"
+    a: "Synthetic tests use scripted scenarios and guessed payload distributions. Shadow traffic preserves header mixes, payload sizes, auth patterns, and edge-case query shapes that scripts miss — especially important for agent APIs with long prompts and tool-call JSON variance."
+  - q: "What traffic percentage is safe to shadow?"
+    a: "Start at 0.1–1% mirrored requests, or async replay from sampled logs at controlled QPS. Increase only when shadow stack cost, downstream side effects, and observability are proven isolated. Never shadow writes to shared databases without a sandbox sink."
+  - q: "Can you shadow test LLM agent endpoints without doubling token cost?"
+    a: "Yes — shadow at the gateway with truncated prompts, cached embeddings, or a cheaper stub model for load shape while separately validating quality on a smaller golden set. Full model shadow is for pre-launch validation windows with explicit budget caps."
 ---
-Most teams encounter load test production shadow after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Staging passed k6 at 500 RPS with mock responses. Production launch day, the agent API melted at 120 RPS — because real prompts averaged 4,200 tokens, tool schemas bloated JSON bodies, and forty percent of requests triggered retrieval fan-out to a vector store staging never exercised at concurrent depth.
 
-When load test production shadow is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Synthetic load tests answer "can the server accept connections?" Shadow load testing in production answers "does this stack survive *our* traffic?" — the mix of long agent prompts, streaming SSE connections, embedding cache misses, and retry storms that only appear when real users and real integrations show up.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+This article covers shadow traffic architecture for agent platforms: mirroring safely, replaying from logs, controlling cost, and reading results without taking down the primary path.
 
-Solid AI engineering turns load test production shadow from a recurring argument into a documented pattern with tests and an owner.
+## Shadow vs canary vs synthetic
 
-## Design principles that survive production
+| Approach | Traffic source | User impact | Best for |
+|----------|----------------|-------------|----------|
+| **Synthetic** | Scripts | None | Baseline capacity, regression in CI |
+| **Canary** | Real, routed | Small % see new version | Release validation |
+| **Shadow** | Real, duplicated | None (responses discarded) | Scale proof, model/infra comparison |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent load test production shadow bugs hide.
+Shadow is not a release mechanism — users never hit the shadow stack's response. It is an observability and capacity instrument: compare latency histograms, error rates, queue depth, and GPU utilization between primary and shadow under identical load shape.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for load test production shadow, you do not yet understand the behavior you shipped.
+For agent systems, shadow excels when:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+- Prompt length distribution has heavy tails synthetic scripts underestimate.
+- Tool-call loops create variable fan-out (1–15 downstream HTTP calls per request).
+- Streaming connections hold resources for 30–120 seconds.
+- New embedding models or retrieval indexes need production query patterns before cutover.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent load test production shadow flows so duplicates are harmless or detectable.
+## Architecture patterns
 
-## Implementation patterns
+### Inline mirror at the gateway
 
-A practical baseline for load test production shadow in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent load test production shadow changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Load Test Production Shadow: typed boundary + structured errors
-export async function handleLoadTestProductionShadow(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-load-test-production-shadow");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+The edge proxy duplicates requests to shadow upstream after forwarding to primary:
 
 ```
+Client → Gateway → Primary agent service → response to client
+              └→ Shadow agent service → 204 / discard
+```
 
+Envoy example with `request_mirror_policies`:
 
-## Operational concerns
+```yaml
+# envoy shadow cluster fragment
+routes:
+  - match: { prefix: "/v1/agent" }
+    route:
+      cluster: agent_primary
+      request_mirror_policies:
+        - cluster: agent_shadow
+          runtime_fraction:
+            default_value:
+              numerator: 1
+              denominator: 1000   # 0.1%
+```
 
-Alert on user-visible symptoms for load test production shadow — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Shadow cluster points to isolated deployment with:
 
-Production agent load test production shadow work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+- Separate database read replicas or synthetic sink for writes
+- Distinct rate-limit buckets so shadow cannot starve primary
+- `x-shadow-traffic: true` header injected for downstream filtering
 
-Rollouts for load test production shadow benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+### Async replay from access logs
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Safer for write-heavy paths: sample sanitized requests to object storage, replay at controlled QPS from a worker fleet:
 
-## Security and compliance angles
+```python
+# replay/shadow_worker.py
+import asyncio
+import aiohttp
+import json
+from datetime import datetime
 
-Even when load test production shadow is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+SHADOW_URL = "https://agent-shadow.internal/v1/agent/run"
+MAX_QPS = 50
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent load test production shadow so security reviews do not rely on tribal knowledge.
+async def replay_record(session: aiohttp.ClientSession, record: dict):
+    headers = {k: v for k, v in record["headers"].items() if k.lower() != "host"}
+    headers["x-shadow-replay"] = "true"
+    headers["x-original-timestamp"] = record["timestamp"]
+    async with session.post(
+        SHADOW_URL,
+        headers=headers,
+        json=record["body"],
+        timeout=aiohttp.ClientTimeout(total=120),
+    ) as resp:
+        await resp.read()  # drain body, discard
 
-## Testing strategy
+async def run_batch(records):
+    sem = asyncio.Semaphore(MAX_QPS)
+    async with aiohttp.ClientSession() as session:
+        async def bounded(r):
+            async with sem:
+                await replay_record(session, r)
+        await asyncio.gather(*[bounded(r) for r in records])
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that load test production shadow depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Replay preserves temporal clustering — bursts after marketing emails, Monday morning spikes — that uniform synthetic RPS hides.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+### Service mesh traffic mirroring
 
-## Migration and evolution
+Istio `VirtualService` mirror block:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent load test production shadow functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: agent-api
+spec:
+  hosts: [agent-api.prod.svc.cluster.local]
+  http:
+    - route:
+        - destination:
+            host: agent-api.prod.svc.cluster.local
+          weight: 100
+      mirror:
+        host: agent-api-shadow.prod.svc.cluster.local
+      mirrorPercentage:
+        value: 0.5
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where load test production shadow spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Mesh mirroring copies at L7 including headers; verify shadow backends strip auth cookies that should not replay to alternate tenants.
 
-## Related concepts
+## Side-effect isolation — the non-negotiable rule
 
-Load Test Production Shadow intersects with broader ai topics — see companion notes on [agent-load patterns](https://blog.michaelsam94.com/agent-load/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Shadow traffic that creates tickets, charges cards, or sends email is an incident. Enforce isolation:
+
+**Write path guards.** Middleware rejects mutating operations unless `x-shadow-traffic` is set, routing to `/dev/null` sinks or in-memory stores:
+
+```typescript
+export function shadowWriteGuard(req: Request, res: Response, next: NextFunction) {
+  if (req.headers["x-shadow-traffic"] === "true" && req.method !== "GET") {
+    if (process.env.SHADOW_SINK === "noop") {
+      return res.status(204).end();
+    }
+    req.shadowMode = true; // repositories use ShadowTicketRepo
+  }
+  next();
+}
+```
+
+**Tool sandbox.** Agent shadow instances register stub tools — CRM writes log to Kafka topic `shadow.tool_calls`, not Salesforce.
+
+**LLM budget caps.** Shadow model router enforces daily token ceiling; overflow returns cached responses or 429 to replay workers.
+
+Document isolation in runbooks; audit quarterly with chaos tests that intentionally send shadow headers to primary write paths in staging.
+
+## Measuring agent-specific saturation
+
+Standard CPU/memory miss agent bottlenecks. Shadow comparisons should dashboard:
+
+| Signal | Primary vs shadow delta indicates |
+|--------|-----------------------------------|
+| SSE connection count | Streaming handler leaks |
+| p95 time-to-first-token | Model queue or GPU scheduling |
+| Retrieval QPS per agent request | Index under-provisioned |
+| Embedding cache hit rate | Memory pressure on cache tier |
+| Tool-call timeout rate | Downstream dependency limits |
+| GPU KV cache utilization | Batch size misconfig on shadow |
+
+Compare **histograms**, not just averages. Agent latency is multi-modal: cache hits at 200ms, cold retrieval at 8s. Shadow replay should use Mann-Whitney or KS tests in analysis notebooks — eyeballing p50 hides bimodal failure.
+
+Example Prometheus recording rule:
+
+```yaml
+- record: agent:shadow:ttft_p95_ratio
+  expr: |
+    histogram_quantile(0.95, sum(rate(http_ttft_bucket{stack="shadow"}[5m])) by (le))
+    /
+    histogram_quantile(0.95, sum(rate(http_ttft_bucket{stack="primary"}[5m])) by (le))
+```
+
+Alert when ratio > 1.25 sustained 15 minutes during shadow campaigns.
+
+## Cost control for LLM shadow paths
+
+Full-fidelity model shadow doubles inference spend. Tiered approach:
+
+1. **Shape-only shadow** — gateway truncates prompts to 512 tokens, uses small model; validates autoscaling and connection handling.
+2. **Sampled quality shadow** — 1% full model for eval against golden outputs.
+3. **Time-boxed full shadow** — 48-hour window before major launch with finance-approved budget.
+
+Tag cloud costs with `stack=shadow` labels on every resource. Finance should see shadow as a line item, not a mystery spike.
+
+## Security and compliance
+
+Production request logs contain PII and secrets. Before replay:
+
+- Strip `Authorization`, cookies, and query tokens in log pipeline.
+- Replace user IDs with stable pseudonyms mapping to fixture accounts in shadow DB.
+- Block replay of admin or billing routes unless redaction pipeline is certified.
+- Retain sampled payloads encrypted; restrict replay worker IAM to read-only on log bucket.
+
+Legal review may classify shadow replay as processing production personal data — document lawful basis and retention limits.
+
+## Running a shadow campaign
+
+A practical playbook:
+
+1. **Hypothesis** — "Shadow index v2 handles 2× retrieval QPS at equal p95 TTFT."
+2. **Scope** — 0.5% mirror, 24 hours, read-only agent paths.
+3. **Pre-flight** — shadow stack at parity with primary (instance types, limits); dashboards cloned with `stack` label.
+4. **Execute** — ramp 0.1% → 0.5% over two hours; watch error budget burn on primary (mirroring adds gateway CPU).
+5. **Analyze** — compare saturation metrics; run retrieval quality eval on sampled shadow responses if full model.
+6. **Decide** — promote index, scale shadow cluster to primary, or rollback and file capacity ticket.
+
+Post-mortem template includes "was shadow representative?" — if marketing ran a flash campaign during the window, note non-stationarity.
+
+## When shadow testing misleads
+
+**Cold shadow caches.** First hours understate retrieval latency. Warm caches with replay pre-period or compare after steady state.
+
+**Different feature flags.** Shadow must mirror flag state or behavior diverges for reasons unrelated to the hypothesis.
+
+**Missing WebSocket shadow.** Mirroring HTTP POST but not persistent SSE understates connection memory.
+
+**Downstream throttling.** Third-party APIs rate-limit shadow IPs separately; stub externals consistently.
 
 ## The takeaway
 
-Load Test Production Shadow rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent load test production shadow becomes a maintainable asset instead of incident fuel.
+Shadow load testing closes the gap between staging heroics and production reality for agent platforms. Mirror or replay real traffic at controlled fractions, isolate side effects ruthlessly, compare agent-specific signals beyond CPU, and cap LLM spend. Used well, shadow proves capacity and catches retrieval and streaming regressions before they become user-facing — without asking customers to load-test your next release.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Envoy request mirroring](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-field-config-route-v3-routeaction-request-mirror-policies) — inline traffic duplication
+- [Istio traffic mirroring](https://istio.io/latest/docs/tasks/traffic-management/mirroring/) — mesh-based shadow routing
+- [k6 execution scenarios](https://grafana.com/docs/k6/latest/using-k6/scenarios/) — complement shadow with synthetic baselines
+- [Google SRE: load testing](https://sre.google/sre-book/load-balancing-datacenter/) — capacity planning context
+- [OpenTelemetry trace sampling](https://opentelemetry.io/docs/concepts/sampling/) — correlate shadow and primary requests in analysis

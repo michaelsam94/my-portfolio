@@ -1,0 +1,325 @@
+{
+  "results": [
+    {
+      "slug": "vector-db-sharding-scaling",
+      "status": "done",
+      "words": 1254,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-accessibility-keyboard-navigation",
+      "status": "done",
+      "words": 1316,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "system-design-ecommerce-checkout",
+      "status": "done",
+      "words": 1618,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "system-design-file-storage-dropbox",
+      "status": "done",
+      "words": 1275,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-signals-fine-grained-reactivity",
+      "status": "done",
+      "words": 1273,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-components-form-association",
+      "status": "done",
+      "words": 1285,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-will-change-sparingly",
+      "status": "done",
+      "words": 1300,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "variable-fonts-performance-ux",
+      "status": "done",
+      "words": 1263,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "spring-boot-vs-ktor-2026",
+      "status": "done",
+      "words": 1315,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-selective-hydration",
+      "status": "done",
+      "words": 1412,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-stale-ui-patterns",
+      "status": "done",
+      "words": 1264,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "vector-search-hnsw-tuning",
+      "status": "done",
+      "words": 1395,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "supply-chain-dependency-pinning",
+      "status": "done",
+      "words": 1371,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "testing-test-doubles-mocks-stubs",
+      "status": "done",
+      "words": 1335,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-accessibility-screen-reader-testing",
+      "status": "done",
+      "words": 1391,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "typescript-strict-null-checks-migration",
+      "status": "done",
+      "words": 1650,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-back-forward-cache",
+      "status": "done",
+      "words": 1357,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-code-splitting-granularity",
+      "status": "done",
+      "words": 1419,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-command-palette-keyboard",
+      "status": "done",
+      "words": 1512,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-data-table-virtualization",
+      "status": "done",
+      "words": 1288,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-filter-chip-interfaces",
+      "status": "done",
+      "words": 1422,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-inline-validation-timing",
+      "status": "done",
+      "words": 1419,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-islands-architecture",
+      "status": "done",
+      "words": 1498,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-loading-state-hierarchy",
+      "status": "done",
+      "words": 1422,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-main-thread-work",
+      "status": "done",
+      "words": 1576,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-maintenance-mode-page",
+      "status": "done",
+      "words": 1576,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-multi-step-form-wizard",
+      "status": "done",
+      "words": 1436,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-network-status-indicator",
+      "status": "done",
+      "words": 1532,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-optimistic-navigation-ui",
+      "status": "done",
+      "words": 1439,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-password-strength-meter",
+      "status": "done",
+      "words": 1588,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-requestidlecallback-patterns",
+      "status": "done",
+      "words": 1409,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-resize-observer-layout",
+      "status": "done",
+      "words": 1407,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-resumability-qwik",
+      "status": "done",
+      "words": 1576,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-search-autocomplete-debounce",
+      "status": "done",
+      "words": 1396,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-service-worker-stale-while-revalidate",
+      "status": "done",
+      "words": 1425,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-sidebar-collapse-responsive",
+      "status": "done",
+      "words": 1301,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-status-page-integration",
+      "status": "done",
+      "words": 1325,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-tab-navigation-aria",
+      "status": "done",
+      "words": 1295,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-third-party-script-impact",
+      "status": "done",
+      "words": 1255,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-performance-toast-queue-management",
+      "status": "done",
+      "words": 1336,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "typescript-conditional-mapped-types",
+      "status": "done",
+      "words": 1559,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "web-storage-indexeddb-patterns",
+      "status": "done",
+      "words": 1430,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "seo-javascript-rendering-crawl",
+      "status": "done",
+      "words": 1258,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "seo-meta-robots-noindex-patterns",
+      "status": "done",
+      "words": 1332,
+      "bad": false,
+      "faq": 3
+    },
+    {
+      "slug": "system-design-rate-limiter",
+      "status": "done",
+      "words": 1355,
+      "bad": false,
+      "faq": 3
+    }
+  ],
+  "total": 45,
+  "done": 45,
+  "check": [],
+  "min_words": 1254,
+  "max_words": 1650,
+  "all_ge_1200": true
+}

@@ -3,7 +3,7 @@ title: "Running llama.cpp on Mobile"
 slug: "on-device-llm-llama-cpp-mobile"
 description: "Run local LLMs on iOS and Android with llama.cpp: GGUF quantization, memory budgets, JNI/ Swift integration, and production patterns for on-device inference."
 datePublished: "2025-08-20"
-dateModified: "2025-08-20"
+dateModified: "2026-07-17"
 tags: ["AI", "Mobile", "On-Device", "LLM"]
 keywords: "llama.cpp mobile, GGUF quantization, on-device LLM iOS Android, local LLM inference, mobile AI"
 faq:
@@ -195,6 +195,56 @@ Set user expectations — "on-device" doesn't mean ChatGPT speed on 2020 hardwar
 Gate model load on available RAM and thermal state; expose "on-device AI" as opt-in in settings for users on older phones. Hash-verify downloaded GGUF files before load — CDN bitrot and partial downloads cause obscure crash loops. Log aggregate tok/s and OOM rate, never prompt text, in your analytics pipeline. App Store review notes should mention optional large downloads and battery impact. Maintain a matrix of supported models per device tier in docs support can reference. When Apple or Google updates OS GPU drivers, rerun benchmarks — Metal and Vulkan performance shifts between OS versions more than app releases.
 
 Quantize to Q4_K_M minimum for usable speed on phone — Q8 models quality gains don't justify 3× latency on battery power.
+
+## JNI threading and Swift bridging
+
+Never call `llama_decode` on the Android main thread — ANR within seconds. Pattern:
+
+```kotlin
+class LlamaEngine(private val modelPath: String) {
+    private val scope = CoroutineScope(Dispatchers.Default.limitedParallelism(1))
+
+    fun generate(prompt: String, onToken: (String) -> Unit) = scope.launch {
+        nativeGenerate(modelPath, prompt) { token -> onToken(token) }
+    }
+}
+```
+
+iOS: wrap in `Task.detached` and expose `AsyncStream<String>` to SwiftUI. Single-flight inference queue — two concurrent generations on one model doubles RAM for KV caches.
+
+## Context window budgeting
+
+Mobile apps crash from KV cache growth before users hit "max tokens." Cap `n_ctx` per device tier:
+
+| Tier | RAM free | n_ctx | max output |
+|------|----------|-------|------------|
+| Standard | <3 GB | 2048 | 256 tokens |
+| Pro | 4–6 GB | 4096 | 512 tokens |
+| Flagship | >6 GB | 8192 | 1024 tokens |
+
+Truncate input with summarization chunking — do not silently drop system prompt to fit user paste.
+
+## GGUF download integrity
+
+Host models on CDN with SHA256 in manifest; verify hash before first load. Partial downloads from interrupted cellular corrupt inference — atomic rename after verify.
+
+## Token streaming UI patterns
+
+Show first token within 500ms target via streaming; cancel button must call native `abort` to free KV cache immediately — users who navigate away mid-generation leak RAM otherwise.
+
+## Licensing notice in app
+
+OSS model licenses (Llama, Apache) require attribution screen in About — legal review before App Store submit. Some corporate policies block Llama weights entirely — remote config disable.
+
+## Watchdog timer on generation
+
+Kill inference after 120s wall clock — runaway generation on adversarial prompt drains battery. Return partial output with "truncated" flag.
+## Context cache clearing on background
+
+iOS background task may kill app — persist generation state or discard cleanly; partial tokens in UI confuse users on resume.
+## App Store review notes for on-device LLM
+
+Document model purpose (summarization not medical advice) in review notes — Apple requests clarity on on-device inference scope. Include battery impact disclaimer in App Review attachment.
 
 ## Resources
 

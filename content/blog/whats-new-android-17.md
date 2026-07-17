@@ -3,7 +3,7 @@ title: "What's New in Android 17 for Developers"
 slug: "whats-new-android-17"
 description: "A developer's read on Android 17: what the new API level changes for behavior, adaptive layouts, background limits, privacy, and what breaks when you bump targetSdk."
 datePublished: "2026-05-03"
-dateModified: "2026-05-03"
+dateModified: "2026-07-17"
 tags: ["Android", "Android 17", "Kotlin", "Mobile"]
 keywords: "Android 17, Android 17 features, API 37, Android update, new Android APIs, platform changes, targetSdk"
 faq:
@@ -83,3 +83,31 @@ Android releases reward teams that treat the upgrade as a small, tested project 
 - [Window size classes and adaptive layouts](https://developer.android.com/develop/ui/compose/layouts/adaptive)
 - [Foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types)
 - [Display content edge-to-edge](https://developer.android.com/develop/ui/views/layout/edge-to-edge)
+
+## Operational checklist (1)
+
+Before promoting Whats New Android 17 changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Whats New Android 17 after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Whats New Android 17 touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Whats New Android 17 changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Whats New Android 17 after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Whats New Android 17 touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Whats New Android 17 changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.

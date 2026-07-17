@@ -3,16 +3,18 @@ title: "Tuning Chunk Size and Overlap"
 slug: "rag-chunk-overlap-tuning"
 description: "Tune RAG chunk size and overlap for your corpus: how token windows, stride, and content type affect retrieval recall, precision, and generation quality."
 datePublished: "2024-11-21"
-dateModified: "2024-11-21"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Embeddings", "Retrieval"]
 keywords: "chunk size tuning, chunk overlap RAG, text splitting, retrieval recall, token window, RAG optimization"
 faq:
-  - q: "What is a good starting chunk size for RAG?"
-    a: "A common starting point is 512 tokens with 50–100 tokens of overlap for general prose documentation. Code and API references often need smaller chunks around 256 tokens because semantic units are shorter. Legal and policy documents sometimes need 1024 tokens to keep clauses intact. Always validate against your own eval set rather than copying defaults."
-  - q: "Does more overlap always improve retrieval?"
-    a: "Overlap helps when answers span chunk boundaries, but excessive overlap bloats your index and returns near-duplicate chunks that crowd out diverse results. Beyond 20–25% overlap relative to chunk size, marginal recall gains usually shrink while storage and latency costs keep growing. Measure duplicate chunk rate in your top-k results before increasing overlap further."
-  - q: "Should chunk size match the embedding model's max input?"
-    a: "Chunks should be at or below the embedding model's context limit, but matching the max exactly is rarely optimal. Smaller chunks produce more precise retrieval; larger chunks preserve surrounding context. The embedding limit is a ceiling, not a target — most production systems chunk well below it."
+  - q: "What overlap percentage works for procedural docs?"
+    a: "15–20% of chunk size when steps span boundaries. Runbooks with numbered steps often need 80–128 token overlap on 512-token chunks."
+  - q: "When does overlap hurt more than help?"
+    a: "When top-k returns three near-duplicate chunks differing only by overlap region — reduces diversity and wastes context window."
+  - q: "How overlap interacts with hybrid search?"
+    a: "Duplicate chunks inflate BM25 IDF oddly and create redundant vector neighbors. Deduplicate by parent section ID at query time if overlap exceeds 25%."
+  - q: "Should overlap differ by embedding model?"
+    a: "Re-evaluate when switching models — smaller effective context models may need more overlap to preserve boundary context in each chunk embedding."
 ---
 
 Your RAG pipeline retrieved the second half of a numbered procedure and the model told users to "complete step 5" without mentioning that step 5 only makes sense after the firewall rule from step 4. The chunk boundary fell between steps 4 and 5. Chunk size and overlap are not indexer trivia — they determine whether the right context survives the trip from document to embedding to top-k results.
@@ -113,6 +115,34 @@ When chunk overlap tuning misbehaves in production, work top-down instead of gue
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Token counting consistency
+
+Chunk overlap tuning must use same tokenizer as embedding model — character-based splitters misestimate overlap when switching from `text-embedding-3-small` to a model with different BPE boundaries. Re-measure overlap in tokens after any embed model change.
+
+## Sentence-boundary overlap tuning
+
+When using sentence-aware splitters, set overlap to span at least one full sentence beyond the boundary — partial-sentence overlap fragments embeddings because the model sees truncated syntax. For 512-token chunks, measure overlap in sentences (typically 1–2) not only token count.
+
+## Evaluating overlap on multi-step procedures
+
+Build eval questions that explicitly require step N and step N+1 context — "What prerequisite applies before step 5?" If recall fails only on those questions, increase overlap or switch to parent-document retrieval before enlarging chunk size globally.
+
+## Storage cost tradeoff math
+
+Overlap at 20% on 10M chunks adds ~2M effective duplicate tokens in index storage — at $0.10/GB/month and 6KB average chunk, calculate before accepting default overlap from tutorial configs.
+
+## Headings in overlap regions
+
+When chunking markdown, ensure overlap includes parent heading text prepended to chunk body at embed time — overlap without heading context still retrieves ambiguously in hierarchical docs.
+
+## Overlap with hierarchical indices
+
+Multi-level indices (section → paragraph chunks) reduce overlap need — child chunks inherit section embedding context via metadata prepend at query time instead of raw text overlap duplication.
+
+## Quick reference
+
+512 tokens / 64 overlap for prose; 256 / 32 for API refs; re-evaluate after embedding model change.
 
 ## Resources
 

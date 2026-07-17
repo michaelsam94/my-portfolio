@@ -97,6 +97,30 @@ A2A is worth reaching for when you're building an ecosystem: a marketplace of ag
 
 The value shows up at the boundaries between organizations. That's the same lesson from any integration standard: [OCPP for EV chargers](https://blog.michaelsam94.com/how-i-architected-an-ev-charging-platform/) exists so vendors don't hand-integrate with each other, and A2A exists so agent builders don't either. When you feel the pain of N×M custom agent integrations, that's the signal A2A was designed for.
 
+## Capability discovery vs static tool lists
+
+A2A agents advertise skills via agent cards. Cache cards with TTL but refresh on 404 skill invocation — stale cards after deploy cause false "agent unavailable" errors. Version agent cards semver; breaking schema bumps require dual-publish during migration window.
+
+## Cross-vendor trust boundaries
+
+A2A between tenant-owned agents and vendor-hosted agents needs mTLS or signed JWT on every task handoff. Treat external agent responses as untrusted input — prompt injection travels agent-to-agent same as user-to-agent.
+
+## Production validation for To Agent A2A Protocol Explained Supplement 0
+
+Ship behind a flag when touching To Agent A2A Protocol Explained Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing To Agent A2A Protocol Explained Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
+## Production validation for To Agent A2A Protocol Explained Supplement 1
+
+Ship behind a flag when touching To Agent A2A Protocol Explained Supplement 1; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing To Agent A2A Protocol Explained Supplement 1. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [A2A Project — official documentation](https://a2a-protocol.org/)

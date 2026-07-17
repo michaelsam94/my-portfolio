@@ -3,7 +3,7 @@ title: "WorkManager for Reliable Background Work"
 slug: "workmanager-reliable-background-work"
 description: "How WorkManager guarantees Android background tasks survive process death, Doze, and reboots — constraints, chaining, expedited work, and the failure modes to avoid."
 datePublished: "2026-04-20"
-dateModified: "2026-04-20"
+dateModified: "2026-07-17"
 tags: ["Android", "WorkManager", "Kotlin", "Background Work"]
 keywords: "WorkManager, Android background tasks, deferred work, background jobs, Android scheduling, constraints, expedited work"
 faq:
@@ -139,3 +139,19 @@ WorkManager isn't glamorous, and that's the point. Enqueue the work, declare the
 - [Guide to background work](https://developer.android.com/develop/background-work/background-tasks)
 - [Kotlin coroutines guide](https://kotlinlang.org/docs/coroutines-guide.html)
 - [Hilt and WorkManager integration](https://developer.android.com/training/dependency-injection/hilt-jetpack#workmanager)
+
+## Operational checklist (1)
+
+Before promoting Workmanager Reliable Background Work changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Workmanager Reliable Background Work after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Workmanager Reliable Background Work touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Workmanager Reliable Background Work changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.

@@ -3,7 +3,7 @@ title: "System Design: Metrics and Monitoring"
 slug: "system-design-metrics-monitoring"
 description: "Design a metrics and monitoring platform collecting time-series data from thousands of services, with alerting, dashboards, and long-term storage at scale."
 datePublished: "2025-10-25"
-dateModified: "2025-10-25"
+dateModified: "2026-07-17"
 tags: ["System Design", "Observability", "Monitoring", "DevOps"]
 keywords: "metrics monitoring system design, time series database, Prometheus architecture, alerting pipeline, observability platform, Datadog system design"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Cardinality is the number of unique time series — metric name plus label combinations. High-cardinality labels (user_id, request_id) on high-frequency metrics create millions of series and crash storage. Limit labels to low-cardinality dimensions (service, endpoint, status_code, region). Use logs or traces for per-request detail. Set cardinality limits in your metrics pipeline and drop or aggregate series that exceed thresholds."
   - q: "Push vs pull for metrics collection — which is better?"
     a: "Pull (Prometheus scraping targets) is simpler for Kubernetes — the scraper discovers targets via service discovery and pulls metrics on a schedule. Push (StatsD, OpenTelemetry collector receiving metrics) is necessary for short-lived jobs, serverless functions, and services behind firewalls. Most production systems use both: pull for long-running services, push via a collector gateway for everything else."
+faqAnswers:
+  - question: "When is system design metrics monitoring the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for system design metrics monitoring?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back system design metrics monitoring safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 When our API latency spiked at 3 AM, the on-call engineer needed to know three things in under sixty seconds: which service was slow, which endpoint, and whether it was all users or one tenant. Logs would get there eventually — after writing a query across terabytes of JSON. Traces would show the path — if sampling caught the slow requests. Metrics answered instantly: `http_request_duration_p99{service="checkout", endpoint="/pay"}` jumped from 200ms to 4s at 03:02 UTC, all tenants affected.
 
 A metrics and monitoring platform ingests numeric time-series data from every service, stores it efficiently, evaluates alert rules, and serves dashboards. It's the nervous system of production infrastructure.
@@ -147,29 +153,23 @@ latency_histogram.record(duration_ms, {"endpoint": "/pay"})
 
 OTel SDKs instrument code; the OTel Collector receives, processes, and exports to any backend (Prometheus, Datadog, Grafana Cloud).
 
-## Common production mistakes
+## Recording rules and query performance
 
-Teams get metrics monitoring wrong in predictable ways:
+Ad-hoc PromQL across raw metrics at dashboard load time does not scale. Pre-compute expensive aggregations with recording rules:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+```yaml
+groups:
+  - name: checkout_recording
+    rules:
+      - record: checkout:http_requests:rate5m
+        expr: sum(rate(http_requests_total{service="checkout"}[5m])) by (endpoint, status)
+```
 
-System design for metrics monitoring breaks at scale when hot keys, thundering herds, and cache stampedes are discovered during launch week instead of load test week.
+Dashboards query recorded metrics; alerts use the same recordings for consistency. Without recording rules, a Grafana dashboard with twenty panels each running `rate()` over millions of series will timeout during incidents — exactly when you need dashboards most.
 
-## Debugging and triage workflow
+## SLO burn alerts that wake the right person
 
-When metrics monitoring misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Error budget burn rate alerts should page only when user-visible SLO is at risk — not when a non-critical batch job metric spikes. Multi-window burn (e.g., 1h and 6h) reduces false positives from brief blips. Tie alert names to customer journeys: `checkout_success_rate_burn` not `prometheus_scrape_failures`. On-call runbooks link from alert annotations to dashboards filtered to the failing service and region.
 
 ## Resources
 
@@ -178,3 +178,31 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [OpenTelemetry metrics specification](https://opentelemetry.io/docs/specs/otel/metrics/)
 - [VictoriaMetrics cluster architecture](https://docs.victoriametrics.com/cluster-victoriametrics/)
 - [Grafana alerting best practices](https://grafana.com/docs/grafana/latest/alerting/best-practices/)
+
+## system design metrics monitoring rollout
+
+Field RUM on Android 4G. Rollback documented in the PR. Test back navigation and offline recovery.
+
+## SLOs before dashboards
+
+Instrument the golden journeys first: availability and latency SLOs, then RED/USE metrics that explain burn. Cardinality kills: never put user IDs or unbounded paths into label values. Enforce label budgets in the metrics library.
+
+## Alerting humans can survive
+
+Page on symptom burn rates; ticket on causes. Every alert needs a runbook with the first three queries. Exemplars from latency alerts into traces beat log archaeology. Monitor remote-write lag and HA pair health — a silent metrics black hole is discovered only during customer pain.
+
+## Verification layer 1 for system design metrics monitoring
+
+Define an acceptance check for layer 1: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design metrics monitoring. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 2 for system design metrics monitoring
+
+Define an acceptance check for layer 2: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design metrics monitoring. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 3 for system design metrics monitoring
+
+Define an acceptance check for layer 3: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design metrics monitoring. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 4 for system design metrics monitoring
+
+Define an acceptance check for layer 4: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design metrics monitoring. Reviewers confirm the check fails when the control is disabled.

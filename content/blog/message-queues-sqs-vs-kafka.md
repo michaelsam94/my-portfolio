@@ -3,8 +3,8 @@ title: "SQS vs Kafka: Choosing a Backbone"
 slug: "message-queues-sqs-vs-kafka"
 description: "Compare AWS SQS and Apache Kafka for message-driven architectures: throughput, ordering, replay, operational overhead, and decision criteria."
 datePublished: "2025-05-24"
-dateModified: "2025-05-24"
-tags: ["BE", "Message Queues", "AWS", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "SQS vs Kafka, message queue comparison, AWS SQS vs Apache Kafka, event streaming vs message queue, Kafka vs SQS when to use"
 faq:
   - q: "When should I choose SQS over Kafka?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can I use both SQS and Kafka in the same system?"
     a: "Yes. A common pattern uses Kafka as the central event bus for domain events and SQS for task queues between specific services. Kafka handles 'what happened' (event log); SQS handles 'do this work' (job dispatch). Connect them with bridge consumers that read from Kafka topics and enqueue SQS messages."
 ---
-
 Your team needs asynchronous messaging. Someone says Kafka because Netflix uses it. Someone else says SQS because it is managed and they do not want to operate a cluster. Both are correct for different problems. Choosing wrong means either operating Kafka infrastructure for a simple job queue or hitting SQS throughput limits on an event streaming pipeline.
 
 SQS is a message queue — point-to-point, consume-and-delete, managed. Kafka is an event log — append-only, replayable, self-managed (or MSK/confluent). The choice depends on your throughput needs, ordering requirements, replay semantics, and tolerance for operational complexity.

@@ -1,0 +1,103 @@
+{
+  "done": 14,
+  "total": 30,
+  "check": [
+    {
+      "slug": "typescript-utility-types-app-patterns",
+      "words": 462,
+      "status": "check"
+    },
+    {
+      "slug": "typescript-zod-runtime-validation",
+      "words": 451,
+      "status": "check"
+    },
+    {
+      "slug": "variable-fonts-performance-ux",
+      "words": 586,
+      "status": "check"
+    },
+    {
+      "slug": "vector-search-ivf-pq-index",
+      "words": 723,
+      "status": "check"
+    },
+    {
+      "slug": "wcag-22-new-criteria-implementation",
+      "words": 546,
+      "status": "check"
+    },
+    {
+      "slug": "web-accessibility-aria-patterns",
+      "words": 681,
+      "status": "check"
+    },
+    {
+      "slug": "web-color-functions-oklch",
+      "words": 649,
+      "status": "check"
+    },
+    {
+      "slug": "web-dialog-element-modal",
+      "words": 1083,
+      "status": "check"
+    },
+    {
+      "slug": "web-forms-native-validation",
+      "words": 1072,
+      "status": "check"
+    },
+    {
+      "slug": "web-htmx-server-driven-ui",
+      "words": 624,
+      "status": "check"
+    },
+    {
+      "slug": "web-islands-partial-hydration",
+      "words": 1198,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-404-page-product-sites",
+      "words": 550,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-attribution-reporting-api",
+      "words": 540,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-back-forward-cache",
+      "words": 593,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-breadcrumb-navigation-seo",
+      "words": 540,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-brotli-gzip-compression",
+      "words": 540,
+      "status": "check"
+    }
+  ],
+  "samples": [
+    {
+      "slug": "voice-agents-stt-tts-pipelines",
+      "words": 1445,
+      "status": "done"
+    },
+    {
+      "slug": "vector-db-pgvector-postgres",
+      "words": 1392,
+      "status": "done"
+    },
+    {
+      "slug": "vex-vulnerability-triage-sbom",
+      "words": 1339,
+      "status": "done"
+    }
+  ]
+}

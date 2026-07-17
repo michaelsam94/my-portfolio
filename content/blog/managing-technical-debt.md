@@ -3,8 +3,8 @@ title: "Managing Technical Debt Without Stopping Delivery"
 slug: "managing-technical-debt"
 description: "How to manage technical debt without a big rewrite: track it honestly, refactor incrementally with the strangler fig pattern, and pay it down while still shipping features."
 datePublished: "2026-06-11"
-dateModified: "2026-06-11"
-tags: ["Engineering", "Refactoring", "Architecture", "Leadership"]
+dateModified: "2026-07-17"
+tags:
 keywords: "technical debt, refactoring, code quality, debt management, legacy code, strangler fig, incremental refactoring"
 faq:
   - q: "Should we stop feature work to pay down technical debt?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I convince the business to invest in technical debt?"
     a: "Translate debt into outcomes the business cares about: slower delivery, more incidents, longer onboarding. Track the interest — time lost to workarounds and bugs in specific areas — so the case is concrete rather than 'the code is ugly.'"
 ---
-
 "Technical debt" is the most abused phrase in software. It gets stretched to cover code someone dislikes, decisions made before they joined, and any refactor they'd rather be doing than the feature they're assigned. That vagueness is a problem, because when everything is debt, nothing gets prioritized, and the genuinely dangerous debt hides among the merely unfashionable. Managing technical debt well starts with being honest about what it actually is and what it's costing you.
 
 Ward Cunningham's original metaphor is precise and worth reclaiming: debt is what you take on when you ship code that's not-quite-right in order to learn or deliver faster *now*, planning to fix it later. Like financial debt, a bit of it is leverage — it gets you to market. The danger is the *interest*: the ongoing tax of working around the shortcut. Debt you never service compounds until the interest payments consume all your delivery capacity.

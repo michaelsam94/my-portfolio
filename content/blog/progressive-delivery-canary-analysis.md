@@ -4,7 +4,7 @@ seoTitle: "Progressive Delivery & Automated Canary Analysis"
 slug: "progressive-delivery-canary-analysis"
 description: "Progressive delivery with automated canary analysis: Argo Rollouts, Flagger, metrics-driven promotion, and how to roll forward without gambling production."
 datePublished: "2026-03-13"
-dateModified: "2026-03-13"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Deployment", "SRE"]
 keywords: "progressive delivery, canary analysis, Argo Rollouts, Flagger, automated canary, blue green, feature rollout"
 faq:
@@ -126,6 +126,46 @@ Document the abort path in the runbook with the exact command or GitOps revert. 
 Progressive delivery won't make bad software good. It buys you a smaller blast radius and a faster feedback loop. Automate the analysis, keep humans for the weird cases, and treat a canary abort as a successful safety system — not as a failed release train.
 
 Automate canary rollback on error rate delta, not human judgment at 3 AM — manual promote/rollback decisions fail under alert fatigue.
+
+## Metric selection for ACA
+
+Golden signals: error rate, p99 latency, saturation, synthetic checkout success. Avoid noisy metrics that fluctuate without user impact. Weight business KPI only when sample size sufficient at canary percentage.
+
+## Statistical tests vs thresholds
+
+Fixed threshold error rate under 1% works at 10% traffic. At 1% canary, use sequential probability ratio test — small samples lie with simple thresholds.
+
+## Manual promotion gates
+
+Regulated environments require human approve after automated pass — record approver and metric snapshot in deploy audit log.
+
+## Rollback automation timeout
+
+If canary analysis job loses metrics backend connectivity, default abort not promote. Missing data promoting canary caused outages when Prometheus unreachable.
+
+## Flagger metricTemplate example
+
+Flagger compares canary vs primary error-rate and latency p99 using Prometheus metrics — weight increase only when all checks pass for configured interval. Document metric queries in git next to Rollout manifest so analysis logic is reviewable.
+
+## Business metric canaries
+
+Conversion rate at 5% traffic needs enough checkout volume — B2B SaaS may need longer analysis window or synthetic canary transactions injected with test accounts. Define minimum sample size in analysis config to prevent false promote.
+
+## Shadow traffic analysis
+
+Mirror production traffic to new version without serving responses — compare latency and error processing off-path before any user-facing canary. Expensive but valuable for database migration validation.
+
+## Config-only canaries
+
+Same binary, different feature flag config — progressive delivery on ConfigMap changes catches bad flag default with smaller blast than full image swap. Argo Rollouts supports config change canary when paired with flag-aware metrics.
+
+## Kayenta-style metric comparison
+
+Netflix Kayenta compares canary vs baseline metric distributions with Mann-Whitney U test — reduces false promote on noisy conversion metric. Open source alternatives integrate with Argo Rollouts AnalysisTemplate CRD — define prometheus queries and statistical thresholds in git.
+
+## Manual judgment when metrics green but UX broken
+
+Automated analysis passes error rate while UI visually broken — canary screenshot diff or synthetic visual test optional gate. Human promotion for tier-1 customer-facing when automated checks lack visual coverage.
 
 ## Resources
 

@@ -3,16 +3,107 @@ title: "Vector Search in Postgres with pgvector"
 slug: "vector-db-pgvector-postgres"
 description: "Add vector search to Postgres with pgvector: installation, index types, similarity operators, hybrid queries, and when pgvector replaces a dedicated vector database."
 datePublished: "2026-02-27"
-dateModified: "2026-02-27"
-tags: ["AI", "Postgres", "Vector Database", "RAG"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "pgvector, Postgres vector search, HNSW, IVFFlat, embedding, similarity search, hybrid search"
 faq:
-  - q: "What is pgvector and how does it work?"
-    a: "pgvector is a Postgres extension that adds a vector data type and similarity search operators to standard PostgreSQL. You store embeddings in a vector column, create an approximate nearest neighbor index (HNSW or IVFFlat), and query with distance operators like <=> for cosine distance. It runs inside your existing Postgres instance, so vector search joins with relational data in a single SQL query without a separate vector database."
-  - q: "When should I use pgvector instead of a dedicated vector database?"
-    a: "Use pgvector when you already run Postgres, your dataset is under roughly 10 million vectors, you need SQL joins between embeddings and relational data, and your team wants one database to operate. Switch to a dedicated vector database when you need horizontal sharding beyond a single Postgres instance, sub-10ms latency at hundreds of millions of vectors, or specialized features like multi-tenancy namespaces and built-in hybrid search pipelines."
-  - q: "Which pgvector index type should I use: HNSW or IVFFlat?"
-    a: "HNSW is the better default for most workloads in 2026. It offers higher recall at the same latency, supports concurrent inserts without major degradation, and does not require a training step. IVFFlat is faster to build and uses less memory, but needs a training pass on existing data to cluster centroids and its recall drops as data grows beyond the training set. Use IVFFlat only if memory is severely constrained or you need the fastest possible index build time."
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Vector Search in Postgres with pgvector"
+slug: "vector-db-pgvector-postgres"
+description: "Add vector search to Postgres with pgvector: installation, index types, similarity operators, hybrid queries, and when pgvector replaces a dedicated vector database."
+datePublished: "2026-02-27"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "pgvector, Postgres vector search, HNSW, IVFFlat, embedding, similarity search, hybrid search"
+faq:
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-pgvector-postgres"
+slug: "vector-db-pgvector-postgres"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-pgvector-postgres"
+faq:
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-pgvector-postgres"
+slug: "vector-db-pgvector-postgres"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-pgvector-postgres"
+faq:
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vector-db-pgvector-postgres"
+slug: "vector-db-pgvector-postgres"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vector-db-pgvector-postgres"
+faq:
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Vector Search in Postgres with pgvector"
+slug: "vector-db-pgvector-postgres"
+description: "Add vector search to Postgres with pgvector: installation, index types, similarity operators, hybrid queries, and when pgvector replaces a dedicated vector database."
+datePublished: "2026-02-27"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "pgvector, Postgres vector search, HNSW, IVFFlat, embedding, similarity search, hybrid search"
+faq:
+  - q: "What is the main production risk with vector db pgvector postgres?"
+    a: "Teams ship without field measurement—vector db pgvector postgres failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vector db pgvector postgres?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vector db pgvector postgres changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 The team wanted vector search for a RAG feature and evaluated Pinecone, Weaviate, and Qdrant. Then someone asked: "Can we just use our Postgres?" We had 800,000 document chunks, already ran Postgres 16 with replication, and every query needed to join embeddings with document metadata, user permissions, and audit timestamps. Adding pgvector took an afternoon. Operating a second database would have taken a quarter. For our scale and query patterns, pgvector wasn't a compromise — it was the right tool.
@@ -175,16 +266,64 @@ Insert throughput on HNSW indexes is lower than dedicated vector databases becau
 
 Until then, pgvector in the Postgres you already run is simpler, cheaper, and more flexible.
 
-## Common production mistakes
+## Connection pooling with pgvector workloads
 
-Teams get vector db pgvector postgres wrong in predictable ways:
+PgBouncer in transaction mode works for short vector queries but breaks prepared statements unless configured. Session mode preserves prepared statements at cost of pool efficiency. For high QPS vector search:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+- Keep embedding generation **outside** the database connection—compute vector in app, pass as parameter
+- Use prepared statements for repeated query shape: `ORDER BY embedding <=> $1 LIMIT 10`
+- Set `statement_timeout` on search role to prevent runaway sequential scans
+- Separate read replica for search if writes cause replication lag affecting freshness SLAs
 
-Production implementations of vector db pgvector postgres fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Neon's serverless Postgres and similar platforms support pgvector—verify HNSW index persistence and autoscaling behavior under index build load.
+
+## Vacuum, bloat, and index health
+
+Heavy UPDATE on embedding columns bloats HNSW indexes. Schedule `VACUUM (ANALYZE)` on tables after bulk re-embed jobs. Monitor `pg_stat_user_tables.n_dead_tup`. For major model migrations, sometimes faster to `CREATE TABLE chunks_v2`, bulk load, swap names in transaction, drop old table—than UPDATE-in-place on millions of rows.
+
+```sql
+SELECT schemaname, relname, n_live_tup, n_dead_tup, last_autovacuum
+FROM pg_stat_user_tables
+WHERE relname = 'chunks';
+```
+
+Reindex after bulk delete if query planner chooses sequential scan—check with `EXPLAIN (ANALYZE, BUFFERS)`.
+
+## Hybrid search with Postgres full text
+
+Combine vector and keyword without leaving Postgres:
+
+```sql
+SELECT id, content,
+  ts_rank_cd(search_vector, plainto_tsquery('english', $2)) AS text_rank,
+  embedding <=> $1 AS vector_dist
+FROM documents
+WHERE tenant_id = $3
+  AND search_vector @@ plainto_tsquery('english', $2)
+ORDER BY (0.3 * ts_rank_cd(search_vector, plainto_tsquery('english', $2))
+         - 0.7 * (embedding <=> $1))
+LIMIT 10;
+```
+
+Tune weights from click logs. GIN index on `tsvector` column; HNSW on embedding—both must be maintained. For production hybrid at scale, consider dedicated engines—but pgvector hybrid suffices for many SaaS MVPs.
+
+## Row-level security with vectors
+
+Multi-tenant RAG on shared pgvector tables needs RLS policies matching application auth:
+
+```sql
+ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON chunks
+  USING (tenant_id = current_setting('app.tenant_id')::uuid);
+```
+
+Set `app.tenant_id` per connection from JWT middleware. ANN indexes scan before RLS filter on some Postgres versions — verify `EXPLAIN` plan includes filter early; otherwise partition by tenant.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

@@ -1,111 +1,324 @@
 ---
-title: "AI Agents: Inbox Pattern Dedup"
+title: "Inbox Pattern Dedup for Agent Event Processing"
 slug: "agent-inbox-pattern-dedup"
-description: "Inbox Pattern Dedup: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Implement the transactional inbox pattern for agent pipelines—deduplicate webhook and queue deliveries, co-locate outbox writes with domain state, and consume exactly-once semantics on at-least-once brokers."
 datePublished: "2024-11-08"
 dateModified: "2024-11-08"
-tags: ["AI", "Agent", "Inbox"]
-keywords: "agent, inbox, pattern, dedup, ai, production, engineering, architecture"
+tags: ["AI Agents", "Event-Driven", "PostgreSQL", "Reliability"]
+keywords: "inbox pattern, message deduplication, transactional inbox, agent event processing, at-least-once delivery, outbox inbox"
 faq:
-  - q: "What is Inbox Pattern Dedup?"
-    a: "Inbox Pattern Dedup covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Inbox Pattern Dedup?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Inbox Pattern Dedup?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Inbox Pattern Dedup fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Inbox Pattern Dedup should be observable in production and safe to change in small diffs."
+  - q: "How is the inbox pattern different from a generic dedup table?"
+    a: "The inbox stores incoming message IDs inside the same database transaction as domain writes—accept ticket, create run row, mark message processed atomically. A standalone dedup cache can claim a message then crash before business logic completes, leaving inconsistent state. Inbox couples receipt with effect."
+  - q: "What should the inbox dedup key be for agent events?"
+    a: "Prefer upstream message_id from the broker or webhook (SQS MessageId, Kafka record headers, GitHub X-GitHub-Delivery). Fall back to hash(source, event_type, stable_payload_fields). Never use wall-clock time or consumer offset alone."
+  - q: "Can inbox and outbox live in the same service?"
+    a: "Yes—common in agent orchestrators. Inbox ingests external triggers; outbox publishes downstream run-step events. Both use the same Postgres instance and transaction boundaries. Keep tables separate; do not reuse message IDs across directions."
+  - q: "When should processed inbox rows be deleted?"
+    a: "Archive or partition by processed_at after retention window (7–30 days). Deletes enable replay only through explicit re-ingestion with new IDs. For compliance, move to cold storage instead of hard delete if audit requires proof of handling."
 ---
-Inbox Pattern Dedup sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When inbox pattern dedup is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Slack delivered the same `app_mention` event twice. Our agent posted two identical replies, started two runs, and billed two inference calls. The consumer had **at-least-once** delivery — correct behavior. Our handler had read-check-insert dedup in Redis — **not** in the same transaction as `INSERT INTO agent_runs`. The crash window between dedup claim and run creation was milliseconds wide and happened every deploy.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+The **transactional inbox pattern** fixes this: record the incoming message ID in an inbox table **in the same database transaction** that creates the run. Duplicate deliveries hit a primary key conflict and exit without side effects. At-least-once upstream becomes effectively-once downstream.
 
-Solid AI engineering turns inbox pattern dedup from a recurring argument into a documented pattern with tests and an owner.
+## Inbox vs outbox — when to use which
 
-## Design principles that survive production
+| Pattern | Direction | Solves |
+|---------|-----------|--------|
+| Outbox | Internal → broker | Reliable publish after DB commit |
+| Inbox | External → internal | Reliable dedup on consume |
+| Inbox + outbox | Bidirectional agent hub | End-to-end saga consistency |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent inbox pattern dedup bugs hide.
+Agent platforms ingest webhooks (GitHub, Slack, Zendesk) and queue messages (SQS, Kafka). Each delivery is a candidate duplicate. The inbox is the gate before any LLM spend.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for inbox pattern dedup, you do not yet understand the behavior you shipped.
+## Schema design
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+```sql
+CREATE TABLE inbox_messages (
+  message_id      TEXT NOT NULL,
+  source          TEXT NOT NULL,          -- slack, github, sqs
+  event_type      TEXT NOT NULL,
+  payload         JSONB NOT NULL,
+  received_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at    TIMESTAMPTZ,
+  status          TEXT NOT NULL DEFAULT 'pending',  -- pending | processed | failed
+  error           TEXT,
+  run_id          UUID,
+  PRIMARY KEY (source, message_id)
+);
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent inbox pattern dedup flows so duplicates are harmless or detectable.
+CREATE INDEX inbox_pending_idx ON inbox_messages (received_at)
+  WHERE status = 'pending';
 
-## Implementation patterns
-
-A practical baseline for inbox pattern dedup in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent inbox pattern dedup changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Inbox Pattern Dedup: typed boundary + structured errors
-export async function handleInboxPatternDedup(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-inbox-pattern-dedup");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+CREATE INDEX inbox_processed_at_idx ON inbox_messages (processed_at)
+  WHERE status = 'processed';
 ```
 
+Composite primary key `(source, message_id)` prevents cross-source collision. Slack and GitHub both generate UUID-like IDs — namespace by source.
 
-## Operational concerns
+Domain table links optionally:
 
-Game-day exercises for inbox pattern dedup beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+```sql
+ALTER TABLE agent_runs ADD COLUMN inbox_message_id TEXT;
+ALTER TABLE agent_runs ADD COLUMN inbox_source TEXT;
+CREATE UNIQUE INDEX agent_runs_inbox_unique
+  ON agent_runs (inbox_source, inbox_message_id)
+  WHERE inbox_message_id IS NOT NULL;
+```
 
-Production agent inbox pattern dedup work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Transactional ingest flow
 
-Rollouts for inbox pattern dedup benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```python
+async def handle_slack_event(event: dict, message_id: str) -> None:
+    async with db.transaction():
+        # Step 1: claim inbox row — duplicate raises UniqueViolation
+        try:
+            await db.execute(
+                """
+                INSERT INTO inbox_messages (message_id, source, event_type, payload, status)
+                VALUES ($1, 'slack', $2, $3, 'pending')
+                """,
+                message_id,
+                event["type"],
+                json.dumps(event),
+            )
+        except UniqueViolation:
+            metrics.increment("inbox.duplicate_skipped")
+            return  # already handled or in progress
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+        # Step 2: domain logic in same transaction
+        run_id = uuid4()
+        await db.execute(
+            """
+            INSERT INTO agent_runs (id, agent_id, trigger_payload, inbox_source, inbox_message_id)
+            VALUES ($1, $2, $3, 'slack', $4)
+            """,
+            run_id,
+            "support-agent",
+            json.dumps(event),
+            message_id,
+        )
 
-## Security and compliance angles
+        # Step 3: mark processed
+        await db.execute(
+            """
+            UPDATE inbox_messages
+            SET status = 'processed', processed_at = now(), run_id = $1
+            WHERE source = 'slack' AND message_id = $2
+            """,
+            run_id,
+            message_id,
+        )
 
-Even when inbox pattern dedup is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+    # Step 4: after commit — enqueue async work (outbox or direct queue)
+    await queue.enqueue("execute_run", {"run_id": str(run_id)})
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent inbox pattern dedup so security reviews do not rely on tribal knowledge.
+If the transaction rolls back, the message was never marked processed — safe redelivery. If commit succeeds, duplicates skip at Step 1.
 
-## Testing strategy
+## Handling in-progress duplicates
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that inbox pattern dedup depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Two concurrent deliveries may both pass INSERT before either commits — Postgres serializes one winner. The loser gets `UniqueViolation` and returns. No Redis SETNX race.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+For long-running processing, optional **`processing` lease**:
 
-## Migration and evolution
+```sql
+ALTER TABLE inbox_messages ADD COLUMN locked_until TIMESTAMPTZ;
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent inbox pattern dedup functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+-- On ingest, if row exists and status=pending and locked_until < now(), reclaim
+UPDATE inbox_messages
+SET locked_until = now() + interval '5 minutes'
+WHERE source = $1 AND message_id = $2 AND status = 'pending'
+  AND (locked_until IS NULL OR locked_until < now())
+RETURNING *;
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where inbox pattern dedup spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Use leases only when transaction spans external IO — prefer keeping transactions short and moving LLM work post-commit.
 
-## Related concepts
+## Webhook handler with inbox dedup
 
-Inbox Pattern Dedup intersects with broader ai topics — see companion notes on [agent-inbox patterns](https://blog.michaelsam94.com/agent-inbox/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```typescript
+// handlers/slack-webhook.ts
+import { pool } from "../db";
+
+export async function slackWebhook(req: Request, res: Response) {
+  const messageId = req.headers["x-slack-request-timestamp"] + ":" + req.body.event_id;
+  // Prefer event_id from payload — unique per event
+  const stableId = req.body.event_id as string;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const insert = await client.query(
+      `INSERT INTO inbox_messages (message_id, source, event_type, payload)
+       VALUES ($1, 'slack', $2, $3)
+       ON CONFLICT (source, message_id) DO NOTHING
+       RETURNING message_id`,
+      [stableId, req.body.type, req.body]
+    );
+
+    if (insert.rowCount === 0) {
+      await client.query("ROLLBACK");
+      res.status(200).json({ ok: true, deduplicated: true });
+      return;
+    }
+
+    const runResult = await client.query(
+      `INSERT INTO agent_runs (agent_id, trigger_payload, inbox_source, inbox_message_id)
+       VALUES ($1, $2, 'slack', $3) RETURNING id`,
+      ["support-agent", req.body, stableId]
+    );
+
+    await client.query(
+      `UPDATE inbox_messages SET status = 'processed', processed_at = now(), run_id = $1
+       WHERE source = 'slack' AND message_id = $2`,
+      [runResult.rows[0].id, stableId]
+    );
+
+    await client.query("COMMIT");
+    res.status(200).json({ ok: true, run_id: runResult.rows[0].id });
+
+    // Async — outside transaction
+    await enqueueRun(runResult.rows[0].id);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+```
+
+Respond 200 to Slack even on dedup — platforms retry non-2xx indefinitely.
+
+## Queue consumer variant
+
+For SQS/Kafka, extract broker-native IDs:
+
+```python
+def inbox_key_from_sqs(record: dict) -> tuple[str, str]:
+    return ("sqs", record["messageId"])
+
+async def consume(record: dict) -> None:
+    source, message_id = inbox_key_from_sqs(record)
+    body = json.loads(record["body"])
+
+    async with db.transaction():
+        inserted = await try_inbox_insert(source, message_id, body)
+        if not inserted:
+            return
+        run_id = await create_run_from_payload(body)
+        await mark_inbox_processed(source, message_id, run_id)
+
+    await execute_run_async(run_id)
+    await ack_sqs(record)
+```
+
+Ack **after** transaction commit — acking before commit loses messages on crash; acking before inbox insert duplicates work.
+
+## Pairing inbox with outbox
+
+After run creation, publish `run.created` reliably:
+
+```python
+async with db.transaction():
+    # inbox insert + run create (as above)
+    await db.execute(
+        """
+        INSERT INTO outbox_events (aggregate_id, event_type, payload)
+        VALUES ($1, 'run.created', $2)
+        """,
+        run_id,
+        json.dumps({"run_id": str(run_id)}),
+    )
+```
+
+Outbox relay reads `outbox_events` and publishes to Kafka. Inbox guarantees no duplicate runs; outbox guarantees no lost downstream notifications.
+
+## Poison messages and failed inbox rows
+
+When processing fails after inbox insert but before `processed`:
+
+```python
+except PermanentError as e:
+    await db.execute(
+        """
+        UPDATE inbox_messages
+        SET status = 'failed', error = $1, processed_at = now()
+        WHERE source = $2 AND message_id = $3
+        """,
+        str(e), source, message_id,
+    )
+    await dlq.send(original_payload)
+```
+
+Do not delete inbox rows on failure — status `failed` blocks infinite retry loops. Operators replay from DLQ with a **new synthetic message_id** after fixing the bug, or bump handler version and reset specific rows under change control.
+
+## Retention and partitioning
+
+Inbox tables grow without bounds. Partition by month:
+
+```sql
+CREATE TABLE inbox_messages_2025_11 PARTITION OF inbox_messages
+  FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
+```
+
+Drop partitions after retention. For SOC2, export to S3 before drop.
+
+## Observability
+
+Metrics:
+
+- `inbox.duplicate_skipped` — should correlate with broker redelivery rate
+- `inbox.insert_to_process_latency` — transaction duration
+- `inbox.failed_total` — poison or schema bugs
+- `inbox.pending_age_max` — stuck messages
+
+Alert when pending rows age > 10 minutes — consumer may be down or deadlock.
+
+Trace propagation: attach `message_id` and `run_id` to OpenTelemetry spans from webhook ingress through LLM completion.
+
+## Testing inbox dedup
+
+```python
+@pytest.mark.asyncio
+async def test_duplicate_webhook_creates_one_run():
+    event = {"event_id": "Ev123", "type": "app_mention", "text": "help"}
+    await handle_slack_event(event, "Ev123")
+    await handle_slack_event(event, "Ev123")  # duplicate delivery
+
+    runs = await db.fetch("SELECT * FROM agent_runs WHERE inbox_message_id = 'Ev123'")
+    assert len(runs) == 1
+
+    inbox = await db.fetchrow(
+        "SELECT status FROM inbox_messages WHERE source = 'slack' AND message_id = 'Ev123'"
+    )
+    assert inbox["status"] == "processed"
+```
+
+Concurrent test with asyncio.gather on same message_id — expect one success, one duplicate skip.
+
+## Common pitfalls
+
+**Inbox in Redis, runs in Postgres.** Not transactional — the original bug pattern.
+
+**Using payload hash as sole ID when payload includes timestamps.** Every redelivery looks new. Use broker message ID.
+
+**Long transactions including LLM calls.** Holds locks, kills throughput. Inbox + commit + async execute.
+
+**200 OK before commit.** Upstream thinks you handled it; DB rolls back — message lost. Commit then respond.
+
+**Ignoring failed status on replay.** Same bad message loops forever — mark failed, DLQ, alert.
 
 ## The takeaway
 
-Inbox Pattern Dedup rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent inbox pattern dedup becomes a maintainable asset instead of incident fuel.
+The inbox pattern gives agent pipelines deduplication that survives crashes and concurrent deliveries: insert the message ID and domain state in one transaction, skip on primary key conflict, process async after commit, and pair with outbox for downstream reliability. At-least-once webhooks and queues stop multiplying runs and LLM bills — duplicates become a metric, not an incident.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Microservices.io — Transactional inbox pattern](https://microservices.io/patterns/data/transactional-outbox.html)
+- [Chris Richardson — Idempotent consumer / duplicate detection](https://microservices.io/post/architecture/saga/2020/10/12/duplicate-message-handling.html)
+- [PostgreSQL — INSERT ON CONFLICT documentation](https://www.postgresql.org/docs/current/sql-insert.html)
+- [AWS — SQS exactly-once processing patterns](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-exactly-once-processing.html)
+- [Debezium — Inbox event router SMT](https://debezium.io/documentation/reference/stable/transformations/inbox-event-router.html)

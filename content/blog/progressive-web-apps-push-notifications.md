@@ -3,7 +3,7 @@ title: "Web Push Notifications"
 slug: "progressive-web-apps-push-notifications"
 description: "Implement web push notifications: service worker push events, VAPID keys, permission UX, payload limits, and backend delivery with FCM or direct push."
 datePublished: "2026-04-20"
-dateModified: "2026-04-20"
+dateModified: "2026-07-17"
 tags: ["Web", "PWA", "Notifications", "Frontend"]
 keywords: "web push notifications, VAPID keys, Push API service worker, PWA push notifications, FCM web push"
 faq:
@@ -227,16 +227,37 @@ Test on real iOS devices — simulator push support is limited.
 
 Pair with [progressive web apps offline service worker](https://blog.michaelsam94.com/progressive-web-apps-offline-service-worker/) for complete PWA notification infrastructure.
 
-## Common production mistakes
 
-Teams get push notifications wrong in predictable ways:
+## VAPID rotation without losing every subscriber
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Rotating VAPID keys invalidates all push subscriptions. Stage rotation: accept both keys server-side during overlap, prompt users to re-subscribe on next visit, then retire the old key after 30 days. Track `subscription.age` and `last_successful_push` — stale endpoints should be pruned before rotation to shrink blast radius.
 
-Production implementations of push notifications fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Action buttons and collapse tags
+
+Use notification `tag` to replace superseded alerts (one severe weather warning, not six). Action buttons work on Android Chrome; iOS installed PWAs have limited action support — design flows that work with tap-only on Apple hardware. Deep-link `notificationclick` through a URL router that restores auth session before showing protected content.
+
+## Permission re-prompt after denial
+
+Browser blocks re-prompt — show settings instructions with deep link on Android intent to site settings. Track denied users separately; do not waste UI space on impossible prompt.
+
+## Push payload localization
+
+Server sends locale-specific title/body — SW should not machine-translate; pre-localized payload avoids SW complexity and wrong-language incidents.
+
+## Production rollout notes
+
+Measure push opt-in funnel separately on Android installed PWA vs iOS Home Screen PWA vs desktop — conversion rates differ by an order of magnitude. Campaign planners who expect iOS tab users to receive push will miss SLA. Document platform matrix in product requirements before marketing promises realtime mobile alerts from web-only experience.
+## Segment-specific push copy
+
+Push copy that works for retention nudges fails for transactional alerts — segment templates by message class with separate opt-in where regulations require. Mixing marketing tone in shipping notifications increases unsubscribe rate on transactional channel users conflate with spam.
+
+## Web push in enterprise SSO environments
+
+Session cookies expiring while push subscription remains cause deep links to login wall — `notificationclick` handler should route through silent refresh or magic link flow documented for enterprise IdP timeouts. Test push click after eight-hour idle session on corporate laptop.
+
+## Closing operational guidance
+
+Audit notification permission timing against Core Web Vitals — permission banner competing with LCP hero hurts both metrics. Defer push education until after main content interactive when INP budget allows. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

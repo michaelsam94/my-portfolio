@@ -1,0 +1,371 @@
+{
+  "total_requested": 50,
+  "total_processed": 51,
+  "rewritten_count": 51,
+  "skipped_count": 0,
+  "error_count": 0,
+  "dateModified": "2026-07-17",
+  "min_words": 1201,
+  "max_words": 1335,
+  "rewritten": [
+    {
+      "slug": "nextjs-caching-revalidation",
+      "words": 1256,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-csp-headers-middleware",
+      "words": 1315,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-draft-mode-preview-content",
+      "words": 1229,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-dynamic-import-ssr-false",
+      "words": 1210,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-edge-runtime-limitations",
+      "words": 1225,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-fetch-cache-next-revalidate",
+      "words": 1204,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-font-optimization-self-hosted",
+      "words": 1315,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-generate-static-params-dynamic",
+      "words": 1316,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-image-optimization",
+      "words": 1228,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-instrumentation-observability",
+      "words": 1290,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-intercepting-routes-patterns",
+      "words": 1302,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-internationalization-routing",
+      "words": 1335,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-layout-shared-state-patterns",
+      "words": 1318,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-link-prefetch-behavior",
+      "words": 1300,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-loading-ui-error-boundaries",
+      "words": 1318,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-metadata-dynamic-og-images",
+      "words": 1317,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-metadata-seo-api",
+      "words": 1209,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-middleware-edge-runtime",
+      "words": 1213,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-parallel-routes-modal-patterns",
+      "words": 1318,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-partial-prerendering-ppr",
+      "words": 1305,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-route-handlers-api-design",
+      "words": 1318,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-route-segment-config-cache",
+      "words": 1319,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-script-component-strategies",
+      "words": 1295,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-server-actions-error-handling",
+      "words": 1319,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-streaming-skeleton-architecture",
+      "words": 1300,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-turbopack-production-migration",
+      "words": 1305,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "nextjs-unstable-cache-server-functions",
+      "words": 1315,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-bullmq-job-priority-retries",
+      "words": 1258,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-cluster-mode-vs-worker-threads",
+      "words": 1201,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-cluster-scaling",
+      "words": 1246,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-drizzle-orm-type-safe-sql",
+      "words": 1263,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-env-validation-zod-envalid",
+      "words": 1247,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-event-loop-lag-monitoring",
+      "words": 1247,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-express-async-error-handling",
+      "words": 1253,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-fastify-plugin-architecture",
+      "words": 1228,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-graceful-shutdown-sigterm",
+      "words": 1230,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-http-agent-keepalive-pooling",
+      "words": 1247,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-memory-leak-heap-snapshot",
+      "words": 1247,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-nestjs-module-boundaries",
+      "words": 1228,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-opentelemetry-auto-instrumentation",
+      "words": 1228,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-pino-structured-logging",
+      "words": 1230,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-prisma-transaction-isolation",
+      "words": 1229,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-streams-backpressure",
+      "words": 1244,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-typeorm-migration-production",
+      "words": 1229,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "node-worker-threads-cpu",
+      "words": 1263,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth-pkce-mobile",
+      "words": 1251,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth2-authorization-code-flow",
+      "words": 1215,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth2-client-credentials-m2m",
+      "words": 1202,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth2-client-credentials-scopes",
+      "words": 1229,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth2-device-authorization-tv",
+      "words": 1230,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    },
+    {
+      "slug": "oauth2-device-flow-tv",
+      "words": 1239,
+      "dateModified": "2026-07-17",
+      "faq": true,
+      "wave2_template": false
+    }
+  ],
+  "skipped": [],
+  "errors": []
+}

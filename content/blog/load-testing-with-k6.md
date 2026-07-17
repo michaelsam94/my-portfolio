@@ -3,8 +3,8 @@ title: "Load Testing APIs with k6"
 slug: "load-testing-with-k6"
 description: "Load testing APIs with k6: scripting in JavaScript, choosing the right test type, reading latency percentiles honestly, and wiring pass/fail thresholds into CI."
 datePublished: "2026-01-26"
-dateModified: "2026-01-26"
-tags: ["Testing", "Performance", "DevOps"]
+dateModified: "2026-07-17"
+tags:
 keywords: "k6 load testing, performance testing, stress test, throughput, latency percentiles, load test CI"
 faq:
   - q: "What is k6 and what is it used for?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why look at p95/p99 latency instead of the average?"
     a: "Because averages hide the pain. A 50 ms average can conceal that 1% of requests take 3 seconds, and that 1% is often your most active users making the most calls. Percentiles (p95, p99) tell you what the slowest slice of users actually experiences, which is what determines whether your service feels fast or broken."
 ---
-
 Averages lie about performance, and the first time a "fast" service falls over in production you learn it the expensive way. Load testing APIs with k6 is how you find the truth before your users do: you write a script that simulates realistic concurrent traffic, run it against your API, and measure throughput, error rate, and — the part that actually matters — latency percentiles. k6 is Grafana Labs' open-source tool where tests are JavaScript but the engine is Go, so a single machine can generate serious load without becoming the bottleneck itself.
 
 I reach for k6 both to answer "will this survive Black Friday?" and to catch the quieter failure: a change that adds 80 ms to p99 and would've slipped through unnoticed. Here's how I use it.

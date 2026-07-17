@@ -3,7 +3,7 @@ title: "Detecting N+1 Queries"
 slug: "performance-n-plus-one-detection"
 description: "Find and fix N+1 query problems: ORM lazy loading traps, SQL logging, query counting in tests, and DataLoader batching patterns."
 datePublished: "2026-02-13"
-dateModified: "2026-02-13"
+dateModified: "2026-07-17"
 tags: ["Performance", "Database", "ORM", "Backend"]
 keywords: "N+1 query problem, ORM lazy loading, query detection, DataLoader batching, SQL performance"
 faq:
@@ -179,6 +179,30 @@ When n plus one detection misbehaves in production, work top-down instead of gue
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Query count budgets per endpoint
+
+Document expected query counts: GET /orders max 3 queries (list + customers IN + statuses IN). CI test with 50 fixture rows asserts ceiling. PR adding nested serializer without prefetch fails build.
+
+## Rails strict_loading and Django prefetch guards
+
+Rails 7+ strict_loading raises when association accessed without preload. Django Prefetch objects with filtered queryset reduce over-fetching.
+
+## Read replica N+1 amplification
+
+N+1 on read replica under load multiplies replication lag. Monitor replica lag alongside queries-per-request.
+
+## GraphQL DataLoader batch window
+
+DataLoader batches within one event loop tick. Resolvers doing await sleep between loads break batching. Set max batch size 100 ids to avoid gigantic IN clauses.
+
+## Production fingerprint in APM
+
+Repeated SELECT WHERE id = $1 differing only in bind parameter — high execution count, low distinct ids — is classic N+1 visible in Datadog DBM without reading application code.
+
+## Field notes on performance n plus one detection
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

@@ -7,105 +7,293 @@ dateModified: "2026-05-23"
 tags: ["AI", "Agent", "Isr"]
 keywords: "agent, isr, on, demand, revalidation, ai, production, engineering, architecture"
 faq:
-  - q: "What is Isr On Demand Revalidation?"
-    a: "Isr On Demand Revalidation covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Isr On Demand Revalidation?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Isr On Demand Revalidation?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Isr On Demand Revalidation fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Isr On Demand Revalidation should be observable in production and safe to change in small diffs."
+  - q: "What is on-demand revalidation in Next.js ISR and why do agent dashboards need it?"
+    a: "ISR caches statically generated pages with a revalidate interval. On-demand revalidation lets backend events—agent run completed, eval score updated, knowledge base synced—purge specific paths immediately via revalidatePath or revalidateTag instead of waiting for time-based expiry. Agent UIs showing live metrics need this or users see stale run history."
+  - q: "When should agents trigger revalidateTag vs revalidatePath?"
+    a: "Use tags for shared data slices fetched across many routes (e.g., agent-list, tenant-123-metrics). Use paths for a single page (/dashboard/agents/run-abc). Tags scale better when one CMS or agent event invalidates dozens of ISR pages; paths are simpler for pinpoint updates."
+  - q: "How do you secure on-demand revalidation webhooks from agent backends?"
+    a: "Never expose unauthenticated revalidation routes. Use a shared secret in Authorization header, verify HMAC signature on payload, restrict to internal network or Vercel deployment protection, and rate-limit the endpoint. Agents should call revalidation only after durable writes commit—not optimistically before DB success."
+  - q: "What breaks if agent pipelines revalidate too aggressively?"
+    a: "Thundering herd regenerates ISR pages simultaneously, spiking origin load and LLM aggregation queries. Batch tag invalidations, debounce high-frequency agent events, and use stale-while-revalidate at CDN where possible. Monitor regeneration queue depth and p95 TTFB after deploys."
 ---
-Isr On Demand Revalidation sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+The agent ops dashboard showed a successful deployment from forty minutes ago while the run had failed three times since then. ISR cached `/dashboard/agents/[id]` with `revalidate: 300`—fine for marketing pages, wrong for operational surfaces fed by agent telemetry. Switching to **on-demand revalidation** wired to agent lifecycle webhooks fixed freshness without abandoning static performance for the shell layout.
 
-When isr on demand revalidation is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Incremental Static Regeneration (ISR) in Next.js App Router lets you serve cached HTML with background refresh. **On-demand revalidation** invalidates that cache when data changes—critical when AI agents mutate backend state continuously and users expect near-real-time visibility. This deep dive covers App Router patterns, tag design, secure webhook routes, agent event integration, and operational guardrails against revalidation storms.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## ISR vs on-demand: when each applies
 
-Solid AI engineering turns isr on demand revalidation from a recurring argument into a documented pattern with tests and an owner.
+| Strategy | Mechanism | Best for |
+|----------|-----------|----------|
+| Time-based ISR | `revalidate: 60` in fetch or segment config | Slowly changing docs, public agent gallery |
+| On-demand path | `revalidatePath('/dashboard/runs')` | Single route after known mutation |
+| On-demand tag | `revalidateTag('agent-runs')` | Shared data across multiple ISR pages |
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent isr on demand revalidation bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for isr on demand revalidation, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent isr on demand revalidation flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for isr on demand revalidation in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent isr on demand revalidation changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Isr On Demand Revalidation: typed boundary + structured errors
-export async function handleIsrOnDemandRevalidation(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-isr-on-demand-revalidation");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Agent products usually combine: long `revalidate` as safety net **plus** on-demand invalidation on events.
 
 ```
+Agent worker completes run ──▶ webhook ──▶ /api/revalidate ──▶ revalidateTag('run:{id}')
+                                                                    │
+                                                                    ▼
+                                                          Next.js purges cache entries
+                                                                    │
+                                                                    ▼
+                                                          Next request regenerates page
+```
+
+## App Router fetch caching and tags
+
+Tag data at fetch time so invalidation is precise:
+
+```typescript
+// app/dashboard/agents/[agentId]/page.tsx
+import { notFound } from "next/navigation";
+
+async function getAgentRuns(agentId: string) {
+  const res = await fetch(
+    `${process.env.API_URL}/agents/${agentId}/runs?limit=20`,
+    {
+      next: {
+        revalidate: 600, // fallback TTL
+        tags: [`agent-runs`, `agent-runs:${agentId}`],
+      },
+    },
+  );
+  if (!res.ok) notFound();
+  return res.json();
+}
+
+export default async function AgentDashboardPage({
+  params,
+}: {
+  params: { agentId: string };
+}) {
+  const runs = await getAgentRuns(params.agentId);
+  return (
+    <main>
+      <h1>Agent {params.agentId}</h1>
+      <RunTable runs={runs} />
+    </main>
+  );
+}
+```
+
+Dual tags enable global list invalidation (`agent-runs`) or single-agent scope (`agent-runs:uuid`).
+
+## Secure revalidation API route
+
+```typescript
+// app/api/revalidate/route.ts
+import { revalidatePath, revalidateTag } from "next/cache";
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+
+function verifySignature(body: string, signature: string | null): boolean {
+  if (!signature || !process.env.REVALIDATE_SECRET) return false;
+  const expected = crypto
+    .createHmac("sha256", process.env.REVALIDATE_SECRET)
+    .update(body)
+    .digest("hex");
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected),
+  );
+}
+
+export async function POST(req: NextRequest) {
+  const raw = await req.text();
+  const sig = req.headers.get("x-revalidate-signature");
+
+  if (!verifySignature(raw, sig)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const payload = JSON.parse(raw) as {
+    tags?: string[];
+    paths?: string[];
+  };
+
+  for (const tag of payload.tags ?? []) {
+    revalidateTag(tag);
+  }
+  for (const path of payload.paths ?? []) {
+    revalidatePath(path);
+  }
+
+  return NextResponse.json({
+    revalidated: true,
+    tags: payload.tags ?? [],
+    paths: payload.paths ?? [],
+    now: Date.now(),
+  });
+}
+```
+
+Agent backends sign payloads after durable commit:
+
+```python
+import hashlib
+import hmac
+import json
+import requests
 
 
-## Operational concerns
+def notify_revalidate(tags: list[str], secret: str, base_url: str) -> None:
+    body = json.dumps({"tags": tags}, separators=(",", ":"))
+    signature = hmac.new(
+        secret.encode(),
+        body.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    resp = requests.post(
+        f"{base_url}/api/revalidate",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "x-revalidate-signature": signature,
+        },
+        timeout=5,
+    )
+    resp.raise_for_status()
+```
 
-Game-day exercises for isr on demand revalidation beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+## Agent event → tag mapping
 
-Production agent isr on demand revalidation work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Design tags around entity lifecycle:
 
-Rollouts for isr on demand revalidation benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+| Agent event | Tags to invalidate |
+|-------------|-------------------|
+| Run completed | `run:{id}`, `agent-runs:{agentId}`, `agent-runs` |
+| Eval score updated | `evals:{agentId}`, `leaderboard` |
+| KB document ingested | `kb-chunk:{docId}`, `kb-search` |
+| Tenant config changed | `tenant:{tenantId}` |
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Avoid blanket `revalidateTag('everything')`—regeneration storms follow.
 
-## Security and compliance angles
+```typescript
+export function tagsForAgentRunComplete(event: {
+  runId: string;
+  agentId: string;
+  tenantId: string;
+}): string[] {
+  return [
+    `run:${event.runId}`,
+    `agent-runs:${event.agentId}`,
+    `agent-runs`,
+    `tenant-metrics:${event.tenantId}`,
+  ];
+}
+```
 
-Even when isr on demand revalidation is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Debounce high-frequency events (streaming token counts) with 2–5 second windows; batch tags in one webhook call.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent isr on demand revalidation so security reviews do not rely on tribal knowledge.
+## Partial prerendering and dynamic islands
+
+Not every agent UI element belongs in ISR. Split:
+
+- **Static shell** — layout, nav, design system (ISR-friendly)
+- **Dynamic island** — live run logs via client SSE or Server Components with `cache: 'no-store'`
+
+On-demand revalidation suits **aggregate** views; streaming logs stay dynamic. Mixing both prevents over-invalidation of pages that should never cache.
+
+```typescript
+// components/LiveRunLog.tsx — client component, no ISR
+"use client";
+
+import { useEffect, useState } from "react";
+
+export function LiveRunLog({ runId }: { runId: string }) {
+  const [lines, setLines] = useState<string[]>([]);
+
+  useEffect(() => {
+    const es = new EventSource(`/api/runs/${runId}/stream`);
+    es.onmessage = (e) => setLines((prev) => [...prev, e.data]);
+    return () => es.close();
+  }, [runId]);
+
+  return <pre>{lines.join("\n")}</pre>;
+}
+```
+
+## CDN and deployment considerations
+
+On Vercel, `revalidateTag` purges Data Cache entries; CDN may still serve stale HTML briefly depending on headers. Set appropriate `Cache-Control` on ISR responses and use `stale-while-revalidate` where UX allows soft freshness.
+
+Self-hosted Next.js behind nginx: ensure purge hooks reach all origin instances or use shared cache layer (Redis for fetch cache in experimental setups).
+
+After deploy, tag associations persist but regenerated pages use new code—smoke test revalidation in staging with production-shaped tags.
 
 ## Testing strategy
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that isr on demand revalidation depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+- **Integration** — POST signed revalidate; assert subsequent page fetch includes new data (playwright + fixture API)
+- **Auth** — reject missing/invalid signatures
+- **Idempotency** — duplicate webhooks safe (revalidate is idempotent)
+- **Load** — burst 100 tag invalidations; monitor origin CPU and regeneration latency
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Include revalidation in agent CI when dashboard pages depend on ISR tags introduced in the same PR.
 
-## Migration and evolution
+## Operational metrics
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent isr on demand revalidation functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Track:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where isr on demand revalidation spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+- `revalidation_requests_total{source}`
+- `isr_regeneration_duration_seconds`
+- `cache_hit_ratio` for tagged fetches
+- Time from agent run complete → dashboard reflects terminal state (end-to-end SLO)
 
-## Related concepts
+Alert when regeneration p95 exceeds user-facing freshness SLO or origin error rate spikes after invalidation bursts.
 
-Isr On Demand Revalidation intersects with broader ai topics — see companion notes on [agent-isr patterns](https://blog.michaelsam94.com/agent-isr/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Common failure modes
+
+- **Revalidate before DB commit** — user refreshes into stale-or-error state; webhook only after transaction commit
+- **Tag typo** — silent cache never clears; lint tag strings from shared constants package
+- **Missing tags on fetch** — page never invalidates; code review checklist for `next.tags`
+- **Over-broad paths** — `revalidatePath('/', 'layout')` nukes entire site cache
+
+## Multi-tenant agent platforms
+
+Scope tags with `tenantId` prefix—`tenant:abc:agent-runs`—so one tenant's agent activity does not invalidate another's cached pages in shared deployments.
+
+Row-level security in API must match tag scope; ISR pages must not embed cross-tenant data in shared tags.
+
+## Preview and draft agent configs
+
+Agents often support draft configs users preview before publish. ISR must not serve draft data from production cache:
+
+- Preview routes use `cache: 'no-store'` or separate `/preview/` path namespace
+- Publishing draft → active triggers `revalidateTag(`agent-config:${id}`)` plus path invalidation for public agent gallery
+
+```typescript
+export async function publishAgentConfig(agentId: string, tenantId: string) {
+  await db.transaction(async (tx) => {
+    await tx.agentConfig.promoteDraftToActive(agentId);
+  });
+  await notifyRevalidate([
+    `agent-config:${agentId}`,
+    `tenant:${tenantId}:agents`,
+    "agent-gallery",
+  ]);
+}
+```
+
+Never share tags between preview and production fetch calls—tag collision leaks unpublished prompts into cached HTML, a critical confidentiality bug.
+
+## Stale-while-revalidate UX for agent metrics
+
+Full synchronous regeneration on every run completion can spike TTFB. For non-critical metrics cards, return cached ISR page immediately while revalidation runs in background—Next.js default ISR behavior.
+
+Display `lastUpdated` timestamp from API inside the page so users interpret sub-minute staleness correctly. Live run **status** (running vs failed) should still use on-demand revalidation or client polling—do not rely on 10-minute time-based revalidate for terminal state transitions.
+
+Balance: operational clarity beats perfect cache efficiency for failed-run visibility.
 
 ## The takeaway
 
-Isr On Demand Revalidation rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent isr on demand revalidation becomes a maintainable asset instead of incident fuel.
+ISR on-demand revalidation keeps agent-facing Next.js dashboards fast and fresh: tag fetches at the data layer, invalidate surgically on agent lifecycle events, secure webhooks with HMAC, and debounce high-frequency updates to avoid regeneration storms. Time-based revalidate alone is insufficient for operational agent UIs—wire explicit invalidation into every durable state change users expect to see immediately.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Next.js on-demand revalidation docs](https://nextjs.org/docs/app/building-your-application/data-fetching/incremental-static-regeneration)
+- [revalidateTag and revalidatePath API reference](https://nextjs.org/docs/app/api-reference/functions/revalidateTag)
+- [Vercel ISR and Data Cache](https://vercel.com/docs/incremental-static-regeneration)
+- [Companion: Server Components Cache Revalidate](/agent-server-components-cache-revalidate/)
+- [Companion: CDN Stale-While-Revalidate](/agent-cdn-stale-while-revalidate/)
+- [Companion: Realtime Dashboard WebSocket](/agent-realtime-dashboard-websocket/)

@@ -1,111 +1,254 @@
 ---
 title: "RAG: Changelog Compacted Topics"
 slug: "rag-changelog-compacted-topics"
-description: "Changelog Compacted Topics: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Kafka compacted topics store RAG document state changelogs—latest chunk metadata per doc_id survives forever, enabling consumers to rebuild vector index views without replaying full history."
 datePublished: "2025-01-28"
-dateModified: "2025-01-28"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Changelog"]
-keywords: "rag, changelog, compacted, topics, ai, production, engineering, architecture"
+keywords: "Kafka compacted topics, log compaction, changelog, RAG state store, document metadata, KTable, consumer recovery, Kafka Streams"
 faq:
-  - q: "What is Changelog Compacted Topics?"
-    a: "Changelog Compacted Topics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Changelog Compacted Topics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Changelog Compacted Topics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Changelog Compacted Topics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Changelog Compacted Topics should be observable in production and safe to change in small diffs."
+  - q: "What is a compacted Kafka topic and why use it for RAG?"
+    a: "Log compaction retains only the latest record per key, deleting older records with the same key during cleanup. For RAG, key by doc_id and store chunk metadata or embedding references—the topic becomes a durable changelog of current document state that new consumers can read to rebuild index views without a full corpus export."
+  - q: "How does compaction differ from retention-based deletion?"
+    a: "Time-based retention deletes all records older than N days regardless of key. Compaction deletes superseded values per key but keeps the latest value indefinitely. Use compaction for state (current doc metadata); use retention for events (raw CDC stream with full history)."
+  - q: "Can compacted topics replace the vector index?"
+    a: "No—they store metadata and references, not embeddings. A compacted topic tells you doc_id X has 12 chunks at version 3; the vector index stores the actual vectors. Compacted topics enable index recovery coordination and consumer state bootstrap, not similarity search."
 ---
-Most teams encounter changelog compacted topics after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A new RAG ingestion consumer deployed on Friday needed the current document metadata for 2 million docs to know which chunks to validate against the vector index. The team considered replaying six months of CDC events from the raw topic—estimated 48 hours. Instead, they pointed the consumer at the compacted `rag.document-state` topic: 2 million keys, one latest record each, consumed in 22 minutes. Log compaction had been running silently in the background, keeping only the most recent state per doc_id.
 
-When changelog compacted topics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Compacted Kafka topics are changelog stores—durable, ordered, key-value histories where only the final state matters. For RAG pipelines tracking document ingestion state across multiple consumers, they eliminate full-history replay and provide a recovery path when vector indexes drift from source metadata.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Compaction mechanics
 
-Solid AI engineering turns changelog compacted topics from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag changelog compacted topics bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for changelog compacted topics, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag changelog compacted topics flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for changelog compacted topics in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag changelog compacted topics changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Changelog Compacted Topics: typed boundary + structured errors
-export async function handleChangelogCompactedTopics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-changelog-compacted-topics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Kafka log compaction runs periodically:
 
 ```
+Before compaction (key=doc-123):
+  offset 100: {doc_id: "123", chunks: 5, version: 1}
+  offset 450: {doc_id: "123", chunks: 8, version: 2}
+  offset 900: {doc_id: "123", chunks: 8, version: 2, deleted: false}
 
+After compaction:
+  offset 900: {doc_id: "123", chunks: 8, version: 2, deleted: false}
+  (offsets 100, 450 removed)
+```
+
+Tombstone records (`value: null`) delete a key entirely after `delete.retention.ms` (default 24 hours).
+
+## Topic configuration for RAG document state
+
+```properties
+# kafka topic create
+kafka-topics.sh --create \
+  --topic rag.document-state \
+  --partitions 32 \
+  --replication-factor 3 \
+  --config cleanup.policy=compact \
+  --config min.compaction.lag.ms=60000 \
+  --config segment.ms=3600000 \
+  --config delete.retention.ms=86400000 \
+  --config min.cleanable.dirty.ratio=0.1
+```
+
+Key settings:
+
+- `cleanup.policy=compact` — enable compaction (can combine with `delete` for hybrid)
+- `min.compaction.lag.ms=60000` — wait 60s before compacting new records (allows consumer catch-up)
+- `delete.retention.ms=86400000` — tombstones visible for 24h before removal
+- `min.cleanable.dirty.ratio=0.1` — trigger compaction when 10% of log is superseded
+
+Partition by hash of `doc_id` for even distribution and ordered per-document updates.
+
+## Message schema for RAG state
+
+```json
+{
+  "key": "doc-uuid-123",
+  "value": {
+    "doc_id": "doc-uuid-123",
+    "tenant_id": "acme",
+    "corpus_version": "v47",
+    "chunk_count": 12,
+    "content_hash": "sha256:abc123...",
+    "embedding_model": "text-embedding-3-large-v1",
+    "chunk_ids": ["chunk-1", "chunk-2", "..."],
+    "indexed_at": "2026-07-17T10:30:00Z",
+    "deleted": false
+  }
+}
+```
+
+Tombstone for deletion:
+
+```json
+{
+  "key": "doc-uuid-123",
+  "value": null
+}
+```
+
+Producers write after successful vector index upsert—compacted topic reflects indexed state, not merely received events.
+
+## Producer integration in ingestion pipeline
+
+```python
+# producers/document_state_changelog.py
+from confluent_kafka import Producer
+import json
+
+producer = Producer({"bootstrap.servers": "kafka:9092"})
+
+def publish_document_state(doc_state: DocumentState):
+    producer.produce(
+        topic="rag.document-state",
+        key=doc_state.doc_id.encode(),
+        value=json.dumps(doc_state.to_dict()).encode(),
+        callback=delivery_report,
+    )
+    producer.poll(0)
+
+def publish_document_deleted(doc_id: str):
+    producer.produce(
+        topic="rag.document-state",
+        key=doc_id.encode(),
+        value=None,  # tombstone
+    )
+    producer.poll(0)
+```
+
+Call after vector index write succeeds—compacted topic is the commit point for "what the index should reflect."
+
+## Consumer bootstrap from compacted topic
+
+New consumers read from `earliest` offset to build local state:
+
+```python
+# consumers/state_bootstrap.py
+from confluent_kafka import Consumer
+
+consumer = Consumer({
+    "bootstrap.servers": "kafka:9092",
+    "group.id": "rag-index-validator-v2",
+    "auto.offset.reset": "earliest",
+    "enable.auto.commit": False,
+})
+
+consumer.subscribe(["rag.document-state"])
+state: dict[str, DocumentState] = {}
+
+while True:
+    msg = consumer.poll(1.0)
+    if msg is None:
+        break
+    if msg.error():
+        continue
+
+    doc_id = msg.key().decode()
+    if msg.value() is None:
+        state.pop(doc_id, None)  # tombstone
+    else:
+        state[doc_id] = DocumentState.from_json(msg.value())
+
+# state now holds latest metadata for all 2M docs
+validate_index_against_state(state)
+```
+
+After bootstrap, consumer switches to incremental mode reading new records from compacted topic or raw CDC topic.
+
+## Compacted topic vs raw CDC topic
+
+Use both in layered architecture:
+
+| Topic | cleanup.policy | Purpose |
+|-------|---------------|---------|
+| `rag.cdc.documents` | delete (7 days) | Full event history, audit, replay |
+| `rag.document-state` | compact | Latest state per doc, bootstrap |
+
+```mermaid
+flowchart LR
+  CDC[Debezium CDC] --> Raw[rag.cdc.documents]
+  Raw --> Ingest[Ingestion consumer]
+  Ingest --> Index[(Vector index)]
+  Ingest --> State[rag.document-state compacted]
+  State --> Validator[Index validator]
+  State --> NewConsumer[New consumer bootstrap]
+```
+
+Raw topic feeds processing; compacted topic feeds state queries.
+
+## Kafka Streams KTable equivalent
+
+If using Kafka Streams, compacted topic backs a KTable:
+
+```java
+StreamsBuilder builder = new StreamsBuilder();
+KTable<String, DocumentState> docState = builder.table(
+    "rag.document-state",
+    Consumed.with(Serdes.String(), documentStateSerde)
+);
+
+docState.toStream()
+    .filter((docId, state) -> state != null && !state.isDeleted())
+    .to("rag.active-documents");
+```
+
+KTable changelog topic is automatically compacted. Materialized state stores rebuild from compacted changelog on restart.
 
 ## Operational concerns
 
-Game-day exercises for changelog compacted topics beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Compaction lag.** Monitor `kafka.log:type=LogCleanerManager,name=max-dirty-percent` and compaction rate. Lag grows if compaction cannot keep pace with write rate—increase resources or partition count.
 
-Production rag changelog compacted topics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Tombstone visibility.** Consumers must process tombstones within `delete.retention.ms` or miss deletions. If consumer is down >24h, run full compacted topic scan from earliest.
 
-Rollouts for changelog compacted topics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Key size.** Compaction is per-key. If keys are unbounded (e.g., query-level state), compaction provides no benefit. Key by doc_id, not chunk_id, for document-level state.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+**Null value handling.** Some serializers struggle with tombstones. Use explicit `deleted: true` flag in value as backup, with tombstone for true removal.
 
-## Security and compliance angles
+**Hybrid cleanup.** `cleanup.policy=compact,delete` applies both compaction and time retention—old keys with no recent updates get removed entirely. Useful for ephemeral document state with 90-day lifecycle.
 
-Even when changelog compacted topics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Recovery scenarios
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag changelog compacted topics so security reviews do not rely on tribal knowledge.
+**Vector index corruption.** Bootstrap consumer state from compacted topic, compare chunk_ids against index, re-embed mismatches.
 
-## Testing strategy
+**New region deployment.** Consumer reads compacted topic, bulk upserts to new regional index—no source database export needed.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that changelog compacted topics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+**Consumer group reset.** Reset offset to earliest on compacted topic—rebuilds state in minutes vs hours from raw CDC.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+**Audit "what is indexed."** Compact topic is queryable inventory of indexed documents—cross-reference with data catalog.
 
-## Migration and evolution
+## Testing compaction behavior
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag changelog compacted topics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Verify in staging:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where changelog compacted topics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+1. Produce 1000 records with same key, different values
+2. Force compaction: `kafka-log-dirs.sh` or wait for segment roll
+3. Consume from earliest—should see one record per key
+4. Produce tombstone, verify key absent after delete.retention.ms
+5. Measure bootstrap time for production-scale key count
 
-## Related concepts
+## Compacted topic capacity planning
 
-Changelog Compacted Topics intersects with broader ai topics — see companion notes on [rag-changelog patterns](https://blog.michaelsam94.com/rag-changelog/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Size compacted topic disk as: unique_keys × avg_record_size × 1.3 headroom. Monitor growth rate during bulk reindex—temporary spike is normal; sustained growth after reindex completes indicates compaction falling behind. Partition count affects parallel compaction; increase partitions when single-partition log size exceeds 50 GB despite healthy compaction metrics.
 
-## The takeaway
+## Consumer offset management best practices
 
-Changelog Compacted Topics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag changelog compacted topics becomes a maintainable asset instead of incident fuel.
+Document consumer group offset reset procedures for each RAG compacted topic consumer. Index validator reset to earliest replays full state—acceptable monthly for drift correction. Ingestion consumer reset to latest loses historical state—never reset without understanding consequences. Use kafka-consumer-groups.sh --describe --group rag-index-validator to monitor lag. Lag on compacted topic during steady state should be near zero; sustained lag indicates consumer cannot keep pace with produce rate during bulk reindex.
+
+
+## Production rollout notes
+
+When migrating RAG consumers to new compacted topic version, use dual-write period: producer writes to both old and new topics for seven days while consumers catch up on new topic. Cut over consumer offset after lag zero on new topic. Delete old topic only after confirming no consumer groups reference it—kafka-consumer-groups.sh lists all groups including stale ones.
+
+
+Kafka topic quota bytes per partition prevents runaway compacted topic growth from crashing broker. Set quota on rag.document-state topic at 2× expected steady-state size. Alert at 80% quota triggers compaction review before hard limit blocks producers.
+
+## Common regressions around changelog compacted topics
+
+Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to changelog compacted topics and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- Kafka log compaction documentation
+- Confluent blog: compacted topics as changelog
+- Kafka Streams state store recovery
+- Debezium + compacted topic patterns

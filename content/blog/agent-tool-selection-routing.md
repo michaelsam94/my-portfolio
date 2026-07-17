@@ -163,6 +163,30 @@ Pair with [tool use error recovery](https://blog.michaelsam94.com/agent-tool-use
 
 Most production routing incidents trace to stale tool descriptions, not embedding model quality — schedule a monthly catalog review with the teams that own each tool.
 
+## Embedding router drift
+
+Tool routers trained on historical invocation logs bias toward overused tools. Weekly eval: holdout queries where correct tool is rare — if recall drops, retrain or add keyword fallback for safety-critical tools (billing, delete). Log router confidence; route below 0.6 to clarifying question instead of wrong tool.
+
+## Latency-aware routing
+
+Fast cheap tools vs slow accurate tools: router should accept `max_latency_ms` from orchestrator policy during incidents. Degrade to cached retrieval tool when vector DB p99 exceeds SLO instead of timing out user chat.
+
+## Production validation for Tool Selection Routing Supplement 0
+
+Ship behind a flag when touching Tool Selection Routing Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Tool Selection Routing Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
+## Production validation for Tool Selection Routing Supplement 1
+
+Ship behind a flag when touching Tool Selection Routing Supplement 1; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Tool Selection Routing Supplement 1. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [OpenAI function calling best practices](https://platform.openai.com/docs/guides/function-calling)

@@ -3,7 +3,7 @@ title: "Quantizing Models for Phones"
 slug: "on-device-llm-quantization-mobile"
 description: "Choose the right LLM quantization for mobile: INT4 vs GPTQ vs AWQ, quality benchmarks, memory math, and practical export workflows for iOS and Android."
 datePublished: "2025-12-19"
-dateModified: "2025-12-19"
+dateModified: "2026-07-17"
 tags: ["AI", "Mobile", "Quantization", "On-Device"]
 keywords: "LLM quantization mobile, INT4 quantization, GPTQ AWQ, model compression phone, quantized inference"
 faq:
@@ -111,6 +111,41 @@ When on device llm quantization mobile misbehaves in production, work top-down i
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Quant format selection guide
+
+| Format | Size | Quality | Mobile fit |
+|--------|------|---------|------------|
+| Q4_K_M | Baseline | Good | Default |
+| Q5_K_M | +15% | Better reasoning | Flagship optional |
+| Q8_0 | +100% | Near FP16 | Rare on phone |
+| IQ4_XS | Smallest | Variable | Watch quality evals |
+
+Run perplexity and task-specific evals (summarization ROUGE, extraction F1) — perplexity alone misleads on instruction-tuned models.
+
+## Per-channel vs per-tensor quant
+
+GGUF Q4_K uses mixed precision — some layers at higher bit width. Custom quant scripts that force Q4_0 everywhere save MB but collapse instruction following. Trust published quants from reputable quantizers before rolling your own.
+
+## Calibration data for INT8 ONNX
+
+When quantizing via ONNX Runtime, use 100–500 representative prompts from your app domain — not WikiText. Calibration mismatch shows up as hallucinated formatting in structured extraction tasks.
+
+## NPU vs CPU quant compatibility
+
+INT4 quants speed CPU but may lack NPU op coverage — profile per delegate. Some NPUs require channel-wise scales only available in Q4_K formats.
+
+## A/B quality monitoring in production
+
+Log thumbs up/down on summaries with quant version header — aggregate quality by quant format weekly. Shift default quant when Q4_K_M satisfaction drops below Q5_K_M on flagship devices despite size cost.
+
+## Side-by-side QA rubric
+
+Score summaries 1–5 by three raters on 50 prompts per quant format — pick default quant only when median score within 0.2 of larger model at acceptable latency.
+
+## Export quant benchmarks in telemetry
+
+Anonymous aggregate: device model, quant format, tokens/sec — informs which quants to deprecate without PII.
 
 ## Resources
 

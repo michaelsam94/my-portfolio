@@ -1,111 +1,259 @@
 ---
-title: "AI Agents: Kill Switch Incident Response"
+title: "Agent Kill Switches and Incident Response Playbooks"
 slug: "agent-kill-switch-incident-response"
-description: "Kill Switch Incident Response: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Design layered kill switches for production agent systems—global halt, tenant freeze, tool blocks, model routing fallback—and wire them into incident response with audit trails and measured recovery."
 datePublished: "2026-03-13"
 dateModified: "2026-03-13"
-tags: ["AI", "Agent", "Kill"]
-keywords: "agent, kill, switch, incident, response, ai, production, engineering, architecture"
+tags: ["AI Agents", "Incident Response", "Safety", "Operations"]
+keywords: "agent kill switch, incident response, AI safety halt, feature flags, circuit breaker, run cancellation, blast radius"
 faq:
-  - q: "What is Kill Switch Incident Response?"
-    a: "Kill Switch Incident Response covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Kill Switch Incident Response?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Kill Switch Incident Response?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Kill Switch Incident Response fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Kill Switch Incident Response should be observable in production and safe to change in small diffs."
+  - q: "What is the difference between a kill switch and a circuit breaker for agents?"
+    a: "A kill switch is an intentional operator control that stops some or all agent behavior immediately—human-initiated, audited, often via flag or admin API. A circuit breaker is automatic: error rates, cost spikes, or guardrail violations trip it without waiting for a human. Production stacks need both; breakers buy minutes, kill switches stop bleeding during incidents."
+  - q: "At what granularity should agent kill switches operate?"
+    a: "Layer them: global platform halt, per-tenant freeze, per-agent definition disable, per-tool block, and per-model route off. Incidents rarely need global halt—misconfigured tool in one agent should not take down unrelated tenants. Each layer needs an owner, TTL, and automatic expiry reminder so you don't forget the switch is on."
+  - q: "How fast should a kill switch propagate to all workers?"
+    a: "Target under 30 seconds p99 for hard blocks on new runs; in-flight runs may take longer to cancel gracefully. Use a central flag store with pub/sub (Redis, LaunchDarkly, etcd watch) plus edge cache with max 5–10s TTL and a 'version' header workers check every request. Run game days to measure actual propagation, not config intent."
+  - q: "What should incident response do after activating a kill switch?"
+    a: "Follow a fixed sequence: assign incident commander, activate narrowest effective switch, preserve logs and traces with incident ID, notify affected tenants if user-visible, root-cause without re-enabling blindly, re-enable via canary with enhanced monitoring, and publish blameless postmortem with switch effectiveness metrics."
 ---
-Kill Switch Incident Response is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When kill switch incident response is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The shopping agent sent 12,000 refund emails in nine minutes. Guardrails flagged anomaly at email 400, but the alert routed to a Slack channel nobody watched on a holiday. Engineering toggled "maintenance mode" in the admin UI—which only blocked the marketing site, not the agent worker pool. The actual stop required SSH and scaling a deployment to zero. Total damage: six figures and a board question about "AI kill switches."
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+If you ship agents that touch money, inboxes, or infrastructure, you ship **kill switches** before you ship the demo. Incident response for agents is not generic ITIL with a chatbot skin—it is stopping unbounded loops, cutting tool access, preserving forensic evidence, and recovering without re-triggering the failure mode.
 
-Solid AI engineering turns kill switch incident response from a recurring argument into a documented pattern with tests and an owner.
+## Kill switch layers
 
-## Design principles that survive production
+Design concentric rings of control:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent kill switch incident response bugs hide.
+| Layer | Scope | Effect | Typical trigger |
+|-------|-------|--------|-----------------|
+| L0 Global | Platform | No new runs; cancel optional | Catastrophic model compromise |
+| L1 Tenant | Customer | Freeze tenant runs | Abuse, billing dispute |
+| L2 Agent | Agent definition | Disable one agent version | Bad prompt deploy |
+| L3 Tool | Tool registry | Block tool invocation | Leaked API key, bad SQL |
+| L4 Model route | Inference | Fallback model or reject | Provider outage, cost runaway |
+| L5 Spend | Budget | Hard cap per hour | Token burn anomaly |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for kill switch incident response, you do not yet understand the behavior you shipped.
+Each layer maps to a flag key, admin API, and runbook section. Narrowest effective layer first—L0 is last resort.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Flag schema example:
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent kill switch incident response flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for kill switch incident response in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent kill switch incident response changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Kill Switch Incident Response: typed boundary + structured errors
-export async function handleKillSwitchIncidentResponse(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-kill-switch-incident-response");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+```json
+{
+  "platform_halt": false,
+  "tenant_freeze": {
+    "acme-corp": { "until": "2026-03-13T18:00:00Z", "reason": "INC-4421" }
+  },
+  "disabled_agents": ["shopping-v3"],
+  "blocked_tools": ["send_email", "stripe_refund"],
+  "model_overrides": {
+    "gpt-4o": "disabled"
+  },
+  "max_parallel_runs_global": 500
 }
-
 ```
 
+Store in durable KV with revision numbers; workers subscribe to changes.
 
-## Operational concerns
+## Control plane implementation
 
-Game-day exercises for kill switch incident response beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Central service exposes authenticated break-glass API:
 
-Production agent kill switch incident response work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```typescript
+// POST /internal/v1/kill-switch
+interface KillSwitchRequest {
+  layer: "global" | "tenant" | "agent" | "tool" | "model";
+  target?: string;
+  action: "enable" | "disable";
+  incident_id: string;
+  actor: string;
+  ttl_minutes?: number;
+}
 
-Rollouts for kill switch incident response benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+async function applyKillSwitch(req: KillSwitchRequest): Promise<void> {
+  await authz.assertBreakGlass(req.actor, req.layer);
+  const revision = await flags.patch(req);
+  await audit.log({
+    event: "kill_switch",
+    ...req,
+    revision,
+    at: new Date().toISOString(),
+  });
+  await bus.publish("flags.updated", { revision });
+  await pager.notifyIncidentChannel(req.incident_id, `Kill switch ${req.action} ${req.layer}:${req.target ?? "*"}`);
+}
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Workers check flags at **run start** and **tool invoke**—not once at boot:
 
-## Security and compliance angles
+```python
+def assert_run_allowed(ctx: RunContext) -> None:
+    flags = flag_client.get(version=ctx.flag_version)  # poll every N sec or push
+    if flags.platform_halt:
+        raise RunBlockedError("platform_halt", incident=flags.incident_id)
+    if ctx.tenant_id in flags.tenant_freeze:
+        raise RunBlockedError("tenant_frozen")
+    if ctx.agent_id in flags.disabled_agents:
+        raise RunBlockedError("agent_disabled")
+```
 
-Even when kill switch incident response is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Cache flags locally with 5s TTL max; accept occasional stale allow for 5s vs 5-minute stale cache disasters.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent kill switch incident response so security reviews do not rely on tribal knowledge.
+## Cancelling in-flight runs
 
-## Testing strategy
+New-run blocks are insufficient for runaway loops. Support **run cancellation**:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that kill switch incident response depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```sql
+UPDATE agent_runs
+SET status = 'cancel_requested', cancel_reason = 'INC-4421'
+WHERE tenant_id = 'acme-corp' AND status = 'running';
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Workers poll or subscribe:
 
-## Migration and evolution
+```typescript
+async function executeRun(runId: string) {
+  for await (const step of orchestrator.steps(runId)) {
+    if (await runs.isCancelRequested(runId)) {
+      await orchestrator.compensate(runId);
+      return;
+    }
+    await step.run();
+  }
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent kill switch incident response functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Compensation may reverse partial tool effects—design tools idempotently where possible. Email already sent cannot un-send; kill switch limits **future** sends.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where kill switch incident response spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Automatic circuit breakers
 
-## Related concepts
+Trip breakers before humans wake up:
 
-Kill Switch Incident Response intersects with broader ai topics — see companion notes on [agent-kill patterns](https://blog.michaelsam94.com/agent-kill/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```yaml
+# prometheus alertmanager → webhook → auto-freeze tenant
+groups:
+  - name: agent-safety
+    rules:
+      - alert: AgentToolErrorBurst
+        expr: rate(agent_tool_errors_total[5m]) > 50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          action: auto_block_tool
+```
+
+Auto-actions require:
+
+- Max duration (auto-expire in 60m unless human extends)
+- Page on-call simultaneously—automation assists, not replaces
+- Audit trail linking alert fingerprint to flag change
+
+```python
+def auto_block_tool(tool_name: str, alert_id: str):
+    flags.block_tool(tool_name, ttl_minutes=60, reason=f"auto:{alert_id}")
+    incidents.create_draft(alert_id, suggested_action=f"blocked tool {tool_name}")
+```
+
+## Incident response timeline
+
+Standard playbook (adjust to your org):
+
+**T+0 — Detect**  
+Alerts: spend rate, tool error burst, user reports, guardrail model score.
+
+**T+5 min — Triage**  
+Incident commander assigned. Severity set. Comms channel opened.
+
+**T+10 min — Contain**  
+Activate narrowest kill switch. Screenshot flag state. Do not deploy unrelated fixes concurrently.
+
+**T+30 min — Diagnose**  
+Trace exemplars, prompt version diff, tool schema changes, deployment correlation.
+
+**T+60 min — Eradicate**  
+Fix root cause on branch; do not re-enable production until verified in staging.
+
+**T+2h — Recover**  
+Canary re-enable: 1% traffic → 10% → 100% with elevated monitoring.
+
+**T+1 week — Postmortem**  
+Blameless doc: timeline, switch effectiveness, action items.
+
+Runbook one-pager template:
+
+```markdown
+## Agent incident quick reference
+1. Dashboard: /ops/agents/overview
+2. Kill switch UI: /admin/break-glass (requires Okta break-glass group)
+3. Narrow containment order: tool → agent → tenant → global
+4. Preserve: export runs where tool_name=X since T-1h
+5. Comms: status.example.com template "agent-degraded"
+6. Recovery: flag canary script `./scripts/flags-canary.sh --layer tool --target send_email`
+```
+
+## Observability during incidents
+
+Metrics to watch while switch is active:
+
+- `agent.runs.blocked_total` by reason
+- `agent.runs.in_flight` — should decay after cancel
+- `agent.tool.invocations` — should hit zero for blocked tools
+- `agent.spend.rate` — should drop within one billing window
+
+Logs must include `incident_id`, `flag_revision`, `run_id`, `tool_name`. Avoid deleting logs during incident—legal hold may apply.
+
+## Access control and abuse of kill switches
+
+Break-glass is attractive to attackers and rogue insiders:
+
+- MFA + short-lived elevation to toggle L0/L1
+- Two-person rule for global halt in some enterprises
+- All changes append-only audited
+- Alert on any kill switch API call—success or failure
+
+Test that compromised admin JWT cannot call kill switch without break-glass group.
+
+## Customer communication
+
+Tenant freeze is user-visible. Pre-write templates:
+
+- "Agent automation paused for your account—manual support available"
+- Not: "We killed your AI" or silent failure
+
+Surface banner in product when `tenant_freeze` active, with support link.
+
+## Game days
+
+Quarterly exercises:
+
+1. Inject runaway tool mock in staging
+2. On-call finds alert, activates L3 tool block
+3. Measure time-to-stop new invocations
+4. Practice canary recovery
+
+Track MTTR and switch propagation p99. Improve what you measure.
+
+## Relationship to model safety classifiers
+
+Guardrail models (prompt injection, PII leak) complement kill switches—they reduce incident frequency. They do not replace halt controls when classifier fails open or latency spikes. Architecture:
+
+```
+Request → classifier → orchestrator → tools
+              ↓ fail closed on high risk
+         kill switch check at orchestrator + each tool
+```
+
+Redundant gates at run and tool boundaries contain blast radius when one layer fails.
 
 ## The takeaway
 
-Kill Switch Incident Response rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent kill switch incident response becomes a maintainable asset instead of incident fuel.
+Agent kill switches are layered, audited, fast-propagating controls—not a hidden env var. Pair human break-glass with automatic circuit breakers, cancel in-flight runs, and incident playbooks that default to narrow containment. Rehearse in game days, expire flags automatically, and recover via canary. The email blast incident is cheaper as a drill than as a holiday surprise.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Google SRE — Managing incidents](https://sre.google/sre-book/managing-incidents/)
+- [LaunchDarkly — Kill switches documentation](https://docs.launchdarkly.com/home/observability/kill-switch)
+- [NIST SP 800-61 — Computer security incident handling guide](https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final)
+- [OpenAI — Safety best practices for API deployments](https://platform.openai.com/docs/guides/safety-best-practices)
+- [OWASP — LLM Top 10 (unbounded consumption)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)

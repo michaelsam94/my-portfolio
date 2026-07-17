@@ -3,127 +3,257 @@ title: "Postgres work_mem Sort and Hash Tuning"
 slug: "postgres-work-mem-sort-hash-tuning"
 description: "Size work_mem for sorts and hashes without OOM — understand per-operation allocation and log_temp_files signals."
 datePublished: "2026-03-12"
-dateModified: "2026-03-12"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres work mem sort hash tuning, production, backend"
+keywords: "postgres work_mem, sort hash aggregate, log_temp_files, query memory tuning"
 faq:
-  - q: "What problem does Postgres work_mem Sort and Hash Tuning solve?"
-    a: "It addresses production gaps teams hit when scaling postgres work mem sort hash tuning: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres work mem sort hash tuning appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Is work_mem a per-query or per-connection limit?"
+    a: "work_mem applies per sort or hash operation within a query, not per query total. A query with five hash joins can allocate up to 5 × work_mem before spilling. Multiply by concurrent active queries when estimating RAM — 100 connections × 64 MB work_mem can theoretically demand gigabytes if every query runs parallel sorts."
+  - q: "How do I know if raising work_mem will help a slow query?"
+    a: "Run EXPLAIN (ANALYZE, BUFFERS). Look for Sort Method: external merge Disk or Hash Buckets with Batches > 1. If nodes already say in-memory sort with low spill, increasing work_mem may not help. If external sort or multi-batch hash appears, a targeted session-level bump often removes disk I/O."
+  - q: "Should I set work_mem globally high for OLTP?"
+    a: "No. A high global work_mem risks OOM when many simple queries each trigger small sorts, and it encourages the planner to choose memory-heavy plans. Keep global work_mem conservative (4–16 MB), raise per-session or per-role for reporting workloads, and use pg_stat_statements to find queries that spill."
 ---
 
-## Production context
+The dashboard query worked fine with ten concurrent users. At Black Friday traffic, the same SQL drove `temp_file` creation to four hundred gigabytes per hour and pushed p95 latency past twelve seconds. The global `work_mem` was 256 MB — generous for one sort, catastrophic when two hundred connections each opened three hash aggregates. Tuning `work_mem` is not picking a magic number; it is understanding per-operation accounting and spill signals.
 
-A billing service lost duplicate events because postgres work mem sort hash tuning was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## What work_mem funds
 
-Senior backend work on postgres work_mem sort and hash tuning is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+Postgres allocates `work_mem` for:
 
-## Architecture pattern
+- **Sort nodes** — ORDER BY, merge joins, CREATE INDEX (maintenance uses `maintenance_work_mem`, separate knob)
+- **Hash tables** — hash joins, hash aggregates, hash-based subplans
+- **Materialize nodes** — some CTE materializations
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+It does **not** cap shared buffers, tuple storage in result sets, or parallel worker aggregate of work_mem (each worker gets its own allocation up to work_mem for parallel sorts/hashes).
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+SHOW work_mem;
+SET work_mem = '128MB';
+ALTER ROLE analyst SET work_mem = '256MB';
 ```
 
-## Implementation checklist
+## Per-operation multiplication
 
-Validate inputs at the trust boundary with schema versioning.
+Consider a query with two hash joins, one hash aggregate, and one sort — worst-case concurrent RAM from this one query ≈ 4 × `work_mem` (not counting parallel workers). Now multiply by active connections running similar analytics.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Rule: **effective sort/hash budget ≈ active_queries × ops_per_query × work_mem × (1 + parallel_workers)**. Size RAM headroom accordingly or cap analyst concurrency.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Reading EXPLAIN for spill
 
-Run migrations with lock_timeout and statement_timeout set.
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT o.customer_id, SUM(li.amount)
+FROM orders o
+JOIN line_items li ON li.order_id = o.id
+WHERE o.created_at >= '2025-01-01'
+GROUP BY o.customer_id
+ORDER BY 2 DESC
+LIMIT 100;
+```
 
-Load test at 2× expected peak with production-like payload sizes.
+Healthy hash aggregate:
 
-## Observability
+```
+HashAggregate  Batches: 1  Memory Usage: 8423kB
+```
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Spilling hash:
 
-Dashboards for postgres work mem sort hash tuning should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+```
+HashAggregate  Batches: 32  Memory Usage: 65536kB  Disk Usage: 204800kB
+```
 
-## Security notes
+External sort:
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+```
+Sort Method: external merge  Disk: 458912kB
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+When `Batches > 1` or `external merge Disk` appears, the operation exceeded `work_mem` and wrote temp files.
 
-## Common production mistakes
+## log_temp_files: fleet-wide spill radar
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+```ini
+log_temp_files = 0    # log any temp file creation
+```
 
-## Debugging and triage workflow
+Log line example:
 
-When production misbehaves, work top-down:
+```
+LOG: temporary file: path "base/pgsql_tmp/pgf_xxx.1", size 104857600
+```
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Correlate with `log_line_prefix` including query id when using pg_stat_statements.
 
-## Operational checklist
+```sql
+SELECT datname, temp_files, temp_bytes,
+       temp_bytes / NULLIF(temp_files, 0) AS avg_temp_file_bytes
+FROM pg_stat_database
+WHERE datname = current_database();
+```
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+## Tuning workflow
 
-## Performance tuning notes
+1. **Baseline** — Identify top spillers via logs or `pg_stat_statements`.
+2. **Session bump** — `SET work_mem = '64MB'` in reporting role only; re-run EXPLAIN ANALYZE.
+3. **Verify latency and temp_bytes** — Ensure improvement without swapping OS page cache.
+4. **Lock role setting** — `ALTER ROLE reporter SET work_mem = '64MB';`
+5. **Keep global low** — `work_mem = 8MB` globally, higher for ETL batch user.
 
-Measure before optimizing postgres work mem sort hash tuning. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## hash_mem_multiplier (PostgreSQL 13+)
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+```ini
+hash_mem_multiplier = 2.0   # hash tables may use up to work_mem × this
+```
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Effective hash budget = `work_mem × hash_mem_multiplier`. Increase cautiously; sort nodes still cap at plain `work_mem`.
 
-## Rollout and migration
+## maintenance_work_mem vs work_mem
 
-Ship postgres work mem sort hash tuning changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+DDL and VACUUM use `maintenance_work_mem`:
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+```ini
+maintenance_work_mem = 1GB
+work_mem = 16MB
+```
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Do not conflate them. A huge `maintenance_work_mem` does not help SELECT sorts.
 
-## Testing recommendations
+## Sort vs hash join: which spills first?
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+The planner picks merge join (sort both sides) vs hash join (build hash on inner) based on statistics. When EXPLAIN shows both nodes spilling, raising `work_mem` helps the dominant node first.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+```sql
+SET enable_hashjoin = off;  -- diagnostic only
+EXPLAIN ANALYZE ...;
+RESET enable_hashjoin;
+```
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Parallel query interaction
 
-## Incident patterns we see
+Parallel workers execute partial sorts/hashes with independent `work_mem` slices. A parallel hash join with four workers can consume far more memory than a serial plan.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+```sql
+SET max_parallel_workers_per_gather = 0;  -- diagnostic
+```
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+If spill disappears with parallel off, memory multiplication from workers was the culprit.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## temp_file_limit and hard caps
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Postgres 14+ supports per-session temp file limits:
 
-## Resources
+```sql
+SET temp_file_limit = '50GB';
+```
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+When exceeded, query cancels — preferable to filling disk.
+
+## When indexes beat work_mem
+
+Spill sometimes means missing index, not low memory:
+
+```sql
+SELECT * FROM events ORDER BY created_at DESC LIMIT 10;
+```
+
+An index on `(created_at DESC)` avoids sort entirely — cheaper than 512 MB `work_mem`. Always ask: can the planner skip the sort/hash node?
+
+## pg_stat_statements correlation
+
+```sql
+SELECT query, calls, mean_exec_time, temp_blks_written
+FROM pg_stat_statements
+WHERE temp_blks_written > 0
+ORDER BY temp_blks_written DESC
+LIMIT 20;
+```
+
+Reset stats after tuning to measure delta.
+
+## OOM prevention on shared hosts
+
+```ini
+work_mem = 16MB
+max_connections = 100
+shared_buffers = 4GB
+```
+
+Use connection pooler (PgBouncer) to reduce concurrent server backends. Use statement timeout on analyst sessions:
+
+```sql
+ALTER ROLE analyst SET statement_timeout = '120s';
+```
+
+## Practical example: ETL aggregation
+
+Nightly job spilling on hash aggregate over 80 GB fact table:
+
+```sql
+BEGIN;
+SET LOCAL work_mem = '512MB';
+SET LOCAL max_parallel_workers_per_gather = 2;
+
+INSERT INTO daily_rollups
+SELECT date_trunc('day', ts), sku, SUM(qty)
+FROM facts
+WHERE ts >= CURRENT_DATE - INTERVAL '1 day'
+GROUP BY 1, 2;
+COMMIT;
+```
+
+`SET LOCAL` scopes to transaction — OLTP connections on default pool unaffected.
+
+## shared_buffers interaction
+
+High `work_mem` does not come from `shared_buffers`, but both compete for RAM. `work_mem` tuning without pooler math invites swap thrashing — monitor OS `vmstat` during peak.
+
+`work_mem` is per sort/hash operation, not per query or connection. Spill shows up in EXPLAIN as external sort or multi-batch hash, and fleet-wide in `log_temp_files`. Keep global values conservative, override for reporting roles, fix plans with indexes when sorts are unnecessary, and account for parallel worker multiplication before the OOM killer teaches the lesson for you.
+
+## Incremental sort and work_mem
+
+PostgreSQL 13+ incremental sort sorts chunks using already-ordered prefix from index — reduces sort width. `EXPLAIN` shows `Incremental Sort` with memory usage lower than full sort. Incremental sort still respects `work_mem`; partial benefit does not eliminate spill on wide partitions. Combine indexed `ORDER BY` prefix with incremental sort before raising memory.
+
+## Grouping sets and rollup memory
+
+`GROUP BY ROLLUP` and `CUBE` generate multiple aggregation levels — each level may allocate hash or sort state. Heavy BI queries with rollup over 10M rows can multiply work_mem pressure silently. Test rollup reports with `EXPLAIN (ANALYZE)` and consider pre-aggregated matviews instead of ad-hoc rollup during peak hours.
+
+## Prepared statements and custom work_mem
+
+ORM connection pools set session variables once per connection checkout:
+
+```sql
+SET work_mem = '64MB';  -- on pool init for reporting role via PgBouncer startup query
+```
+
+PgBouncer `startup_query` applies per server connection — verify OLTP pool does not inherit analyst work_mem. Document which pooler user maps to which role settings.
+
+## Cloud-managed Postgres limits
+
+RDS and Cloud SQL cap `work_mem` maximum by parameter group tier. Attempting `SET work_mem = '2GB'` on small instance may clamp silently or reject. Check `SHOW work_mem` after SET in managed environments — effective value may differ from requested.
+
+## Vacuum and analyze sort memory
+
+Autovacuum uses `maintenance_work_mem`, not `work_mem`, for index cleanup and sort phases during CREATE INDEX CONCURRENTLY replay. Spill during user queries and bloat during vacuum are separate tuning tracks — do not raise work_mem hoping to fix bloat latency.
+
+## Real incident: sort node regression after upgrade
+
+After PostgreSQL minor upgrade, one reporting query regressed from 4s to 45s — planner switched from hash join to merge join due to statistics refresh. Merge join sorted 12M rows spilling 8GB temp files per run. Fix was restoring statistics plus adding composite index — not raising work_mem from 16MB to 512MB. Lesson: spill after upgrade may be plan regression; compare EXPLAIN across versions before memory knob turning.
+
+## work_mem in connection string options
+
+libpq and JDBC support options parameter:
+
+```
+postgresql://analyst:pass@host/db?options=-c%20work_mem%3D128MB
+```
+
+BI tools connecting directly bypass role ALTER — document connection string memory for Tableau/Looker service accounts or they inherit default 4MB and flood support with "slow dashboard" tickets.
+
+## Hash join batch growth dynamics
+
+When hash join batches multiply, each batch writes partition files — disk bandwidth becomes bottleneck before CPU. Raising work_mem to fit single batch removes partition round-trips — nonlinear speedup when crossing batch threshold. Identify threshold by binary search SET work_mem in session during EXPLAIN ANALYZE runs in staging clone.

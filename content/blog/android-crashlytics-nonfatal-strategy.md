@@ -99,6 +99,24 @@ The observability instinct here is identical whether you're on mobile or backend
 
 Non-fatals are your window into the bugs that degrade the app without crashing it — but only if you're ruthless about signal. Record handled errors you'd actually act on, skip expected conditions and unactionable noise, and rate-limit anything that fires in a loop. Enrich every report with custom keys (screen, flags, user segment) set proactively and breadcrumbs that reconstruct the path to the error, so a stack trace becomes a diagnosis. Tier your reporting, triage on a cadence, alert on the critical tier, and verify fixes by watching rates drop per release. A lean, well-contextualized non-fatal stream will find more real bugs than any amount of exhaustive logging.
 
+## Sampling non-fatals
+
+Logging every network blip as non-fatal floods dashboard — sample 1% with `recordException` and aggregate breadcrumbs for rest. Set custom keys `severity=recoverable` vs `severity=user_impacting` for triage filters.
+
+## ANR vs non-fatal boundary
+
+Do not `recordException` for expected cancellation — marks session unhealthy in Velocity alerts. Use breadcrumbs for cancel paths; reserve non-fatal for integrity violations.
+
+## Crashlytics Nonfatal Strategy Supplement 0 on Samsung and Pixel divergence
+
+Exercise crashlytics nonfatal strategy supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching crashlytics; regressions above 8% block release for `android-crashlytics-nonfatal-strategy-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Crashlytics Nonfatal Strategy Supplement 0" should map to a single runbook section with known workarounds.
+
+## Strategy regression gates for Play Vitals
+
+Before promoting `android-crashlytics-nonfatal-strategy-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Firebase Crashlytics — customize crash reports](https://firebase.google.com/docs/crashlytics/customize-crash-reports)

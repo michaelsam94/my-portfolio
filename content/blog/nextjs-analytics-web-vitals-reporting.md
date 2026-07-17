@@ -3,8 +3,8 @@ title: "Web Vitals Reporting in Next.js Apps"
 slug: "nextjs-analytics-web-vitals-reporting"
 description: "useReportWebVitals and RUM integration — attribution, route segmentation, and CrUX correlation."
 datePublished: "2027-01-04"
-dateModified: "2027-01-04"
-tags: ["Next.js", "Core Web Vitals", "Analytics"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js web vitals reporting, useReportWebVitals, RUM Next.js"
 faq:
   - q: "What is Web Vitals Reporting in Next.js Apps?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are common mistakes with Web Vitals Reporting in Next.js Apps?"
     a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
 ---
-
 The gap between reading about web vitals reporting in next.js apps and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.

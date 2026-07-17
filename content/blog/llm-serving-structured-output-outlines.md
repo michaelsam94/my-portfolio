@@ -3,8 +3,8 @@ title: "Structured Output at Serving Time"
 slug: "llm-serving-structured-output-outlines"
 description: "Enforce JSON schemas and structured formats during LLM inference with constrained decoding, Outlines, and server-side grammar validation."
 datePublished: "2025-03-09"
-dateModified: "2025-03-09"
-tags: ["AI", "LLM", "Structured Output", "Inference"]
+dateModified: "2026-07-17"
+tags:
 keywords: "structured output LLM, constrained decoding, Outlines library, JSON schema LLM, vLLM guided decoding, llama.cpp grammar"
 faq:
   - q: "What is the difference between prompt-based JSON and constrained decoding?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can I use structured output with any model?"
     a: "Constrained decoding requires access to logits at each generation step, so it works with open-weight models served through vLLM, llama.cpp, or Outlines directly. Most closed APIs (OpenAI, Anthropic) offer their own structured output modes that work similarly under the hood."
 ---
-
 Your pipeline expects the LLM to return `{"intent": "refund", "order_id": "12345", "amount": 29.99}`. Instead it returns a markdown code block wrapping JSON with a trailing comma and a comment explaining its reasoning. You add regex cleanup, a JSON repair library, and a retry loop — and you still fail 3% of production requests.
 
 Structured output at serving time eliminates this class of failure by constraining token generation to valid schema paths. The model can only emit tokens that keep the partial output parseable against your JSON Schema, regex, or context-free grammar.

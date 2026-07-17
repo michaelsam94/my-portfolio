@@ -3,8 +3,8 @@ title: "Next.js Middleware on the Edge"
 slug: "nextjs-middleware-edge-runtime"
 description: "Build Next.js middleware on the Edge Runtime: authentication gates, geo routing, A/B testing, header injection, and matcher configuration."
 datePublished: "2025-09-03"
-dateModified: "2025-09-03"
-tags: ["Web", "Next.js", "Edge", "Security"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Next.js middleware, Edge Runtime Next.js, middleware matcher, authentication middleware Next.js, geo routing edge, Next.js edge functions"
 faq:
   - q: "What can Next.js middleware do that route handlers cannot?"
@@ -14,7 +14,6 @@ faq:
   - q: "What are Edge Runtime limitations in middleware?"
     a: "Middleware runs on the Edge Runtime, which lacks Node.js APIs (fs, child_process, native modules). Use Web Crypto, fetch, and URL APIs. Database connections must go through HTTP-based clients or edge-compatible drivers like @vercel/postgres or Upstash Redis."
 ---
-
 Every protected page duplicates the same auth check at the top. A new `/admin` route ships without it because someone copy-pasted the wrong template. Next.js middleware runs once per request before any page or API route executes—one file, one matcher config, consistent behavior across the app. It runs on the Edge Runtime, so it executes close to the user with sub-millisecond cold starts, but that speed comes with API restrictions.
 
 ## Basic structure
@@ -201,34 +200,56 @@ export const config = {
 
 Over-broad `matcher: '/:path*'` runs middleware on static assets — adds latency to every `_next/static` request. Keep middleware under 25ms CPU budget on Vercel Edge.
 
-## Common production mistakes
+## Production validation (1)
 
-Teams get middleware edge runtime wrong in predictable ways:
+Ship changes behind feature flags when behavior crosses route or service boundaries. Canary deploy with automatic rollback when error rate or p95 latency regresses beyond SLO budget. Document which metrics prove success—user-visible latency, error ratio, conversion—not only CPU graphs.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
 
-Production implementations of middleware edge runtime fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Failure modes (2)
 
-## Debugging and triage workflow
+Recurring incidents: missing idempotency on retried paths, connection pool exhaustion masquerading as slow queries, retry storms amplifying partial outages. Design explicit timeouts on every outbound call.
 
-When middleware edge runtime misbehaves in production, work top-down instead of guessing:
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Observability (3)
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Structured logs include trace_id and tenant_id on every error path. Metrics: request rate, error ratio, duration histogram, queue depth or pool wait. Traces: one span per dependency.
 
-## Resources
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
 
-- [Next.js Middleware docs](https://nextjs.org/docs/app/building-your-application/routing/middleware) — API and conventions
-- [Edge Runtime supported APIs](https://nextjs.org/docs/app/api-reference/edge) — what works and what doesn't
-- [matcher configuration](https://nextjs.org/docs/app/api-reference/file-conventions/middleware#matcher) — path pattern syntax
-- [jose JWT library](https://github.com/panva/jose) — Edge-compatible JWT verification
-- [Upstash rate limiting](https://upstash.com/docs/redis/sdks/ratelimit-ts/overview) — edge rate limiter
+## Security review (4)
+
+Least-privilege credentials, no PII in logs, fail-closed auth defaults. Secrets rotate without redeploy where possible. Never log raw tokens or authorization headers.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Testing strategy (5)
+
+Integration tests against real Postgres/Redis in CI with Testcontainers. Load test at 2× peak with production-like payloads. Chaos: inject dependency latency and verify degradation matches runbooks.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Rollout checklist (6)
+
+Staging mirrors production topology for cache, pools, and timeouts. Rollback path tested quarterly. On-call runbook fits one page: symptom, dashboard, mitigation, rollback.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Performance tuning (7)
+
+Measure p50/p95 before optimizing. Change one variable at a time—pool size, batch size, TTL, timeout. Profile CPU for JSON serialization and regex; profile IO for N+1 and pool wait.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## On-call triage (8)
+
+Confirm scope: one tenant, region, or deploy stage? Check deploys and migrations in last 24h. Compare golden signals to baseline. Rollback first during incident if faster than root cause.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.
+
+## Design trade-offs (9)
+
+Document if you chose availability over strict consistency, or latency over freshness. Future engineers need intent during incidents—not git blame archaeology.
+
+When operating **Next.js middleware edge runtime** (`nextjs-middleware-edge-runtime`), tie this section to a measurable SLI—latency, error rate, freshness, or throughput—and review it in weekly ops until the pattern is boringly stable.

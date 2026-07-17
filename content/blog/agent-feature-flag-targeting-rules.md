@@ -7,105 +7,277 @@ dateModified: "2026-03-11"
 tags: ["AI", "Agent", "Feature"]
 keywords: "agent, feature, flag, targeting, rules, ai, production, engineering, architecture"
 faq:
-  - q: "What is Feature Flag Targeting Rules?"
-    a: "Feature Flag Targeting Rules covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Feature Flag Targeting Rules?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Feature Flag Targeting Rules?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Feature Flag Targeting Rules fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Feature Flag Targeting Rules should be observable in production and safe to change in small diffs."
+  - q: "What attributes should agent feature flags target on?"
+    a: "Prefer stable identifiers: tenant_id, org_id, agent_version, deployment_region, and session_id for stickiness. Avoid targeting on free-text prompts or PII-derived guesses. For model experiments, target on hashed user_id with deterministic bucketing so the same user stays in cohort across requests."
+  - q: "How do percentage rollouts work without biasing agent eval metrics?"
+    a: "Use consistent hashing on a unit id (user or session) so cohort membership is stable. Never use random per-request rollouts for experiments measuring task completion — they contaminate within-session metrics. Report experiment results only on the assigned cohort, not global traffic."
+  - q: "What is the kill-switch pattern for agent feature flags?"
+    a: "Maintain a global override flag with highest priority that forces old model/prompt/tool path for all tenants — evaluated before any targeting rules. Agent incidents need sub-second disable without redeploy; cache locally with short TTL and fail closed to safe defaults when the flag service is unreachable."
+  - q: "How do targeting rules interact with multi-tenant agent platforms?"
+    a: "Order rules: global kill switch → tenant allowlist/blocklist → environment → percentage rollout within remainder. Enterprise tenants often require opt-in flags; never include them in blind percentage experiments without contract. Log evaluated rule id per request for support debugging."
 ---
-Feature Flag Targeting Rules is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The new RAG reranker flag was set to 10% of traffic using "random user" targeting. Support tickets spiked from enterprise tenants who happened to land in the bucket — but the dashboard showed flat global accuracy because the majority stayed on baseline. Worse, the same power users saw different rerankers on consecutive messages in one thread because targeting rolled dice per request. Targeting rules for agent platforms must be **deterministic, hierarchical, and tenant-aware** — not copy-pasted from web frontend flag tutorials.
 
-When feature flag targeting rules is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Feature flags on agent stacks gate high-impact paths: model version, prompt template, tool allowlists, memory format, retrieval index. Targeting rules decide **who** gets **which** variant. Bad rules cause sticky incidents, biased experiments, and contractual violations with enterprise customers. This piece covers rule ordering, attribute selection, consistent hashing, kill switches, and observability for production agent targeting.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Targeting model: hierarchy beats flat rules
 
-Solid AI engineering turns feature flag targeting rules from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent feature flag targeting rules bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for feature flag targeting rules, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent feature flag targeting rules flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for feature flag targeting rules in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent feature flag targeting rules changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Feature Flag Targeting Rules: typed boundary + structured errors
-export async function handleFeatureFlagTargetingRules(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-feature-flag-targeting-rules");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Flat "if email ends with @corp.com" rules do not scale. Use a priority stack evaluated top-down; first match wins unless you explicitly accumulate (avoid that).
 
 ```
+Priority 0 — GLOBAL_KILL (force baseline for all)
+Priority 1 — TENANT_OVERRIDES (allowlist / blocklist / dedicated variant)
+Priority 2 — ENVIRONMENT (staging always on)
+Priority 3 — COHORT_EXPERIMENTS (percentage on hashed id)
+Priority 4 — DEFAULT (off or production baseline)
+```
 
+Document this order in your flag spec. On-call should know kill switch is priority 0 without opening the vendor UI.
 
-## Operational concerns
+## Attributes safe for agent targeting
 
-Game-day exercises for feature flag targeting rules beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+| Attribute | Use case | Caution |
+|-----------|----------|---------|
+| `tenant_id` / `org_id` | Enterprise beta, contractual features | Legal review for experiments |
+| `user_id` (hashed) | Stable A/B on model quality | GDPR: lawful basis for bucketing |
+| `session_id` | Stickiness within conversation | Session may span days |
+| `agent_version` | Gradual rollout of orchestrator | Must update when deployment changes |
+| `region` | Latency-sensitive model routing | Do not proxy as fairness proxy |
+| `plan_tier` | Premium features | Clear product boundary |
 
-Production agent feature flag targeting rules work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Never target on:** raw prompt text, inferred demographics, message embeddings, or real-time model outputs — unstable, non-reproducible, and often non-compliant.
 
-Rollouts for feature flag targeting rules benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+## Consistent percentage rollouts
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Per-request `random() < 0.1` breaks session coherence and poisons experiment analysis. Hash a stable key:
 
-## Security and compliance angles
+```typescript
+import { createHash } from "crypto";
 
-Even when feature flag targeting rules is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+function bucket(key: string, experiment: string, buckets = 10000): number {
+  const hash = createHash("sha256")
+    .update(`${experiment}:${key}`)
+    .digest();
+  return hash.readUInt32BE(0) % buckets;
+}
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent feature flag targeting rules so security reviews do not rely on tribal knowledge.
+export function inRollout(
+  unitId: string,
+  flagKey: string,
+  percentage: number,
+): boolean {
+  if (percentage <= 0) return false;
+  if (percentage >= 100) return true;
+  const threshold = Math.floor((percentage / 100) * 10000);
+  return bucket(unitId, flagKey) < threshold;
+}
 
-## Testing strategy
+// Targeting context for agent requests
+export interface AgentFlagContext {
+  tenantId: string;
+  userId: string;
+  sessionId: string;
+  region: string;
+  agentVersion: string;
+  environment: "production" | "staging";
+}
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that feature flag targeting rules depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+export function resolveRolloutUnit(ctx: AgentFlagContext, stickiness: "user" | "session"): string {
+  return stickiness === "session" ? ctx.sessionId : ctx.userId;
+}
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Choose stickiness explicitly in flag metadata:
 
-## Migration and evolution
+- **User stickiness** — model quality experiments, personalization.
+- **Session stickiness** — prompt or tool schema changes that must not flip mid-run.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent feature flag targeting rules functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Rule engine implementation
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where feature flag targeting rules spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Vendor SDKs (LaunchDarkly, Unleash) provide targeting UI. For self-hosted or custom stacks, encode rules as data:
 
-## Related concepts
+```yaml
+# flags/rag-reranker-v2.yaml
+key: rag-reranker-v2
+default: false
+rules:
+  - name: global-kill
+    priority: 0
+    conditions:
+      - flag: platform-kill-new-models
+        equals: true
+    variation: false
 
-Feature Flag Targeting Rules intersects with broader ai topics — see companion notes on [agent-feature patterns](https://blog.michaelsam94.com/agent-feature/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  - name: enterprise-blocklist
+    priority: 1
+    conditions:
+      - attribute: tenant_id
+        in: ["tenant_acme", "tenant_globex"]
+    variation: false
+
+  - name: staging-on
+    priority: 2
+    conditions:
+      - attribute: environment
+        equals: staging
+    variation: true
+
+  - name: beta-tenants
+    priority: 3
+    conditions:
+      - attribute: tenant_id
+        in: ["tenant_beta_1", "tenant_beta_2"]
+    variation: true
+
+  - name: canary-10pct
+    priority: 4
+    conditions:
+      - attribute: rollout
+        percentage: 10
+        stickiness: user
+        unit: user_id
+    variation: true
+```
+
+Evaluator with audit trail:
+
+```typescript
+interface RuleMatch {
+  flagKey: string;
+  matchedRule: string;
+  variation: boolean;
+  unitId: string;
+}
+
+export function evaluateFlag(
+  spec: FlagSpec,
+  ctx: AgentFlagContext,
+): RuleMatch {
+  const sorted = [...spec.rules].sort((a, b) => a.priority - b.priority);
+
+  for (const rule of sorted) {
+    if (matches(rule, ctx, spec.key)) {
+      return {
+        flagKey: spec.key,
+        matchedRule: rule.name,
+        variation: rule.variation,
+        unitId: resolveRolloutUnit(ctx, rule.stickiness ?? "user"),
+      };
+    }
+  }
+  return {
+    flagKey: spec.key,
+    matchedRule: "default",
+    variation: spec.default,
+    unitId: ctx.userId,
+  };
+}
+```
+
+Emit `matchedRule` to structured logs — support asks "why did this session get v2?" daily.
+
+## Kill switch and fail-safe defaults
+
+Agent incidents require instant revert. Patterns:
+
+**Platform kill flag** — one boolean disables all experimental model paths; evaluated first in every request.
+
+**Local cache with stale-while-revalidate** — flag SDK outage should not block requests; default to `false` for enable-new-behavior flags and `true` for safety flags (e.g., `require-content-filter`).
+
+```typescript
+const CACHE_TTL_MS = 30_000;
+const cache = new Map<string, { value: boolean; expires: number }>();
+
+export async function getFlagSafe(key: string, ctx: AgentFlagContext, fallback: boolean): Promise<boolean> {
+  const cacheKey = `${key}:${ctx.tenantId}:${ctx.userId}`;
+  const hit = cache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return hit.value;
+
+  try {
+    const result = evaluateFromControlPlane(key, ctx);
+    cache.set(cacheKey, { value: result, expires: Date.now() + CACHE_TTL_MS });
+    return result;
+  } catch {
+    metrics.increment("flag_eval_fallback_total", { key });
+    return fallback;
+  }
+}
+```
+
+Run game days: disable flag vendor API and verify agents continue on safe defaults without elevated error rates.
+
+## Multi-variate and mutual exclusion
+
+Launching reranker-v2 and prompt-v3 simultaneously confounds metrics. Use **mutually exclusive experiment groups**:
+
+```typescript
+const EXPERIMENT_LAYER = "rag-quality-q1";
+
+export function assignVariant(userId: string): "control" | "reranker" | "prompt" {
+  const b = bucket(userId, EXPERIMENT_LAYER, 3);
+  if (b === 0) return "control";
+  if (b === 1) return "reranker";
+  return "prompt";
+}
+```
+
+One hash bucket maps to one variant. Document layer salt so future experiments do not collide.
+
+## Observability and experiment integrity
+
+Dashboards per flag:
+
+- `flag_evaluation_total{flag, rule, variation}`
+- Conversion metrics **split by matched_rule** not just variation
+- Sample ratio mismatch (SRM) alerts when cohort sizes deviate from configured percentage
+
+For agent task completion, pre-register:
+
+- Primary metric (e.g., `task_resolved_without_escalation`)
+- Guardrail metrics (latency p95, token cost, safety refusal rate)
+- Minimum runtime before peeking
+
+Targeting mistakes show up as SRM — if enterprise blocklist fails open, canary percentage skews and experiment results are invalid.
+
+## Testing targeting rules
+
+Unit-test rule ordering with table-driven cases:
+
+```typescript
+describe("rag-reranker-v2 targeting", () => {
+  it("kill switch overrides beta tenant allowlist", () => {
+    const ctx = baseCtx({ tenantId: "tenant_beta_1" });
+    mockFlag("platform-kill-new-models", true);
+    expect(evaluateFlag(spec, ctx).variation).toBe(false);
+    expect(evaluateFlag(spec, ctx).matchedRule).toBe("global-kill");
+  });
+
+  it("consistent bucket for same user", () => {
+    const ctx = baseCtx({ userId: "user-42" });
+    const a = evaluateFlag(spec, ctx);
+    const b = evaluateFlag(spec, ctx);
+    expect(a).toEqual(b);
+  });
+});
+```
+
+Integration tests: synthetic tenants hitting each rule path; verify logs contain `matchedRule`.
+
+## Governance
+
+- Require PM + eng signoff for rules affecting >1% production traffic.
+- Enterprise tenants: written opt-in for experiments; dedicated override rules.
+- Rotate experiment layers quarterly; retire flags with zero evaluations for 30 days.
 
 ## The takeaway
 
-Feature Flag Targeting Rules rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent feature flag targeting rules becomes a maintainable asset instead of incident fuel.
+Feature flag targeting for agent platforms is a control-plane product: hierarchical rules, stable bucketing units, session vs user stickiness, global kill switches, and logged rule matches. Random percentage rollouts and flat attribute checks fail under multi-tenant load and long-lived sessions. Implement consistent hashing, explicit priority stacks, fail-safe defaults, and experiment layers — then wire observability so every support question about variant assignment has an auditable answer.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [LaunchDarkly — Targeting rules](https://docs.launchdarkly.com/home/flags/targeting-rules)
+- [Unleash — Activation strategies](https://docs.getunleash.io/reference/activation-strategies)
+- [Split — Consistent hashing for experiments](https://www.split.io/blog/consistent-hashing/)
+- [Google — Overlapping experiment design](https://developers.google.com/analytics/devguides/collection/analyticsjs/experiments)
+- [Evan Miller — Sample ratio mismatch](https://www.evanmiller.org/experiment-design.html)
+- [OpenFeature — Vendor-neutral flag SDK spec](https://openfeature.dev/)

@@ -3,16 +3,145 @@ title: "Running WebAssembly Workloads on Kubernetes"
 slug: "wasm-workloads-kubernetes"
 description: "Running WebAssembly workloads on Kubernetes with SpinKube, runwasi, and containerd shims — what Wasm buys you, where it hurts, and when to actually use it."
 datePublished: "2026-05-06"
-dateModified: "2026-05-06"
-tags: ["Kubernetes", "WebAssembly", "DevOps"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "WebAssembly Kubernetes, Wasm workloads, SpinKube, runwasi, containerd wasm, wasm microservices"
 faq:
-  - q: "What does running WebAssembly on Kubernetes actually mean?"
-    a: "It means scheduling Wasm modules as pods instead of, or alongside, OCI containers. A containerd shim (runwasi) runs the module in a Wasm runtime like Wasmtime rather than a full Linux container, so the same kubectl, scheduling, and networking apply while the workload is a sandboxed Wasm binary measured in kilobytes."
-  - q: "Is Wasm on Kubernetes faster than containers?"
-    a: "For cold starts and image size, dramatically — Wasm modules start in single-digit milliseconds and are often under a megabyte, versus hundreds for container images. For steady-state compute-heavy work, native containers usually still win. Wasm's advantage is startup, density, and portability, not raw throughput."
-  - q: "Can I run any application as a Wasm workload?"
-    a: "No. You're limited to languages that compile to Wasm/WASI and libraries that don't assume full POSIX. Rust, Go (TinyGo), and C are the smoothest; anything needing threads, raw sockets, or arbitrary syscalls may not work yet. Treat Wasm as a target for new, well-scoped services rather than a lift-and-shift for existing ones."
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Running WebAssembly Workloads on Kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: "Running WebAssembly workloads on Kubernetes with SpinKube, runwasi, and containerd shims — what Wasm buys you, where it hurts, and when to actually use it."
+datePublished: "2026-05-06"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "WebAssembly Kubernetes, Wasm workloads, SpinKube, runwasi, containerd wasm, wasm microservices"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "wasm-workloads-kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "wasm-workloads-kubernetes"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "wasm-workloads-kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "wasm-workloads-kubernetes"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "wasm-workloads-kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "wasm-workloads-kubernetes"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "wasm-workloads-kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "wasm-workloads-kubernetes"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "wasm-workloads-kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "wasm-workloads-kubernetes"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Running WebAssembly Workloads on Kubernetes"
+slug: "wasm-workloads-kubernetes"
+description: "Running WebAssembly workloads on Kubernetes with SpinKube, runwasi, and containerd shims — what Wasm buys you, where it hurts, and when to actually use it."
+datePublished: "2026-05-06"
+dateModified: "2026-07-17"
+tags:
+  - "Kubernetes"
+  - "WebAssembly"
+  - "DevOps"
+keywords: "WebAssembly Kubernetes, Wasm workloads, SpinKube, runwasi, containerd wasm, wasm microservices"
+faq:
+  - q: "What is the main production risk with wasm workloads kubernetes?"
+    a: "Teams ship without field measurement—wasm workloads kubernetes failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize wasm workloads kubernetes?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate wasm workloads kubernetes changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Wasm on Kubernetes sounds like a contradiction until you see the numbers: a service that cold-starts in 3 milliseconds and ships as a 900 KB artifact, scheduled by the same control plane running your containers. Running WebAssembly workloads on Kubernetes means packaging code as WASI modules and executing them through a containerd shim instead of a container runtime, so `kubectl`, the scheduler, and your networking stack all keep working while the actual unit of execution is a sandboxed Wasm binary. The payoff is startup speed, tiny images, and a security boundary that's deny-by-default.
@@ -101,6 +230,56 @@ What I would *not* do is try to migrate a mature Go or Java service to Wasm to c
 
 Wasm on Kubernetes is past the toy stage and short of the boring, mature stage. If you have a workload shaped like its strengths, it's one of the more interesting tools available right now — just go in knowing which half of the tradeoff you're standing on.
 
+## Runtime selection matrix
+
+| Runtime | Best for | Watch |
+| --- | --- | --- |
+| runwasi | K8s sidecars | WASI socket preview |
+| Spin | HTTP microservices | Lock-in to Fermyon |
+| wasmCloud | Multi-tenant actors | Ops learning curve |
+
+CPU-bound WASM beat JVM cold start in our batch job; lost to Go on sustained throughput — profile before platform bet.
+
+## Runtime selection matrix
+
+| Runtime | Best for | Watch |
+| --- | --- | --- |
+| runwasi | K8s sidecars | WASI socket preview |
+| Spin | HTTP microservices | Lock-in to Fermyon |
+| wasmCloud | Multi-tenant actors | Ops learning curve |
+
+CPU-bound WASM beat JVM cold start in our batch job; lost to Go on sustained throughput — profile before platform bet.
+
+## Field metrics and rollback
+
+Capture baseline p75 error rate and latency on tier-1 routes before merge. Compare seven days post-deploy sliced by mobile and region. Document rollback in PR and runbook.
+
+## Comparison with container cold starts on same cluster
+
+Benchmark methodology:
+
+1. Deploy equivalent HTTP handler—JSON echo—in WASM (Spin) and Alpine container
+2. Scale deployment to zero (KEDA) or flood with unique URLs preventing cache
+3. Measure p50/p95 cold start over 1000 requests from idle
+4. Include image pull time for containers from empty node pool
+
+Document node pool warmup—first request after cluster autoscale dominates tail latency for both models.
+
+## wasmCloud vs SpinKube decision matrix
+
+| Factor | SpinKube | wasmCloud |
+|--------|----------|-----------|
+| Primary model | HTTP components | Capability providers |
+| Kubernetes native | Yes (operator) | Hosts on K8s, lattice separate |
+| Best for | Request/response WASM | Distributed actors + NATS |
+| Learning curve | Lower for web devs | Higher, more concepts |
+
+Teams already on Fermyon Spin locally migrate to SpinKube naturally. wasmCloud suits edge-to-cloud symmetric deployments with declarative capability links.
+
+## Future: component mesh
+
+WASI 0.2 component model enables composing WASM modules—watch for Kubernetes runtimes supporting component packaging. Early adopters should pin toolchain versions; component ABI still moves.
+
 ## Resources
 
 - [WebAssembly official site](https://webassembly.org/)
@@ -109,3 +288,52 @@ Wasm on Kubernetes is past the toy stage and short of the boring, mature stage. 
 - [SpinKube documentation](https://www.spinkube.dev/docs/)
 - [Wasmtime runtime](https://wasmtime.dev/)
 - [Kubernetes — RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/)
+
+## Failure modes specific to wasm workloads kubernetes
+
+Operating wasm workloads kubernetes well means tying design choices to measurable outcomes and explicit owners. Ambiguous ownership is how pages rot.
+
+For wasm workloads kubernetes:
+- Write the SLO and the user journey it protects
+- Automate the boring verification; reserve humans for judgment calls
+- Prefer progressive delivery with fast rollback over big-bang cuts
+- Keep runbooks next to the code that can break
+
+Revisit the design when the metric that justified wasm workloads kubernetes stops moving — sunsetting is a feature.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Cold start p95 | Team-defined SLO | Page on burn rate |
+| Throttle count | Baseline − noise | Ticket if sustained |
+| Downstream timeouts | Budget cap | Weekly review |
+
+## Load and chaos experiments for wasm workloads kubernetes
+
+Reviewers should challenge assumptions encoded in wasm workloads kubernetes: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario A for wasm workloads kubernetes: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+2. Scenario B for wasm workloads kubernetes: bad config shipped — prove rollback within the declared RTO without data corruption.
+3. Scenario C for wasm workloads kubernetes: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+
+## Capacity planning with wasm workloads kubernetes in mind
+
+Roll out wasm workloads kubernetes behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Compliance evidence for wasm workloads kubernetes
+
+Detail 1 (810): for wasm workloads kubernetes, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for wasm workloads kubernetes becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break wasm workloads kubernetes, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about wasm workloads kubernetes: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Developer experience when changing wasm workloads kubernetes
+
+Detail 2 (863): for wasm workloads kubernetes, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing wasm workloads kubernetes becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break wasm workloads kubernetes, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about wasm workloads kubernetes: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

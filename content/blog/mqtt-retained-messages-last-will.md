@@ -3,8 +3,8 @@ title: "Retained Messages and Last Will"
 slug: "mqtt-retained-messages-last-will"
 description: "Use MQTT retained messages and Last Will and Testament correctly: state topics, birth certificates, graceful offline detection, and pitfalls that corrupt fleet state."
 datePublished: "2025-07-27"
-dateModified: "2025-07-27"
-tags: ["IoT", "MQTT", "Messaging", "Protocol"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MQTT retained messages, MQTT last will testament, LWT, birth certificate, IoT device state"
 faq:
   - q: "What is an MQTT retained message?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do retained messages and LWT work together?"
     a: "Common pattern: retained 'birth' message on connect with status online, LWT publishes retained offline status on unclean disconnect. New subscribers instantly see current presence. Clear retained messages on decommission to avoid ghost devices."
 ---
-
 Dashboard showed 847 devices online. Field ops counted 812 powered units — the other 35 were retain ghosts from devices swapped six months ago, still publishing `{"status":"online"}` because nobody cleared the retained topic. MQTT retained messages and Last Will and Testament solve real problems — instant state for new subscribers, fast offline detection — but used carelessly they lie to your monitoring stack long after hardware leaves the fleet.
 
 ## Retained messages: last known good (or bad)
@@ -167,3 +166,17 @@ Run retained-topic audits monthly: export all retains under `devices/+/status`, 
 - [HiveMQ — Last Will and Testament](https://www.hivemq.com/blog/mqtt-essentials-part-9-last-will-and-testament/)
 - [Eclipse Mosquitto man page — configuration](https://mosquitto.org/man/mosquitto-8.html)
 - [EMQX retained message storage](https://www.emqx.io/docs/en/latest/design/retained.html)
+
+## Production notes for LLM stacks
+
+When `mqtt-retained-messages-last-will` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `retained messages and last will` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

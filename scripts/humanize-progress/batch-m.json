@@ -1,0 +1,482 @@
+{
+  "batch": "m",
+  "total": 51,
+  "rewritten": 48,
+  "skipped": 3,
+  "dateModified": "2026-07-17",
+  "target_words": 1200,
+  "under_1200_rewritten": [],
+  "wave2_remaining": [],
+  "problem_framing_remaining": [],
+  "word_stats": {
+    "min": 1123,
+    "max": 1340,
+    "avg": 1227.5
+  },
+  "skipped_slugs": [
+    "local-first-apps-crdts",
+    "managing-technical-debt",
+    "multi-region-active-active"
+  ],
+  "results": [
+    {
+      "slug": "load-balancing-algorithms-l4-l7",
+      "status": "rewritten",
+      "words": 1277,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "load-testing-with-k6",
+      "status": "rewritten",
+      "words": 1340,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "local-first-apps-crdts",
+      "status": "skipped",
+      "words": 1155,
+      "dateModified": "2026-06-18",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "long-context-vs-rag",
+      "status": "rewritten",
+      "words": 1303,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "managing-technical-debt",
+      "status": "skipped",
+      "words": 1154,
+      "dateModified": "2026-06-11",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-remote-servers-deployment",
+      "status": "rewritten",
+      "words": 1216,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-resources-vs-tools-vs-prompts",
+      "status": "rewritten",
+      "words": 1217,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-sampling-elicitation",
+      "status": "rewritten",
+      "words": 1226,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-server-authentication-oauth",
+      "status": "rewritten",
+      "words": 1214,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-server-testing-inspector",
+      "status": "rewritten",
+      "words": 1209,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mcp-transport-stdio-http-sse",
+      "status": "rewritten",
+      "words": 1222,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "message-queue-dead-letter-handling",
+      "status": "rewritten",
+      "words": 1224,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "message-queues-sqs-vs-kafka",
+      "status": "rewritten",
+      "words": 1224,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mfa-totp-implementation",
+      "status": "rewritten",
+      "words": 1202,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-api-composition",
+      "status": "rewritten",
+      "words": 1213,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-circuit-breaker-resilience",
+      "status": "rewritten",
+      "words": 1200,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-contract-testing-pact",
+      "status": "rewritten",
+      "words": 1211,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-distributed-tracing",
+      "status": "rewritten",
+      "words": 1211,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-service-discovery",
+      "status": "rewritten",
+      "words": 1208,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "microservices-strangler-fig-migration",
+      "status": "rewritten",
+      "words": 1203,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "migrating-xml-to-compose",
+      "status": "rewritten",
+      "words": 1223,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mixture-of-experts-explained",
+      "status": "rewritten",
+      "words": 1321,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "ml-model-serving-inference",
+      "status": "rewritten",
+      "words": 1204,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mobile-app-security-owasp-masvs",
+      "status": "rewritten",
+      "words": 1226,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mobile-reverse-engineering-defense",
+      "status": "rewritten",
+      "words": 1220,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "modbus-industrial-gateways",
+      "status": "rewritten",
+      "words": 1208,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "model-context-protocol-vs-function-calling",
+      "status": "rewritten",
+      "words": 1244,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "model-distillation-smaller-faster",
+      "status": "rewritten",
+      "words": 1254,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "modular-monoliths-vs-microservices",
+      "status": "rewritten",
+      "words": 1230,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-bridging-clustering",
+      "status": "rewritten",
+      "words": 1226,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-iot-at-scale",
+      "status": "rewritten",
+      "words": 1296,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-qos-levels-explained",
+      "status": "rewritten",
+      "words": 1214,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-retained-messages-last-will",
+      "status": "rewritten",
+      "words": 1214,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-sparkplug-b",
+      "status": "rewritten",
+      "words": 1290,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-tls-authentication-iot",
+      "status": "rewritten",
+      "words": 1204,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mqtt-topic-design-patterns",
+      "status": "rewritten",
+      "words": 1206,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mtls-mutual-authentication",
+      "status": "rewritten",
+      "words": 1206,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "mtls-service-mesh",
+      "status": "rewritten",
+      "words": 1325,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multi-agent-orchestration-orchestrator-workers",
+      "status": "rewritten",
+      "words": 1238,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multi-region-active-active",
+      "status": "skipped",
+      "words": 1123,
+      "dateModified": "2026-06-23",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-audio-transcription-whisper",
+      "status": "rewritten",
+      "words": 1224,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-document-understanding",
+      "status": "rewritten",
+      "words": 1222,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-image-generation-apis",
+      "status": "rewritten",
+      "words": 1203,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-models-in-apps",
+      "status": "rewritten",
+      "words": 1259,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-realtime-voice-api",
+      "status": "rewritten",
+      "words": 1250,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-text-to-speech-neural",
+      "status": "rewritten",
+      "words": 1226,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "multimodal-vision-language-models",
+      "status": "rewritten",
+      "words": 1206,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "navigation-3-jetpack-compose",
+      "status": "rewritten",
+      "words": 1247,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "nextjs-after-api-response-streaming",
+      "status": "rewritten",
+      "words": 1225,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "nextjs-analytics-web-vitals-reporting",
+      "status": "rewritten",
+      "words": 1225,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    },
+    {
+      "slug": "nextjs-app-router-server-actions",
+      "status": "rewritten",
+      "words": 1212,
+      "dateModified": "2026-07-17",
+      "faq_count": 3,
+      "has_problem_framing": false,
+      "wave2_markers": []
+    }
+  ]
+}

@@ -148,6 +148,22 @@ When workflow vs agent patterns misbehaves in production, work top-down instead 
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## When workflows beat autonomy
+
+Payment capture, PII export, and account deletion should be deterministic workflows with agent assist for copy — not fully autonomous loops. Encode legal checkpoints as workflow nodes; agents fill slots between gates.
+
+## Hybrid state machines
+
+Use workflow engine for outer skeleton (steps, timers, compensations) and agent for within-step reasoning. Persist workflow state in durable store; agent conversation state is ephemeral inside step boundary.
+
+## Production validation for Workflow Vs Agent Patterns Supplement 0
+
+Ship behind a flag when touching Workflow Vs Agent Patterns Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Workflow Vs Agent Patterns Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [LangGraph workflows vs agents](https://langchain-ai.github.io/langgraph/concepts/high_level/)

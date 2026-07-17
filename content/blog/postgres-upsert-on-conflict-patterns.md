@@ -3,7 +3,7 @@ title: "Postgres UPSERT Patterns with ON CONFLICT"
 slug: "postgres-upsert-on-conflict-patterns"
 description: "Master INSERT ON CONFLICT for idempotent writes, partial unique indexes, DO UPDATE vs DO NOTHING, and returning clauses for event-driven sync."
 datePublished: "2026-03-09"
-dateModified: "2026-03-09"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
@@ -50,84 +50,119 @@ ON CONFLICT (sku) DO UPDATE
 
 Unique email only among active users: `UNIQUE (email) WHERE deleted_at IS NULL`. Upsert conflict target must include the same predicate — use `ON CONFLICT ON CONSTRAINT` name for clarity.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## RETURNING clause patterns
 
-## Debugging and triage workflow
+INSERT ON CONFLICT DO UPDATE RETURNING id, xmax = 0 AS inserted — distinguishes insert vs update in single round trip.
 
-When production misbehaves, work top-down:
+## Conflict on partial unique index
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+ON CONFLICT email WHERE deleted_at IS NULL — conflict target must match partial index predicate exactly.
 
-## Operational checklist
+## Batch upsert
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Multi-row INSERT with ON CONFLICT reduces round trips — watch lock contention on hot sku row. Retry serialization failures with backoff.
 
-## Performance tuning notes
+## Idempotency keys table
 
-Measure before optimizing postgres upsert on conflict patterns. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Separate idempotency_keys with DO NOTHING vs business table upsert — store response blob for replay within 24h window.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+## Stripe webhook idempotency pattern
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Store event id in inbound_events with DO NOTHING; worker processes only when RETURNING returns id. Duplicate webhook delivery safe without distributed lock — constraint enforces deduplication.
 
-## Rollout and migration
+## Monitoring upsert conflict rate
 
-Ship postgres upsert on conflict patterns changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+High conflict rate on DO UPDATE may indicate concurrent writers on same key — business logic issue not database tuning. Graph conflicts per minute alongside application retry count.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## EXCLUDED pseudo-table nuances
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+EXCLUDED refers to proposed insert row in DO UPDATE — cannot reference EXCLUDED in DO NOTHING branch. Column-level update `SET col = COALESCE(EXCLUDED.col, table.col)` preserves existing non-null when incoming null means no-change in partial sync payloads.
 
-## Testing recommendations
+## Deadlock risk on concurrent upserts
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Two transactions upsert same key in opposite lock order on multiple tables — deadlock detected. Consistent table lock order in application or single-statement upsert per transaction reduces incidence. Retry 40P01 with jitter in worker consumers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## ORM support gaps
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+SQLAlchemy on_conflict_do_update, Django bulk_create ignore_conflicts, Prisma upsert — verify generated SQL matches partial index conflict target. ORM abstraction leaking wrong ON CONFLICT columns fails silently at runtime on first conflict.
 
-## Incident patterns we see
+## INSERT ... ON CONFLICT on partitioned table
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Conflict target must include partition key — upsert into monthly partition direct when partition key in INSERT list. Upsert into parent routes to correct partition — constraint must exist on each partition or parent with included partition key.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+## Counters with upsert
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+```sql
+INSERT INTO view_counts (page_id, views) VALUES ($1, 1)
+ON CONFLICT (page_id) DO UPDATE SET views = view_counts.views + 1;
+```
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Hot counter row serializes writes — consider batch increment in Redis flush periodic or partition counters by page_id hash to spread lock contention.
 
-## Team ownership
+## RETURNING for event sourcing
 
-Assign an owner for postgres upsert on conflict patterns standards: code templates, lint rules, and onboarding docs. Platform teams provide paved roads; product teams stay responsible for SLOs.
+Upsert emitting xmax or (xmax = 0) distinguishes insert event from update event in outbox publisher — single round trip drives event type without extra SELECT.
 
-Review this pattern in architecture reviews when touching money, auth, or personal data. Security and compliance questions early beat retrofitting controls later.
+## Multi-column conflict targets
 
+ON CONFLICT (tenant_id, external_id) matches composite unique — common multitenancy ingest pattern. Partial unique WHERE deleted_at IS NULL requires matching inference specification or constraint name ON CONFLICT ON CONSTRAINT name.
 
-## Capacity and cost considerations
+## Write-heavy upsert batch size
 
-Postgres tuning decisions interact with cloud bill line items: larger instances buy more shared_buffers and IO throughput but do not fix N+1 query patterns. Right-size after measuring — a doubled instance hiding missing indexes is wasted spend. Track cost per thousand requests alongside p95 latency when evaluating pooling, caching, and read replica additions.
+Batch 1000 rows per INSERT multi-value upsert — sweet spot before lock duration hurts concurrent readers. Tune batch size per table lock metrics; smaller batches for hot sku counter row.
 
-## Cross-region and DR implications
+## Testing upsert idempotency
 
-Replication lag, connection pooler failover, and DNS TTL determine how quickly traffic shifts during regional failure. Rehearse failover quarterly; document whether your pattern favors RPO over RTO or vice versa. Clients with aggressive timeouts may fail over before the database promotion completes — coordinate cutover windows with application drain policies.
+Two identical webhook payloads parallel POST — assert single row and single side effect (email sent once). Property-based test generates random external_id collisions to verify DO NOTHING path.
 
-## Compatibility matrix
+## ON CONFLICT DO UPDATE excluded column reference
 
-Maintain an internal matrix of validated versions: Postgres major, pooler mode, driver version, and ORM release tested together. Upgrades outside the matrix require explicit sign-off and extended soak in staging with production-shaped load.
+EXCLUDED.col refers to would-have-been-inserted value — useful for merge sync: SET updated_at = now(), payload = EXCLUDED.payload WHERE table.updated_at < EXCLUDED.updated_at. LWW timestamp column must be source-of-truth timezone UTC.
 
-## Review cadence
+## Serializable isolation and upsert
 
-Revisit configuration quarterly even when metrics look flat. Schema drift, new query patterns from product features, and tenant growth change optimal settings silently until an incident exposes them.
+Serializable upsert may raise serialization_failure — retry whole transaction. Application idempotency key header plus upsert makes retry safe for webhook consumer — document max retry count and DLQ after N failures.
+
+## Foreign key after upsert
+
+Upsert parent then child in one transaction — child FK references parent id from RETURNING clause. Order matters when both tables upserted — defer FK check CONSTRAINT DEFERRABLE if complex graph insert in single transaction batch job.
+
+## Monitoring duplicate skip rate
+
+DO NOTHING upsert with zero RETURNING rows increments duplicate counter metric — spike normal during webhook replay attack; flatline during outage may mean consumer stopped processing. Alert on absence of duplicates when traffic expected.
+
+## Comparison with MERGE (SQL:2023)
+
+Postgres MERGE statement alternative in PG15+ — upsert readable for multi-action rules. ON CONFLICT still idiomatic; MERGE when conditional update/delete branches complex — team style guide picks one pattern per codebase for review consistency.
+
+## Summary
+
+Choose DO NOTHING for idempotent ingest, DO UPDATE with conditional WHERE for sync, always match conflict target to exact unique index definition including partial predicates, and monitor conflict skip rate plus serialization retries in production metrics.
+
+## Closing notes
+
+Load test concurrent upsert on hot key before flash sale — serialization failure rate and lock wait time inform decision between upsert and queue-serialized updates for inventory counter pattern.
+
+## Additional guidance
+
+Webhook consumers should use upsert RETURNING to detect duplicate delivery versus new event — metric duplicate_rate baseline expected low; alert when zero duplicates during replay test after consumer deploy verifies DO NOTHING path still wired correctly and not accidentally replaced with DO UPDATE clobbering state on redelivered events during broker failure recovery scenario.
+
+Extended webhook idempotency narrative: Stripe sends same event_id at-least-once during network partition recovery — INSERT ON CONFLICT DO NOTHING on events_stripe table with unique event_id returns zero rows on duplicate, worker exits early before side effect email send. Bug shipped when developer used DO UPDATE SET processed_at = now() on every delivery causing duplicate shipment emails when UPDATE path ran on redelivery because RETURNING always returned row — regression test asserts email service called once across two identical webhook POSTs in parallel threads Testcontainers integration suite.
+
+Batch ingest CSV uses multi-row upsert with ON CONFLICT DO UPDATE SET quantity = EXCLUDED.quantity WHERE EXCLUDED.version > table.version optimistic locking — version column incremented only on actual value change reduces write amplification when file contains unchanged rows on nightly supplier sync job processing hundred-thousand SKUs idempotently.
+
+Integration test fires duplicate webhook payloads concurrently — assert single side effect and DO NOTHING path returns null id; prevents DO UPDATE regression re-sending fulfillment email on Stripe replay.
+
+Property-based test generates random external_id collisions verifying ON CONFLICT DO NOTHING idempotency — catches ORM upgrade changing upsert SQL to clobber rows on duplicate webhook delivery.
+
+Partial unique index ON CONFLICT must name constraint explicitly in SQL when predicate involved — ON CONFLICT ON CONSTRAINT uq_events_active_email clearer than column list matching partial index WHERE deleted_at IS NULL and reduces migration failure when duplicate partial indexes exist from manual hotfix.
+
+Monitor lock wait time on hot upsert keys during flash sale — high waits suggest queue-serialized update pattern or sharded counter table better than single-row ON CONFLICT DO UPDATE incrementing shared inventory sku row.
+
+Export conflict_rate metric from upsert RETURNING null count — Grafana panel on webhook consumer dashboard shows duplicate delivery baseline; alert when zero during replay test after deploy.
+
+Verify settings in staging load test before every major sale event.
 
 ## Resources
 

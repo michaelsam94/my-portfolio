@@ -3,8 +3,8 @@ title: "Tensor Parallelism for Large Models"
 slug: "llm-serving-tensor-parallelism"
 description: "Split large LLM weights across multiple GPUs with tensor parallelism: how all-reduce communication works, when to combine with pipeline parallelism, and tuning for production serving."
 datePublished: "2025-03-13"
-dateModified: "2025-03-13"
-tags: ["AI", "LLM", "Distributed Inference", "GPU"]
+dateModified: "2026-07-17"
+tags:
 keywords: "tensor parallelism LLM, TP inference, Megatron-LM tensor parallel, vLLM tensor parallel size, multi-GPU LLM serving, all-reduce inference"
 faq:
   - q: "When should I use tensor parallelism instead of loading the model on one GPU?"
@@ -14,7 +14,6 @@ faq:
   - q: "How does tensor parallel size affect latency?"
     a: "Small TP sizes (2–4) on NVLink-connected GPUs add 5–15% latency overhead from all-reduce. TP=8 across PCIe-connected GPUs can add 30%+ overhead and may not improve throughput. Always prefer NVLink or NVSwitch topology for TP beyond 2."
 ---
-
 A 405B parameter model does not fit on any single GPU. Even 70B in FP16 exceeds one A100 80GB once you account for KV cache, activation buffers, and batching headroom. Tensor parallelism solves this by splitting each weight matrix across multiple GPUs so no single device holds the full model.
 
 The trade-off is communication: every layer's forward pass requires an all-reduce collective to synchronize partial results across GPUs. Get the parallel degree wrong and you spend more time moving tensors than computing them.

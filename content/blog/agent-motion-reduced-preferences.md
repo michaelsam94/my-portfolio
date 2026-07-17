@@ -1,111 +1,245 @@
 ---
 title: "AI Agents: Motion Reduced Preferences"
 slug: "agent-motion-reduced-preferences"
-description: "Motion Reduced Preferences: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Agent UIs that stream, pulse, and animate can trigger vestibular symptoms. Honor prefers-reduced-motion at every layer—from CSS to tool status indicators—without stripping useful feedback."
 datePublished: "2026-06-30"
 dateModified: "2026-06-30"
 tags: ["AI", "Agent", "Motion"]
-keywords: "agent, motion, reduced, preferences, ai, production, engineering, architecture"
+keywords: "prefers-reduced-motion, vestibular accessibility, agent UI, streaming chat animation, WCAG motion, reduced motion React, a11y CSS"
 faq:
-  - q: "What is Motion Reduced Preferences?"
-    a: "Motion Reduced Preferences covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Motion Reduced Preferences?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Motion Reduced Preferences?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Motion Reduced Preferences fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Motion Reduced Preferences should be observable in production and safe to change in small diffs."
+  - q: "Does prefers-reduced-motion mean removing all animation?"
+    a: "No. It means replacing motion that conveys no essential information, and swapping continuous or large movement for instant state changes or subtle opacity shifts. Progress can remain visible through text and static bars rather than pulsing shimmer effects."
+  - q: "Where do agent interfaces most often violate motion preferences?"
+    a: "Streaming token fade-ins, bouncing typing indicators, parallax tool cards, auto-scrolling message lists, and celebratory confetti on task completion. Each feels minor in isolation; together they dominate the viewport during long sessions."
+  - q: "Should reduced motion follow OS setting or an in-app toggle?"
+    a: "Both. Respect the OS media query by default, and expose an in-app override stored in user preferences so browser support gaps and remote-desktop quirks do not leave people stuck with animations they cannot tolerate."
+  - q: "How do we test agent motion accessibility?"
+    a: "Automated tests can assert CSS variables and class toggles under emulated media queries. Manual testing with Reduce Motion enabled on macOS/iOS is mandatory for streaming layouts because scroll anchoring bugs only appear during live token arrival."
 ---
-Most teams encounter motion reduced preferences after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The first bug report did not mention accessibility. It said the agent chat "made me dizzy" during long troubleshooting sessions. Repro steps: open the copilot, watch the typing indicator bounce for ninety seconds while a tool call spinner pulsed, let the message list auto-scroll with elastic easing as tokens streamed in. The engineer who picked up the ticket could not reproduce—until they enabled **Reduce Motion** in macOS settings and realized the product never listened to it.
 
-When motion reduced preferences is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+`prefers-reduced-motion` is not a niche media query. It is a medical accommodation for vestibular disorders, migraine triggers, and ADHD-related distraction sensitivity. Agent interfaces are motion-heavy by design: they signal liveness while waiting on slow models and tools. That liveness must not come at the cost of users who need stillness.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What the platform actually exposes
 
-Solid AI engineering turns motion reduced preferences from a recurring argument into a documented pattern with tests and an owner.
+Browsers surface the user's OS preference through CSS and JavaScript:
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent motion reduced preferences bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for motion reduced preferences, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent motion reduced preferences flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for motion reduced preferences in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent motion reduced preferences changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Motion Reduced Preferences: typed boundary + structured errors
-export async function handleMotionReducedPreferences(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-motion-reduced-preferences");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+```css
+/* Global agent shell tokens */
+:root {
+  --motion-duration-fast: 180ms;
+  --motion-duration-medium: 320ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --typing-indicator: typing-bounce 1.2s ease-in-out infinite;
+  --stream-reveal: token-fade-in var(--motion-duration-fast) var(--motion-ease);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0ms;
+    --motion-duration-medium: 0ms;
+    --typing-indicator: none;
+    --stream-reveal: none;
+  }
+}
 ```
 
+JavaScript can read the same preference for React components that animate via libraries rather than CSS:
 
-## Operational concerns
+```typescript
+// hooks/usePrefersReducedMotion.ts
+import { useEffect, useState } from "react";
 
-Runbooks for motion reduced preferences should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+export function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
 
-Production agent motion reduced preferences work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
-Rollouts for motion reduced preferences benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+  return reduced;
+}
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Safari and Chromium differ on when `change` fires across tabs—persist an explicit user override in local storage or your account profile and merge it with the media query result.
 
-## Security and compliance angles
+## Agent-specific motion hotspots
 
-Even when motion reduced preferences is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Standard marketing sites animate hero sections once. Agent sessions loop motion for minutes or hours. Prioritize these surfaces:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent motion reduced preferences so security reviews do not rely on tribal knowledge.
+### Streaming text reveal
 
-## Testing strategy
+Token-by-token fade-in looks polished but creates constant flicker in the peripheral vision. Under reduced motion, render accumulated text immediately on each chunk boundary without opacity transitions:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that motion reduced preferences depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```tsx
+// components/AgentMessage.tsx
+import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+type Props = { content: string; isStreaming: boolean };
 
-## Migration and evolution
+export function AgentMessage({ content, isStreaming }: Props) {
+  const reducedMotion = usePrefersReducedMotion();
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent motion reduced preferences functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+  if (reducedMotion) {
+    return (
+      <div className="agent-message" aria-live="polite">
+        <p>{content}</p>
+        {isStreaming && (
+          <span className="sr-only">Response in progress</span>
+        )}
+      </div>
+    );
+  }
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where motion reduced preferences spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+  return (
+    <div className="agent-message agent-message--animated" aria-live="polite">
+      <p className="agent-message__stream">{content}</p>
+    </div>
+  );
+}
+```
 
-## Related concepts
+Pair with `aria-live="polite"` so screen reader users hear progress without visual motion.
 
-Motion Reduced Preferences intersects with broader ai topics — see companion notes on [agent-motion patterns](https://blog.michaelsam94.com/agent-motion/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+### Typing and tool-status indicators
 
-## The takeaway
+Replace bouncing dots with a static label: "Agent is thinking" or "Running `search_logs` (12s)." Show elapsed time as text; it helps every user, not only those avoiding motion.
 
-Motion Reduced Preferences rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent motion reduced preferences becomes a maintainable asset instead of incident fuel.
+```css
+.tool-status--reduced {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tool-status--reduced::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  /* static dot — no pulse keyframes */
+}
+```
+
+### Auto-scroll behavior
+
+Auto-scrolling chat is motion. When reduced motion is active, pin scroll position unless the user is already at the bottom—avoid animated `scrollIntoView({ behavior: "smooth" })`.
+
+```typescript
+export function scrollChatContainer(
+  el: HTMLElement | null,
+  reducedMotion: boolean
+) {
+  if (!el) return;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  if (!atBottom) return; // respect reading position
+
+  if (reducedMotion) {
+    el.scrollTop = el.scrollHeight;
+  } else {
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }
+}
+```
+
+### Celebratory feedback
+
+Confetti and success Lottie animations on completed agent tasks are high-amplitude motion. Swap for inline success text and optional sound off by default.
+
+## Central motion policy in design tokens
+
+Scattershot `@media` blocks rot quickly. Define a motion tier system consumed by all agent components:
+
+| Tier | Default | Reduced motion |
+|------|---------|----------------|
+| **Essential** | Focus rings, opacity on disabled controls | Unchanged (accessibility-required) |
+| **Informative** | Progress bars, step transitions | Instant jumps, no easing |
+| **Decorative** | Shimmer skeletons, parallax | Removed entirely |
+
+```typescript
+// design/motionPolicy.ts
+export type MotionTier = "essential" | "informative" | "decorative";
+
+export function motionAllowed(tier: MotionTier, reduced: boolean): boolean {
+  if (tier === "essential") return true;
+  if (reduced) return false;
+  return true;
+}
+
+export function durationMs(tier: MotionTier, reduced: boolean): number {
+  if (!motionAllowed(tier, reduced)) return 0;
+  return tier === "informative" ? 200 : 0;
+}
+```
+
+Storybook stories should include a **Reduced motion** toolbar toggle that sets a global decorator, not a one-off CSS hack per component.
+
+## Server-rendered and email agents
+
+Not all agent UX is SPA. If you send actionable emails or SSE-powered static pages, inline styles cannot rely on media queries alone. Respect `Sec-CH-Prefers-Reduced-Motion` client hint where available, and honor stored user preference from your profile API when rendering HTML on the server:
+
+```python
+# render/agent_panel_html.py
+def render_status_banner(user, tool_name: str) -> str:
+    reduced = user.preferences.reduced_motion or user.client_hints.reduced_motion
+    if reduced:
+        return f'<p class="status">Running {tool_name}…</p>'
+    return f'<p class="status animated-pulse">Running {tool_name}…</p>'
+```
+
+## Testing matrix
+
+| Test | Pass criteria |
+|------|---------------|
+| Emulate `(prefers-reduced-motion: reduce)` in Playwright | No `animation-name` other than `none` on chat surfaces |
+| macOS Reduce Motion manual pass | No parallax, bounce, or smooth scroll during 5-minute session |
+| Screen reader + reduced motion | `aria-live` announces streaming without requiring visual motion |
+| In-app toggle | Overrides OS setting both directions; persists reload |
+| Performance | Removing decorative motion lowers main-thread time on low-end laptops |
+
+Automated snapshot tests fail on animation frames—prefer computed-style assertions:
+
+```typescript
+test("agent chat disables decorative animation when reduced", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/agent");
+  const animation = await page.locator(".typing-indicator").evaluate(
+    (el) => getComputedStyle(el).animationName
+  );
+  expect(animation).toBe("none");
+});
+```
+
+## Organizational habits that stick
+
+- Add **motion review** to design crit checklist alongside color contrast.
+- Document allowed keyframes in the design system; anything not listed is disallowed by default.
+- Track support tickets tagged vestibular/motion—spikes after a flashy release mean regression.
+- Train PMs that "delightful" micro-interactions in agent waiting states accumulate.
+
+## Canvas, voice, and multimodal agent surfaces
+
+Voice agents introduce motion on waveform visualizers and speaking avatars. Under reduced motion, replace oscillating waveforms with a static microphone icon and captioned transcript updates. Lip-synced avatars should freeze mouth movement while audio continues—users still hear progress without visual oscillation.
+
+When agents render charts or diagrams (code execution tools, data viz), avoid animated draw-on effects. Render the final SVG frame immediately; let users expand sections manually. Map libraries often animate pan/zoom by default—pass `preferReducedMotion: true` into chart configs where supported.
+
+Multimodal chat that embeds video previews should not autoplay loops in reduced-motion mode. Poster frames plus explicit play buttons respect both bandwidth and vestibular needs.
+
+## Performance side effects worth measuring
+
+Teams sometimes discover that disabling decorative motion improves battery life on laptops during hour-long agent sessions. Track CPU utilization before and after a reduced-motion rollout; the data helps justify accessibility work to stakeholders who only speak performance.
+
+Motion reduced preferences are not a CSS footnote—they are part of how agent products respect sustained attention. Stream status, tool progress, and completion feedback can be clear and calm at the same time. Build the still version first; add motion only where it teaches something essential, and gate it behind policies that survive your next UI refresh.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [MDN: prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion) — media query reference and user preference semantics
+- [WCAG 2.2: Animation from Interactions (2.3.3)](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html) — related accessibility guidance
+- [WebAIM: Reducing Motion](https://webaim.org/articles/motion/) — practical overview for vestibular sensitivity
+- [Apple Human Interface Guidelines: Motion](https://developer.apple.com/design/human-interface-guidelines/motion) — platform expectations for Reduce Motion settings
+- [React Aria: usePrefersReducedMotion](https://react-spectrum.adobe.com/react-aria/usePrefersReducedMotion.html) — battle-tested hook patterns for component libraries

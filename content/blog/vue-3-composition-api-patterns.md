@@ -3,16 +3,107 @@ title: "Vue 3 Composition API Patterns"
 slug: "vue-3-composition-api-patterns"
 description: "Practical Vue 3 Composition API patterns: composables, ref vs reactive, provide/inject, script setup, and migrating from Options API without rewriting everything."
 datePublished: "2026-03-07"
-dateModified: "2026-03-07"
-tags: ["Vue", "Web", "JavaScript", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "Vue 3, Composition API, composables, script setup, ref, reactive, provide inject"
 faq:
-  - q: "When should I use the Composition API over the Options API in Vue 3?"
-    a: "Use the Composition API for new components and any component with complex logic that benefits from grouping related state and effects together. It excels when multiple concerns interact — fetching data, handling form state, and managing subscriptions in the same component. The Options API remains fully supported and is fine for simple components with straightforward data, methods, and lifecycle hooks. You can mix both in the same project without penalty."
-  - q: "What is a composable in Vue 3?"
-    a: "A composable is a function that uses Vue's reactivity APIs (ref, reactive, computed, watch) to encapsulate and reuse stateful logic. Named after the Composition API, composables replace mixins as the primary code reuse mechanism. A useFetch composable wraps data fetching logic, a useMouse composable tracks cursor position — any logic that multiple components need can be extracted into a composable and called from script setup."
-  - q: "Should I use ref or reactive for component state?"
-    a: "Use ref as the default for all reactive state — primitives, objects, and arrays. ref works consistently with .value access in script and auto-unwraps in templates. Use reactive only when you have a grouped object that you never reassign wholesale and want to avoid .value syntax. A common mistake is destructuring reactive objects, which breaks reactivity; ref avoids this pitfall. In script setup, ref is the safer and more common choice."
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Vue 3 Composition API Patterns"
+slug: "vue-3-composition-api-patterns"
+description: "Practical Vue 3 Composition API patterns: composables, ref vs reactive, provide/inject, script setup, and migrating from Options API without rewriting everything."
+datePublished: "2026-03-07"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "Vue 3, Composition API, composables, script setup, ref, reactive, provide inject"
+faq:
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vue-3-composition-api-patterns"
+slug: "vue-3-composition-api-patterns"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vue-3-composition-api-patterns"
+faq:
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vue-3-composition-api-patterns"
+slug: "vue-3-composition-api-patterns"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vue-3-composition-api-patterns"
+faq:
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "vue-3-composition-api-patterns"
+slug: "vue-3-composition-api-patterns"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "vue-3-composition-api-patterns"
+faq:
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Vue 3 Composition API Patterns"
+slug: "vue-3-composition-api-patterns"
+description: "Practical Vue 3 Composition API patterns: composables, ref vs reactive, provide/inject, script setup, and migrating from Options API without rewriting everything."
+datePublished: "2026-03-07"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "Vue 3, Composition API, composables, script setup, ref, reactive, provide inject"
+faq:
+  - q: "What is the main production risk with vue 3 composition api patterns?"
+    a: "Teams ship without field measurement—vue 3 composition api patterns failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize vue 3 composition api patterns?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate vue 3 composition api patterns changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 I inherited a Vue 2 codebase with 40-line mixins that injected mystery properties into every component. `this.fetchData` came from somewhere — the data mixin, the auth mixin, or maybe the route mixin. Tracing behavior meant reading four files. Migrating to Vue 3's Composition API with composables replaced all of that with explicit `const { data, loading } = useFetch(url)` calls at the top of each script setup block. The logic didn't change. The traceability changed completely. These are the patterns I use daily in Vue 3 production code.
@@ -221,16 +312,84 @@ function useUserProfile(userId: Ref<string>) {
 
 This is the Composition API's core advantage: logic composes like functions, not like mixin chains.
 
-## Common production mistakes
+## Advanced composable patterns
 
-Teams get vue 3 composition api patterns wrong in predictable ways:
+**Composable with arguments and defaults:**
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+```typescript
+export function useFetch<T>(url: MaybeRef<string>, options?: RequestInit) {
+  const data = ref<T | null>(null)
+  const error = ref<Error | null>(null)
+  const loading = ref(false)
 
-Production implementations of vue 3 composition api patterns fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+  async function execute() {
+    loading.value = true
+    try {
+      const res = await fetch(toValue(url), options)
+      data.value = await res.json()
+    } catch (e) {
+      error.value = e as Error
+    } finally {
+      loading.value = false
+    }
+  }
+
+  watch(() => toValue(url), execute, { immediate: true })
+  return { data, error, loading, execute }
+}
+```
+
+**Shared state via composable factory:**
+
+```typescript
+const createState = () => {
+  const count = ref(0)
+  return { count, increment: () => count.value++ }
+}
+let instance: ReturnType<typeof createState> | null = null
+export function useSharedCounter() {
+  if (!instance) instance = createState()
+  return instance
+}
+```
+
+Use sparingly—prefer Pinia for truly global state.
+
+## SSR considerations
+
+`onMounted` only runs client-side—fetch in setup without guarding runs on server too. Use `import.meta.env.SSR` or Nuxt's `useAsyncData` for isomorphic data. Mismatch between server HTML and client hydration causes warnings—align initial ref values with server-rendered content.
+
+## DevTools and debugging
+
+Vue DevTools 6 shows setup state, composable sources when using `<script setup>`. Name components with `defineOptions({ name: 'UserList' })` for traceability in profiler.
+
+## provide/inject for theme and auth
+
+Replace prop drilling with typed injection keys:
+
+```typescript
+const AuthKey: InjectionKey<Ref<User | null>> = Symbol('auth')
+provide(AuthKey, user)
+const user = inject(AuthKey)!
+```
+
+Document injection keys in design system — magic string keys break silently on refactor.
+
+## Pinia vs composables boundary
+
+Pinia for cross-route shared server-backed state; composables for component-scoped logic. Duplicating fetch logic in composable and store creates two caches — pick one source of truth per resource.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

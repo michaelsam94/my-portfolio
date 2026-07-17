@@ -1,129 +1,230 @@
 ---
-title: "Postgres REINDEX CONCURRENTLY for Index Bloat"
+title: "Postgres REINDEX CONCURRENTLY and Bloat"
 slug: "postgres-reindex-concurrently-bloat"
-description: "Rebuild bloated indexes without blocking writes — monitor progress and handle invalid index states."
+description: "Detect index bloat, rebuild with REINDEX CONCURRENTLY, and avoid the locking and duplicate-index pitfalls that stall production."
 datePublished: "2026-03-02"
-dateModified: "2026-03-02"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres reindex concurrently bloat, production, backend"
+keywords: "REINDEX CONCURRENTLY, postgres index bloat, pgstatindex, vacuum bloat, index maintenance"
 faq:
-  - q: "What problem does Postgres REINDEX CONCURRENTLY solve?"
-    a: "It addresses production gaps teams hit when scaling postgres reindex concurrently bloat: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres reindex concurrently bloat appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What causes Postgres index bloat and how is it different from table bloat?"
+    a: "Index bloat is wasted space in B-tree pages from version churn—updates and deletes leave dead entries until vacuum reclaims them. Table bloat is dead heap tuples; index bloat is dead index tuples. Both correlate but require different remediation."
+  - q: "When should I use REINDEX CONCURRENTLY instead of VACUUM FULL or regular REINDEX?"
+    a: "REINDEX CONCURRENTLY rebuilds the index without blocking writes. Use when bloat degrades query plans or index size threatens disk but downtime is unacceptable. Regular REINDEX takes ACCESS EXCLUSIVE lock. VACUUM FULL rewrites heap and locks heavily."
+  - q: "Can REINDEX CONCURRENTLY fail or leave duplicate indexes?"
+    a: "Yes. If build fails mid-flight, an invalid duplicate index (_ccnew suffix) may remain and must be dropped manually. Concurrent builds require two table scans and more WAL. Monitor pg_index.indisvalid and disk space before starting."
+  - q: "How do I measure index bloat before reindexing?"
+    a: "Use pgstatindex from pgstattuple extension, or compare index size to expected size from row count. Reindex when bloat exceeds 30–50% and autovacuum cannot keep pace, especially on high idx_scan indexes."
 ---
 
-## Production context
+Indexes are supposed to make queries fast. Bloated indexes make them slow and expensive—they occupy buffer cache with dead entries, widen scans, and sometimes nudge the planner toward sequential scans you thought you'd eliminated. **`VACUUM`** reclaims dead heap tuples and marks index entries dead, but heavy churn can leave B-trees fragmented enough that only a **rebuild** restores lean structure.
 
-A billing service lost duplicate events because postgres reindex concurrently bloat was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+**`REINDEX CONCURRENTLY`**, available since Postgres 12, rebuilds an index without holding **`ACCESS EXCLUSIVE`** lock for the entire operation. That makes it the primary online remediation for production bloat—if you respect failure modes, disk appetite, and the difference between fixing indexes versus fixing tables.
 
-Senior backend work on postgres reindex concurrently for index bloat is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## How bloat accumulates
 
-## Architecture pattern
+Every `UPDATE` in Postgres is delete + insert at heap level; indexes gain new entries and leave old ones until vacuum cleans them. Factors accelerating bloat:
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+- High update/delete rate on indexed columns
+- Long-running transactions holding xmin horizon
+- Low fillfactor without justification
+- Wide composite indexes on volatile columns
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+Symptoms: index size 3× reasonable estimate, `EXPLAIN` Bitmap Index Scan reading far more buffers than rows returned, autovacuum aggressive on same table with little size drop.
 
+## Measuring bloat
 
 ```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
+CREATE EXTENSION IF NOT EXISTS pgstattuple;
+SELECT * FROM pgstatindex('public.orders_created_at_idx');
+```
+
+Practical monitoring:
+
+```sql
+SELECT schemaname, indexrelname AS index_name,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+       idx_scan
+FROM pg_stat_user_indexes
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+Cross-check **`idx_scan`**: bloated index with zero scans is a drop candidate, not reindex.
+
+## Regular REINDEX vs CONCURRENTLY
+
+```sql
+REINDEX INDEX CONCURRENTLY public.orders_created_at_idx;
+REINDEX TABLE CONCURRENTLY public.orders;
+```
+
+**`REINDEX CONCURRENTLY`**: creates new index, two passes, swap in catalog. Locks **`Share Update Exclusive`** during phases—writes continue.
+
+**Cannot run inside transaction block.** Failed runs may leave invalid index:
+
+```sql
+SELECT indexrelid::regclass, indisvalid
+FROM pg_index JOIN pg_class ON pg_class.oid = indexrelid
+WHERE NOT indisvalid;
+```
+
+```sql
+DROP INDEX CONCURRENTLY IF EXISTS orders_created_at_idx_ccnew;
+```
+
+## Operational checklist before CONCURRENTLY
+
+1. **Disk space:** need roughly index size free during build
+2. **WAL and replication:** watch replica lag during rebuild
+3. **maintenance_work_mem:** raise session-local for build speed
+4. **One big index at a time** on same table reduces contention
+5. **Document rollback** if invalid index left
+
+## fillfactor and prevention
+
+```sql
+ALTER INDEX orders_status_idx SET (fillfactor = 90);
+REINDEX INDEX CONCURRENTLY orders_status_idx;
+```
+
+Only lower fillfactor when updates touch indexed columns.
+
+**Autovacuum tuning** on churn tables:
+
+```sql
+ALTER TABLE orders SET (
+  autovacuum_vacuum_scale_factor = 0.02,
+  autovacuum_analyze_scale_factor = 0.01
 );
 ```
 
-## Implementation checklist
+Aggressive vacuum prevents bloat better than monthly reindex firefighting.
 
-Validate inputs at the trust boundary with schema versioning.
+## Table bloat: different remedies
 
-Use timeouts and cancellation on every outbound call; propagate context.
+| Command | Heap | Indexes | Blocks writes? |
+| --- | --- | --- | --- |
+| VACUUM | Marks dead reusable | Cleans dead entries | No |
+| VACUUM FULL | Rewrites compact | No | Yes |
+| REINDEX CONCURRENTLY | No | Rebuilds | Minimal |
+| pg_repack | Online rewrite | Optional | Extension |
 
-Store idempotency keys with TTL; return cached responses on replay.
+After **`VACUUM FULL`**, indexes often need **`REINDEX`**.
 
-Run migrations with lock_timeout and statement_timeout set.
+## GiST, GIN, and BRIN bloat
 
-Load test at 2× expected peak with production-like payload sizes.
+**GIN** on jsonb inflates from pending list merge lag—watch **`gin_pending_list_limit`**. **BRIN** rarely needs reindex; wrong **`pages_per_range`** is usually the issue.
 
-## Observability
+## Autovacuum vs reindex decision tree
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+1. Run **`VACUUM (VERBOSE, ANALYZE)`**; recheck index size
+2. If **`pgstatindex`** leaf density still poor and **`idx_scan`** high → **`REINDEX CONCURRENTLY`**
+3. If **`idx_scan`** near zero → **`DROP INDEX CONCURRENTLY`**
+4. If heap dead_pct high → tune autovacuum first
 
-Dashboards for postgres reindex concurrently bloat should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Skipping step four guarantees repeat bloat within weeks.
 
-## Security notes
+## Monitoring reindex progress
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Postgres 14+:
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+```sql
+SELECT phase, blocks_total, blocks_done
+FROM pg_stat_progress_create_index
+WHERE relid = 'public.orders'::regclass;
+```
 
-## Common production mistakes
+Alert on jobs stuck waiting for old snapshots.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## When to drop instead of reindex
 
-## Debugging and triage workflow
+Unused per **`idx_scan`**, redundant covering same prefix, partial index predicate obsolete.
 
-When production misbehaves, work top-down:
+## Cadence recommendation
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+- Weekly: top indexes by size + scan ratio
+- Monthly: bloat trend; autovacuum effectiveness
+- Quarterly: rehearse CONCURRENTLY on staging clone
+- Reactive: reindex when size > 1.5× modeled or planner regression
 
-## Operational checklist
+Bloat is inevitable on write-heavy OLTP; **`REINDEX CONCURRENTLY`** is the scalpel when vacuum cannot keep up.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
 
-Measure before optimizing postgres reindex concurrently bloat. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## pg_repack vs REINDEX CONCURRENTLY tradeoff
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+**`pg_repack`** rewrites heap online with triggers capturing concurrent changes—repairs table bloat and can relocate tablespace. **`REINDEX CONCURRENTLY`** targets index bloat without full heap rewrite. After prolonged bloat, both heap and indexes suffer—sequence **`VACUUM`**, **`pg_repack`**, then **`REINDEX CONCURRENTLY`** on remaining fat indexes. Do not **`REINDEX`** entire schema concurrently during peak—IO saturation raises commit latency via WAL flush contention.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+## Index-only scan invalidation
 
-## Rollout and migration
+Reindex rebuilds index statistics implicitly via planner relcache refresh; still run **`ANALYZE`** on table after large reindex campaign—correlation stats drift separately. **`pg_stat_all_indexes`** **`idx_scan`** reset not automatic—compare pre/post **`EXPLAIN`** on top queries saved in **`pg_stat_statements`**.
 
-Ship postgres reindex concurrently bloat changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Production scheduling windows
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Prefer reindex during regional off-peak even though writes continue—catch-up phase on **`REINDEX CONCURRENTLY`** competes with batch ETL. Cancel long-running reindex if replica lag exceeds SLA; resume later. Postgres 16 progress views help estimate ETA for change management tickets.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## Hash index note
 
-## Testing recommendations
+Hash indexes (rare) support **`REINDEX`** but not all concurrent variants on older versions—verify docs for your version before automating. Most teams use B-tree; GIN/GiST concurrent reindex widely supported since PG 12.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+## Bloat on primary key indexes after UUIDv4 migration
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Random UUID PK inserts cause index bloat faster than monotonic bigint—autovacuum may lag on **`pg_stat_user_tables.n_dead_tup`**. Pair UUID PK with aggressive autovacuum or switch to UUIDv7 before reindex becomes weekly chore. **`REINDEX CONCURRENTLY`** on PK during traffic still safer than non-concurrent but plan disk for largest index first.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+## Lock interaction with DDL during reindex
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+**`REINDEX CONCURRENTLY`** blocks some DDL on same table—concurrent **`ADD COLUMN`** may wait. Coordinate schema migrations with index maintenance windows. **`ACCESS EXCLUSIVE`** still taken briefly at end—surprise brief blocking possible.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+
+
+
+## Summary checklist before production reindex
+
+Confirm free disk, valid index list, on-call notified, replica lag dashboard open, rollback DROP for **_ccnew** documented, and post-reindex ANALYZE scheduled. One-page checklist prevents 3 AM pages about full disks mid-reindex.
+
+
+
+## Post-reindex verification queries
+
+After each REINDEX CONCURRENTLY, capture pg_relation_size before/after, pgstatindex leaf density, and one EXPLAIN ANALYZE from pg_stat_statements top query using that index. Store in ticket—future you proves value to management or catches invalid index left behind. Schedule ANALYZE on parent table same maintenance window.
+
+## Index bloat early warning
+
+Alert when pg_relation_size(index) / NULLIF(pg_relation_size(table),0) exceeds threshold for table class—OLTP narrow indexes ratio lower than JSONB GIN indexes. Per-table thresholds beat global percentage for fewer false pages.
+
+
+## Coordination with autovacuum
+
+Schedule heavy REINDEX after autovacuum window completes on same table—competing IO lengthens both jobs. Increase autovacuum_vacuum_cost_limit temporarily only with monitoring—aggressive vacuum plus reindex can starve OLTP.
+
+
+
+
+
+## Invalid index automated cleanup
+
+Cron job queries pg_index indisvalid false, opens ticket with index name, auto-drops _ccnew suffix indexes older than 24h after confirming no valid swap pending. Prevents catalog clutter from aborted concurrent builds blocking future DDL.
+
+## fillfactor on unique indexes
+
+Lower fillfactor on unique indexes still applies—unique constraints on volatile columns benefit from 90 fillfactor plus scheduled REINDEX CONCURRENTLY quarterly on known hot indexes rather than reactive firefighting.
+
+## Wrap-around and reindex urgency
+
+When autovacuum cannot keep pace near wraparound warnings, REINDEX CONCURRENTLY on bloated indexes reduces index scan cost during emergency vacuum operations—coordinate with DBA playbooks for transaction id freeze scenarios.
+
+Document every production REINDEX in change management with index oid, size before/after, and business justification—auditors and future DBAs need history beyond pg_stat progress views.
+
+After every concurrent reindex window, query `pg_index` for `NOT indisvalid` and page if any appear — failed rebuilds leave junk that the next on-call will misdiagnose.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- [PostgreSQL REINDEX](https://www.postgresql.org/docs/current/sql-reindex.html)
+- [pgstattuple](https://www.postgresql.org/docs/current/pgstattuple.html)
+- [Routine vacuuming](https://www.postgresql.org/docs/current/routine-vacuuming.html)

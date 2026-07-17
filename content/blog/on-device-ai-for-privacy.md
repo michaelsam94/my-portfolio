@@ -3,7 +3,7 @@ title: "On-Device AI for Privacy"
 slug: "on-device-ai-for-privacy"
 description: "How on-device AI protects user privacy: keeping inference local, data minimization, what stays on device vs the cloud, and the real engineering trade-offs."
 datePublished: "2026-07-08"
-dateModified: "2026-07-08"
+dateModified: "2026-07-17"
 tags: ["On-Device AI", "Privacy", "Mobile", "Edge AI"]
 keywords: "on-device AI, privacy-preserving AI, local inference, private AI, edge AI privacy, data minimization"
 faq:
@@ -86,6 +86,32 @@ The strongest architectures aren't purist — they're deliberate. Run the sensit
 The mindset shift is what matters: default to local, treat every byte leaving the device as a decision with a justification, and design the fallback so it can't quietly become the main path. Get that right and on-device AI stops being a buzzword and becomes what it should be — a concrete way to build features that are useful *and* respect the fact that the data was never yours to collect in the first place.
 
 If you want to talk through an on-device architecture for a product, [get in touch](https://michaelsam94.com/#contact).
+
+## Threat model: what on-device does not fix
+
+Local inference protects **transit and server storage** — not on-device extraction. Malware with app sandbox escape, backup extraction (`adb backup` on misconfigured Android), and shoulder-surfing still matter. Combine on-device AI with:
+
+- Encrypted app storage (SQLCipher, EncryptedSharedPreferences)
+- Disabled backups for sensitive databases in manifest
+- Screenshot blocking on sensitive screens where platform allows
+
+## DPIA documentation template
+
+Privacy teams need paperwork. For each on-device feature document:
+
+| Question | Answer |
+|----------|--------|
+| What data is processed? | e.g., message text |
+| Does raw data leave device? | No / partial with consent |
+| Model source | AICore / bundled GGUF |
+| Retention | Ephemeral inference buffer only |
+| Third-party processors | None for local path |
+
+This accelerates GDPR DPIA reviews — on-device becomes a documented control, not a hand-wave.
+
+## Auditing cloud fallback paths
+
+The privacy story collapses if cloud fallback sends raw input by default. Code review checklist: every `cloudFallback()` call must pass redacted or summarized input, log consent flag, and appear in privacy nutrition labels.
 
 ## Resources
 

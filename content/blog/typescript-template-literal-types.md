@@ -3,7 +3,7 @@ title: "Template Literal Types"
 slug: "typescript-template-literal-types"
 description: "Build type-safe string patterns with TypeScript template literal types: route builders, CSS property types, event name parsing, and string manipulation at the type level."
 datePublished: "2026-02-23"
-dateModified: "2026-02-23"
+dateModified: "2026-07-17"
 tags: ["TypeScript", "Web", "Type Safety", "Advanced Types"]
 keywords: "template literal types, TypeScript, string manipulation types, type-level strings, route types"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "When a template literal type contains a union, TypeScript distributes over each member, producing a new union of all combinations. If Color is 'red' | 'blue' and you define type ClassName = `bg-${Color}`, the result is 'bg-red' | 'bg-blue'. This combinatorial generation is the core technique for building exhaustive string unions from smaller primitive unions without manually listing every combination."
   - q: "Can template literal types parse strings at the type level?"
     a: "Yes, using infer in conditional types combined with template literal pattern matching. TypeScript can extract substrings from a template pattern — for example, parsing '/users/:id' to extract 'id' as a parameter name. This enables type-safe route definitions where the path string determines the required parameter types. The parsing happens entirely at compile time with no runtime overhead."
+faqAnswers:
+  - question: "When is typescript template literal types the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for typescript template literal types?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back typescript template literal types safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 I wanted a function `on(eventName, handler)` where the event name `"user:created"` automatically typed the handler as `(payload: { id: string }) => void`. Without template literal types, I'd have maintained a manual map and hoped it stayed in sync. With them, I defined the event pattern `` `${string}:created` `` and let the compiler derive the rest. Template literal types bring string manipulation into the type system — and they're the foundation for some of the most ergonomic APIs in modern TypeScript libraries.
 
 ## Basic syntax
@@ -193,29 +199,90 @@ fetchApi("/api/v1/unknown");       // Type error
 
 Combine with `as const` object maps for event names and Redis channel patterns.
 
-## Common production mistakes
+## HTTP method + path pairs
 
-Teams get template literal types wrong in predictable ways:
+```typescript
+type Method = "GET" | "POST";
+type Route = "/users" | "/orders";
+type Endpoint = `${Method} ${Route}`;
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+const allowed: Endpoint[] = ["GET /users", "POST /orders"];
+```
 
-TypeScript patterns for template literal types erode when `any` escapes during deadlines, generic constraints are loosened instead of modeling domain invariants, and strict mode is disabled file-by-file without a migration plan.
+Pair with const object satisfies for runtime list matching compile-time union — OpenAPI codegen alternative for small internal APIs.
 
-## Debugging and triage workflow
+## Limitations
 
-When template literal types misbehaves in production, work top-down instead of guessing:
+Template literal types distribute over unions but can explode combinatorially — `type Bad = `${A}-${B}-${C}`` with large A,B,C slows the compiler. Cap union size or use branded string types for open-ended identifiers like user-provided slugs.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Event name typing in analytics
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+```typescript
+type ProductEvent = "view_item" | "add_to_cart" | "purchase";
+type AnalyticsCall = `track:${ProductEvent}`;
+
+function track(name: ProductEvent, props: Record<string, unknown>) {
+  const call = `track:${name}` satisfies AnalyticsCall;
+  send(call, props);
+}
+```
+
+Prevents typo event names reaching analytics pipeline — compile error on `track("add_to_car")`.
+
+## Branded strings for open-ended IDs
+
+When IDs are not a closed union, combine template literals with branding:
+
+```typescript
+type UserId = string & { readonly __brand: "UserId" };
+function userRoute(id: UserId) {
+  return `/users/${id}` as const;
+}
+```
+
+Template literals handle fixed prefixes; brands stop accidental cross-typing of unrelated string IDs in route builders.
+
+## CSS variable typing
+
+```typescript
+type Token = "color-primary" | "spacing-md";
+type Var = `--${Token}`;
+const cssVar = (t: Token): Var => `--${t}`;
+```
+
+Design systems map token names to CSS custom properties with compile-time validation — typo `--color-primry` fails at build.
+
+## Design choices that matter for typescript template literal types
+
+TypeScript techniques in typescript template literal types pay off when they encode invariants the compiler can check. Prefer types that make illegal states unrepresentable over sprawling `any` escapes.
+
+### Migration tactics
+
+Enable `strict` incrementally: start with new packages, then tighten `noImplicitAny`, then `strictNullChecks` on legacy modules behind a burn-down list. Track error counts per package weekly.
+
+### Patterns that scale
+
+Branded types for IDs, discriminated unions for results, and `satisfies` for config objects keep refactors safe. Utility types (`Pick`, `Omit`, `ReturnType`) reduce duplication without inventing a parallel type language.
+
+### Tooling
+
+`tsc --noEmit` in CI, ESLint type-aware rules sparingly (they are slow), and API extractors for public packages. Generate types from OpenAPI/Zod when runtime validation must match compile-time types for typescript template literal types.
+
+## Validation scenarios for typescript template literal types
+
+Before calling typescript template literal types done, exercise these scenarios in a staging environment that mirrors production identity, data volume, and failure injection:
+
+1. **Happy path** with production-like payload sizes.
+2. **Auth failure** — expired token, missing scope, revoked session.
+3. **Dependency down** — timeout the primary collaborator; confirm degraded mode or clear error.
+4. **Replay / duplicate** — submit the same event or request twice; confirm idempotency.
+5. **Rollback** — disable the flag or revert the deploy; confirm state converges.
+
+Capture traces for each scenario and store them next to the runbook for typescript template literal types.
+
+## Ownership and interfaces
+
+Name the producing and consuming teams for typescript template literal types. Publish the API/event contract with versioning rules. If you need a breaking change, run dual-write or dual-read long enough for consumers to migrate. Silent breakages erode trust faster than slow features.
 
 ## Resources
 
@@ -224,3 +291,6 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [TypeScript 4.8 Improved intersection inference](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-8.html)
 - [type-fest string utility types](https://github.com/sindresorhus/type-fest)
 - [ts-pattern route typing example](https://github.com/gvergnaud/ts-pattern)
+## Typed routes
+
+Template literal types catch invalid path strings at compile time.

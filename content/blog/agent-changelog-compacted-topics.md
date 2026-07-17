@@ -1,111 +1,198 @@
 ---
 title: "AI Agents: Changelog Compacted Topics"
 slug: "agent-changelog-compacted-topics"
-description: "Changelog Compacted Topics: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Long changelogs blow agent context windows—compaction with topic clustering, recency weighting, and structured summaries keeps release history useful without drowning every turn in noise."
 datePublished: "2025-01-29"
 dateModified: "2025-01-29"
 tags: ["AI", "Agent", "Changelog"]
-keywords: "agent, changelog, compacted, topics, ai, production, engineering, architecture"
+keywords: "changelog compaction, topic clustering, agent memory, release notes, context window, semantic summarization, RAG changelog, incremental updates"
 faq:
-  - q: "What is Changelog Compacted Topics?"
-    a: "Changelog Compacted Topics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Changelog Compacted Topics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Changelog Compacted Topics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Changelog Compacted Topics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Changelog Compacted Topics should be observable in production and safe to change in small diffs."
+  - q: "What does 'compacted topics' mean for agent changelogs?"
+    a: "Instead of injecting raw release notes into every agent turn, you cluster changelog entries by topic (auth, billing, API), summarize each cluster into a fixed token budget, and expose only the clusters relevant to the current user query or tool scope."
+  - q: "When should compaction run—at ingest time or at query time?"
+    a: "Run structural compaction at ingest (when a release ships) so summaries are stable and testable. Run relevance filtering at query time so the agent sees only topics tied to the active codebase, tenant feature flags, or the user's question."
+  - q: "How do I prevent compaction from hiding breaking changes?"
+    a: "Tag breaking changes with a dedicated severity lane that bypasses normal compression. Keep full text in durable storage; inject compact summaries plus explicit BREAKING blocks when the agent's scope touches affected modules."
+  - q: "What metrics tell me compaction is working?"
+    a: "Track tokens injected per session, answer accuracy on changelog-grounded evals, hallucination rate on version-specific questions, and user escalation rate when agents cite outdated behavior."
 ---
-Changelog Compacted Topics is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+A support agent at a B2B SaaS company was asked why OAuth scopes changed in the March release. It confidently explained behavior from January—because the system prompt included twelve months of release notes verbatim, and the model attended to the first matching paragraph it found. The correct answer lived in line 847 of a JSON export nobody had trimmed since v2.4.
 
-When changelog compacted topics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Changelog compaction is not summarization for its own sake. It is **context economics**: keeping release history available to agents without turning every turn into a document-retrieval problem. This post covers how to cluster, compress, and selectively inject changelog topics so agents stay accurate across long product lifetimes.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why raw changelogs fail agents
 
-Solid AI engineering turns changelog compacted topics from a recurring argument into a documented pattern with tests and an owner.
+Release notes accumulate faster than context windows grow. A mature product might ship forty entries per quarter across API, mobile, billing, and infra. Pasting that into system context consumes tokens that should go to user intent, tool schemas, and retrieved code.
 
-## Design principles that survive production
+Three failure modes show up repeatedly:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent changelog compacted topics bugs hide.
+| Failure mode | Symptom | Root cause |
+|--------------|---------|------------|
+| Stale dominance | Agent cites old behavior | Recency bias inverted—early entries repeat keywords |
+| Topic collision | Wrong module blamed | "Settings" appears in five unrelated entries |
+| Missing severity | Breaking change ignored | Compression averages away imperative language |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for changelog compacted topics, you do not yet understand the behavior you shipped.
+Agents do not "read" changelogs the way engineers scan GitHub releases. They pattern-match on surface text. Compaction must preserve **semantic anchors**—module names, API paths, flag keys, migration deadlines—not just shorter prose.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Topic clustering at ingest
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent changelog compacted topics flows so duplicates are harmless or detectable.
+The first compaction stage groups entries before any LLM summarization. Deterministic clustering reduces cost and makes regressions testable.
 
-## Implementation patterns
+A practical pipeline:
 
-A practical baseline for changelog compacted topics in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent changelog compacted topics changes safer because business rules stay isolated from transport details.
+1. **Normalize** each entry: title, body, affected components, semver, date, severity tags.
+2. **Embed** title + first paragraph; assign to nearest topic centroid or HDBSCAN cluster.
+3. **Merge** clusters below a minimum entry count into an "misc" bucket with a higher summarization priority.
+4. **Emit** a `TopicCluster` record per group with stable IDs tied to your taxonomy.
 
 ```typescript
-// Changelog Compacted Topics: typed boundary + structured errors
-export async function handleChangelogCompactedTopics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-changelog-compacted-topics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+// changelog/compactTopics.ts
+import { embed, clusterByCentroid } from "./ml";
+import { ChangelogEntry, TopicCluster } from "./types";
+
+const TAXONOMY = ["auth", "billing", "api", "mobile", "infra", "security"] as const;
+
+export async function compactRelease(
+  releaseId: string,
+  entries: ChangelogEntry[],
+): Promise<TopicCluster[]> {
+  const vectors = await embed(entries.map((e) => `${e.title}\n${e.summary}`));
+  const labeled = clusterByCentroid(vectors, TAXONOMY);
+
+  const byTopic = new Map<string, ChangelogEntry[]>();
+  for (let i = 0; i < entries.length; i++) {
+    const topic = labeled[i] ?? "misc";
+    byTopic.set(topic, [...(byTopic.get(topic) ?? []), entries[i]!]);
   }
+
+  return Promise.all(
+    [...byTopic.entries()].map(async ([topic, group]) => ({
+      releaseId,
+      topic,
+      entryIds: group.map((e) => e.id),
+      compactText: await summarizeTopicGroup(topic, group),
+      breaking: group.filter((e) => e.severity === "breaking"),
+      tokenBudget: topic === "security" ? 512 : 256,
+    })),
+  );
 }
 
+async function summarizeTopicGroup(
+  topic: string,
+  entries: ChangelogEntry[],
+): Promise<string> {
+  // Prefer structured output: bullet facts, not narrative fluff
+  return llmSummarize({
+    system: "Extract user-visible behavior changes only. Preserve API paths and flag names.",
+    entries,
+    maxTokens: 200,
+    topic,
+  });
+}
 ```
 
+Keep **breaking entries out of the summary body**. Store them as structured fields the query layer can inject unconditionally when scope matches.
+
+## Recency-weighted topic windows
+
+Not all topics deserve equal history depth. API surface changes need six months; infra migrations might need only the latest cluster. Define per-topic **lookback windows** in releases, not calendar time, so compaction stays stable during quiet periods.
+
+```typescript
+const LOOKBACK: Record<string, number> = {
+  api: 8,
+  auth: 6,
+  billing: 4,
+  mobile: 3,
+  infra: 2,
+};
+
+export function selectTopicHistory(
+  clusters: TopicCluster[],
+  activeTopics: string[],
+): TopicCluster[] {
+  return activeTopics.flatMap((topic) => {
+    const window = LOOKBACK[topic] ?? 3;
+    return clusters
+      .filter((c) => c.topic === topic)
+      .sort((a, b) => b.releaseId.localeCompare(a.releaseId))
+      .slice(0, window);
+  });
+}
+```
+
+At query time, infer `activeTopics` from the user's repo path, open files, feature flags, or explicit `@changelog/auth` mentions. Default to a conservative subset—API + security—rather than injecting everything.
+
+## Query-time injection contract
+
+Treat compacted topics as a **typed context block**, not freeform prose. Agents and eval harnesses parse it reliably.
+
+```markdown
+<!-- injected by changelog service -->
+<changelog_context scope="api,auth" as_of="2025-01-29">
+## api (releases v3.2–v3.8)
+- POST /v2/tokens accepts `scope` array; legacy `permissions` deprecated v3.6
+- Rate limit headers renamed: X-RateLimit-Remaining
+
+## auth (releases v3.5–v3.8)
+- BREAKING: SAML metadata refresh required by 2025-02-15
+- Session TTL default 24h → 8h for new tenants only
+</changelog_context>
+```
+
+Rules that survive production:
+
+- **Cap total tokens** for the block; drop oldest clusters within a topic before dropping entire topics.
+- **Never compact away dates and version numbers**—agents need them for "since when" questions.
+- **Log injection sets** per session for debugging wrong-answer reports.
+
+## Evaluating compaction quality
+
+Generic summarization metrics (ROUGE, BERTScore) correlate poorly with agent usefulness. Build a **changelog QA eval set**:
+
+- Questions keyed to specific releases ("When did we deprecate X?")
+- Cross-topic disambiguation ("Did billing or API change retry behavior?")
+- Breaking-change detection under partial context
+
+Run evals whenever your summarization prompt or clustering taxonomy changes. Track regression per topic cluster, not just aggregate accuracy.
+
+Pair offline evals with production signals: when users correct the agent or open docs linked from a "wrong version" banner, tag the session with the injected cluster IDs and feed failures back into prompt tuning.
 
 ## Operational concerns
 
-Alert on user-visible symptoms for changelog compacted topics — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Compaction jobs should be **idempotent per release**. Re-running ingest for v3.7 must overwrite cluster v3.7 records without duplicating summaries in the vector store.
 
-Production agent changelog compacted topics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Store three tiers:
 
-Rollouts for changelog compacted topics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+1. **Raw entries** — immutable audit trail
+2. **Topic clusters** — compact summaries, versioned by summarizer model + prompt hash
+3. **Injection logs** — what each session actually saw
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Alert when summarization latency blocks release publish, when cluster count drifts unexpectedly (taxonomy drift), or when breaking-change count in raw entries ≠ structured breaking array count (parser bug).
 
-## Security and compliance angles
+Roll out summarizer prompt changes with shadow mode: generate new compact text, diff against production in eval, flip traffic only after passing gates.
 
-Even when changelog compacted topics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Security and compliance
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent changelog compacted topics so security reviews do not rely on tribal knowledge.
+Changelogs sometimes mention CVE fixes, customer-specific migrations, or embargoed features. Tag entries with visibility classes (`public`, `internal`, `customer-specific`) before compaction. Customer-specific clusters must never enter multi-tenant agent context without tenant ID filtering.
 
-## Testing strategy
+Summarization calls send entry text to an LLM—treat that as a data-processing boundary. Redact account IDs and ticket numbers at normalize time; use on-prem or zero-retention inference for regulated tenants.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that changelog compacted topics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Monorepo and multi-product variants
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Teams shipping multiple surfaces from one repo need **product dimension** on clusters, not just topic. A mobile-only change should not inflate API context for backend-only agent sessions. Tag entries with `product: [web, ios, api]` at normalize time; filter injection sets by the caller's product scope.
 
-## Migration and evolution
+For monorepos, map file paths to products automatically via CODEOWNERS or package boundaries. When a user asks about `@packages/billing-sdk`, inject billing + api clusters for that package's lookback window—skip mobile entirely. Cross-product breaking changes (shared auth library) propagate via explicit `affects: all` tags that bypass product filters but still respect topic caps.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent changelog compacted topics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Version skew between client and server is another compaction edge case. Store minimum compatible versions in cluster metadata so agents can answer "you need app v4.2+" without re-reading six months of mobile notes.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where changelog compacted topics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Closing
 
-## Related concepts
-
-Changelog Compacted Topics intersects with broader ai topics — see companion notes on [agent-changelog patterns](https://blog.michaelsam94.com/agent-changelog/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
-
-## The takeaway
-
-Changelog Compacted Topics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent changelog compacted topics becomes a maintainable asset instead of incident fuel.
+Compacted changelog topics turn release history from a context-window tax into a scoped, testable knowledge layer. Cluster at ingest, weight recency by topic, inject through a strict contract, and eval on version-specific questions—not on how pretty the summaries read. Agents that cite the right release save support hours; agents that cite January in March erode trust faster than no changelog at all.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Keep a Changelog](https://keepachangelog.com/) — structured release format that compacts cleanly into topic clusters
+- [Semantic versioning spec](https://semver.org/) — severity and breaking-change tagging for bypass lanes
+- [OpenAI token counting guide](https://platform.openai.com/tokenizer) — budget compaction blocks against real model limits
+- [HDBSCAN clustering](https://hdbscan.readthedocs.io/) — density-based topic grouping when taxonomy labels are incomplete
+- [RAG evaluation patterns (LangChain)](https://python.langchain.com/docs/guides/evaluation/) — grounding evals for changelog QA sets

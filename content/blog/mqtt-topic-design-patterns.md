@@ -3,8 +3,8 @@ title: "MQTT Topic Design Patterns"
 slug: "mqtt-topic-design-patterns"
 description: "Design MQTT topic hierarchies that scale: naming conventions, wildcard realities, ACL alignment, and avoiding per-device topic explosions that break brokers."
 datePublished: "2025-09-08"
-dateModified: "2025-09-08"
-tags: ["IoT", "MQTT", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MQTT topic design, MQTT topic hierarchy, MQTT wildcards, MQTT ACL topics, IoT topic naming"
 faq:
   - q: "How deep should an MQTT topic hierarchy be?"
@@ -14,7 +14,6 @@ faq:
   - q: "What's wrong with a new topic per message type randomly named?"
     a: "Subscribers and ACLs can't evolve. Standardize verbs (`telemetry`, `command`, `state`, `event`) and payload schemas. Version payloads in the message or a version segment when breaking."
 ---
-
 MQTT topics are your API. Bad names become ACL spaghetti and subscription storms. Good names make brokers, bridges, and humans predictable. I've inherited fleets where every firmware engineer invented their own top-level (`data`, `Data`, `telemetry`, `tel`) — the broker survived; the ops team did not.
 
 Treat topic design as a public contract: version it, document it, and review changes like API breaking changes.
@@ -150,17 +149,6 @@ Monitor broker topic count — unbounded unique topics (one per session ID) exha
 
 Pair with [IoT OTA updates rollback](https://blog.michaelsam94.com/iot-ota-updates-rollback/) when command topics trigger firmware deployments.
 
-## Common production mistakes
-
-Teams get mqtt topic design patterns wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of mqtt topic design patterns fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [MQTT 5.0 specification](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html)
@@ -168,3 +156,17 @@ Production implementations of mqtt topic design patterns fail when staging mirro
 - [EMQX — Topic design](https://www.emqx.com/en/blog/advanced-features-of-mqtt-topics)
 - [MQTT Sparkplug B](https://sparkplug.eclipse.org/) — industrial topic conventions worth reading even if you don't adopt it
 ---
+
+## Production notes for LLM stacks
+
+When `mqtt-topic-design-patterns` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `mqtt topic design patterns` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

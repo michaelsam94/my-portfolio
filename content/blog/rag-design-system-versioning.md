@@ -1,111 +1,175 @@
 ---
 title: "RAG: Design System Versioning"
 slug: "rag-design-system-versioning"
-description: "Design System Versioning: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Versioning design systems consumed by AI-generated UI — semver for tokens and components, migration guides, and compatibility contracts for copilot output."
 datePublished: "2026-06-16"
-dateModified: "2026-06-16"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Design"]
 keywords: "rag, design, system, versioning, ai, production, engineering, architecture"
 faq:
-  - q: "What is Design System Versioning?"
-    a: "Design System Versioning covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Design System Versioning?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Design System Versioning?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Design System Versioning fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Design System Versioning should be observable in production and safe to change in small diffs."
+  - q: "Why does semver matter when LLMs generate UI from a design system?"
+    a: "Copilots and RAG-over-docs retrieve component examples and token names from indexed design system documentation. Breaking renames without semver bumps cause generated code to import deprecated APIs, use removed tokens, or mix v1 and v2 patterns in the same file—failures that compile in isolation but break in production apps pinned to specific design system versions."
+  - q: "Should design tokens and React components share one version number?"
+    a: "Publish from a monorepo with aligned major versions when tokens and components ship together, but expose separate changelogs and deprecation paths. Token renames can break CSS-in-JS and Tailwind mappings even when component JSX APIs stay stable—document both in release notes."
+  - q: "How do you index design system docs for RAG without stale examples?"
+    a: "Version-tag every indexed doc chunk with design_system_version. Retrieval filters by the consuming app's pinned version in package.json. CI fails when examples in docs reference unreleased or deprecated APIs without migration notes."
 ---
-Most teams encounter design system versioning after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+An internal UI copilot generated a settings page using `Button variant="primary"` and spacing token `space-4`—APIs retired two releases ago when the design system moved to semantic tokens and consolidated button variants. The developer pasted the output, CI passed lint because eslint-plugin-design-system was outdated, and the page shipped with inaccessible contrast ratios the new token system would have blocked at build time. The RAG corpus indexed "latest" Storybook docs without version metadata; every answer sounded authoritative and was silently wrong.
 
-When design system versioning is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Design systems are libraries. **Versioning** them with semver discipline—breaking changes in major bumps, migration guides, deprecation windows—is standard for npm packages. AI-assisted UI generation makes versioning load-bearing: retrieval returns code-shaped snippets, and models treat indexed docs as ground truth unless you explicitly scope retrieval to the version the app actually installs.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Semver semantics for design systems
 
-Solid AI engineering turns design system versioning from a recurring argument into a documented pattern with tests and an owner.
+Apply semantic versioning rigorously:
 
-## Design principles that survive production
+| Change type | Version bump | Examples |
+|-------------|--------------|----------|
+| Breaking | MAJOR | Removed component, renamed token, changed prop types, altered focus ring behavior required for a11y |
+| Additive | MINOR | New component, new optional prop, new token alias |
+| Fix | PATCH | Visual bug fix matching spec, doc correction, non-breaking a11y improvement |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag design system versioning bugs hide.
+**Breaking** includes changes that break *generated* code, not only published TypeScript APIs:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for design system versioning, you do not yet understand the behavior you shipped.
+- Renaming `color-text-secondary` → `color-fg-muted`
+- Splitting `Card` into `Card` + `CardHeader` with different import paths
+- Changing default `size` prop changing layout in existing compositions
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+Document breaking changes in machine-readable **`codemods`** where possible—LLMs and humans both benefit from `npx @acme/ds-migrate v2`.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag design system versioning flows so duplicates are harmless or detectable.
+## Monorepo release strategy
 
-## Implementation patterns
+Most design systems live in monorepos (`@acme/tokens`, `@acme/react`, `@acme/icons`). Options:
 
-A practical baseline for design system versioning in ai stacks:
+**Lockstep major versions** (recommended for small teams): all packages `@acme/*` share `2.4.1`. Simple mental model for RAG: one version dimension.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+**Independent versioning** (large systems): icons may patch frequently while react major bumps rarely. RAG retrieval must filter on *package* version tuples, not a single number—more accurate, harder for copilots unless you expose a **compatibility matrix** in docs.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag design system versioning changes safer because business rules stay isolated from transport details.
+Release train: monthly minors, quarterly majors with 90-day deprecation notices. Emergency patch for accessibility regressions bypasses train but never sneaks breaking renames into patch.
 
-```typescript
-// Design System Versioning: typed boundary + structured errors
-export async function handleDesignSystemVersioning(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-design-system-versioning");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Deprecation policy that retrieval can encode
 
+Each deprecated API entry in docs should include structured frontmatter RAG indexes:
+
+```yaml
+# docs/components/Button.mdx
+component: Button
+design_system_version: "3.2.0"
+status: deprecated
+deprecated_in: "3.0.0"
+removed_in: "4.0.0"
+replacement: "Button variant='brand'"
 ```
 
+Retrieval prompt augmentation:
 
-## Operational concerns
+```text
+App pins @acme/react@3.2.0. Exclude docs where removed_in <= 3.2.0.
+Prefer status: stable. Surface deprecated APIs only when user asks about migration.
+```
 
-Game-day exercises for design system versioning beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Without `removed_in`, models confidently cite removed APIs because the chunk text still reads like current guidance.
 
-Production rag design system versioning work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## RAG corpus structure for versioned design systems
 
-Rollouts for design system versioning benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Partition indexed content:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```
+/design-system/
+  v3/
+    components/Button.mdx
+    tokens/color.mdx
+    migrations/v2-to-v3.md
+  v4/  (beta, flagged)
+    ...
+```
 
-## Security and compliance angles
+**Never** index only `/latest/` symlinks without duplicating version in chunk metadata. Symlinks change; embeddings go stale silently.
 
-Even when design system versioning is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+At query time, pass consumer context:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag design system versioning so security reviews do not rely on tribal knowledge.
+```json
+{
+  "retrieval_filter": {
+    "design_system_major": 3,
+    "min_doc_version": "3.0.0",
+    "max_doc_version": "3.99.99"
+  }
+}
+```
 
-## Testing strategy
+For apps on `3.2.0`, include beta v4 docs only when `include_beta: true` in developer settings.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that design system versioning depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## CI coupling between apps and design system
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Consumer apps declare `@acme/react: "^3.2.0"`. CI checks:
 
-## Migration and evolution
+1. **Peer dependency range** satisfied by published design system.
+2. **Visual regression** against Storybook snapshots for pinned version.
+3. **eslint-plugin-design-system** ruleset matching major version.
+4. **Copilot eval**: sample prompts generate imports that resolve against pinned package.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag design system versioning functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+When design system ships v4, provide **`peerDependencies` migration CLI** that updates app pins and runs codemods before docs retrieval defaults switch.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where design system versioning spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Communication surfaces beyond changelogs
 
-## Related concepts
+Humans read changelogs; models read whatever you index. Ship:
 
-Design System Versioning intersects with broader ai topics — see companion notes on [rag-design patterns](https://blog.michaelsam94.com/rag-design/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+- **Migration guides** with before/after diffs per component
+- **Storybook version switcher** baked into static export per major
+- **RSS/JSON feed** of breaking changes for automated corpus re-index jobs
+- **Slack bot** posting release notes to `#design-system` with `@channel` on major bumps only
 
-## The takeaway
+Schedule RAG re-index within 24 hours of doc publish—stale embeddings cause more incidents than missing new components.
 
-Design System Versioning rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag design system versioning becomes a maintainable asset instead of incident fuel.
+## Testing generated UI against version contracts
 
-## Resources
+Add eval cases to copilot pipelines:
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+```yaml
+prompt: "Settings page with save button using design system"
+assertions:
+  - imports_from: "@acme/react@^3"
+  - uses_token_prefix: "color-"  # not legacy bare names
+  - no_deprecated: ["variant=\"primary\"", "space-4"]
+  - a11y: axe_core_zero_violations
+```
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+Track **deprecated API usage rate** in accepted copilot suggestions over time—should drop after migration campaigns.
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+## Governance and ownership
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Design system team owns semver policy and release tooling. Platform team owns RAG index filters and copilot system prompts referencing version rules. App teams own pin bumps—do not force major upgrades via unpinned `latest` docs.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Major releases require: migration guide, codemod or clear manual steps, 90-day dual-publish of deprecated APIs where feasible, and indexed vN+1 docs clearly labeled beta until GA.
+
+Design system versioning is how AI-generated UI stays compatible with the apps it ships into. Semver without version-scoped retrieval is documentation theater—the copilot will keep generating `primary` buttons until your index knows those docs were deprecated in 3.0.0 and removed entirely in 4.0.0.
+
+## Coordinating design system releases with app train
+
+Align design system majors with **app release trains** so consuming teams budget migration sprints. Publish a six-month roadmap: deprecated APIs in month one, codemod available month two, removal in month six. Copilot RAG indexes each milestone doc separately so retrieval never mixes migration phases.
+
+**Visual regression baselines** per design system version stored in Percy/Chromatic—when copilot output fails visual diff, trace whether wrong version docs or model ignore version filter caused drift.
+
+## Measuring version-scoped retrieval quality
+
+Run eval harness: same UI generation prompts against v3-only vs v4-only indexes; track deprecated API rate in generated code. Product metric: **version-correct generation rate** should exceed 95% before declaring copilot GA on new major. Design system team owns the metric jointly with AI platform—shared on-call when releases collide.
+
+## Breaking change communication channels
+
+Ship major versions with **embedded migration widget** in Storybook and Figma library description linking to RAG-indexed migration guide URL with version hash. Designers and engineers discover breaking changes at point of use, not from Slack message drowned in channel noise.
+
+Record **office hours** first two weeks post-major—questions feed FAQ chunks back into copilot index within 48 hours. Recurring questions indicate docs gap, not user error.
+
+## Long-term deprecation of legacy major versions
+
+Enterprises lag majors by 18 months. Support **extended maintenance** window for N-1 major with security patches only—copilot RAG index retains N-1 docs read-only with banner "upgrade recommended." Contract phase for N-2 removal requires customer comms 90 days ahead.
+
+Telemetry on deprecated API usage in consuming apps: `@acme/react` import analysis in CI of customer-facing apps shows who blocks major removal—target outreach before forced upgrade deadlines create fire drills.
+
+Versioning succeeds when design, engineering, and technical writing share one release calendar. If docs lag code by a sprint, copilot RAG indexes always lose—users generate against yesterday's APIs while Storybook shows today's. Block design system npm publish until docs platform build green and version-tagged chunks indexed in staging retrieval sandbox.
+
+Treat copilot-indexed design docs as release artifacts with the same rigor as npm tarballs: if it is not version-tagged and indexed, it does not exist for AI-assisted UI generation.
+
+## Common regressions around design system versioning
+
+Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to design system versioning and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.

@@ -3,128 +3,149 @@ title: "HPA with Custom and External Metrics"
 slug: "devops-horizontal-pod-autoscaler-custom-metrics"
 description: "Scale Deployments on Prometheus, KEDA, or cloud queue depth using HorizontalPodAutoscaler v2."
 datePublished: "2026-03-03"
-dateModified: "2026-03-03"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Kubernetes"
   - "Observability"
 keywords: "HPA, custom metrics, KEDA"
 faq:
-  - q: "What is HPA?"
-    a: "HPA covers operational practices for HPA v2 in production kubernetes environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize HPA?"
+  - q: "When should teams prioritize HPA with Custom and External Metrics?"
     a: "When CPU/memory do not correlate with user-visible latency or backlog."
-  - q: "What mistakes break HPA?"
+  - q: "What is the most common mistake with HPA v2?"
     a: "Scaling on CPU alone during I/O-bound spikes never adds pods."
+  - q: "Custom metrics adapter or KEDA?"
+    a: "HPA v2 with Prometheus adapter fits simple pod metrics. KEDA adds scale-to-zero, external scalers (SQS, Kafka lag), and clearer event-driven semantics."
+  - q: "How do we know HPA with Custom and External Metrics is working?"
+    a: "Define a leading metric for HPA v2 health and a lagging metric tied to incidents. If you only measure after outages, the control is decorative."
 ---
-
 Checkout latency breached SLO while CPU sat flat—queue depth existed but HPA watched CPU only.
 
-This post walks through **HPA with Custom and External Metrics** for platform and SRE teams shipping reliable infrastructure. Scale Deployments on Prometheus, KEDA, or cloud queue depth using HorizontalPodAutoscaler v2. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
-
-## Problem framing: HPA with Custom and External Metrics
-
-Checkout latency breached SLO while CPU sat flat—queue depth existed but HPA watched CPU only.
+## What changes when you leave the tutorial
 
 
-Platform teams treat **HPA v2** as solved after the first successful deploy. Production disagrees: edge cases around horizontal pod autoscaler custom metrics, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Scale Deployments on Prometheus, KEDA, or cloud queue depth using HorizontalPodAutoscaler v2.
 
-## Design principles for HPA v2
+Production hpa with custom and external metrics fails on retries, partial outages, and human process gaps — not on the happy-path tutorial.
 
-Explicit contracts beat tribal knowledge. Document who owns HPA v2 configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+## Design constraints you cannot ignore
 
 
-A common failure mode: Scaling on CPU alone during I/O-bound spikes never adds pods. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Prefer defaults that fail closed: deny, queue, or degrade safely rather than return silently wrong data.
+
+Document who may change HPA v2 in production, how rollback works, and which environments are allowed to diverge.
+
+## Step-by-step in production order
+
+
+1. Inventory consumers and SLAs. 2. Implement enforcement on the write/promote path. 3. Add observability. 4. Drill failure modes. 5. Expand scope.
+
+Validate each step with someone who did not write the original HPA v2 config — fresh eyes catch assumptions.
+
+## Edge cases that bypass happy-path tests
+
+
+Edge cases: late-arriving data, duplicate events, schema drift mid-run, credential rotation during job execution, and traffic spikes during deploy.
+
+For each, document drop vs retry vs dead-letter vs fail-closed — and test it.
+
+## Observability hooks
+
+
+Structured logs with run_id, partition, and validation outcome. Metrics with bounded labels — never high-cardinality user IDs on Prometheus.
+
+Traces across orchestrator, worker, and warehouse when requests cross team boundaries.
+
+## Summary
+
+
+HPA with Custom and External Metrics earns its keep when it prevents silent corruption, unsafe deploys, or unbounded cost — not when it decorates a architecture diagram.
+
+## Reference configuration
 
 
 ```yaml
-# devops-horizontal-pod-autoscaler-custom-metrics
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
-  name: horizontal_pod_autoscaler_custom_metrics
-  labels:
-    app.kubernetes.io/part-of: devops-horizontal-pod-autoscaler-custom-metrics
+  name: checkout-api
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: horizontal_pod_autoscaler_custom_metrics
-  template:
-    metadata:
-      labels:
-        app: horizontal_pod_autoscaler_custom_metrics
-    spec:
-      containers:
-        - name: app
-          image: app:1.0.0
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: checkout-api
+  minReplicas: 3
+  maxReplicas: 40
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: checkout_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "30"
+
 ```
 
-## Implementation walkthrough
+## Metric adapter reliability
 
-Start with the smallest production-safe slice of **HPA with Custom and External Metrics**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Custom metrics HPA depends on metrics-server or prometheus-adapter availability. Alert on adapter scrape failures and stale metric timestamps — HPA with missing metrics stops scaling silently while backlog grows.
 
+## HPA v2 metrics wiring
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for HPA v2.
+Register custom metrics APIs via prometheus-adapter or use KEDA ScaledObject. Verify metrics appear in `kubectl get --raw /apis/external.metrics.k8s.io`. Stale metrics timestamps mean HPA stops scaling — alert on adapter health.
 
-## Operational concerns in production
+## Scale behavior tuning
 
-Day-two operations for kubernetes work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Set `behavior.scaleUp.stabilizationWindowSeconds` to avoid flapping on noisy queue metrics. Scale-down slower than scale-up for latency-sensitive tiers. Document max replicas with finance — unbounded max replicas is a cost incident.
 
+## When HPA v2 becomes load-bearing
 
-Run game days or fault injection in staging quarterly for horizontal pod autoscaler custom metrics. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+When CPU/memory do not correlate with user-visible latency or backlog. At that point hpa with custom and external metrics stops being a platform nice-to-have and becomes part of the release contract. Teams that defer instrumentation until after the first GitOps or Helm incident usually rebuild dashboards under pager pressure — metrics added during calm weeks have sane cardinality and alert text.
 
-## Security and compliance angles
+## What the incident looked like
 
-Even when HPA with Custom and External Metrics is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when HPA v2 accepts configuration from multiple teams.
+Checkout latency breached SLO while CPU sat flat—queue depth existed but HPA watched CPU only. On-call infrastructure graphs stayed green because the failure mode lived in the gap between declared state and user-visible behavior. Scale Deployments on Prometheus, KEDA, or cloud queue depth using HorizontalPodAutoscaler v2. The fix was not another controller restart — it was making HPA v2 observable on the same timeline as application deploys.
 
+## The mistake to design against
 
-For regulated workloads, maintain an immutable audit trail: who changed HPA v2 settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Scaling on CPU alone during I/O-bound spikes never adds pods. Platform reviews should treat that failure as a design requirement, not a footnote. Encode the guard in CI, admission, or plan-time policy so the bad change fails before merge. Document the exception process for break-glass — who approves, how long it lasts, and how Git catches up afterward.
 
-## Integration with platform standards
+## How Kubernetes teams operationalize HPA v2
 
-Align HPA v2 with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Name primary and secondary owners. Link dashboards from the service runbook index on-call already opens. Run a quarterly drill: break HPA v2 safely in staging, confirm alerts route to the right rotation, and verify rollback restores the previous known-good state without manual cluster surgery.
 
+## Rollout and evidence
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Wave changes: internal consumers, small canary cohort, 48-hour soak, then full promote. Keep the prior artifact revision hot-swappable for one release cycle. Store CI artifacts — rendered manifests, policy reports, simulator output — so incident review can answer what changed without reconstructing history from memory.
 
+## Cross-team interfaces
 
-## What to measure after rollout
+Application, security, and finance teams consume outcomes from HPA v2 differently. Publish a short interface doc: what the control blocks, what it logs, and who to ping when a false positive stops a legitimate deploy. Ambiguous ownership is how configs drift until the next audit or customer-visible outage.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+## Capacity and cost angles
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Even when hpa with custom and external metrics is primarily about correctness, it affects cost: retries, idle GPU nodes, oversized autoscale max, or LB flapping all show up on the invoice after a misconfigured gate. Review HPA v2 settings when traffic doubles or when finance flags a new line item — not only after hard outages.
 
-## Documentation your team should maintain
+Runbooks for HPA v2 should fit on one printed page: prerequisites, rollback, and the three metrics on-call checks first. Link that page from alert annotations so nobody searches Confluence during a SEV. Update the runbook after every incident where HPA v2 was involved — even if the root cause was elsewhere.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Staging must exercise the same HPA v2 code paths as production, including failure modes you expect to handle. A green staging deploy without negative tests gives false confidence. Inject faults quarterly: expired credentials, slow dependencies, and partial outages shaped like your last postmortem.
 
-## Pre-production checklist
+Checkout latency breached SLO while CPU sat flat—queue depth existed but HPA watched CPU only. Capture that story in the team onboarding doc so new engineers understand why hpa with custom and external metrics exists. Architecture diagrams age quickly; incident narratives and concrete guardrails stay memorable. Prefer automated enforcement over reviewer vigilance — humans miss typos at 5 p.m. on Fridays.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Security and compliance reviews increasingly ask for evidence, not assertions. Export audit logs showing who changed HPA v2 settings, which CI job validated the change, and when the last game day passed. OIDC-federated deploy roles beat long-lived keys stored in CI secrets.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+FinOps partners care when misconfigured HPA v2 causes retry storms, idle GPU nodes, or runaway autoscale. Add a quarterly joint review with finance when this control touches capacity: right-size max replicas, GPU quotas, and LB pools using production metrics — not spreadsheet guesses.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Runbooks for HPA v2 should fit on one printed page: prerequisites, rollback, and the three metrics on-call checks first. Link that page from alert annotations so nobody searches Confluence during a SEV. Update the runbook after every incident where HPA v2 was involved — even if the root cause was elsewhere.
 
-## Common questions from reviewers
+Staging must exercise the same HPA v2 code paths as production, including failure modes you expect to handle. A green staging deploy without negative tests gives false confidence. Inject faults quarterly: expired credentials, slow dependencies, and partial outages shaped like your last postmortem.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Checkout latency breached SLO while CPU sat flat—queue depth existed but HPA watched CPU only. Capture that story in the team onboarding doc so new engineers understand why hpa with custom and external metrics exists. Architecture diagrams age quickly; incident narratives and concrete guardrails stay memorable. Prefer automated enforcement over reviewer vigilance — humans miss typos at 5 p.m. on Fridays.
 
-## Version and compatibility notes
+Security and compliance reviews increasingly ask for evidence, not assertions. Export audit logs showing who changed HPA v2 settings, which CI job validated the change, and when the last game day passed. OIDC-federated deploy roles beat long-lived keys stored in CI secrets.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
-
-
-## Resources
+## Further reading
 
 - https://kubernetes.io/docs/home/
-- https://github.com/kubernetes/community/tree/master/contributors/devel/sig-architecture
+- https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/

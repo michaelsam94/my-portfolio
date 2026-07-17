@@ -4,8 +4,8 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Setup (read first)\n\n1. **Import:** n8n menu (\u22ef) \u2192 *Import from File* \u2192 select this JSON.\n2. **Activate** only after all credentials are connected.\n3. **Replace** `YOUR_FACEBOOK_PAGE_ID` in the Facebook node URL with your numeric Page ID.\n4. **LinkedIn credential:** OAuth2 \u2192 scopes `openid profile email w_member_social` (Share on LinkedIn + Sign In with LinkedIn OpenID). Disable **Organization Support** unless LinkedIn has approved Marketing/Community Management for org posts.\n5. **X credential:** OAuth 2.0 (X API v2) \u2192 app with **Tweet write** permission.\n6. **Feed URL:** `https://blog.michaelsam94.com/linkedin-posts.json` (~3004 posts, field `text`).\n7. **Reset rotation:** clear workflow static data (`sharedSlugs`, `nextIndex`) in n8n if you want to re-share from the start.\n\nOAuth must be completed by you in the n8n UI \u2014 secrets are not stored in this repo.\n\n**LinkedIn \u2014 fix \u201cPerson Name or ID is required\u201d**\n1. Open **Credentials \u2192 LinkedIn OAuth2** \u2192 **Connect** (complete OAuth in browser).\n2. Set `LINKEDIN_PERSON_ID` in n8n\u2019s environment to your OpenID `sub` from `GET https://api.linkedin.com/v2/userinfo`.\n3. **Post as Person (default):** keep **Post as** = *Person* and use `w_member_social` (with OpenID scopes above).\n",
-        "height": 520,
+        "content": "## Setup (read first)\n\n1. **Import:** n8n menu (⋯) → *Import from File* → select this JSON.\n2. **Activate** only after all credentials are connected.\n3. **LinkedIn credential:** OAuth2 → scopes `openid profile email w_member_social`.\n4. **Postgres credential:** `n8n Postgres Rotation` (table `linkedin_rotation`).\n5. **Feed URL:** `https://blog.michaelsam94.com/linkedin-posts.json` (~3004 posts, field `text`).\n6. **Reset rotation:** `UPDATE linkedin_rotation SET shared_slugs='[]', next_index=0 ...`\n\nOAuth must be completed by you in the n8n UI — secrets are not stored in this repo.\n",
+        "height": 420,
         "width": 480,
         "color": 4
       },
@@ -13,15 +13,12 @@
       "name": "Setup Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [
-        -320,
-        -80
-      ]
+      "position": [-320, -80]
     },
     {
       "parameters": {
-        "content": "## Schedule\n\n**Cron:** `0 * * * *` in **Africa/Cairo** (GMT+3)\n\nRuns at **:00** every hour \u2192 **24 posts/day**.\n\nAlso set workflow timezone to Africa/Cairo (Settings \u2192 Timezone).",
-        "height": 220,
+        "content": "## Schedule\n\n**Cron:** `0 * * * *` in **Africa/Cairo** (GMT+3)\n\nRuns at **:00** every hour → **24 posts/day**.",
+        "height": 200,
         "width": 360,
         "color": 5
       },
@@ -29,15 +26,12 @@
       "name": "Schedule Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [
-        -320,
-        480
-      ]
+      "position": [-320, 480]
     },
     {
       "parameters": {
-        "content": "## Rotation\n\n**Flow:** Fetch \u2192 Pick Next Post \u2192 LinkedIn Post \u2192 Handle Result \u2192 Mark Posted.\n\n**Rotation source of truth:** `/files/posted-slugs.json` (host: `/opt/n8n/local-files/posted-slugs.json`).\n- **Pick Next Post** reads `sharedSlugs` + `nextIndex` from the file (falls back to workflow staticData only if the file is empty).\n- **Mark Posted** appends the slug and advances `nextIndex` after LinkedIn **success or duplicate**.\n- Manual test runs **do not** persist staticData in n8n 2.26; the JSON file still rotates correctly.\n\nLinkedIn uses `onError: continueErrorOutput` \u2192 **Handle Result** treats duplicate posts as success for marking.\n",
-        "height": 280,
+        "content": "## Rotation (Postgres)\n\n**Source of truth:** table `linkedin_rotation` in n8n Postgres (NOT filesystem — JS task runners sandbox fs writes).\n\nFlow: Fetch → Read Rotation → Pick → LinkedIn → Mark → Write Rotation.\n\nDuplicates → Handle Result → Mark → Write.",
+        "height": 260,
         "width": 400,
         "color": 6
       },
@@ -45,10 +39,7 @@
       "name": "Rotation Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [
-        640,
-        -120
-      ]
+      "position": [640, -120]
     },
     {
       "parameters": {
@@ -68,14 +59,24 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        0,
-        300
-      ]
+      "position": [0, 300]
     },
     {
       "parameters": {
         "url": "https://blog.michaelsam94.com/linkedin-posts.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; BlogSocialScheduler/1.0; +https://michaelsam94.com)"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
         "options": {
           "response": {
             "response": {
@@ -89,23 +90,35 @@
       "name": "Fetch Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        240,
-        300
-      ]
+      "position": [220, 300]
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst POSTED_FILE = '/files/posted-slugs.json';\n\nfunction readPostedState() {\n  try {\n    const raw = fs.readFileSync(POSTED_FILE, 'utf8');\n    const data = JSON.parse(raw);\n    return {\n      sharedSlugs: Array.isArray(data.sharedSlugs) ? data.sharedSlugs.slice() : [],\n      nextIndex: typeof data.nextIndex === 'number' && !Number.isNaN(data.nextIndex) ? data.nextIndex : 0,\n    };\n  } catch (_e) {\n    return { sharedSlugs: [], nextIndex: 0 };\n  }\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst fileState = readPostedState();\n\nconst sharedSlugs = fileState.sharedSlugs.length ? fileState.sharedSlugs : (Array.isArray(staticData.sharedSlugs) ? staticData.sharedSlugs.slice() : []);\nlet cursor = fileState.sharedSlugs.length\n  ? fileState.nextIndex\n  : (typeof staticData.nextIndex === 'number' && !Number.isNaN(staticData.nextIndex) ? staticData.nextIndex : 0);\n\nconst feed = $input.first().json;\nconst posts = Array.isArray(feed.posts) ? feed.posts : [];\n\nif (!posts.length) {\n  throw new Error('linkedin-posts.json returned no posts');\n}\n\nconst sortedPosts = [...posts].sort((a, b) => {\n  const aKey = String(a.publishedAt ?? a.date ?? a.slug ?? '');\n  const bKey = String(b.publishedAt ?? b.date ?? b.slug ?? '');\n  const byDate = aKey.localeCompare(bKey);\n  if (byDate !== 0) return byDate;\n  return String(a.slug ?? '').localeCompare(String(b.slug ?? ''));\n});\n\nconst totalPosts = sortedPosts.length;\nconst sharedSet = new Set(sharedSlugs);\ncursor = ((cursor % totalPosts) + totalPosts) % totalPosts;\n\nlet picked = null;\nlet pickedIndex = -1;\n\nfor (let offset = 0; offset < totalPosts; offset += 1) {\n  const idx = (cursor + offset) % totalPosts;\n  const candidate = sortedPosts[idx];\n  if (candidate?.slug && !sharedSet.has(candidate.slug)) {\n    picked = candidate;\n    pickedIndex = idx;\n    break;\n  }\n}\n\nlet catalogReset = false;\nif (!picked) {\n  catalogReset = true;\n  picked = sortedPosts[0];\n  pickedIndex = 0;\n}\n\nconst nextIndex = (pickedIndex + 1) % totalPosts;\n\nconst postText = picked.text || picked.postText || '';\nconst url = picked.url;\nconst title = picked.title;\nconst description = postText.split('\\n\\n')[0]?.trim() || title;\nconst linkedinText = postText;\n\nreturn [\n  {\n    json: {\n      slug: picked.slug,\n      title,\n      url,\n      description,\n      linkedinText,\n      topicCluster: picked.topicCluster,\n      pickedIndex,\n      nextIndex,\n      totalPosts,\n      catalogReset,\n      feedGeneratedAt: feed.generatedAt,\n      sharedSlugsCount: sharedSlugs.length,\n      rotationSource: fileState.sharedSlugs.length ? 'file' : 'staticData-fallback',\n    },\n  },\n];\n"
+        "operation": "executeQuery",
+        "query": "SELECT id, shared_slugs, next_index, last_posted_slug, last_posted_at\nFROM linkedin_rotation\nWHERE id = 1;",
+        "options": {}
+      },
+      "id": "b2c1d8e0-1f4a-4c2b-9a11-rotation-read01",
+      "name": "Read Rotation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_PG_ROTATION",
+          "name": "n8n Postgres Rotation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rot = $input.first().json;\nconst feed = $('Fetch Posts').first().json;\n\nlet sharedSlugs = rot.shared_slugs;\nif (typeof sharedSlugs === 'string') {\n  sharedSlugs = JSON.parse(sharedSlugs);\n}\nif (!Array.isArray(sharedSlugs)) sharedSlugs = [];\n\nlet cursor = Number(rot.next_index);\nif (!Number.isFinite(cursor)) cursor = 0;\n\nconst posts = Array.isArray(feed.posts) ? feed.posts : [];\nif (!posts.length) {\n  throw new Error('linkedin-posts.json returned no posts');\n}\n\nconst sortedPosts = [...posts].sort((a, b) => {\n  const aKey = String(a.publishedAt ?? a.date ?? a.slug ?? '');\n  const bKey = String(b.publishedAt ?? b.date ?? b.slug ?? '');\n  const byDate = aKey.localeCompare(bKey);\n  if (byDate !== 0) return byDate;\n  return String(a.slug ?? '').localeCompare(String(b.slug ?? ''));\n});\n\nconst totalPosts = sortedPosts.length;\nconst sharedSet = new Set(sharedSlugs);\ncursor = ((cursor % totalPosts) + totalPosts) % totalPosts;\n\nlet picked = null;\nlet pickedIndex = -1;\n\nfor (let offset = 0; offset < totalPosts; offset += 1) {\n  const idx = (cursor + offset) % totalPosts;\n  const candidate = sortedPosts[idx];\n  if (candidate?.slug && !sharedSet.has(candidate.slug)) {\n    picked = candidate;\n    pickedIndex = idx;\n    break;\n  }\n}\n\nlet catalogReset = false;\nif (!picked) {\n  catalogReset = true;\n  picked = sortedPosts[0];\n  pickedIndex = 0;\n}\n\nconst nextIndex = (pickedIndex + 1) % totalPosts;\nconst postText = picked.text || picked.postText || '';\n\nreturn [{\n  json: {\n    slug: picked.slug,\n    title: picked.title,\n    url: picked.url,\n    description: postText.split('\\n\\n')[0]?.trim() || picked.title,\n    linkedinText: postText,\n    topicCluster: picked.topicCluster,\n    pickedIndex,\n    nextIndex,\n    totalPosts,\n    catalogReset,\n    feedGeneratedAt: feed.generatedAt,\n    sharedSlugsCount: sharedSlugs.length,\n    rotationSource: 'postgres',\n    priorSharedSlugs: sharedSlugs,\n  },\n}];\n"
       },
       "id": "5437f3a3-6fa9-4086-9e1d-cdbdf46baf70",
       "name": "Pick Next Post",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        480,
-        300
-      ]
+      "position": [660, 300]
     },
     {
       "parameters": {
@@ -124,10 +137,7 @@
       "name": "LinkedIn Post",
       "type": "n8n-nodes-base.linkedIn",
       "typeVersion": 1,
-      "position": [
-        720,
-        300
-      ],
+      "position": [880, 300],
       "credentials": {
         "linkedInOAuth2Api": {
           "id": "CONFIGURE_LINKEDIN",
@@ -138,93 +148,69 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst POSTED_FILE = '/files/posted-slugs.json';\n\nconst staticData = $getWorkflowStaticData('global');\nconst pick = $('Pick Next Post').first().json;\n\nif (!pick?.slug) {\n  throw new Error('Pick Next Post did not provide slug');\n}\n\nfunction readPostedState() {\n  try {\n    const raw = fs.readFileSync(POSTED_FILE, 'utf8');\n    const data = JSON.parse(raw);\n    return {\n      sharedSlugs: Array.isArray(data.sharedSlugs) ? data.sharedSlugs.slice() : [],\n      nextIndex: typeof data.nextIndex === 'number' && !Number.isNaN(data.nextIndex) ? data.nextIndex : 0,\n    };\n  } catch (_e) {\n    return { sharedSlugs: [], nextIndex: 0 };\n  }\n}\n\nfunction writePostedState(state) {\n  fs.writeFileSync(\n    POSTED_FILE,\n    JSON.stringify(\n      {\n        sharedSlugs: state.sharedSlugs,\n        nextIndex: state.nextIndex,\n        lastPostedSlug: state.lastPostedSlug,\n        lastPostedAt: state.lastPostedAt,\n        updatedAt: new Date().toISOString(),\n      },\n      null,\n      2,\n    ),\n    'utf8',\n  );\n}\n\nconst slug = pick.slug;\nconst prior = readPostedState();\nlet sharedSlugs;\n\nif (pick.catalogReset) {\n  sharedSlugs = [slug];\n} else if (prior.sharedSlugs.includes(slug)) {\n  sharedSlugs = prior.sharedSlugs.slice();\n} else {\n  sharedSlugs = [...prior.sharedSlugs, slug];\n}\n\nconst nextIndex = pick.nextIndex;\nconst lastPostedAt = new Date().toISOString();\n\nwritePostedState({\n  sharedSlugs,\n  nextIndex,\n  lastPostedSlug: slug,\n  lastPostedAt,\n});\n\nstaticData.sharedSlugs = sharedSlugs;\nstaticData.nextIndex = nextIndex;\nstaticData.lastPostedSlug = slug;\nstaticData.lastPostedAt = lastPostedAt;\n\nreturn [\n  {\n    json: {\n      ...pick,\n      marked: true,\n      totalShared: sharedSlugs.length,\n      postedFile: POSTED_FILE,\n    },\n  },\n];\n"
-      },
-      "id": "a70fcbb2-16dd-45ca-968f-f5488b407c16",
-      "name": "Mark Posted",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        960,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const pick = $('Pick Next Post').first().json;\nconst item = $input.first();\nconst root = item?.json ?? {};\n\nfunction errorBlob() {\n  const chunks = [];\n  const err = root.error ?? root;\n\n  if (typeof err === 'string') {\n    chunks.push(err);\n  } else if (err && typeof err === 'object') {\n    chunks.push(err.message, err.description, err.errorMessage, err.errorDescription);\n    if (Array.isArray(err.messages)) chunks.push(...err.messages);\n    if (Array.isArray(err.errors)) {\n      for (const e of err.errors) {\n        chunks.push(typeof e === 'string' ? e : JSON.stringify(e));\n      }\n    }\n  }\n\n  chunks.push(root.message, root.description, root.httpCode, root.statusCode, root.code);\n  try {\n    chunks.push(JSON.stringify(root));\n  } catch (_e) {\n    /* ignore */\n  }\n\n  return chunks.filter(Boolean).join(' ');\n}\n\nconst blob = errorBlob();\nconst hasError = Boolean(root.error) || item?.error != null || root.errorMessage;\n\nconst errValue = root.error ?? root;\nconst normalizedMsg = (typeof errValue === 'string' ? errValue : errValue?.message || '').trim();\n\nconst isDuplicate =\n  /DUPLICATE_POST/i.test(blob) ||\n  /Duplicate post/i.test(blob) ||\n  /duplicate of urn:li:share/i.test(blob) ||\n  (/could not be processed by the service/i.test(blob) &&\n    (/duplicate/i.test(blob) || /422/.test(blob) || root.httpCode === 422 || root.statusCode === 422)) ||\n  normalizedMsg === 'Your request is invalid or could not be processed by the service';\n\nif (!hasError) {\n  return [{ json: { ...pick, linkedInResult: 'posted' } }];\n}\n\nif (isDuplicate) {\n  const existingShareUrn = (blob.match(/urn:li:share:\\d+/) || [])[0] ?? null;\n  return [\n    {\n      json: {\n        ...pick,\n        linkedInResult: 'duplicate_skipped',\n        existingShareUrn,\n      },\n    },\n  ];\n}\n\nconst err = root.error ?? root;\nconst message =\n  (typeof err === 'string' ? err : err?.message) ||\n  root.message ||\n  blob ||\n  'LinkedIn post failed';\n\nthrow new Error(message);\n"
+        "jsCode": "const pick = $('Pick Next Post').first().json;\nconst item = $input.first();\nconst root = item?.json ?? {};\n\nfunction errorBlob() {\n  const chunks = [];\n  const err = root.error ?? root;\n  if (typeof err === 'string') chunks.push(err);\n  else if (err && typeof err === 'object') {\n    chunks.push(err.message, err.description, err.errorMessage, err.errorDescription);\n    if (Array.isArray(err.messages)) chunks.push(...err.messages);\n    if (Array.isArray(err.errors)) {\n      for (const e of err.errors) chunks.push(typeof e === 'string' ? e : JSON.stringify(e));\n    }\n  }\n  chunks.push(root.message, root.description, root.httpCode, root.statusCode, root.code);\n  try { chunks.push(JSON.stringify(root)); } catch (_e) {}\n  return chunks.filter(Boolean).join(' ');\n}\n\nconst blob = errorBlob();\nconst hasError = Boolean(root.error) || item?.error != null || root.errorMessage;\nconst errValue = root.error ?? root;\nconst normalizedMsg = (typeof errValue === 'string' ? errValue : errValue?.message || '').trim();\n\nconst isDuplicate =\n  /DUPLICATE_POST/i.test(blob) ||\n  /Duplicate post/i.test(blob) ||\n  /duplicate of urn:li:share/i.test(blob) ||\n  (/could not be processed by the service/i.test(blob) &&\n    (/duplicate/i.test(blob) || /422/.test(blob) || root.httpCode === 422 || root.statusCode === 422)) ||\n  normalizedMsg === 'Your request is invalid or could not be processed by the service';\n\nif (!hasError) {\n  return [{ json: { ...pick, linkedInResult: 'posted' } }];\n}\nif (isDuplicate) {\n  const existingShareUrn = (blob.match(/urn:li:share:\\d+/) || [])[0] ?? null;\n  return [{ json: { ...pick, linkedInResult: 'duplicate_skipped', existingShareUrn } }];\n}\n\nconst err = root.error ?? root;\nthrow new Error((typeof err === 'string' ? err : err?.message) || root.message || blob || 'LinkedIn post failed');\n"
       },
       "id": "9e5ce474-d697-452e-bf2a-48b69a147b2d",
       "name": "Handle Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        840,
-        460
-      ]
+      "position": [1000, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pick = $('Pick Next Post').first().json;\nif (!pick?.slug) throw new Error('Pick Next Post did not provide slug');\n\nconst slug = pick.slug;\nlet prior = Array.isArray(pick.priorSharedSlugs) ? pick.priorSharedSlugs.slice() : [];\n\nlet sharedSlugs;\nif (pick.catalogReset) {\n  sharedSlugs = [slug];\n} else if (prior.includes(slug)) {\n  sharedSlugs = prior;\n} else {\n  sharedSlugs = [...prior, slug];\n}\n\nconst nextIndex = pick.nextIndex;\nconst lastPostedAt = new Date().toISOString();\n\nreturn [{\n  json: {\n    slug,\n    title: pick.title,\n    url: pick.url,\n    pickedIndex: pick.pickedIndex,\n    nextIndex,\n    sharedSlugs,\n    sharedSlugsJson: JSON.stringify(sharedSlugs),\n    lastPostedAt,\n    marked: true,\n    totalShared: sharedSlugs.length,\n    linkedInResult: $json.linkedInResult || 'posted',\n    rotationSource: 'postgres',\n  },\n}];\n"
+      },
+      "id": "a70fcbb2-16dd-45ca-968f-f5488b407c16",
+      "name": "Mark Posted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE linkedin_rotation\nSET\n  shared_slugs = $1::jsonb,\n  next_index = $2::integer,\n  last_posted_slug = $3,\n  last_posted_at = $4::timestamptz,\n  updated_at = NOW()\nWHERE id = 1\nRETURNING id, next_index, last_posted_slug, jsonb_array_length(shared_slugs) AS slug_count, updated_at;",
+        "options": {
+          "queryReplacement": "={{ [$json.sharedSlugsJson, $json.nextIndex, $json.slug, $json.lastPostedAt] }}"
+        }
+      },
+      "id": "c3d2e9f1-2a5b-4d3c-8b22-rotation-write01",
+      "name": "Write Rotation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1320, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_PG_ROTATION",
+          "name": "n8n Postgres Rotation"
+        }
+      }
     }
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Fetch Posts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Fetch Posts", "type": "main", "index": 0 }]]
     },
     "Fetch Posts": {
-      "main": [
-        [
-          {
-            "node": "Pick Next Post",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Read Rotation", "type": "main", "index": 0 }]]
+    },
+    "Read Rotation": {
+      "main": [[{ "node": "Pick Next Post", "type": "main", "index": 0 }]]
     },
     "Pick Next Post": {
-      "main": [
-        [
-          {
-            "node": "LinkedIn Post",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "LinkedIn Post", "type": "main", "index": 0 }]]
     },
     "LinkedIn Post": {
       "main": [
-        [
-          {
-            "node": "Mark Posted",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Handle Result",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Mark Posted", "type": "main", "index": 0 }],
+        [{ "node": "Handle Result", "type": "main", "index": 0 }]
       ]
     },
     "Handle Result": {
-      "main": [
-        [
-          {
-            "node": "Mark Posted",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Mark Posted", "type": "main", "index": 0 }]]
+    },
+    "Mark Posted": {
+      "main": [[{ "node": "Write Rotation", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
@@ -239,21 +225,23 @@
         "android-datastore-migration-sharedpreferences",
         "android-deeplink-attribution-install",
         "compose-shared-element-transitions",
-        "android-dependency-injection-koin"
+        "android-dependency-injection-koin",
+        "android-desugaring-java-time",
+        "android-doze-app-standby-buckets",
+        "android-dynamic-color-material3",
+        "agent-chaos-monkey-game-days",
+        "agent-chargeback-dispute-automation"
       ],
-      "nextIndex": 54,
-      "lastPostedSlug": "android-dependency-injection-koin",
-      "lastPostedAt": "2026-07-17T04:30:00.000Z",
-      "seededFromExecutions24h": [
-        "android-datastore-migration-sharedpreferences",
-        "android-deeplink-attribution-install"
-      ]
+      "nextIndex": 56,
+      "lastPostedSlug": "agent-chargeback-dispute-automation",
+      "lastPostedAt": "2026-07-17T11:00:00.000Z",
+      "note": "Legacy mirror only — source of truth is linkedin_rotation table"
     }
   },
   "pinData": {},
   "meta": {
-    "description": "Shares one blog article every hour (24/day, Africa/Cairo) to LinkedIn only. Fetches linkedin-posts.json, rotates via workflow staticData; marks posted only after LinkedIn succeeds."
+    "description": "Shares one blog article every hour (24/day, Africa/Cairo) to LinkedIn. Rotates via Postgres linkedin_rotation table (task-runner-safe)."
   },
   "active": true,
-  "versionId": "eaa9654b-7070-429c-85f8-5eef784c2950"
+  "versionId": "f1a2b3c4-d5e6-7890-abcd-ef1234567890"
 }

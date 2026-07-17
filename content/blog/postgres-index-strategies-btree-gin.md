@@ -3,7 +3,7 @@ title: "Postgres Index Strategies"
 slug: "postgres-index-strategies-btree-gin"
 description: "Choose the right Postgres index type: B-tree, GIN, GiST, BRIN, partial and covering indexes, with EXPLAIN-driven decisions for OLTP workloads."
 datePublished: "2026-03-16"
-dateModified: "2026-03-16"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Database", "Performance"]
 keywords: "PostgreSQL index types, B-tree GIN GiST, partial index Postgres, covering index INCLUDE, Postgres index strategy"
 faq:
@@ -160,29 +160,62 @@ Use `hypopg` or `EXPLAIN` hypothetical indexes in staging before creating heavy 
 
 `CREATE INDEX CONCURRENTLY` in production — non-concurrent blocks writes.
 
-## Common production mistakes
 
-Teams get index strategies btree gin wrong in predictable ways:
+## B-tree vs GIN decision tree
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Equality and range on scalar columns use B-tree. JSONB containment, full-text, array overlap use GIN. GiST for geometric/exclusion. Wrong index type — planner may ignore index entirely.
 
-Postgres work on index strategies btree gin causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Partial indexes for hot subsets
 
-## Debugging and triage workflow
+CREATE INDEX ON orders (created_at) WHERE status = pending — smaller index, faster writes, matches queue worker query exactly.
 
-When index strategies btree gin misbehaves in production, work top-down instead of guessing:
+## Covering indexes with INCLUDE
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Index on user_id, created_at DESC INCLUDE total_cents, status — index-only scan for list endpoint. INCLUDE columns not searchable.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Multi-column order matters
+
+tenant_id, created_at supports WHERE tenant_id ORDER BY created_at; reversed order does not. Leading column should be most selective equality filter.
+
+## Index bloat monitoring
+
+pg_stat_user_indexes idx_scan vs idx_tup_fetch — zero scans for months suggests unused index candidate for drop. High idx_tup_read with low idx_scan indicates inefficient index — wrong column order or stale stats.
+
+## Concurrent index build operations
+
+CREATE INDEX CONCURRENTLY cannot run inside transaction block — migration tools must support non-transactional DDL. Failed CONCURRENTLY leaves INVALID index — REINDEX CONCURRENTLY or DROP and retry. Monitor pg_stat_progress_create_index during large table build.
+
+## BRIN for append-only time series
+
+BRIN on created_at for append-only logs — tiny index size, effective for time-range queries on terabyte tables if physical order correlates with time. Not substitute for B-tree on UUID primary key random inserts — correlation missing, BRIN useless.
+
+## Hash indexes limited use case
+
+Postgres hash indexes WAL-logged since PG10 but still no range scans — equality only. Rare use; B-tree equality competes fine. Hash cannot unique enforce in older versions — prefer B-tree unique.
+
+## Index-only scan prerequisites
+
+Include all SELECT columns in index or satisfy visibility map all-visible page — VACUUM lag prevents index-only scan until heap all-visible. Heavy UPDATE table may never benefit — consider covering index tradeoff vs heap fetch cost measured in EXPLAIN BUFFERS.
+
+## Duplicate index detection
+
+pg_stat_user_indexes plus pg_indexes query finds indexes on (a,b) and (a) subset redundancy — drop narrower duplicate after verifying query plans use composite only. Savings on write path significant on high INSERT tables.
+
+## Index recommendation workflow
+
+pg_qualstats or hypopg extension suggests indexes from qualification usage — human reviews before CREATE INDEX CONCURRENTLY. Auto-index bots dangerous on write-heavy tables — always check INSERT rate and existing index count before adding fourth index on same table.
+
+## Closing notes
+
+REINDEX CONCURRENTLY schedule for GIN indexes on jsonb after bulk import season — bloat from gin pending list slows containment queries until merge completes.
+
+## Additional guidance
+
+Drop unused indexes discovered via pg_stat_user_indexes idx_scan zero over thirty days — each index slows INSERT and UPDATE on hot OLTP paths. Schedule DROP INDEX CONCURRENTLY after confirming no monthly report job uses index via pg_stat_statements plan samples referencing index name in bitmap scan nodes.
+
+Concurrent index creation on production requires lock_timeout set in migration session — failed CONCURRENTLY leaving INVALID index blocks retry until DROP INDEX CONCURRENTLY cleanup; migration tool idempotency checks pg_index.indisvalid before CREATE to prevent duplicate invalid index objects cluttering catalog.
+
+Review pg_stat_user_indexes quarterly with service owners — drop zero-scan indexes after confirming no monthly batch job dependency.
 
 ## Resources
 

@@ -1,129 +1,295 @@
 ---
 title: "Postgres Huge Pages Memory Tuning"
 slug: "postgres-huge-pages-memory-tuning"
-description: "Enable huge pages on Linux for shared_buffers to reduce TLB pressure on large memory instances."
-datePublished: "2026-02-19"
-dateModified: "2026-02-19"
+description: "Configure Linux huge pages for Postgres shared_buffers — reduce TLB misses, calculate vm.nr_hugepages, and diagnose allocation failures."
+datePublished: "2026-02-23"
+dateModified: "2026-07-17"
 tags:
   - "PostgreSQL"
   - "Backend"
   - "Database"
-keywords: "postgres huge pages memory tuning, production, backend"
+keywords: "huge pages postgres, shared_buffers tuning, TLB, vm.nr_hugepages, hugetlbfs"
 faq:
-  - q: "What problem does Postgres Huge Pages Memory Tuning solve?"
-    a: "It addresses production gaps teams hit when scaling postgres huge pages memory tuning: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when postgres huge pages memory tuning appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How much performance improvement do huge pages typically provide?"
+    a: "On large shared_buffers configurations (8 GB+), huge pages reduce TLB miss overhead by 5–15% on memory-intensive workloads — bulk scans, large hash joins, buffer-heavy OLTP. On small instances with 1–2 GB shared_buffers, the benefit is negligible and setup overhead may not justify the effort."
+  - q: "Why does Postgres log 'huge pages disabled' even when I configured them?"
+    a: "The kernel did not reserve enough huge pages at boot, or postgres user lacks memlock permission. Check vm.nr_hugepages versus required count, verify HugePages_Total in /proc/meminfo is non-zero, and ensure ulimit -l allows locking (often requires memlock unlimited in systemd or /etc/security/limits.conf)."
+  - q: "Should I use transparent huge pages instead of explicit huge pages?"
+    a: "Disable transparent huge pages (THP) for Postgres — they cause latency spikes due to kernel defragmentation and compaction. Use explicit hugetlbfs huge pages with huge_pages=try or huge_pages=on in postgresql.conf instead."
 ---
 
-## Production context
+Postgres relies heavily on shared memory for `shared_buffers`, the buffer pool caching data pages across backend processes. On Linux, the default 4 KB page size means a 16 GB buffer pool maps through thousands of Translation Lookaside Buffer (TLB) entries. TLB misses force page table walks — invisible in query plans but measurable in CPU profiles. **Huge pages** (typically 2 MB on x86) reduce TLB pressure by mapping the same memory with far fewer entries.
 
-A billing service lost duplicate events because postgres huge pages memory tuning was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+This article covers when huge pages matter, how to calculate and reserve them, Postgres configuration, and the troubleshooting path when allocation silently fails.
 
-Senior backend work on postgres huge pages memory tuning is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## Memory layout and TLB pressure
 
-## Architecture pattern
+Normal pages:
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for postgres workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+16 GB shared_buffers ÷ 4 KB/page = 4,194,304 page mappings
+Each TLB miss → page table walk → latency
 ```
 
-## Implementation checklist
+Huge pages (2 MB):
 
-Validate inputs at the trust boundary with schema versioning.
+```
+16 GB ÷ 2 MB = 8,192 mappings (512× reduction)
+Fewer TLB entries cover the same memory
+```
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Benefit scales with `shared_buffers` size and workload memory access patterns. CPU-bound queries scanning large portions of shared_buffers see the most improvement.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Transparent vs explicit huge pages
 
-Run migrations with lock_timeout and statement_timeout set.
+Linux offers two mechanisms:
 
-Load test at 2× expected peak with production-like payload sizes.
+| Type | Control | Postgres recommendation |
+| --- | --- | --- |
+| **Transparent Huge Pages (THP)** | Kernel auto-promotes 4KB → 2MB | **Disable** — causes latency jitter |
+| **Explicit (hugetlbfs)** | Admin pre-reserves at boot | **Use** — predictable, no compaction stalls |
 
-## Observability
+Disable THP:
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+```bash
+# Immediate
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-Dashboards for postgres huge pages memory tuning should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+# Persistent via grub or tuned profile
+```
 
-## Security notes
+Postgres documentation explicitly recommends disabling THP.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+## Calculating vm.nr_hugepages
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Huge page size on x86 Linux is typically 2 MB:
 
-## Common production mistakes
+```bash
+grep Hugepagesize /proc/meminfo
+# Hugepagesize:       2048 kB
+```
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Formula:
 
-## Debugging and triage workflow
+```
+nr_hugepages = ceil(shared_buffers / Hugepagesize) + overhead
 
-When production misbehaves, work top-down:
+Example: shared_buffers = 8 GB = 8192 MB
+8192 / 2 = 4096 huge pages
+Add ~10% overhead: ~4500
+```
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Postgres uses huge pages only for `shared_buffers` — not for work_mem, maintenance_work_mem, or per-backend private memory.
 
-## Operational checklist
+Calculate from Postgres perspective:
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+```sql
+SHOW shared_buffers;  -- e.g. 8GB
+```
 
-## Performance tuning notes
+```bash
+# Convert to pages (2MB each) + small overhead
+echo $(( 8192 / 2 + 64 ))  # = 4160
+```
 
-Measure before optimizing postgres huge pages memory tuning. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Set at runtime (lost on reboot):
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+```bash
+sudo sysctl -w vm.nr_hugepages=4160
+```
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Persistent (`/etc/sysctl.d/99-postgres-hugepages.conf`):
 
-## Rollout and migration
+```
+vm.nr_hugepages = 4160
+```
 
-Ship postgres huge pages memory tuning changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Verify reservation:
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+```bash
+grep -E 'HugePages_Total|HugePages_Free|Hugepagesize' /proc/meminfo
+# HugePages_Total should equal configured nr_hugepages
+# HugePages_Free decreases when Postgres starts
+```
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## Postgres configuration
 
-## Testing recommendations
+postgresql.conf:
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+```
+shared_buffers = 8GB
+huge_pages = try    # use if available, start anyway if not (PG 13+ default try)
+# huge_pages = on   # fail to start if huge pages unavailable — strict
+# huge_pages = off  # disable explicitly
+```
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Startup log confirmation:
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+```
+LOG:  using shared memory segment of size 8589934592 bytes with 4160 pages of size 2097152 bytes
+```
 
-## Incident patterns we see
+Failure log:
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+```
+LOG:  could not map shared memory segment: Cannot allocate memory
+LOG:  shared memory segment will not use huge pages
+```
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+With `huge_pages = on`, startup fails entirely if allocation fails. Use `try` during initial setup, switch to `on` once confirmed stable.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## memlock limits
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Postgres must lock huge page memory. Default ulimit for locked memory is often 64 KB — insufficient.
 
-## Resources
+Check:
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+```bash
+ulimit -l
+```
+
+Configure unlimited for postgres user:
+
+`/etc/security/limits.conf`:
+
+```
+postgres soft memlock unlimited
+postgres hard memlock unlimited
+```
+
+systemd override (`/etc/systemd/system/postgresql.service.d/hugepages.conf`):
+
+```ini
+[Service]
+LimitMEMLOCK=infinity
+```
+
+Reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart postgresql
+```
+
+## Container and cloud considerations
+
+**Docker/Kubernetes**: Huge pages require node-level hugetlbfs mounts and resource limits:
+
+```yaml
+resources:
+  limits:
+    hugepages-2Mi: 8Gi
+  requests:
+    hugepages-2Mi: 8Gi
+```
+
+Mount hugetlbfs in pod spec or use node pre-configuration. Managed Kubernetes (EKS, GKE) requires node pool configuration for huge pages — not available on all instance types.
+
+**RDS / Cloud SQL**: Huge pages are managed by the provider — not user-configurable. Benefit is internal to the platform.
+
+**Bare metal / self-managed VMs**: Full control — best candidate for huge page tuning.
+
+## Sizing shared_buffers with huge pages in mind
+
+Huge pages are reserved at kernel level — wasted if Postgres does not use them:
+
+```
+Reserved: 4160 × 2 MB = 8.3 GB locked in huge pages
+Actual shared_buffers: 4 GB
+Waste: ~4 GB of locked memory unavailable to OS
+```
+
+Match `shared_buffers` to reserved huge pages. Increasing shared_buffers solely for huge page efficiency is valid if workload benefits from larger cache — not if working set fits in 2 GB.
+
+Conservative shared_buffers sizing:
+
+```
+Dedicated DB server: 25% RAM (up to 8-16 GB typical)
+Mixed use server: 15% RAM
+```
+
+Then calculate huge pages from actual shared_buffers, not total RAM.
+
+## Measuring impact
+
+Before/after comparison:
+
+```bash
+# TLB misses via perf
+sudo perf stat -e dTLB-loads,dTLB-load-misses,iTLB-load-misses \
+  -p $(pgrep -o postgres) sleep 60
+```
+
+Benchmark representative workload with pgbench:
+
+```bash
+pgbench -c 32 -j 4 -T 300 -S mydb  # read-heavy
+pgbench -c 32 -j 4 -T 300 mydb     # read-write
+```
+
+Compare transactions/sec and p95 latency with `huge_pages=off` vs `on`. Improvement below 3% on your workload may not justify operational complexity.
+
+## Troubleshooting allocation failures
+
+**HugePages_Free = 0 after start, but Postgres running**:
+
+Partial allocation — check log for actual pages used. Increase nr_hugepages.
+
+**Postgres starts without huge pages despite config**:
+
+1. `huge_pages = try` silently falls back — check log
+2. nr_hugepages = 0 — not reserved
+3. memlock limit too low — check ulimit
+4. SHMMAX/SHMALL limits (rare on modern kernels)
+
+**OOM after reserving huge pages**:
+
+Huge page memory is subtracted from available RAM. Reserve only what Postgres needs — do not set nr_hugepages to 90% of total RAM.
+
+**Multiple Postgres instances**:
+
+Each instance competing for the same huge page pool. Size nr_hugepages for sum of all instances' shared_buffers, or isolate instances on separate nodes.
+
+## Alternative memory optimizations
+
+If huge pages are impractical:
+
+- Right-size `shared_buffers` — avoid oversized cache with diminishing returns
+- `effective_cache_size` tuning for planner (does not allocate memory)
+- OS page cache leverages remaining RAM for Postgres data files
+- `shared_memory_type = mmap` (default on Linux) — standard pages
+
+## Checklist for production rollout
+
+1. Disable transparent huge pages in kernel
+2. Set shared_buffers based on RAM sizing guidelines
+3. Calculate and reserve vm.nr_hugepages with 5–10% overhead
+4. Configure memlock unlimited for postgres user
+5. Set `huge_pages = try`, restart, verify log message
+6. Benchmark workload before switching to `huge_pages = on`
+7. Add nr_hugepages to sysctl for persistence across reboots
+8. Monitor HugePages_Free in monitoring system — should be stable after startup
+
+## Kernel boot persistence gotcha
+
+Setting vm.nr_hugepages via sysctl persists across reboots, but verify boot order: if Postgres starts before sysctl applies (rare with systemd ordering issues), the first start may fall back to normal pages. Use systemd drop-in to ensure postgres starts after sysctl:
+
+```ini
+[Unit]
+After=sysctl.service
+Requires=sysctl.service
+```
+
+After kernel upgrades, huge page size is unchanged on x86 but ARM platforms may differ — re-read `/proc/meminfo` Hugepagesize after major OS upgrades and recalculate nr_hugepages if shared_buffers changed in the same maintenance window.
+
+Include huge page configuration in your database provisioning and terraform modules so new nodes arrive pre-configured rather than requiring manual sysctl tuning during incident recovery.
+
+## Summary
+
+Explicit huge pages reduce TLB miss overhead for large Postgres shared_buffers allocations by mapping memory in 2 MB pages instead of 4 KB. Disable transparent huge pages to avoid latency jitter, calculate vm.nr_hugepages from shared_buffers size, grant memlock limits to the postgres user, and verify allocation in startup logs. The benefit matters most on dedicated database servers with 8 GB+ shared_buffers — on smaller instances or managed cloud databases, focus tuning effort elsewhere unless profiling shows TLB pressure.
+
+
+After resizing shared_buffers, recompute vm.nr_hugepages and verify HugePages_Free drops on start — try-mode fallback silently undoes the tuning.
+
+Prefer huge_pages=on in production after validation so silent try-mode fallback cannot hide a missing reservation after an instance resize.

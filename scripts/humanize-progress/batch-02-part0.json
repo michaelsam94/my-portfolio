@@ -1,0 +1,443 @@
+{
+  "batch": "02-part0",
+  "slice": [
+    500,
+    549
+  ],
+  "part": 0,
+  "total": 50,
+  "done_count": 50,
+  "rewritten": 50,
+  "skipped": 0,
+  "remaining": 0,
+  "errors": 0,
+  "under_1200_words": 0,
+  "target_words": 1200,
+  "completed_at": "2026-07-17",
+  "completed": [
+    "android-fcm-topic-subscriptions",
+    "android-feature-flags-implementation",
+    "android-firebase-remote-config-strategies",
+    "android-fitness-api-integration",
+    "android-foldable-state-posture",
+    "android-foreground-service-notification-types",
+    "android-foreground-service-restrictions",
+    "android-foreground-service-types",
+    "android-fragment-result-api-patterns",
+    "android-full-screen-intent-permission",
+    "android-fused-location-provider",
+    "android-geofencing-battery-efficient",
+    "android-gpu-profiling-renderthread",
+    "android-gradle-managed-devices-testing",
+    "android-graphics-layer-compose",
+    "android-graphql-apollo-android",
+    "android-graphql-subscriptions-websocket",
+    "android-grpc-mobile-client-kotlin",
+    "android-handwriting-stylus-apis",
+    "android-haptic-feedback-compose",
+    "android-haptics-vibration-effects",
+    "android-heads-up-notification-control",
+    "android-health-connect-integration",
+    "android-health-connect-permissions",
+    "android-hid-device-profile",
+    "android-hilt-assisted-injection",
+    "android-hilt-multibindings",
+    "android-image-loading-coil3",
+    "android-in-app-review-api",
+    "android-in-app-updates-api",
+    "android-ink-api-stylus-low-latency",
+    "android-input-connection-custom-ime",
+    "android-instant-apps-legacy",
+    "android-intent-redirection-vulnerabilities",
+    "android-jank-frame-metrics-jankstats",
+    "android-jetpack-glance-appwidgets-state",
+    "android-jni-string-encoding-pitfalls",
+    "android-jobscheduler-vs-workmanager",
+    "android-keyboard-ime-insets-compose",
+    "android-keystore-hardware-backed-keys",
+    "android-kotlin-multiplatform-migration-guide",
+    "android-large-screen-optimization",
+    "android-leakcanary-compose-watchers",
+    "android-lifecycle-aware-components",
+    "android-lifecycle-observer-patterns",
+    "android-live-wallpaper-compose",
+    "android-local-first-architecture",
+    "android-localization-rtl-support",
+    "android-location-foreground-service",
+    "android-log-redaction-production"
+  ],
+  "failed": [],
+  "word_counts": {
+    "android-fcm-topic-subscriptions": 1221,
+    "android-feature-flags-implementation": 1215,
+    "android-firebase-remote-config-strategies": 1238,
+    "android-fitness-api-integration": 1212,
+    "android-foldable-state-posture": 1226,
+    "android-foreground-service-notification-types": 1215,
+    "android-foreground-service-restrictions": 1203,
+    "android-foreground-service-types": 1224,
+    "android-fragment-result-api-patterns": 1202,
+    "android-full-screen-intent-permission": 1212,
+    "android-fused-location-provider": 1213,
+    "android-geofencing-battery-efficient": 1233,
+    "android-gpu-profiling-renderthread": 1236,
+    "android-gradle-managed-devices-testing": 1220,
+    "android-graphics-layer-compose": 1233,
+    "android-graphql-apollo-android": 1208,
+    "android-graphql-subscriptions-websocket": 1243,
+    "android-grpc-mobile-client-kotlin": 1227,
+    "android-handwriting-stylus-apis": 1232,
+    "android-haptic-feedback-compose": 1209,
+    "android-haptics-vibration-effects": 1213,
+    "android-heads-up-notification-control": 1221,
+    "android-health-connect-integration": 1212,
+    "android-health-connect-permissions": 1228,
+    "android-hid-device-profile": 1222,
+    "android-hilt-assisted-injection": 1232,
+    "android-hilt-multibindings": 1239,
+    "android-image-loading-coil3": 1202,
+    "android-in-app-review-api": 1243,
+    "android-in-app-updates-api": 1212,
+    "android-ink-api-stylus-low-latency": 1204,
+    "android-input-connection-custom-ime": 1229,
+    "android-instant-apps-legacy": 1207,
+    "android-intent-redirection-vulnerabilities": 1236,
+    "android-jank-frame-metrics-jankstats": 1201,
+    "android-jetpack-glance-appwidgets-state": 1234,
+    "android-jni-string-encoding-pitfalls": 1217,
+    "android-jobscheduler-vs-workmanager": 1223,
+    "android-keyboard-ime-insets-compose": 1240,
+    "android-keystore-hardware-backed-keys": 1204,
+    "android-kotlin-multiplatform-migration-guide": 1226,
+    "android-large-screen-optimization": 1216,
+    "android-leakcanary-compose-watchers": 1235,
+    "android-lifecycle-aware-components": 1236,
+    "android-lifecycle-observer-patterns": 1207,
+    "android-live-wallpaper-compose": 1230,
+    "android-local-first-architecture": 1237,
+    "android-localization-rtl-support": 1212,
+    "android-location-foreground-service": 1221,
+    "android-log-redaction-production": 1224
+  },
+  "word_stats": {
+    "min": 1201,
+    "max": 1243,
+    "avg": 1221.7
+  },
+  "samples": [
+    {
+      "slug": "android-fcm-topic-subscriptions",
+      "status": "rewritten",
+      "words": 1221,
+      "template_free": true
+    },
+    {
+      "slug": "android-feature-flags-implementation",
+      "status": "rewritten",
+      "words": 1215,
+      "template_free": true
+    }
+  ],
+  "results": [
+    {
+      "slug": "android-fcm-topic-subscriptions",
+      "status": "rewritten",
+      "words": 1221,
+      "template_free": true
+    },
+    {
+      "slug": "android-feature-flags-implementation",
+      "status": "rewritten",
+      "words": 1215,
+      "template_free": true
+    },
+    {
+      "slug": "android-firebase-remote-config-strategies",
+      "status": "rewritten",
+      "words": 1238,
+      "template_free": true
+    },
+    {
+      "slug": "android-fitness-api-integration",
+      "status": "rewritten",
+      "words": 1212,
+      "template_free": true
+    },
+    {
+      "slug": "android-foldable-state-posture",
+      "status": "rewritten",
+      "words": 1226,
+      "template_free": true
+    },
+    {
+      "slug": "android-foreground-service-notification-types",
+      "status": "rewritten",
+      "words": 1215,
+      "template_free": true
+    },
+    {
+      "slug": "android-foreground-service-restrictions",
+      "status": "rewritten",
+      "words": 1203,
+      "template_free": true
+    },
+    {
+      "slug": "android-foreground-service-types",
+      "status": "rewritten",
+      "words": 1224,
+      "template_free": true
+    },
+    {
+      "slug": "android-fragment-result-api-patterns",
+      "status": "rewritten",
+      "words": 1202,
+      "template_free": true
+    },
+    {
+      "slug": "android-full-screen-intent-permission",
+      "status": "rewritten",
+      "words": 1212,
+      "template_free": true
+    },
+    {
+      "slug": "android-fused-location-provider",
+      "status": "rewritten",
+      "words": 1213,
+      "template_free": true
+    },
+    {
+      "slug": "android-geofencing-battery-efficient",
+      "status": "rewritten",
+      "words": 1233,
+      "template_free": true
+    },
+    {
+      "slug": "android-gpu-profiling-renderthread",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-gradle-managed-devices-testing",
+      "status": "rewritten",
+      "words": 1220,
+      "template_free": true
+    },
+    {
+      "slug": "android-graphics-layer-compose",
+      "status": "rewritten",
+      "words": 1233,
+      "template_free": true
+    },
+    {
+      "slug": "android-graphql-apollo-android",
+      "status": "rewritten",
+      "words": 1208,
+      "template_free": true
+    },
+    {
+      "slug": "android-graphql-subscriptions-websocket",
+      "status": "rewritten",
+      "words": 1243,
+      "template_free": true
+    },
+    {
+      "slug": "android-grpc-mobile-client-kotlin",
+      "status": "rewritten",
+      "words": 1227,
+      "template_free": true
+    },
+    {
+      "slug": "android-handwriting-stylus-apis",
+      "status": "rewritten",
+      "words": 1232,
+      "template_free": true
+    },
+    {
+      "slug": "android-haptic-feedback-compose",
+      "status": "rewritten",
+      "words": 1209,
+      "template_free": true
+    },
+    {
+      "slug": "android-haptics-vibration-effects",
+      "status": "rewritten",
+      "words": 1213,
+      "template_free": true
+    },
+    {
+      "slug": "android-heads-up-notification-control",
+      "status": "rewritten",
+      "words": 1221,
+      "template_free": true
+    },
+    {
+      "slug": "android-health-connect-integration",
+      "status": "rewritten",
+      "words": 1212,
+      "template_free": true
+    },
+    {
+      "slug": "android-health-connect-permissions",
+      "status": "rewritten",
+      "words": 1228,
+      "template_free": true
+    },
+    {
+      "slug": "android-hid-device-profile",
+      "status": "rewritten",
+      "words": 1222,
+      "template_free": true
+    },
+    {
+      "slug": "android-hilt-assisted-injection",
+      "status": "rewritten",
+      "words": 1232,
+      "template_free": true
+    },
+    {
+      "slug": "android-hilt-multibindings",
+      "status": "rewritten",
+      "words": 1239,
+      "template_free": true
+    },
+    {
+      "slug": "android-image-loading-coil3",
+      "status": "rewritten",
+      "words": 1202,
+      "template_free": true
+    },
+    {
+      "slug": "android-in-app-review-api",
+      "status": "rewritten",
+      "words": 1243,
+      "template_free": true
+    },
+    {
+      "slug": "android-in-app-updates-api",
+      "status": "rewritten",
+      "words": 1212,
+      "template_free": true
+    },
+    {
+      "slug": "android-ink-api-stylus-low-latency",
+      "status": "rewritten",
+      "words": 1204,
+      "template_free": true
+    },
+    {
+      "slug": "android-input-connection-custom-ime",
+      "status": "rewritten",
+      "words": 1229,
+      "template_free": true
+    },
+    {
+      "slug": "android-instant-apps-legacy",
+      "status": "rewritten",
+      "words": 1207,
+      "template_free": true
+    },
+    {
+      "slug": "android-intent-redirection-vulnerabilities",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-jank-frame-metrics-jankstats",
+      "status": "rewritten",
+      "words": 1201,
+      "template_free": true
+    },
+    {
+      "slug": "android-jetpack-glance-appwidgets-state",
+      "status": "rewritten",
+      "words": 1234,
+      "template_free": true
+    },
+    {
+      "slug": "android-jni-string-encoding-pitfalls",
+      "status": "rewritten",
+      "words": 1217,
+      "template_free": true
+    },
+    {
+      "slug": "android-jobscheduler-vs-workmanager",
+      "status": "rewritten",
+      "words": 1223,
+      "template_free": true
+    },
+    {
+      "slug": "android-keyboard-ime-insets-compose",
+      "status": "rewritten",
+      "words": 1240,
+      "template_free": true
+    },
+    {
+      "slug": "android-keystore-hardware-backed-keys",
+      "status": "rewritten",
+      "words": 1204,
+      "template_free": true
+    },
+    {
+      "slug": "android-kotlin-multiplatform-migration-guide",
+      "status": "rewritten",
+      "words": 1226,
+      "template_free": true
+    },
+    {
+      "slug": "android-large-screen-optimization",
+      "status": "rewritten",
+      "words": 1216,
+      "template_free": true
+    },
+    {
+      "slug": "android-leakcanary-compose-watchers",
+      "status": "rewritten",
+      "words": 1235,
+      "template_free": true
+    },
+    {
+      "slug": "android-lifecycle-aware-components",
+      "status": "rewritten",
+      "words": 1236,
+      "template_free": true
+    },
+    {
+      "slug": "android-lifecycle-observer-patterns",
+      "status": "rewritten",
+      "words": 1207,
+      "template_free": true
+    },
+    {
+      "slug": "android-live-wallpaper-compose",
+      "status": "rewritten",
+      "words": 1230,
+      "template_free": true
+    },
+    {
+      "slug": "android-local-first-architecture",
+      "status": "rewritten",
+      "words": 1237,
+      "template_free": true
+    },
+    {
+      "slug": "android-localization-rtl-support",
+      "status": "rewritten",
+      "words": 1212,
+      "template_free": true
+    },
+    {
+      "slug": "android-location-foreground-service",
+      "status": "rewritten",
+      "words": 1221,
+      "template_free": true
+    },
+    {
+      "slug": "android-log-redaction-production",
+      "status": "rewritten",
+      "words": 1224,
+      "template_free": true
+    }
+  ]
+}

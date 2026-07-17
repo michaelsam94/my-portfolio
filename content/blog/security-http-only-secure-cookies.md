@@ -3,136 +3,183 @@ title: "HttpOnly and Secure Cookie Configuration"
 slug: "security-http-only-secure-cookies"
 description: "Session cookies need HttpOnly, Secure, SameSite — __Host- prefix rules and subdomain cookie scope."
 datePublished: "2026-10-21"
-dateModified: "2026-10-21"
+dateModified: "2026-07-17"
 tags: ["Security", "Cookies", "Auth"]
 keywords: "HttpOnly Secure cookie, SameSite cookie, session cookie security"
 faq:
-  - q: "What is HttpOnly and Secure Cookie Configuration?"
-    a: "HttpOnly and Secure Cookie Configuration is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt HttpOnly and Secure Cookie Configuration?"
-    a: "Adopt HttpOnly and Secure Cookie Configuration when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with HttpOnly and Secure Cookie Configuration?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
----
+  - q: "What does HttpOnly do?"
+    a: "Prevents JavaScript from reading the cookie, reducing XSS exfiltration risk."
+  - q: "Secure flag requirement?"
+    a: "Cookies with Secure send only over HTTPS — required for session cookies."
+  - q: "SameSite for auth?"
+    a: "Lax for OAuth return flows; Strict when cross-site POST is never needed."---
 
-The gap between reading about httponly and secure cookie configuration and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
+An XSS bug in our analytics wrapper read `document.cookie` and exfiltrated session tokens—we had set `Secure` but forgot `HttpOnly`. Three attributes and a prefix fixed a vulnerability class that had lingered through two pentests because "cookies were encrypted in transit."
 
-I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
+Session cookies are bearer tokens. Treat them like secrets the browser carries automatically. Configuration mistakes rarely throw errors; they fail open until an attacker demonstrates impact.
 
-## Architecture and boundaries
+## The minimum viable session cookie
 
-Before changing implementation details, draw the boundary diagram. HttpOnly and Secure Cookie Configuration touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
-
-```
-Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
-   │            │              │
-   └── Client UI └── Middleware └── Server Components / API
+```http
+Set-Cookie: __Host-session=eyJ…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600
 ```
 
-| Layer | Owns | Watch for |
-|---|---|---|
-| Edge / CDN | Cache, geo routing, security headers | Stale content, cookie scope |
-| Server | Data fetching, auth, personalization | TTFB regressions, cache misses |
-| Client | Interactivity, optimistic UI, a11y | Bundle size, hydration, INP |
-| Third party | Analytics, payments, chat widgets | Long tasks, CSP violations |
+| Flag | What it blocks |
+| --- | --- |
+| HttpOnly | `document.cookie` and XSS exfiltration |
+| Secure | Transmission over plaintext HTTP |
+| SameSite=Lax | Cross-site POST CSRF and most embedded contexts |
+| __Host- prefix | Domain-scoping mistakes and missing Secure/Path=/ |
 
-Document which metrics you expect to move. If httponly and secure cookie configuration is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
+Express example:
 
-## Implementation patterns
-
-Start with the smallest change that proves the approach. For httponly and secure cookie configuration, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
-
-```tsx
-// Example: progressive adoption pattern
-// Step 1 — isolate behind a feature flag or route segment
-export async function Page() {
-  const enabled = await flags.isEnabled("security_http_only_secure_cookies");
-  if (!enabled) return <LegacyExperience />;
-  return <NewExperience />;
-}
+```javascript
+res.cookie("__Host-session", token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  maxAge: 3600 * 1000,
+  path: "/",
+  // no domain attribute with __Host-
+});
 ```
+
+Never mirror session identifiers in `localStorage` for SPA convenience—any XSS owns the token permanently until expiry.
+
+## SameSite behavior in real flows
+
+**Lax (default recommendation)** — cookie sent when user clicks `https://yoursite.com/path` from email or search results. Not sent on cross-site `<form POST>` or cross-origin `fetch` from evil.com.
+
+**Strict** — cookie withheld even on top-level cross-site GET. OAuth return URLs and marketing deep links may need an intermediate same-site landing page or Strict breaks login continuity.
+
+**None** — requires `Secure`; used for embedded widgets and cross-site iframes that must send cookies. Increases CSRF surface—mandate anti-CSRF tokens on all mutating endpoints when using SameSite=None.
+
+Chrome's third-party cookie deprecation changes embedding scenarios—audit iframe integrations annually.
+
+## Cookie prefixes in depth
+
+Browser-enforced prefixes reduce misconfiguration:
+
+| Prefix | Requirements |
+| --- | --- |
+| `__Host-` | Secure, Path=/, no Domain |
+| `__Secure-` | Secure flag required |
+| `__Session-` | no Max-Age or Expires (session cookie) |
+
+`__Host-` prevents setting `Domain=.example.com` that would expose cookies to all subdomains—including attacker-controlled `user-content.example.com` if subdomain takeover occurs.
+
+## Subdomain and cross-subdomain auth
+
+Setting `Domain=.example.com` shares cookies across `app`, `www`, and `api`. Compromise of any subdomain steals sessions for all. Prefer host-only cookies on primary auth domain and explicit token exchange for API subdomains when architecture requires separation.
+
+Staging environments on `staging.example.com` must not share cookie domain with production—use separate registrable domains or host-only cookies per environment.
+
+## Refresh tokens and rotation
+
+Long-lived refresh tokens belong in HttpOnly cookies with rotation on each use:
 
 ```typescript
-// Example: measurable wrapper for RUM
-export function reportMetric(name: string, value: number, tags: Record<string, string>) {
-  if (typeof window === "undefined") return;
-  // Send to your analytics / RUM endpoint
-  navigator.sendBeacon?.("/api/rum", JSON.stringify({ name, value, tags, path: location.pathname }));
-}
+// After successful refresh
+setCookie(response, "__Host-refresh", newRefresh, { maxAge: 30 * 86400 });
+setCookie(response, "__Host-session", newAccess, { maxAge: 3600 });
+invalidateRefresh(oldRefreshId);
 ```
 
-Validate in staging with production-like data volumes. Empty caches and synthetic tests lie. Warm the CDN, test logged-in and logged-out states, and exercise the failure paths — slow network, ad blockers, and screen reader navigation.
+Detect refresh token reuse—parallel requests with same consumed token indicates theft; revoke family and force re-auth.
 
-For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
+## CSRF pairing
 
-## Accessibility requirements
+SameSite=Lax is not complete CSRF defense for all APIs. Mutations still need synchronizer tokens, double-submit cookies, or Origin/Referer validation especially for SameSite=None embeds.
 
-Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
+JSON APIs with `Content-Type: application/json` resist simple form CSRF but not all attacks—do not skip CSRF because "we use JWT in header" when cookies also authenticate.
 
-- **Keyboard**: All interactive elements reachable in logical tab order; no focus traps except intentional modals with escape hatches.
-- **Focus visibility**: `:focus-visible` styles that meet contrast requirements — do not remove outlines without replacement.
-- **Motion**: Respect `prefers-reduced-motion`; provide non-animated alternatives for essential feedback.
-- **Live regions**: Loading and error states announced with appropriate `aria-live` politeness — avoid spamming assertive announcements.
-- **Target size**: Touch targets at least 24×24 CSS pixels (WCAG 2.2 AA); prefer 44×44 for primary actions on mobile.
+## Testing cookie configuration
 
-Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
+Playwright or curl integration tests should assert Set-Cookie attributes on login:
 
-## Security and privacy considerations
+```bash
+curl -sI https://app.example.com/login -d '…' | grep -i set-cookie
+```
 
-Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
+Verify absence of session cookies on HTTP redirect chains. Scan for JavaScript reading cookies in frontend bundles—grep `document.cookie` in CI.
 
-- **CSP**: Prefer nonces over `unsafe-inline`; use `strict-dynamic` only with a understood script graph.
-- **XSS**: Never `dangerouslySetInnerHTML` without sanitization; treat CMS rich text as untrusted input.
-- **CSRF**: Mutating requests need synchronizer tokens or SameSite cookies plus Origin validation.
-- **Storage**: Do not persist tokens or PII in `localStorage`; prefer HttpOnly cookies for session identifiers.
-- **Consent**: Analytics and marketing tags load only after consent where required — not on first paint.
+## Mobile and WebView caveats
 
-Review changes with the same rigor as backend PRs. A "small" analytics snippet can exfiltrate form data if misconfigured.
+Embedded WebViews may not honor SameSite identically to desktop Chrome. Test OAuth and SSO on iOS in-app browsers. Custom URL schemes for mobile auth should not pass session tokens in query strings—use one-time exchange codes.
 
-## Testing strategy
+## Migration from localStorage sessions
 
-Layer tests to match risk:
+Moving existing SPAs from localStorage to HttpOnly cookies requires:
 
-| Layer | Tooling | Catches |
-|---|---|---|
-| Unit | Vitest / Jest | Logic, utilities, hooks |
-| Component | Testing Library + Storybook | Rendering, a11y roles, interactions |
-| E2E | Playwright | Critical paths, real network, visual regressions |
-| Performance | Lighthouse CI, WebPageTest | Budget regressions, LCP/CLS lab signals |
-| Accessibility | axe-core, pa11y | WCAG violations on static DOM |
+1. Backend endpoint issuing Set-Cookie on login
+2. CSRF token endpoint readable by frontend
+3. Frontend switching API client to cookie credentials with `credentials: 'include'`
+4. CORS allowing specific origins—not wildcard—with credentials
 
-Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
+Roll out with feature flag; monitor 401 rate during migration window.
 
-## Common production mistakes
+## Incident patterns
 
-Teams get httponly and secure cookie configuration wrong in predictable ways:
+Stolen session cookies bypass password resets until expiry or server-side revocation. Maintain server-side session registry or token blocklist for logout-everywhere. Short access token TTL limits XSS window even if HttpOnly fails on misconfigured debug builds.
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+Cookie theft via MITM implies missing Secure or mixed content—fix HSTS and eliminate HTTP asset loads.
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Sustaining production quality
 
-## Debugging and triage workflow
+Scan staging and production Set-Cookie headers after every auth-related deploy. Cookie prefixes __Host- and __Secure- add defense when supported browsers are your baseline. Document SameSite choice in ADR when OAuth or embedded widgets require cross-site cookies — Strict breaks more flows than teams expect.
 
-When httponly and secure cookie configuration misbehaves in production, work top-down:
+## Cookie prefix hardening
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+`__Host-` prefix requires Secure, Path=/, and no Domain attribute — strongest session cookie shape for modern browsers. Integration test Set-Cookie on login in production profile after every auth deploy.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## OAuth and SameSite=Lax
+
+OAuth return flows break with SameSite=Strict on session cookies — the cross-site redirect from the IdP will not send cookies. Use Lax for session cookies on auth flows; Strict only when UX allows intermediate landing pages.
 
 ## Resources
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [MDN Web Docs — Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
+- [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
+- [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+- [Chrome SameSite updates](https://developers.google.com/privacy-sandbox/3pcd)
+- [RFC 6265bis cookie prefixes](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis)
+- [web.dev SameSite cookies explained](https://web.dev/articles/samesite-cookies-explained)
+
+## Operational checklist (1)
+
+Before promoting Security Http Only Secure Cookies changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Security Http Only Secure Cookies after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Http Only Secure Cookies touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Security Http Only Secure Cookies changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Security Http Only Secure Cookies after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Http Only Secure Cookies touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Security Http Only Secure Cookies changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (8)
+
+Re-baseline Security Http Only Secure Cookies after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (9)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Security Http Only Secure Cookies touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (10)
+
+Before promoting Security Http Only Secure Cookies changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.

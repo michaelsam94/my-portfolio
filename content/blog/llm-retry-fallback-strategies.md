@@ -3,8 +3,8 @@ title: "Retries and Fallbacks for LLM Calls"
 slug: "llm-retry-fallback-strategies"
 description: "Design retry and fallback strategies for LLM APIs: error classification, exponential backoff, model downgrade paths, circuit breakers, and resilience patterns for production LLM apps."
 datePublished: "2025-01-05"
-dateModified: "2025-01-05"
-tags: ["AI", "LLM", "Backend", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM retry strategy, LLM fallback model, API error handling LLM, circuit breaker LLM, resilient LLM calls"
 faq:
   - q: "Which LLM API errors should I retry?"
@@ -14,7 +14,6 @@ faq:
   - q: "When should I use a circuit breaker for LLM providers?"
     a: "Open the circuit after 5 consecutive failures or >50% error rate over 60 seconds. Half-open after 30 seconds to test recovery. Prevents hammering a degraded provider and lets failover routes take traffic. Reset on successful probe request."
 ---
-
 The LLM call timed out. Your code retried the same 80K-token request three times, burned $0.40, and returned a 500 to the user anyway. Retries without strategy are expensive optimism. Production LLM apps classify errors, backoff intelligently, fall back to alternate models, and know when to stop trying and tell the user something useful.
 
 ## Error classification
@@ -216,17 +215,6 @@ Log which tier served each request — if tier 3+ exceeds 10%, primary provider 
 
 Pair with [LLM cost control budgets](https://blog.michaelsam94.com/agent-cost-control-budgets/) for org-wide spend caps beyond per-request retry limits.
 
-## Common production mistakes
-
-Teams get retry fallback strategies wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-LLM features around retry fallback strategies break in production when prompts assume deterministic output, context windows are sized for dev datasets, or token costs are never budgeted per user session. Always log prompt hash, model version, and latency—not raw prompts with PII.
-
 ## Resources
 
 - [OpenAI error codes and handling](https://platform.openai.com/docs/guides/error-codes)
@@ -234,3 +222,17 @@ LLM features around retry fallback strategies break in production when prompts a
 - [Martin Fowler — Circuit Breaker pattern](https://martinfowler.com/bliki/CircuitBreaker.html)
 - [tenacity Python retry library](https://tenacity.readthedocs.io/)
 - [Polly .NET resilience library](https://www.pollydocs.org/)
+
+## Production notes for LLM stacks
+
+When `llm-retry-fallback-strategies` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `retries and fallbacks for llm calls` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

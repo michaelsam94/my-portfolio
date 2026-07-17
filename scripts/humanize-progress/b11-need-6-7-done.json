@@ -1,0 +1,63 @@
+{
+  "done": 22,
+  "total": 30,
+  "check": [
+    {
+      "slug": "typescript-zod-runtime-validation",
+      "status": "check",
+      "words": 925
+    },
+    {
+      "slug": "variable-fonts-performance-ux",
+      "status": "check",
+      "words": 955
+    },
+    {
+      "slug": "wcag-22-new-criteria-implementation",
+      "status": "check",
+      "words": 958
+    },
+    {
+      "slug": "web-accessibility-aria-patterns",
+      "status": "check",
+      "words": 1077
+    },
+    {
+      "slug": "web-color-functions-oklch",
+      "status": "check",
+      "words": 1048
+    },
+    {
+      "slug": "web-performance-404-page-product-sites",
+      "status": "check",
+      "words": 981
+    },
+    {
+      "slug": "web-performance-back-forward-cache",
+      "status": "check",
+      "words": 1023
+    },
+    {
+      "slug": "web-performance-breadcrumb-navigation-seo",
+      "status": "check",
+      "words": 958
+    }
+  ],
+  "samples": [
+    {
+      "slug": "voice-agents-stt-tts-pipelines",
+      "status": "done",
+      "words": 1445
+    },
+    {
+      "slug": "vector-db-pgvector-postgres",
+      "status": "done",
+      "words": 1392
+    },
+    {
+      "slug": "vue-3-composition-api-patterns",
+      "status": "done",
+      "words": 1321
+    }
+  ]
+}

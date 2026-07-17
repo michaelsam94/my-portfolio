@@ -3,127 +3,227 @@ title: "AWS SQS FIFO Deduplication"
 slug: "queue-sqs-fifo-deduplication"
 description: "Message deduplication ID and group ID — throughput limits per group."
 datePublished: "2026-03-19"
-dateModified: "2026-03-19"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue sqs fifo deduplication, production, backend"
+keywords: "sqs fifo deduplication, message group id, content based deduplication, fifo throughput"
 faq:
-  - q: "What problem does AWS SQS FIFO Deduplication solve?"
-    a: "It addresses production gaps teams hit when scaling queue sqs fifo deduplication: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue sqs fifo deduplication appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "How does SQS FIFO deduplication work?"
+    a: "Within a five-minute deduplication interval, FIFO queues treat messages with the same MessageDeduplicationId as duplicates and accept only one. With ContentBasedDeduplication=true, SQS hashes the body to derive the ID. Otherwise you must supply MessageDeduplicationId explicitly — typically a business idempotency key."
+  - q: "What does MessageGroupId control?"
+    a: "MessageGroupId defines ordering scope. Messages sharing a group are strictly ordered and processed one at a time per consumer. Different groups process in parallel. One group = one lane; hot customer ID as group key serializes all their messages and caps throughput at ~300 TPS per queue API limits."
+  - q: "What are FIFO throughput limits and how do I scale them?"
+    a: "Standard FIFO queues deliver up to 300 transactions per second per API action without batching, 3000 with batching, or higher with high throughput mode partitioning across message group IDs. Standard queues have nearly unlimited throughput but no ordering or deduplication guarantees."
 ---
 
-## Production context
+A inventory service double-subtracted stock when API Gateway retried a checkout POST during a Lambda timeout — two SQS messages, two decrements, one angry warehouse manager. Moving order events to a FIFO queue with `MessageDeduplicationId` set to the checkout idempotency key collapsed duplicates within the five-minute window and preserved per-order sequencing via `MessageGroupId=order_id`. FIFO is not "SQS but nicer"; it is a contract with throughput ceilings you design around.
 
-A billing service lost duplicate events because queue sqs fifo deduplication was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## FIFO vs standard queues
 
-Senior backend work on aws sqs fifo deduplication is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+| Feature | Standard | FIFO |
+|---------|----------|------|
+| Ordering | Best effort | Strict within MessageGroupId |
+| Deduplication | None | 5-minute window by dedup ID |
+| Throughput | Nearly unlimited | 300/sec (3,000 batched) base |
+| Name suffix |任意 | Must end in `.fifo` |
+| Exactly-once processing | No (at-least-once) | Dedup at enqueue, not consumer |
 
-## Architecture pattern
+FIFO solves **duplicate publishes** and **ordering within a group** — consumers must still be idempotent because visibility timeout redelivery remains at-least-once.
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+## MessageDeduplicationId
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```python
+def publish_order_event(order_id: str, event_type: str, payload: dict):
+    sqs.send_message(
+        QueueUrl=QUEUE_URL,
+        MessageBody=json.dumps(payload),
+        MessageGroupId=order_id,
+        MessageDeduplicationId=f"{order_id}:{event_type}",
+    )
 ```
 
-## Implementation checklist
+Same `MessageDeduplicationId` within 5 minutes → SQS accepts first, drops duplicates.
 
-Validate inputs at the trust boundary with schema versioning.
+**ContentBasedDeduplication:**
 
-Use timeouts and cancellation on every outbound call; propagate context.
+```python
+Attributes={
+    'FifoQueue': 'true',
+    'ContentBasedDeduplication': 'true',
+}
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+Identical bodies dedupe automatically. Risk: legitimate retries with same body but different intent dedupe incorrectly. Prefer explicit IDs for business events.
 
-Run migrations with lock_timeout and statement_timeout set.
+## MessageGroupId and ordering
 
-Load test at 2× expected peak with production-like payload sizes.
+```python
+MessageGroupId=order_id   # serialize lifecycle: created → paid → shipped
+```
 
-## Observability
+Parallelism = number of **distinct groups** in flight.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Anti-pattern: `MessageGroupId='default'` — entire system one lane.
 
-Dashboards for queue sqs fifo deduplication should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Partition groups by entity: `order_id`, `user_id`, or `hash(tenant_id) % 128`.
 
-## Security notes
+High throughput FIFO:
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+```python
+Attributes={
+    'DeduplicationScope': 'messageGroup',
+    'FifoThroughputLimit': 'perMessageGroupId',
+}
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Throughput math
 
-## Common production mistakes
+Base FIFO: ~300 messages/sec without batching. With batching max 10: ~3000/sec theoretical.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+If you need 10k/sec ordered **per key**, FIFO may be wrong tool — consider Kafka partition or dedup table + standard queue.
 
-## Debugging and triage workflow
+## Consumer-side idempotency still required
 
-When production misbehaves, work top-down:
+```python
+def handler(record, context):
+    for item in record['Records']:
+        body = json.loads(item['body'])
+        dedup_key = body['deduplication_id']
+        if not store.try_claim(dedup_key, ttl=86400):
+            continue
+        process(body)
+```
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Use DynamoDB conditional put or Postgres `ON CONFLICT DO NOTHING` for claim table.
 
-## Operational checklist
+## Partial batch failure with Lambda and FIFO
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+```python
+def handler(event, context):
+    failures = []
+    for record in event['Records']:
+        try:
+            handle(record)
+        except RetryableError:
+            failures.append({'itemIdentifier': record['messageId']})
+    return {'batchItemFailures': failures}
+```
 
-## Performance tuning notes
+Without this, one poison message blocks entire group until maxReceiveCount → DLQ.
 
-Measure before optimizing queue sqs fifo deduplication. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## Visibility timeout vs FIFO ordering
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Long processing holds message invisible — other messages in same MessageGroupId wait. Set visibility timeout > p99 handler duration or use heartbeat pattern for long jobs.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+## Cross-region FIFO considerations
 
-## Rollout and migration
+FIFO queues are regional — global active-active requires separate FIFO per region and dedup store in global database if same checkout can hit two regions.
 
-Ship queue sqs fifo deduplication changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Testing deduplication in staging
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Send same `MessageDeduplicationId` twice; assert one receive. Run before production traffic.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## CloudWatch alarms
 
-## Testing recommendations
+```yaml
+ApproximateAgeOfOldestMessage:
+  Threshold: 300
+  Dimensions: QueueName: orders.fifo
+```
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Pair with DLQ alarm — old message age with zero DLQ inflow suggests consumer stall not poison message.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## Terraform queue attributes
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+```hcl
+resource "aws_sqs_queue" "orders_fifo" {
+  name                        = "orders.fifo"
+  fifo_queue                  = true
+  content_based_deduplication = false
+  deduplication_scope         = "messageGroup"
+  fifo_throughput_limit       = "perMessageGroupId"
+}
+```
 
-## Incident patterns we see
+Infrastructure-as-code prevents console drift where staging enables content-based dedup but prod expects explicit IDs.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## Cost considerations
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+FIFO pricing higher per request than standard. Batching reduces cost with `SendMessageBatch` max 10 entries.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## When not to use FIFO
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+- Fire-and-forget telemetry (use standard + idempotent agg)
+- Global strict total order (single group bottleneck)
+- Duplicate detection window > 5 minutes (use dedup store in DB)
 
-## Resources
+SQS FIFO pairs `MessageDeduplicationId` (five-minute duplicate collapse) with `MessageGroupId` (ordered lane per entity). Design group keys for parallelism, set explicit dedup IDs from business events, batch for throughput, and keep consumer idempotency because visibility timeout is still at-least-once. FIFO fixes duplicate **enqueue**; your database fixes duplicate **process**.
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+## MessageDeduplicationId collision across event types
+
+Using only `order_id` as dedup ID collapses distinct events (created vs paid) within five minutes — include event type in dedup key as shown earlier. Document dedup key schema in API contract alongside idempotency-key header semantics.
+
+## SNS → SQS FIFO subscription
+
+SNS publishes to FIFO with `MessageGroupId` mapped from message attributes — configure subscription raw delivery for JSON control. Filter policies reduce FIFO ingress cost when only subset of events need ordering.
+
+## Dead letter queue FIFO pairing
+
+FIFO DLQ must end in `.fifo` and receive redriven messages preserving group ID — configure redrive allow policy. MaxReceiveCount exhaustion moves poison message to DLQ without breaking ordering metadata for forensic replay.
+
+## Exactly-once processing myth
+
+Marketing "exactly-once" for FIFO refers to deduplication at enqueue within five minutes — not consumer exactly-once. Architecture reviews should reject FIFO selection based solely on exactly-once checkbox without consumer idempotency design.
+
+## Load test group ID distribution
+
+Uniform random MessageGroupId across 10k keys achieves parallel throughput; single group load test proves ordering not throughput — both tests required before launch sign-off.
+
+## Cross-account FIFO access
+
+SQS queue policy allowing cross-account send must include fifo dedup attributes in IAM condition keys where applicable — partner account publish failures show access denied on SendMessage not dedup confusion.
+
+## Extended dedup window workaround
+
+Five-minute dedup window insufficient for daily batch resubmit — use business dedup table with 24h TTL at consumer; FIFO dedup handles rapid retry only. Document two-layer dedup in architecture diagram for auditor clarity.
+
+## API Gateway idempotency integration
+
+API Gateway native idempotency cache pairs with FIFO MessageDeduplicationId from same key — client sends Idempotency-Key header, Lambda publishes to FIFO with matching dedup ID. End-to-end duplicate collapse from browser retry through queue to worker claim table.
+
+## Monitoring dedup effectiveness
+
+CloudWatch does not expose deduplicated message count directly — compare SendMessage API count to processed count in application metrics; large gap indicates client retry storm successfully deduped at queue.
+
+## Lambda reserved concurrency per FIFO trigger
+
+Reserve concurrency on Lambda processing FIFO trigger prevents standard queue Lambdas from consuming account concurrency during spike — FIFO payment path keeps minimum 10 concurrent executions while bulk standard queue scales independently.
+
+## Message attributes size limit
+
+FIFO message attributes count toward 256KB total — large attribute payloads reduce body budget. Keep dedup metadata in body JSON not attributes; MessageDeduplicationId parameter sufficient for dedup without bloating attributes.
+
+## Disaster recovery FIFO queue URL
+
+Document primary and DR region FIFO queue URLs in runbook — failover requires DNS or config switch; MessageGroupId state does not replicate across regions automatically. Failover drill includes verifying dedup table in global database still authoritative across regions.
+
+## Cost anomaly detection
+
+Sudden SendMessage bill spike may indicate client retry loop deduped at queue but still charging API calls — fix client backoff; dedup prevents duplicate processing not duplicate API billing for sends that SQS accepts as deduplicated success responses.
+
+## Closing principle
+
+FIFO solves ordering within a group and duplicate collapse at enqueue for five minutes — not end-to-end exactly-once. Design MessageGroupId for parallelism, MessageDeduplicationId from business keys, consumer idempotency for visibility timeout, and load test hot groups before launch.
+
+## Read next when FIFO throughput stalls
+
+Check CloudWatch for single MessageGroupId dominance — one hot group caps at FIFO throughput limit while other groups idle. Split hot entity across synthetic sub-groups only if business ordering allows (e.g. order line items not whole order).
+
+Document tier ownership, DLX bindings, cron schedules, and FIFO group-key schema in the same repository as application code — operational knowledge drift causes repeat incidents when runbooks live only in wiki software nobody updates after reorganizations.
+Derive MessageDeduplicationId from a stable business event id — a fresh UUID on every HTTP retry disables FIFO deduplication and invites double processing.
+
+Document the SLO this setting protects for queue-sqs-fifo-deduplication.
+
+Operational ownership matters as much as broker config for queue sqs fifo deduplication: name an on-call team, alert on depth or age, and rehearse replay or redrive in staging before you need it in production.

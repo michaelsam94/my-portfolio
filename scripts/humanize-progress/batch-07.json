@@ -1,0 +1,55 @@
+{
+  "batch": "07",
+  "slice": [
+    1750,
+    1999
+  ],
+  "total": 250,
+  "expanded": 62,
+  "rewritten": 188,
+  "under_target_words": 0,
+  "template_remaining": 0,
+  "target_words": 1200,
+  "completed_at": "2026-07-17",
+  "word_stats": {
+    "min": 1200,
+    "max": 1376,
+    "avg": 1229.5
+  },
+  "samples": [
+    {
+      "slug": "kotlin-scripting-kts-automation",
+      "words": 1207
+    },
+    {
+      "slug": "kotlin-sealed-interfaces-domain-modeling",
+      "words": 1223
+    },
+    {
+      "slug": "kotlin-sealed-when-exhaustive",
+      "words": 1205
+    },
+    {
+      "slug": "kotlin-serialization-beyond-json",
+      "words": 1216
+    },
+    {
+      "slug": "kotlin-serialization-polymorphic",
+      "words": 1200
+    }
+  ],
+  "samples_tail": [
+    {
+      "slug": "llm-passkeys-webauthn-deployment",
+      "words": 1219
+    },
+    {
+      "slug": "llm-passwordless-migration-path",
+      "words": 1212
+    },
+    {
+      "slug": "llm-patch-management-windows",
+      "words": 1201
+    }
+  ]
+}

@@ -3,16 +3,17 @@ title: "Secret Scanning and Pre-Commit Guardrails"
 slug: "secret-scanning-pre-commit"
 description: "How secret scanning and pre-commit hooks stop leaked credentials: gitleaks and trufflehog, layered detection in CI, handling the inevitable leak, and cutting false positives."
 datePublished: "2026-05-27"
-dateModified: "2026-05-27"
-tags: ["Security", "DevSecOps", "Git"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "secret scanning, pre-commit hooks, gitleaks, trufflehog, leaked credentials, secret detection CI"
 faq:
   - q: "What is secret scanning?"
-    a: "Secret scanning is the automated detection of credentials — API keys, tokens, private keys, database passwords — that have been committed into source code or other files. Tools like gitleaks and trufflehog match patterns and entropy signatures against your code and git history, flagging anything that looks like a live secret. The goal is to catch leaked credentials before they reach a shared repository, or to find ones that already have."
-  - q: "Why use pre-commit hooks for secret detection?"
-    a: "A pre-commit hook runs the scanner on your staged changes before the commit is created, so a secret is blocked on the developer's machine and never enters git history at all. That's dramatically cheaper than catching it after the fact — once a secret is committed and pushed, it's in the history forever and must be treated as compromised. Pre-commit is the earliest and cheapest place to stop a leak."
-  - q: "What should I do if a secret has already been committed?"
-    a: "Rotate the credential first — assume it's compromised the moment it hit a shared repository, because scrubbing history doesn't un-leak it. Then revoke the old value, investigate whether it was used, and only after rotation consider rewriting history to remove the secret. Deleting the secret from the latest commit is not enough; it lives in the git history and any clone until the history is rewritten and force-pushed."
+    a: "Automated detection of API keys, tokens, and passwords in code and git history."
+  - q: "Why pre-commit?"
+    a: "Blocks secrets before they enter history — the cheapest place to stop a leak."
+  - q: "Secret already committed?"
+    a: "Rotate first, investigate second, rewrite history last."
 ---
 
 The most expensive line of code I've seen a junior engineer write was a hard-coded AWS key committed to a repo that briefly went public. The key was live for under an hour and it still cost real money and a very long incident review. Secret scanning exists to make that story impossible: it's automated detection of credentials — API keys, tokens, private keys, passwords — that have leaked into source code, and when you wire it into a pre-commit hook, the leak gets stopped on the developer's laptop before it ever becomes part of git history.
@@ -105,3 +106,11 @@ The durable fix is to stop putting secrets in code at all. Secret scanning is a 
 - [GitHub — about secret scanning](https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning)
 - [GitLab — secret detection](https://docs.gitlab.com/ee/user/application_security/secret_detection/)
 - [OWASP — secrets management cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+
+Rotate any secret that ever touched a shared branch even if history rewrite succeeds — bots scan commits within minutes of push.
+
+Review secret scanning pre commit metrics after the next release train on mid-tier mobile devices — regressions that pass lab Lighthouse often fail CrUX field data.
+
+Ship secret scanning pre commit changes with a named owner, dashboard link, and rollback command in the runbook — operational readiness matters as much as the code diff.
+
+Ship secret scanning pre commit changes with a named owner, dashboard link, and rollback command in the runbook — operational readiness matters as much as the code diff. Re-baseline metrics after the next traffic doubling affecting secret routes.

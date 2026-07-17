@@ -104,6 +104,28 @@ Teams get exact alarms android 14 wrong in predictable ways:
 
 Shipping exact alarms android 14 on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## USE_EXACT_ALARM vs SCHEDULE_EXACT_ALARM
+
+Clock and calendar qualify for `USE_EXACT_ALARM`; reminder apps need `SCHEDULE_EXACT_ALARM` and Settings intent on deny. Track `AlarmManager.canScheduleExactAlarms()` on every resume — permission revoked via Settings silently.
+
+## Inexact fallback UX
+
+When exact denied, schedule `setAndAllowWhileIdle` and show "May deliver ±15 min" copy. Support tickets spike when users expect second-precision without permission.
+
+## Exact Alarms Android 14 Supplement 0 on Samsung and Pixel divergence
+
+Exercise exact alarms android 14 supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching exact; regressions above 8% block release for `android-exact-alarms-android-14-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Exact Alarms Android 14 Supplement 0" should map to a single runbook section with known workarounds.
+
+## 14 regression gates for Play Vitals
+
+Before promoting `android-exact-alarms-android-14-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing exact with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing exact alarms android 14 supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Schedule alarms (Android)](https://developer.android.com/develop/background-work/services/alarms/schedule)

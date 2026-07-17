@@ -3,7 +3,7 @@ title: "SLIs, SLOs, and Error Budgets"
 slug: "observability-slis-slos-error-budgets"
 description: "Define SLIs, SLOs, and error budgets for reliable services: measurement, target setting, burn rate alerting, and balancing reliability with velocity."
 datePublished: "2025-10-12"
-dateModified: "2025-10-12"
+dateModified: "2026-07-17"
 tags: ["DevOps", "SRE", "Observability", "Architecture"]
 keywords: "SLI SLO error budget, service level objectives, service level indicators, error budget policy, SRE reliability, burn rate alerting"
 faq:

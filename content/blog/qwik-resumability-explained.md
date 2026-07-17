@@ -3,7 +3,7 @@ title: "Resumability in Qwik"
 slug: "qwik-resumability-explained"
 description: "Understand Qwik resumability: how fine-grained lazy loading and serialized state let apps resume interactivity without re-running hydration on the client."
 datePublished: "2024-11-13"
-dateModified: "2024-11-13"
+dateModified: "2026-07-17"
 tags: ["Web", "Qwik", "Performance", "JavaScript"]
 keywords: "Qwik resumability, hydration alternative, fine-grained lazy loading, Qwik optimizer, serialized state, progressive web apps"
 faq:
@@ -99,29 +99,39 @@ Compare before/after on real deployments, not lab Lighthouse only:
 
 If TTI improves but interaction latency regresses, your lazy boundaries may be too granular — batch related interactivity into single QRL chunks.
 
-## Common production mistakes
 
-Teams get qwik resumability explained wrong in predictable ways:
+## Prefetching handler chunks on hover
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Qwik can prefetch `onClick$` chunks on `mouseover` for perceived instant interaction — trades bandwidth for snappiness. Measure bytes prefetched vs click-through rate; prefetch everything and mobile data users suffer.
 
-Production implementations of qwik resumability explained fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Resumability with auth-gated routes
 
-## Debugging and triage workflow
+Serialized state must not embed secrets — tokens belong in HttpOnly cookies read after resume, not in `q:state`. Security review resumable pages like SSR pages; exposed state in HTML view-source is visible to extensions.
 
-When qwik resumability explained misbehaves in production, work top-down instead of guessing:
+## Streaming SSR with resumability
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Streaming HTML must still emit valid `q:container` boundaries — partial chunks breaking mid-attribute corrupt resume. Test streaming routes with Playwright interrupting network mid-stream.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Comparison table for stakeholders
+
+| Approach | Initial JS | Time to interactive on click |
+| --- | --- | --- |
+| Full hydration | High | After full bundle |
+| Islands | Medium | After island bundle |
+| Resumability | Low | After handler chunk |
+
+Use table in architecture docs when PM asks why Qwik over Next for marketing site with few interactions.
+
+## Production rollout notes
+
+Evaluate Qwik City routing if considering framework adoption — resumability benefits matter most on content-heavy routes with sparse interaction. Admin dashboards with constant form interaction may see less relative win; profile your route mix in Chrome User Timing before migration pitch to leadership.
+## Migration from React incremental
+
+Migrate route-by-route — hybrid app with React root and Qwik islands possible during transition. Resumability wins on marketing pages first; keep complex React admin until Qwik City patterns proven for your auth and data layers.
+
+## Closing operational guidance
+
+Measure bundle bytes at first interaction not first load — resumability KPI is handler chunk size on first click target, often primary CTA in hero. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

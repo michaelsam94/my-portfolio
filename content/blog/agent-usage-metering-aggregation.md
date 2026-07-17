@@ -1,111 +1,236 @@
 ---
-title: "AI Agents: Usage Metering Aggregation"
+title: "Usage Metering Aggregation for Agent Billing"
 slug: "agent-usage-metering-aggregation"
-description: "Usage Metering Aggregation: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2025-08-28"
-dateModified: "2025-08-28"
-tags: ["AI", "Agent", "Usage"]
-keywords: "agent, usage, metering, aggregation, ai, production, engineering, architecture"
+description: "Aggregate token, tool, and compute meters for agent SaaS billing: event schemas, idempotent rollups, Stripe usage records, and reconciliation against raw telemetry."
+datePublished: "2025-04-27"
+dateModified: "2026-07-17"
+tags: ["AI Agents", "Billing", "Metering", "SaaS"]
+keywords: "agent usage metering, token aggregation billing, Stripe metered usage agents, usage records reconciliation"
 faq:
-  - q: "What is Usage Metering Aggregation?"
-    a: "Usage Metering Aggregation covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Usage Metering Aggregation?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Usage Metering Aggregation?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Usage Metering Aggregation fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Usage Metering Aggregation should be observable in production and safe to change in small diffs."
+  - q: "What should agent metering events capture at minimum?"
+    a: "tenant_id, meter_name, quantity (numeric), timestamp (UTC), idempotency_key, dimensions (model, agent_sku, region). Optional: run_id for dispute debugging. Never put PII or prompt content in billing events."
+  - q: "At what granularity should token usage aggregate before Stripe?"
+    a: "Roll up to hourly or daily per tenant per meter for API rate limits, but emit raw events immediately to your ledger. Stripe Billing Meters accept high-cardinality identifiers — batch usage record API calls to avoid throttling."
+  - q: "How do you handle retries without double billing?"
+    a: "Idempotency keys on every event: hash(tenant_id, run_id, meter, window_start). Dedupe in stream processor and again at Stripe submission. Reconciliation job compares ledger sums to Stripe dashboard daily."
+  - q: "Tool calls vs tokens — one meter or many?"
+    a: "Separate meters: input_tokens, output_tokens, tool_invocations, premium_tool_surcharge. Plans mix included allowances per meter. Bundling into one 'credit' obscures margin leaks when tool costs spike."
 ---
-Usage Metering Aggregation is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
 
-When usage metering aggregation is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent SaaS pricing slides say "per seat plus usage" — engineering has to define what a **usage event** is when one customer run spans three model calls, two code interpreter minutes, and a retrieval index query. Metering aggregation turns firehose telemetry into invoice lines without double-charging retries or losing margin on unbilled tool surcharges.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Event schema design
 
-Solid AI engineering turns usage metering aggregation from a recurring argument into a documented pattern with tests and an owner.
+Immutable usage events append to Kafka / Kinesis / Pub/Sub:
 
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent usage metering aggregation bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for usage metering aggregation, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent usage metering aggregation flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for usage metering aggregation in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent usage metering aggregation changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Usage Metering Aggregation: typed boundary + structured errors
-export async function handleUsageMeteringAggregation(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-usage-metering-aggregation");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+```json
+{
+  "event_id": "01JABC...",
+  "idempotency_key": "tenant_42:run_9f3:output_tokens:2026-07-17T10:00Z",
+  "tenant_id": "tenant_42",
+  "meter": "output_tokens",
+  "quantity": 1842,
+  "unit": "tokens",
+  "occurred_at": "2026-07-17T10:04:32.118Z",
+  "dimensions": {
+    "model": "gpt-4o",
+    "agent_sku": "support_bot",
+    "region": "us-east-1"
+  },
+  "run_id": "run_9f3"
 }
-
 ```
 
+Schema rules:
 
-## Operational concerns
+- `quantity` always positive; refunds are separate `adjustment` events with negative quantity.
+- `occurred_at` is business time, not processor lag time.
+- `dimensions` capped at 5 keys — Stripe metadata limits apply downstream.
 
-Game-day exercises for usage metering aggregation beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+## Ingestion and idempotent rollup
 
-Production agent usage metering aggregation work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+from redis import Redis
 
-Rollouts for usage metering aggregation benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+redis = Redis()
+DEDUPE_TTL = 86400 * 35  # cover billing period + buffer
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+def ingest_usage(event: dict) -> bool:
+    key = f"usage:dedupe:{event['idempotency_key']}"
+    if not redis.set(key, "1", nx=True, ex=DEDUPE_TTL):
+        return False  # duplicate
+    usage_ledger.insert(event)
+    rollup_buffer.add(event)
+    return True
+```
 
-## Security and compliance angles
+Flink / Materialize window:
 
-Even when usage metering aggregation is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+SELECT
+  tenant_id,
+  meter,
+  tumble_start(occurred_at, INTERVAL '1' HOUR) AS window_start,
+  SUM(quantity) AS total_qty
+FROM usage_events
+GROUP BY tenant_id, meter, tumble(occurred_at, INTERVAL '1' HOUR);
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent usage metering aggregation so security reviews do not rely on tribal knowledge.
+## Mapping meters to Stripe Billing
 
-## Testing strategy
+Stripe Meters (2024+ model):
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that usage metering aggregation depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```python
+import stripe
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+def report_hourly_usage(tenant_id: str, meter_name: str, qty: int, hour: datetime):
+    stripe.billing.MeterEvent.create(
+        event_name=meter_name,
+        payload={
+            "stripe_customer_id": customer_id_for(tenant_id),
+            "value": str(qty),
+        },
+        timestamp=int(hour.timestamp()),
+        identifier=f"{tenant_id}:{meter_name}:{hour.isoformat()}",
+    )
+```
 
-## Migration and evolution
+`identifier` must be unique — reuse causes silent dedupe on Stripe side (desired).
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent usage metering aggregation functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+| Internal meter | Stripe price linkage | Typical plan |
+|----------------|---------------------|--------------|
+| input_tokens | Price meter `input_tokens` | Included 1M, then tiered |
+| output_tokens | Price meter `output_tokens` | Tiered |
+| tool_invocations | Price meter `tools` | Per 1k calls |
+| storage_gb_hours | Price meter `vector_storage` | Add-on |
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where usage metering aggregation spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Multi-model cost allocation
 
-## Related concepts
+Different models, different COGS — aggregate separately even if customer sees one bill:
 
-Usage Metering Aggregation intersects with broader ai topics — see companion notes on [agent-usage patterns](https://blog.michaelsam94.com/agent-usage/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```python
+COGS_PER_1K = {
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "claude-3-5-sonnet": {"input": 0.003, "output": 0.015},
+}
 
-## The takeaway
+def margin_report(tenant_id: str, period: str) -> dict:
+    usage = ledger.sum_by_model(tenant_id, period)
+    revenue = stripe.invoices.retrieve_for(tenant_id, period).total
+    cogs = sum(
+        (u.input_tokens / 1000 * COGS_PER_1K[u.model]["input"]
+         + u.output_tokens / 1000 * COGS_PER_1K[u.model]["output"])
+        for u in usage
+    )
+    return {"revenue": revenue, "cogs": cogs, "margin": revenue - cogs}
+```
 
-Usage Metering Aggregation rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent usage metering aggregation becomes a maintainable asset instead of incident fuel.
+Finance uses this; customers never see model-level lines unless enterprise contract requires it.
+
+## Reconciliation job
+
+Nightly cron:
+
+```python
+def reconcile(date: str):
+    internal = ledger.daily_totals(date)
+    stripe_totals = stripe_api.meter_summaries(date)
+    for (tenant, meter), internal_qty in internal.items():
+        stripe_qty = stripe_totals.get((tenant, meter), 0)
+        drift = abs(internal_qty - stripe_qty) / max(internal_qty, 1)
+        if drift > 0.001:  # 0.1%
+            alerts.publish("billing_drift", tenant, meter, internal_qty, stripe_qty)
+```
+
+Drift sources: clock skew on `timestamp`, duplicate idempotency key collisions, failed Stripe API retries without ledger rollback.
+
+## Included allowances and overage
+
+Plan engine sits between raw meters and Stripe:
+
+```python
+def billable_quantity(tenant_id: str, meter: str, raw_qty: int, period: str) -> int:
+    allowance = plans.included(tenant_id, meter, period)
+    consumed = ledger.period_to_date(tenant_id, meter, period)
+    remaining = max(0, allowance - consumed)
+    billable = max(0, raw_qty - remaining)
+    return billable
+```
+
+Only report **billable** quantities to Stripe; internal ledger keeps gross for analytics.
+
+## Agent-specific meters
+
+Don't forget hidden costs:
+
+| Meter | Source |
+|-------|--------|
+| embedding_tokens | Indexing pipeline |
+| rerank_calls | Cross-encoder invocations |
+| sandbox_cpu_seconds | Code interpreter |
+| egress_gb | Large tool payloads |
+
+Product may not pass through all — but engineering must see them for pricing decisions.
+
+## Dispute handling
+
+Support needs run-level drill-down:
+
+```sql
+SELECT run_id, meter, sum(quantity) AS qty
+FROM usage_events
+WHERE tenant_id = $1 AND run_id = $2
+GROUP BY run_id, meter;
+```
+
+Retain raw events 13 months minimum for SOC2 / tax audit alignment.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [Stripe — Billing Meters documentation](https://docs.stripe.com/billing/subscriptions/usage-based/recording-usage)
+- [Stripe — Idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+- [OpenMeter — usage-based billing patterns](https://openmeter.io/docs)
+- [SOC 2 — audit trail requirements for billing systems](https://www.aicpa.org/resources/landing/system-and-organization-controls-soc-suite-of-services)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+

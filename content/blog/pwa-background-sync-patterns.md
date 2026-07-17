@@ -3,23 +3,23 @@ title: "Background Sync Patterns for PWAs"
 slug: "pwa-background-sync-patterns"
 description: "Queue failed mutations for retry — Background Sync API, IndexedDB queue, and conflict resolution."
 datePublished: "2026-12-11"
-dateModified: "2026-12-11"
+dateModified: "2026-07-17"
 tags: ["PWA", "Service Worker", "Offline"]
 keywords: "Background Sync API, PWA offline queue, background sync patterns"
 faq:
-  - q: "What is Background Sync Patterns for PWAs?"
-    a: "Background Sync Patterns for PWAs is a production pattern for frontend and product engineering teams building performant, accessible web applications. It addresses real constraints around user experience, security, and measurable outcomes — not theoretical best practices disconnected from shipping code."
-  - q: "When should teams adopt Background Sync Patterns for PWAs?"
-    a: "Adopt Background Sync Patterns for PWAs when you have field data or user research showing pain — slow interactions, accessibility gaps, conversion drop-offs, or security findings — and simpler fixes have been exhausted. Pilot on one route or feature before rolling out platform-wide."
-  - q: "What are common mistakes with Background Sync Patterns for PWAs?"
-    a: "Teams often optimize for demo metrics instead of field data, skip accessibility validation, or roll out without rollback paths. Measure before and after with RUM, run axe checks in CI, and feature-flag risky changes so you can revert without redeploying."
+  - q: "What is the Background Sync API?"
+    a: "It lets a service worker retry failed background tasks when connectivity returns. Register a sync tag after queueing data locally; the browser fires a sync event to flush the queue."
+  - q: "Does Background Sync work on Safari?"
+    a: "Support is limited. Implement online event listeners and visibility-based flush as fallback when SyncManager is unavailable."
+  - q: "Why do sync retries need idempotent APIs?"
+    a: "Background sync may deliver the same POST multiple times. Server idempotency keys prevent duplicate records when retries overlap."
 ---
 
 The gap between reading about background sync patterns for pwas and shipping it in production is where most teams lose weeks. Documentation shows the happy path; production has legacy components, third-party scripts, analytics requirements, and accessibility audits that do not care about your sprint deadline. This post covers what actually works when you own the frontend surface area and need measurable improvement — not a conference demo.
 
 I have applied these patterns across product sites where Core Web Vitals affect SEO, checkout flows where payment UX directly impacts revenue, and auth flows where a confusing MFA step generates support tickets. The recommendations here are biased toward changes you can validate with field data and rollback with a feature flag.
 
-## Architecture and boundaries
+## Sync vs periodic sync
 
 Before changing implementation details, draw the boundary diagram. Background Sync Patterns for PWAs touches routing, caching, client state, and often edge middleware. If you cannot name which layer owns the behavior, you will fix symptoms in React components when the problem lives in cache headers or a third-party script.
 
@@ -38,7 +38,7 @@ Browser ──▶ CDN / Edge ──▶ App Server ──▶ Data / CMS
 
 Document which metrics you expect to move. If background sync patterns for pwas is a performance change, baseline LCP, INP, and CLS in CrUX or your RUM tool for affected routes before merging. If it is an accessibility change, run axe and manual screen reader checks on the critical path — not just the component story.
 
-## Implementation patterns
+## Outbox drain on reconnect
 
 Start with the smallest change that proves the approach. For background sync patterns for pwas, that usually means one route, one component tree, or one middleware rule — not a platform-wide migration.
 
@@ -65,7 +65,7 @@ Validate in staging with production-like data volumes. Empty caches and syntheti
 
 For TypeScript-heavy codebases, type the boundaries explicitly. Loose `any` at integration points hides regressions until runtime. Prefer `satisfies`, discriminated unions, and schema validation (Zod) at server/client boundaries so malformed CMS or API payloads fail in development, not in a user's checkout flow.
 
-## Accessibility requirements
+## Communicating sync state to users
 
 Performance optimizations that break keyboard navigation or screen reader announcements are net negative. Every change should preserve or improve WCAG 2.2 conformance:
 
@@ -77,7 +77,7 @@ Performance optimizations that break keyboard navigation or screen reader announ
 
 Run automated checks (axe-core) on affected routes in CI, then manually test with VoiceOver or NVDA on the primary user journey. Automated tools catch roughly 30–40% of issues; manual testing catches the rest.
 
-## Security and privacy considerations
+## Queued payloads and PII
 
 Frontend changes intersect security even when the task is "just UI." Any new script source, inline handler, or third-party embed affects your Content Security Policy attack surface. Any new form field may collect PII subject to GDPR retention limits.
 
@@ -103,31 +103,33 @@ Layer tests to match risk:
 
 Flaky E2E tests erode trust — quarantine and fix, do not mute. Performance budgets should fail PRs on regression, not merely warn.
 
-## Common production mistakes
 
-Teams get background sync patterns for pwas wrong in predictable ways:
+## Exponential backoff inside sync handler
 
-- **Optimizing for Lighthouse lab scores** while field data (CrUX) stays flat — lab uses clean profiles; users have extensions, slow devices, and background tabs.
-- **Skipping rollback paths** — ship behind feature flags or route-level toggles so you can disable without redeploying.
-- **Over-abstracting too early** — three similar components do not need a framework; copy-paste then extract when patterns stabilize.
-- **Ignoring third-party impact** — chat widgets, A/B snippets, and payment iframes dominate INP and CSP violations.
-- **Missing correlation context** — RUM events without route, deployment version, and experiment bucket cannot be triaged.
-- **Accessibility as an afterthought** — retrofitting ARIA onto div soup costs more than semantic HTML from the start.
+When flush fails with 503, throw to retry sync event — browser applies backoff. Add jitter in server Retry-After headers. Log attempt count per outbox item; after N failures surface UI badge "Could not sync — tap to retry manually."
 
-Document trade-offs in the PR description. If you chose speed over strict correctness (or vice versa), the next engineer needs that context during incident response.
+## Conflict UI after sync
 
-## Debugging and triage workflow
+Server returns 409 when offline edit stale — move item to conflict queue, show diff merge UI. Background sync should not drop failed items silently; users lose trust when "synced" badge appears but server rejected write.
 
-When background sync patterns for pwas misbehaves in production, work top-down:
+## Photo upload queue compression
 
-1. **Confirm scope** — one route, region, browser, or experiment bucket? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, CMS publishes, and CDN config in the last 24 hours.
-3. **Compare golden signals** — LCP, INP, CLS, error rate, and conversion for affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture HAR, trace, and screenshots with timestamps.
-5. **Fix forward or rollback** — if rollback is faster during an incident, rollback first, postmortem second.
-6. **Add a guard** — alert, E2E test, or CI check so the same failure class is caught earlier next time.
+Field apps queue photos — compress client-side before IDB to avoid quota exhaustion. Background sync flush uploads sequentially on metered connection if `navigator.connection.saveData` true.
 
-Document the timeline during triage. Future on-call needs timestamps and hypothesis notes, not just the final root cause.
+## Sync tag granularity
+
+Separate sync tags per data type (`sync-photos`, `sync-forms`) — one failing photo flush should not block form submission retry indefinitely if browser serializes sync events per tag policy.
+
+## Production rollout notes
+
+Test background sync on Android Doze — deferred sync may lag hours on unplugged idle device. Set user expectation in UI for non-urgent sync. Urgent workflows need foreground sync with user-visible progress, not background sync alone.
+## Battery-aware sync deferral
+
+On `navigator.getBattery()` low level, defer non-critical sync tags until charging — user settings toggle for sync only on Wi-Fi prevents bill shock on mobile data field uploads queued during offline day.
+
+## Closing operational guidance
+
+Log sync event duration and item count to RUM — sync storms after regional outage recovery indicate need for server-side rate limit coordination. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

@@ -1,0 +1,48 @@
+{
+  "done": 25,
+  "total": 30,
+  "check": [
+    {
+      "slug": "typescript-utility-types-app-patterns",
+      "words": 1054,
+      "status": "check"
+    },
+    {
+      "slug": "typescript-zod-runtime-validation",
+      "words": 1098,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-attribution-reporting-api",
+      "words": 1084,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-breadcrumb-navigation-seo",
+      "words": 1062,
+      "status": "check"
+    },
+    {
+      "slug": "web-performance-brotli-gzip-compression",
+      "words": 1060,
+      "status": "check"
+    }
+  ],
+  "samples": [
+    {
+      "slug": "vex-vulnerability-triage-sbom",
+      "words": 2989,
+      "status": "done"
+    },
+    {
+      "slug": "web-components-2026",
+      "words": 2910,
+      "status": "done"
+    },
+    {
+      "slug": "view-transitions-api",
+      "words": 2880,
+      "status": "done"
+    }
+  ]
+}

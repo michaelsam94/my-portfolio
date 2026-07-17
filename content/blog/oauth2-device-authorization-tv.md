@@ -1,129 +1,218 @@
 ---
 title: "OAuth2 Device Authorization for TV"
 slug: "oauth2-device-authorization-tv"
-description: "Device code flow for input-constrained devices — polling interval and user code UX."
-datePublished: "2026-01-16"
-dateModified: "2026-01-16"
+description: "Ship RFC 8628 device authorization on smart TVs: user codes, polling, activation UX, refresh tokens, and security controls for input-constrained clients."
+datePublished: "2025-09-20"
+dateModified: "2026-07-17"
 tags:
-  - "Authentication"
-  - "OAuth"
-  - "Backend"
-keywords: "oauth2 device authorization tv, production, backend"
+keywords: "OAuth2 device authorization, RFC 8628, smart TV login, user code flow, device authorization grant, TV OAuth"
 faq:
-  - q: "What problem does OAuth2 Device Authorization solve?"
-    a: "It addresses production gaps teams hit when scaling oauth2 device authorization tv: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when oauth2 device authorization tv appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is the difference between device authorization and authorization code flow on TV?"
+    a: "Authorization code flow requires a browser redirect back to the TV app — impractical on most TV platforms. Device authorization shows a user code on TV; the user completes login on phone or laptop while the TV polls for tokens."
+  - q: "How do I prevent user code phishing on shared screens?"
+    a: "Short expiry (15–30 minutes), rate limits on code entry, bind issued tokens to device_id, and show the requesting app name clearly on the activation page so users confirm context."
+  - q: "Should TVs store refresh tokens?"
+    a: "Yes for living-room UX, but only in platform secure storage (Keystore/Keychain). Rotate refresh tokens, support remote logout that revokes the family server-side, and surface 'logged in devices' in account settings."
+  - q: "Can smart displays running LLM assistants use device flow?"
+    a: "Yes — same pattern for linking a household account to a voice/display device without typing passwords on a remote. Scope assistant tokens narrowly; TV devices are physically accessible to guests."
 ---
+Smart TVs are the canonical **input-constrained OAuth client**: no reliable redirect URI, no keyboard, and firmware update cycles measured in years. RFC 8628 device authorization grant solves this by moving user authentication to a second device while the TV waits with a short, human-readable code.
 
-## Production context
+## Endpoints and grants
 
-A billing service lost duplicate events because oauth2 device authorization tv was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+| Step | Endpoint | Grant / action |
+|------|----------|----------------|
+| 1 | `/oauth/device/code` | Request `device_code` + `user_code` |
+| 2 | `/activate` (browser) | User signs in, enters code |
+| 3 | `/oauth/token` | Poll with `grant_type=device_code` |
 
-Senior backend work on oauth2 device authorization for tv is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+The TV never sees the user's password. It only polls until the authorization server marks the device code approved.
 
-## Architecture pattern
+## Server-side device code issuance
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for oauth2 workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```python
+@app.post("/oauth/device/code")
+def device_code(body: DeviceCodeRequest):
+    device_code = secrets.token_urlsafe(32)
+    user_code = generate_user_code()  # e.g. WDJB-MJHT, no ambiguous chars
+    store.save(device_code, {
+        "user_code": user_code,
+        "client_id": body.client_id,
+        "scope": body.scope,
+        "expires_at": now() + timedelta(minutes=15),
+        "interval": 5,
+        "status": "pending",
+    })
+    return {
+        "device_code": device_code,
+        "user_code": user_code,
+        "verification_uri": "https://auth.example.com/activate",
+        "verification_uri_complete": f"https://auth.example.com/activate?user_code={user_code}",
+        "expires_in": 900,
+        "interval": 5,
+    }
 ```
 
-## Implementation checklist
+Persist device codes hashed at rest. Rate-limit by client_id and IP to prevent farming.
 
-Validate inputs at the trust boundary with schema versioning.
+## TV client polling loop
 
-Use timeouts and cancellation on every outbound call; propagate context.
+```kotlin
+suspend fun awaitAuthorization(deviceCode: String, initialInterval: Int): TokenResponse {
+    var interval = initialInterval
+    val deadline = System.currentTimeMillis() + 15 * 60_000
+    while (System.currentTimeMillis() < deadline) {
+        delay(interval * 1000L + Random.nextLong(500))
+        when (val result = tokenClient.pollDeviceCode(deviceCode)) {
+            is Authorized -> return result.tokens
+            is Pending -> continue
+            is SlowDown -> interval += 5
+            is Expired -> throw DeviceCodeExpiredException()
+            is Denied -> throw AuthorizationDeniedException()
+        }
+    }
+    throw DeviceCodeExpiredException()
+}
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+Respect `slow_down` — aggressive polling triggers lockouts and bad UX on shared Wi‑Fi.
 
-Run migrations with lock_timeout and statement_timeout set.
+## Activation page requirements
 
-Load test at 2× expected peak with production-like payload sizes.
+The browser flow must:
 
-## Observability
+- Authenticate the user (existing session OK)
+- Display client name and requested scopes plainly
+- Accept user code with normalization (strip dash, uppercase)
+- Confirm consent before marking device code approved
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+```html
+<p><strong>Living Room TV</strong> wants access to:</p>
+<ul>
+  <li>View your profile</li>
+  <li>Play subscribed content</li>
+</ul>
+```
 
-Dashboards for oauth2 device authorization tv should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Phishing resistance comes from clarity — users should recognize the device name configured at registration time.
 
-## Security notes
+## Refresh token strategy
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Living-room devices expect persistent login. Issue refresh tokens with:
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+- `refresh_token_expires_in` aligned to product policy (often 180–365 days)
+- Rotation on each refresh where platform supports it
+- Server-side revocation list checked on every refresh
 
-## Common production mistakes
+On account password change or global logout, invalidate all device code families for that user.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## Binding tokens to hardware
 
-## Debugging and triage workflow
+Include a stable `device_id` (not MAC address in plaintext — use platform-provided ID) in token claims or parallel session record. Reject refresh attempts when device fingerprint changes unexpectedly — indicates token export from TV storage.
 
-When production misbehaves, work top-down:
+## LLM-enabled TV apps
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Voice assistants on TVs combine device authorization with **narrow scopes**:
 
-## Operational checklist
+- `assistant:query` for on-device NLU calling your gateway
+- No `account:payment` or `settings:admin` on the TV client
+- Push sensitive account changes to mobile web only
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Log `device_id`, `client_id`, and scope set at token issuance — support teams need to trace which living-room device triggered a bad purchase or data export.
 
-## Performance tuning notes
+## Operational metrics
 
-Measure before optimizing oauth2 device authorization tv. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+Track:
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+- Median time from code display to authorization complete (target under 60s)
+- Poll requests per successful auth (detect client bugs)
+- Expired codes without authorization (UX friction signal)
+- Refresh failure rate by device model (storage or clock issues)
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+Alert on spikes in `access_denied` for a single client_id — may indicate confused users or abuse.
 
-## Rollout and migration
+## Testing without a physical TV
 
-Ship oauth2 device authorization tv changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Use CLI harness implementing the same grant:
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+```bash
+./tv-sim login --client-id tv-staging
+# prints user code; open activation URL in browser
+# polls until tokens returned; writes to /tmp/tv-sim.tokens.json
+```
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Run integration tests in CI against a dockerized IdP with fixed clock for expiry edge cases.
 
-## Testing recommendations
+## Living-room UX details
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Show the user code in grouped blocks (XXXX-XXXX) with a QR encoding `verification_uri_complete`. Auto-refresh the code 30 seconds before expiry without forcing navigation — users abandon flows when codes die silently mid-entry. Pair audio cues sparingly; accessibility matters for visually impaired users on connected TVs.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+For LLM-powered TVs, display which account will be linked before polling completes so households with multiple profiles do not attach the wrong subscription tier.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Accessibility and localization
 
-## Incident patterns we see
+User codes must remain readable with large-type modes enabled. Localize activation instructions but keep codes ASCII — do not transliterate codes into non-Latin scripts. Screen readers on companion mobile apps should announce the verification URL and code length, not the raw secret device_code stored on TV.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## Partner OEM integrations
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+OEM partners embedding your app may supply custom activation domains. Register redirect and verification URI allowlists per `client_id` and test on factory images — preproduction TVs often ship with outdated CA bundles that break HTTPS to your auth server until firmware updates land.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Security review checklist
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Before launching device authorization on a new platform:
+
+- Hash device codes at rest; never log raw device codes alongside user PII in the same event.
+- Enforce maximum poll rate per device_code and per IP subnet.
+- Require user confirmation screen showing client logo and name matched to registered metadata.
+- Support global logout that revokes all device refresh tokens for the account.
+- Pen-test the activation page for CSRF on consent submission and user code brute force (rate limit + lockout).
+
+## Comparison with authorization code on hybrid TVs
+
+Some smart TV browsers now support Custom Tabs or embedded WebView logins. Prefer device authorization when the platform cannot reliably receive redirect URIs or when OEM security review forbids storing OAuth client secrets in firmware. Hybrid flows that embed a full browser login often break silently after WebView certificate updates — device codes fail loudly with visible expiry, which is easier to support remotely.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- [RFC 8628 — OAuth 2.0 Device Authorization Grant](https://www.rfc-editor.org/rfc/rfc8628)
+- [OAuth.net device authorization](https://oauth.net/2/grant-types/device-code/)
+- [Google limited-input device flow](https://developers.google.com/identity/protocols/oauth2/limited-input-device)
+
+## Production notes for LLM stacks
+
+When `oauth2-device-authorization-tv` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `oauth2 device authorization for tv` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Authorization server configuration
+
+Enable refresh token rotation in your IdP (Auth0, Okta, Keycloak, Cognito) and verify the behavior in a staging tenant before mobile clients ship. Rotation should issue a **new refresh token** on every refresh response and invalidate the previous token in the same family. Store only hashed refresh token identifiers server-side so database leaks do not grant session persistence.
+
+Document the client behavior matrix: public clients must use PKCE; confidential backends may use client authentication on the token endpoint; never mix refresh token policies across platforms using the same OAuth client ID if redirect and storage models differ.
+
+## Detecting token reuse
+
+When a refresh token is presented twice, treat it as compromise: revoke the entire token family, force re-authentication for that user session, and emit a security event with device fingerprint and IP. Rate-limit refresh endpoints separately from login to prevent brute force against leaked tokens.
+
+```typescript
+async function rotateRefresh(oldToken: string): Promise<TokenPair> {
+  const row = await db.refreshTokens.findByHash(hash(oldToken));
+  if (!row || row.revoked) {
+    await revokeFamily(row?.familyId);
+    throw new ReuseDetectedError();
+  }
+  await db.refreshTokens.revoke(row.id);
+  return issueNewPair(row.familyId, row.userId);
+}
+```
+
+## Mobile and SPA considerations
+
+SPAs should not store refresh tokens in localStorage. Prefer HttpOnly cookies with SameSite constraints for web, and secure enclave / Keychain storage for native. LLM features that call backends on behalf of users should use short-lived access tokens minted server-side—not long-lived refresh tokens embedded in client-side agent runtimes.

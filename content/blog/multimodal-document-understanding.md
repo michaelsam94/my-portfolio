@@ -3,8 +3,8 @@ title: "Document Understanding with VLMs"
 slug: "multimodal-document-understanding"
 description: "Extract structured data from PDFs and scans using vision-language models: layout parsing, table extraction, OCR fallbacks, and accuracy validation."
 datePublished: "2025-08-07"
-dateModified: "2025-08-07"
-tags: ["AI", "Document Processing", "Machine Learning", "Backend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "vision language models, document understanding, PDF extraction, VLM OCR, structured document parsing, invoice processing AI"
 faq:
   - q: "When should I use a VLM instead of traditional OCR plus rules?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is the cost of processing documents with GPT-4o or Claude?"
     a: "A 10-page PDF at 150 DPI costs roughly $0.05–$0.30 depending on model and tile count. Pre-process with layout detection to send only relevant regions. Cache extractions by document hash."
 ---
-
 Accounts payable receives 2,000 invoices monthly—PDFs, phone photos, faxes. A rules engine built in 2019 handles your top 12 vendors and fails on everything else. Vision-language models read documents the way humans do: they see layout, context, and handwriting without per-template configuration. The trade-off is cost per page and the need for validation on fields that move money.
 
 ## Pipeline architecture
@@ -203,17 +202,6 @@ Validate extracted tables: row count matches visual row count, column sums match
 
 Pair with [multimodal audio transcription Whisper](https://blog.michaelsam94.com/multimodal-audio-transcription-whisper/) when documents include embedded audio notes or call transcripts.
 
-## Common production mistakes
-
-Teams get multimodal document understanding wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Production implementations of multimodal document understanding fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
-
 ## Resources
 
 - [GPT-4o vision guide](https://platform.openai.com/docs/guides/vision) — image input and structured outputs
@@ -221,3 +209,17 @@ Production implementations of multimodal document understanding fail when stagin
 - [LayoutParser](https://layout-parser.github.io/) — document layout detection toolkit
 - [Qwen2-VL technical report](https://arxiv.org/abs/2409.12191) — open multimodal document model
 - [Azure Document Intelligence](https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/) — enterprise OCR and layout API
+
+## Production notes for LLM stacks
+
+When `multimodal-document-understanding` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `document understanding with vlms` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

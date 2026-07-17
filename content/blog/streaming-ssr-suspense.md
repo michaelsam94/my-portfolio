@@ -3,7 +3,7 @@ title: "Streaming SSR and Suspense Boundaries"
 slug: "streaming-ssr-suspense"
 description: "Streaming SSR and Suspense boundaries explained: how progressive rendering cuts TTFB, streams a shell first, and hydrates selectively without blocking on slow data."
 datePublished: "2026-04-05"
-dateModified: "2026-04-05"
+dateModified: "2026-07-17"
 tags: ["Web", "Frontend", "Performance"]
 keywords: "streaming SSR, Suspense, server rendering, progressive rendering, TTFB, selective hydration, shell streaming"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "A Suspense boundary marks a region of the UI that can render a fallback (like a skeleton) while its data or code loads. During streaming SSR, each boundary becomes a unit of streaming: the server sends the fallback immediately as part of the shell, then streams the resolved content for that boundary when it's ready. Boundaries are how you tell the framework which parts of the page may arrive later."
   - q: "What is selective hydration?"
     a: "Selective hydration lets the browser hydrate parts of the page independently as their code and streamed HTML arrive, rather than waiting to hydrate the whole tree at once. It also prioritizes hydrating components the user interacts with first. Combined with streaming, it means a page can become interactive in pieces, and a slow section never blocks interactivity elsewhere."
+faqAnswers:
+  - question: "When is streaming ssr suspense the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for streaming ssr suspense?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back streaming ssr suspense safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Classic server-side rendering has a cruel property: the user sees nothing until the server has rendered *everything*. One slow database query for the recommendations widget holds the entire HTML response hostage, and the browser sits on a blank screen. Streaming SSR breaks that coupling. The server sends an initial HTML shell the instant it's ready, then streams the rest of the page in chunks as each region's data resolves. Suspense boundaries are how you declare which regions are allowed to arrive late. Together they turn "wait for the slowest thing, then show everything" into "show the fast things now, fill in the slow things as they come."
 
 I've spent a lot of time chasing Time to First Byte and Largest Contentful Paint on content-heavy React apps, and streaming SSR is the technique that moved those numbers the most without gutting features. Here's how it actually works and where the sharp edges are.

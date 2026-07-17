@@ -1,111 +1,199 @@
 ---
 title: "AI Agents: Metric Store Definition"
 slug: "agent-metric-store-definition"
-description: "Metric Store Definition: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "How to define agent metrics once in a metric store so eval dashboards, cost alerts, and product analytics stop disagreeing on what success means."
 datePublished: "2025-03-11"
 dateModified: "2025-03-11"
 tags: ["AI", "Agent", "Metric"]
-keywords: "agent, metric, store, definition, ai, production, engineering, architecture"
+keywords: "metric store, semantic metrics, agent observability, dbt metrics, LLM eval definitions, single source of truth, agent KPIs"
 faq:
-  - q: "What is Metric Store Definition?"
-    a: "Metric Store Definition covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Metric Store Definition?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Metric Store Definition?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Metric Store Definition fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Metric Store Definition should be observable in production and safe to change in small diffs."
+  - q: "What belongs in a metric store versus a raw events table?"
+    a: "Events capture what happened (tool calls, tokens, latency samples). The metric store captures how you aggregate those events into named, versioned KPIs with explicit grain, filters, and owners. Dashboards and alerts should reference metric names, not re-implement SQL in every repo."
+  - q: "How do agent-specific metrics differ from web analytics metrics?"
+    a: "Agent metrics usually combine retrieval quality, tool success, human override rate, and cost per resolved task. They are often session-scoped rather than page-scoped, and they need lineage to prompt versions and model IDs so regressions are attributable."
+  - q: "When should we block a deploy if a metric definition changes?"
+    a: "Block when the change is breaking: renamed metric, altered grain, or a filter that removes historical comparability. Non-breaking additive dimensions can ship with a minor version bump. Treat metric YAML like API schema—consumers depend on stable semantics."
+  - q: "Can one metric store serve both product analytics and ML eval?"
+    a: "Yes, if you define separate metric namespaces (product vs eval) with shared dimensions like tenant_id and agent_version. The failure mode is forcing one SQL definition to serve incompatible audiences; split metrics, share dimensions."
 ---
-Most teams encounter metric store definition after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The incident started quietly. Finance opened a ticket because "cost per resolved ticket" jumped 40% week over week. Support's dashboard showed flat resolution rates. The agent team's LangSmith export said quality was up. Three teams, three numbers, one executive question—and nobody could explain the gap in under an hour.
 
-When metric store definition is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The root cause was not model drift. It was metric drift. Each team had written its own SQL for "resolved," "cost," and "session." Same English words, different filters, different grains. That is the problem a metric store definition solves: one authoritative, versioned definition that downstream dashboards, alerts, eval pipelines, and agent orchestration code can reference without re-deriving semantics in every repository.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why agent stacks sprout duplicate metrics
 
-Solid AI engineering turns metric store definition from a recurring argument into a documented pattern with tests and an owner.
+Agent products emit noisy telemetry. A single user turn might produce embedding calls, retrieval hits, tool invocations, streaming tokens, and a human thumbs-down three minutes later. Without a metric store, each squad picks the slice they care about:
 
-## Design principles that survive production
+- Platform engineers track p95 latency and error codes.
+- ML engineers track eval scores on golden sets.
+- Product tracks task completion in the application database.
+- Finance tracks invoice line items from the model provider.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent metric store definition bugs hide.
+All of these are legitimate. The failure mode is when someone stitches them together in a slide deck using column names that sound alike. `task_completed` in Postgres might mean "user clicked Done," while `task_resolved` in the warehouse might mean "agent emitted a terminal tool result with no escalation." Those are not the same event.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for metric store definition, you do not yet understand the behavior you shipped.
+A metric store sits above raw tables and below dashboards. It answers: given our agreed business logic, what is the SQL (or equivalent) that computes `agent_cost_per_resolved_task` at daily grain for tenant X, and who owns it?
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Anatomy of a metric definition
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent metric store definition flows so duplicates are harmless or detectable.
+Think of each metric as a small contract with five non-negotiable fields:
 
-## Implementation patterns
+| Field | Question it answers |
+|-------|---------------------|
+| **Name** | Stable identifier used in code and alerts |
+| **Grain** | One row per what? (session, turn, tenant-day) |
+| **Measure** | Sum, rate, percentile, ratio—explicit |
+| **Filters** | What counts and what is excluded |
+| **Dimensions** | Safe group-bys (model, prompt version, plan tier) |
 
-A practical baseline for metric store definition in ai stacks:
+For agent workloads, also document **attribution lag**. Human feedback arrives late. If your metric mixes same-session labels with next-day corrections, your "accuracy rate" will move when backfills run—not when behavior changes.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Here is a minimal YAML-style definition you might check into git and validate in CI:
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent metric store definition changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Metric Store Definition: typed boundary + structured errors
-export async function handleMetricStoreDefinition(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-metric-store-definition");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+# metrics/agent_resolved_task_rate.yaml
+version: 2
+owner: agent-platform@company.com
+metric: agent_resolved_task_rate
+description: >
+  Share of agent sessions that reach a terminal success state without
+  human handoff within 30 minutes of session start.
+grain: session
+type: ratio
+numerator:
+  sql: |
+    count(distinct case
+      when terminal_status = 'success'
+       and handoff_at is null
+      then session_id end)
+denominator:
+  sql: count(distinct session_id)
+filters:
+  - agent_version >= '2.4.0'
+  - environment = 'production'
+dimensions:
+  - tenant_id
+  - model_id
+  - prompt_bundle_id
+sla:
+  freshness_hours: 6
+  breaking_change_requires: platform-approval
 ```
 
+The point is not YAML specifically—dbt MetricFlow, Transform, Looker's LookML, or an internal registry all work. The point is that the definition is **reviewable**, **diffable**, and **owned**.
 
-## Operational concerns
+## Wiring definitions into agent runtime
 
-Alert on user-visible symptoms for metric store definition — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Definitions only matter if production code references them. Two patterns work well:
 
-Production agent metric store definition work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Push metrics at the edge.** Instrument the agent orchestrator to emit pre-labeled counters that match store names (`agent_tool_failure_total{tool="calendar"}`). Cheap at query time, but you must keep label sets aligned with store dimensions.
 
-Rollouts for metric store definition benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Pull metrics in the warehouse.** Land raw events, materialize facts, let the metric store compile definitions into scheduled queries. Better for ratios and late-arriving feedback, at the cost of freshness measured in hours.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Most teams hybridize: low-latency counters for paging, warehouse metrics for executive review. The metric store links them with documented reconciliation queries ("Prometheus counter X should approximate BigQuery metric Y within 5%").
 
-## Security and compliance angles
+Typed access from application code prevents string drift:
 
-Even when metric store definition is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```typescript
+// Generated from metric store registry — do not edit by hand
+export const AgentMetrics = {
+  resolvedTaskRate: {
+    id: "agent_resolved_task_rate",
+    version: 2,
+    requiredDimensions: ["tenant_id", "model_id"] as const,
+  },
+  costPerSessionUsd: {
+    id: "agent_cost_per_session_usd",
+    version: 1,
+    requiredDimensions: ["tenant_id", "model_id", "prompt_bundle_id"] as const,
+  },
+} as const;
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent metric store definition so security reviews do not rely on tribal knowledge.
+type MetricEvent = {
+  metricId: string;
+  metricVersion: number;
+  value: number;
+  dimensions: Record<string, string>;
+  observedAt: string;
+};
 
-## Testing strategy
+export function emitMetric(event: MetricEvent): void {
+  const spec = Object.values(AgentMetrics).find(
+    (m) => m.id === event.metricId && m.version === event.metricVersion
+  );
+  if (!spec) throw new Error(`Unknown metric: ${event.metricId} v${event.metricVersion}`);
+  for (const dim of spec.requiredDimensions) {
+    if (!event.dimensions[dim]) {
+      throw new Error(`Missing dimension ${dim} for ${event.metricId}`);
+    }
+  }
+  statsd.gauge(event.metricId, event.value, event.dimensions);
+}
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that metric store definition depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+When a data scientist adds a dimension in the warehouse but forgets the orchestrator, CI fails. That is desirable friction.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Lineage: the hidden half of definitions
 
-## Migration and evolution
+Agent metrics without lineage become forensic exercises. Every definition should declare upstream dependencies:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent metric store definition functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+- Raw event tables (`agent_turns`, `tool_invocations`, `billing_usage`)
+- Feature flags that gate behavior
+- Eval datasets used for offline scores (distinct from production metrics but often confused)
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where metric store definition spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Draw a simple DAG on paper before debating SQL. If `agent_quality_score` depends on `human_labels`, document label provenance and sampling bias. Product teams frequently compare offline eval spikes to production "quality" metrics that use a different label source—then chase ghosts.
 
-## Related concepts
+```sql
+-- Reconciliation query checked into repo: ops/agent_metric_reconciliation.sql
+-- Compare streaming counter to warehouse ratio for prior day
+with wh as (
+  select tenant_id, metric_value as warehouse_rate
+  from metric_store.agent_resolved_task_rate
+  where metric_date = current_date - 1
+),
+rt as (
+  select tenant_id,
+         sum(resolved_sessions)::float / nullif(sum(total_sessions), 0) as realtime_rate
+  from realtime.agent_session_counters
+  where date_trunc('day', bucket) = current_date - 1
+  group by 1
+)
+select coalesce(wh.tenant_id, rt.tenant_id) as tenant_id,
+       warehouse_rate,
+       realtime_rate,
+       abs(warehouse_rate - realtime_rate) as delta
+from wh
+full outer join rt using (tenant_id)
+where abs(warehouse_rate - realtime_rate) > 0.05;
+```
 
-Metric Store Definition intersects with broader ai topics — see companion notes on [agent-metric patterns](https://blog.michaelsam94.com/agent-metric/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Run this daily. Divergence within tolerance builds trust; silent divergence erodes it.
 
-## The takeaway
+## Rollout playbook that actually sticks
 
-Metric Store Definition rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent metric store definition becomes a maintainable asset instead of incident fuel.
+Week one: pick three metrics that executives already argue about. Not twenty. Write definitions, assign owners, publish a one-page glossary in plain language ("Resolved means the user did not open a human chat within 30 minutes").
+
+Week two: redirect existing dashboards to metric store IDs. Deprecate rogue SQL with lint rules in BI tools where possible.
+
+Week three: tie deploy gates to metric freshness and definition version. If `prompt_bundle_id` is a dimension, prompt promotions must emit it consistently or the deploy fails.
+
+Week four: run a guided incident drill. Change a filter in staging, show how downstream alerts shift, revert with a version bump. Teams remember drills more than policy docs.
+
+Common failure: treating the metric store as a data team side project. Agent metric definitions need on-call rotation from platform engineering, not a quarterly OKR orphan.
+
+## Closing the loop with eval and cost
+
+Once definitions stabilize, agent teams can automate sanity checks:
+
+- **Pre-release:** compare offline eval on golden tasks with production metric baselines by cohort.
+- **Post-release:** canary on `agent_cost_per_resolved_task` and `handoff_rate`, not just error logs.
+- **FinOps:** attribute spend to `model_id` and `prompt_bundle_id` dimensions so finance does not re-aggregate invoices manually.
+
+The metric store is not glamour work. It is the difference between arguing about SQL in Slack and arguing about product behavior with shared numbers—which is at least a fair fight.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [dbt Labs: About MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow) — semantic layer and metric definitions over warehouse models
+- [Transform: Metrics Framework](https://docs.transform.co/docs/metrics-framework) — YAML-centric metric definitions with governance hooks
+- [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) — standard attribute names for traces and metrics at the edge
+- [Google SRE: Monitoring distributed systems](https://sre.google/sre-book/monitoring-distributed-systems/) — choosing user-visible indicators over vanity counters
+- [LangSmith evaluation docs](https://docs.smith.langchain.com/evaluation) — offline eval patterns that must stay separate from production metric definitions

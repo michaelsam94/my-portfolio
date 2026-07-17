@@ -1,111 +1,343 @@
 ---
-title: "AI Agents: Iam Policy Simulator"
+title: "IAM Policy Simulator for Agent Tool Permissions"
 slug: "agent-iam-policy-simulator"
-description: "Iam Policy Simulator: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Simulate IAM policies before agent tool deployments—model least-privilege for LLM-invoked AWS actions, catch Allow gaps in CI, and explain denials to operators without production trial-and-error."
 datePublished: "2026-01-16"
 dateModified: "2026-01-16"
-tags: ["AI", "Agent", "Iam"]
-keywords: "agent, iam, policy, simulator, ai, production, engineering, architecture"
+tags: ["AI Agents", "IAM", "Security", "AWS"]
+keywords: "IAM policy simulator, agent tool permissions, AWS IAM simulate, least privilege, LLM tool calling, policy as code"
 faq:
-  - q: "What is Iam Policy Simulator?"
-    a: "Iam Policy Simulator covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Iam Policy Simulator?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Iam Policy Simulator?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Iam Policy Simulator fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Iam Policy Simulator should be observable in production and safe to change in small diffs."
+  - q: "Why simulate IAM policies instead of testing in production?"
+    a: "Agent tools invoke real infrastructure—S3 reads, Lambda invokes, Secrets Manager fetches. Production trial-and-error creates audit noise, can trigger guardrails, and teaches the model wrong retry patterns. Simulation evaluates Allow/Deny decisions against hypothetical requests without side effects."
+  - q: "Can the AWS IAM Policy Simulator cover every agent tool path?"
+    a: "It evaluates identity-based and resource-based policies for a given principal, action, and resource ARN. It does not simulate SCPs, permission boundaries, session policies, or VPC endpoint policies in all combinations unless you layer those checks separately. Treat simulator results as necessary but not sufficient."
+  - q: "How do you keep simulated policies in sync with deployed agents?"
+    a: "Generate the agent execution role policy from the same Terraform or CDK module CI deploys. Run simulation tests against a manifest of every tool action the agent registry exposes. Fail CI when a new tool is registered but no simulation case exists."
+  - q: "What should operators see when an agent tool hits AccessDenied?"
+    a: "Return a structured denial with simulated evaluation summary—not raw AWS XML. Include which statement blocked, suggested least-privilege fix, and a link to the policy PR. Agents should surface 'permission denied on s3:GetObject for arn:...' not hallucinate success."
 ---
-Most teams encounter iam policy simulator after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
 
-When iam policy simulator is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The agent's new "analyze CloudTrail logs" tool shipped Friday. By Monday it had **AccessDenied** on half its invocations — not because the policy was missing, but because a resource-level `Deny` on the logging bucket conflicted with an identity `Allow` on `s3:*`. The on-call engineer fixed it by attaching `AdministratorAccess` to the execution role "temporarily." That is the failure mode **IAM policy simulation** exists to prevent: guessing in production instead of proving decisions beforehand.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Agents that call cloud APIs are IAM clients. Every tool definition — read object, start Step Function, query Athena — maps to an AWS action and resource ARN pattern. Simulation lets you ask "if this role calls this action on this resource, what happens?" before the LLM ever sees the tool.
 
-Solid AI engineering turns iam policy simulator from a recurring argument into a documented pattern with tests and an owner.
+## Agent IAM model
 
-## Design principles that survive production
+Separate concerns cleanly:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent iam policy simulator bugs hide.
+| Layer | Owns | Example |
+|-------|------|---------|
+| Agent runtime role | What tools may execute | `agent-runner-prod` |
+| Tool registry | Action catalog + input schemas | `s3_read_object`, `lambda_invoke` |
+| Per-tenant scope | Resource ARN prefixes | `arn:aws:s3:::tenant-acme-*` |
+| Session policy (optional) | Ephemeral narrowing | MCP session bound to one bucket |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for iam policy simulator, you do not yet understand the behavior you shipped.
+The execution role should be **narrower than the human who deployed the agent**. Humans have console access; agents need programmatic least privilege with no wildcards on `Resource: "*"` unless the action requires it (e.g., `sts:GetCallerIdentity`).
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Policy manifest for tools
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent iam policy simulator flows so duplicates are harmless or detectable.
+Derive simulation cases from the tool registry — one case per (action, resource pattern, condition) tuple:
 
-## Implementation patterns
+```yaml
+# policies/agent-tools/manifest.yaml
+execution_role: arn:aws:iam::123456789012:role/agent-runner-prod
 
-A practical baseline for iam policy simulator in ai stacks:
+tools:
+  s3_read_object:
+    actions:
+      - s3:GetObject
+      - s3:GetObjectVersion
+    resources:
+      - "arn:aws:s3:::corp-knowledge/*"
+      - "arn:aws:s3:::corp-knowledge"
+    conditions:
+      StringEquals:
+        s3:ExistingObjectTag/Classification: ["public", "internal"]
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+  lambda_invoke_analyzer:
+    actions:
+      - lambda:InvokeFunction
+    resources:
+      - "arn:aws:lambda:us-east-1:123456789012:function:log-analyzer-*"
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent iam policy simulator changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Iam Policy Simulator: typed boundary + structured errors
-export async function handleIamPolicySimulator(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-iam-policy-simulator");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+  secrets_fetch:
+    actions:
+      - secretsmanager:GetSecretValue
+    resources:
+      - "arn:aws:secretsmanager:us-east-1:123456789012:secret:agent/*"
 ```
 
+Each tool maps to IAM actions — not English descriptions. When product adds a tool, they add simulation cases; CI blocks merge otherwise.
 
-## Operational concerns
+## AWS IAM SimulatePrincipalPolicy
 
-Game-day exercises for iam policy simulator beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+The native API evaluates policies attached to a principal:
 
-Production agent iam policy simulator work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+# scripts/simulate_agent_policies.py
+import boto3
+import yaml
+from dataclasses import dataclass
 
-Rollouts for iam policy simulator benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+iam = boto3.client("iam")
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+@dataclass
+class SimCase:
+    action: str
+    resource: str
+    context: dict | None = None
+    expect: str  # "allowed" | "denied"
 
-## Security and compliance angles
+def simulate(role_arn: str, cases: list[SimCase]) -> list[dict]:
+    policy_source_arn = role_arn
+    results = []
 
-Even when iam policy simulator is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+    # Batch in groups of 100 (API limit)
+    for i in range(0, len(cases), 100):
+        batch = cases[i : i + 100]
+        response = iam.simulate_principal_policy(
+            PolicySourceArn=policy_source_arn,
+            ActionNames=[c.action for c in batch],
+            ResourceArns=[c.resource for c in batch],
+            ContextEntries=flatten_context(batch),
+        )
+        for case, eval_result in zip(batch, response["EvaluationResults"]):
+            decision = eval_result["EvalDecision"]  # allowed, explicitDeny, implicitDeny
+            passed = (decision == "allowed") == (case.expect == "allowed")
+            results.append({
+                "action": case.action,
+                "resource": case.resource,
+                "decision": decision,
+                "expect": case.expect,
+                "passed": passed,
+                "matched_statements": eval_result.get("MatchedStatements", []),
+            })
+    return results
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent iam policy simulator so security reviews do not rely on tribal knowledge.
+def flatten_context(cases: list[SimCase]) -> list[dict]:
+    entries = []
+    for idx, case in enumerate(cases):
+        if not case.context:
+            continue
+        for key, value in case.context.items():
+            entries.append({
+                "ContextKeyName": key,
+                "ContextKeyType": "string",
+                "ContextKeyValues": [str(value)],
+            })
+    return entries
+```
 
-## Testing strategy
+Run on every Terraform apply plan in CI against the **planned** policy document using `simulate_custom_policy` when the role does not exist yet:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that iam policy simulator depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```python
+def simulate_custom_policy(policy_doc: dict, cases: list[SimCase]) -> list[dict]:
+    response = iam.simulate_custom_policy(
+        PolicyInputList=[json.dumps(policy_doc)],
+        ActionNames=[c.action for c in cases],
+        ResourceArns=[c.resource for c in cases],
+    )
+    return parse_results(response, cases)
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Positive and negative test cases
 
-## Migration and evolution
+Simulation must prove both **allowed paths work** and **forbidden paths deny**:
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent iam policy simulator functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```yaml
+# policies/agent-tools/simulation-cases.yaml
+cases:
+  - name: read_public_knowledge_object
+    action: s3:GetObject
+    resource: arn:aws:s3:::corp-knowledge/runbooks/outage.md
+    context:
+      s3:ExistingObjectTag/Classification: internal
+    expect: allowed
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where iam policy simulator spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+  - name: deny_other_tenant_bucket
+    action: s3:GetObject
+    resource: arn:aws:s3:::tenant-other-private/data.csv
+    expect: denied
 
-## Related concepts
+  - name: deny_delete_on_read_only_tool
+    action: s3:DeleteObject
+    resource: arn:aws:s3:::corp-knowledge/runbooks/outage.md
+    expect: denied
 
-Iam Policy Simulator intersects with broader ai topics — see companion notes on [agent-iam patterns](https://blog.michaelsam94.com/agent-iam/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  - name: invoke_analyzer_in_scope
+    action: lambda:InvokeFunction
+    resource: arn:aws:lambda:us-east-1:123456789012:function:log-analyzer-prod
+    expect: allowed
+
+  - name: invoke_unrelated_lambda
+    action: lambda:InvokeFunction
+    resource: arn:aws:lambda:us-east-1:123456789012:function:payment-processor
+    expect: denied
+```
+
+Negative cases catch overly broad `Allow` statements — the silent security debt of most agent rollouts.
+
+## CI gate integration
+
+```yaml
+# .github/workflows/iam-simulate.yml
+name: IAM Policy Simulation
+on:
+  pull_request:
+    paths:
+      - "infra/iam/**"
+      - "policies/agent-tools/**"
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-iam-simulator
+      - run: pip install boto3 pyyaml
+      - run: python scripts/simulate_agent_policies.py --manifest policies/agent-tools/manifest.yaml --cases policies/agent-tools/simulation-cases.yaml --fail-fast
+```
+
+The CI role needs only `iam:SimulatePrincipalPolicy` and `iam:SimulateCustomPolicy` on the policies under test — not admin access.
+
+## Explaining denials to operators and agents
+
+When runtime hits `AccessDenied`, wrap AWS errors with simulation output captured at deploy time or re-run live:
+
+```typescript
+// agent-runtime/tool-executor.ts
+import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
+
+export async function explainDenial(
+  roleArn: string,
+  action: string,
+  resource: string
+): Promise<string> {
+  const iam = new IAMClient({});
+  const result = await iam.send(
+    new SimulatePrincipalPolicyCommand({
+      PolicySourceArn: roleArn,
+      ActionNames: [action],
+      ResourceArns: [resource],
+    })
+  );
+  const evalResult = result.EvaluationResults?.[0];
+  const decision = evalResult?.EvalDecision ?? "unknown";
+  const statements = evalResult?.MatchedStatements?.map((s) => s.SourcePolicyId) ?? [];
+
+  return [
+    `Decision: ${decision}`,
+    `Action: ${action}`,
+    `Resource: ${resource}`,
+    `Matched policies: ${statements.join(", ") || "none"}`,
+    decision !== "allowed"
+      ? "Suggested fix: add least-privilege Allow or adjust resource ARN scope in policies/agent-tools/manifest.yaml"
+      : "",
+  ].join("\n");
+}
+```
+
+Feed this string to the agent as tool error context — models recover better from structured denial than from opaque exceptions. **Never** tell the agent to "try another role" or escalate permissions autonomously.
+
+## SCPs, boundaries, and permission caps
+
+Organization SCPs can deny even when role simulation says Allow. Maintain a second check for high-risk actions:
+
+```python
+DENY_SCP_ACTIONS = {"iam:*", "organizations:*", "account:*"}
+
+def scp_risk_check(action: str) -> bool:
+    for pattern in DENY_SCP_ACTIONS:
+        if fnmatch(action, pattern):
+            return True
+    return False
+```
+
+Document that simulation reflects **effective identity policy** on the role, not full org effective access. For regulated agents, add a manual approval step when simulation introduces new actions on production resources.
+
+## Session policies for multi-tenant agents
+
+When one runtime serves multiple tenants, attach a **session policy** at assume-role time:
+
+```python
+import json
+import boto3
+
+def assume_tenant_role(tenant_id: str) -> dict:
+    sts = boto3.client("sts")
+    session_policy = {
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Action": ["s3:GetObject"],
+            "Resource": [f"arn:aws:s3:::tenant-{tenant_id}-*/*"],
+        }],
+    }
+    return sts.assume_role(
+        RoleArn="arn:aws:iam::123456789012:role/agent-runner-prod",
+        RoleSessionName=f"agent-{tenant_id}",
+        Policy=json.dumps(session_policy),
+    )["Credentials"]
+```
+
+Simulate the **intersection** of role policy and session policy — AWS evaluates both. Add cases per tenant prefix to catch cross-tenant leakage.
+
+## Policy generation from tool registry
+
+Reduce hand-written JSON drift by generating policies:
+
+```python
+def manifest_to_policy(manifest: dict) -> dict:
+    statements = []
+    for tool_name, tool in manifest["tools"].items():
+        statements.append({
+            "Sid": f"AgentTool_{tool_name}",
+            "Effect": "Allow",
+            "Action": tool["actions"],
+            "Resource": tool["resources"],
+            **({"Condition": tool["conditions"]} if "conditions" in tool else {}),
+        })
+    return {"Version": "2012-10-17", "Statement": statements}
+```
+
+Simulation tests run against generated output — single source of truth. Product defines tools; security reviews simulation cases; Terraform deploys generated policy.
+
+## Audit trail and change management
+
+Log every simulation run in CI with git SHA and case results. In production, log tool invocations with `(action, resource, decision, role_session)` — correlate with CloudTrail `SimulatePrincipalPolicy` if operators run ad-hoc checks.
+
+When denial rates spike after deploy:
+
+1. Diff simulation case failures in CI artifact
+2. Compare deployed policy version tag to manifest version
+3. Re-run simulation for failing `(action, resource)` pairs
+4. Roll back role policy before widening permissions
+
+## Common mistakes
+
+**Simulating only Allow paths.** Negative cases find `s3:*` statements you forgot about.
+
+**Using `Resource: "*"` for convenience.** Simulation passes; blast radius is unlimited. Require ARN patterns in manifest review.
+
+**Ignoring condition keys.** Tag-based access fails in production when objects lack tags; simulation must include `ContextEntries`.
+
+**Stale cases after tool rename.** Registry version bumps without case updates → CI green, production deny.
+
+**Trusting simulator for KMS grants and ABAC edge cases.** Extend with custom policy unit tests for key policies and VPC endpoint restrictions.
 
 ## The takeaway
 
-Iam Policy Simulator rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent iam policy simulator becomes a maintainable asset instead of incident fuel.
+IAM policy simulation turns agent tool permissions into tested, explainable code. Derive simulation cases from the tool registry, run positive and negative tests in CI with `SimulatePrincipalPolicy` and `SimulateCustomPolicy`, generate policies from manifests, and return structured denial explanations at runtime. Agents operating cloud infrastructure need least privilege that is proven before deploy — not discovered by attaching AdministratorAccess under incident pressure.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [AWS — iam:SimulatePrincipalPolicy API reference](https://docs.aws.amazon.com/IAM/latest/APIReference/API_SimulatePrincipalPolicy.html)
+- [AWS — iam:SimulateCustomPolicy API reference](https://docs.aws.amazon.com/IAM/latest/APIReference/API_SimulateCustomPolicy.html)
+- [AWS IAM Policy Simulator console](https://policies.aws.amazon.com/)
+- [Terraform — aws_iam_policy_document data source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document)
+- [AWS Well-Architected — Security pillar: grant least privilege](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/identity-and-access-management.html)

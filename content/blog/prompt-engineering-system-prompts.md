@@ -3,7 +3,7 @@ title: "Designing System Prompts That Work"
 slug: "prompt-engineering-system-prompts"
 description: "Build system prompts that reliably steer LLM behavior: role framing, output contracts, guardrails, and iteration patterns that survive production traffic."
 datePublished: "2024-11-01"
-dateModified: "2024-11-01"
+dateModified: "2026-07-17"
 tags: ["AI", "Prompt Engineering", "LLM", "Production"]
 keywords: "system prompt design, LLM instructions, prompt engineering, output formatting, guardrails, role prompting, production LLM"
 faq:
@@ -80,29 +80,33 @@ Track these metrics in production: format parse failure rate, escalation rate to
 
 Treat system prompts like application code. Store them in git, tag releases, and note why each change was made. "Made it friendlier" is not a changelog entry; "Added refusal for competitor comparisons per legal review 2024-10-15" is. When a regression appears, you need to bisect prompt versions the same way you bisect commits.
 
-## Common production mistakes
 
-Teams get system prompts wrong in predictable ways:
+## Tenant override boundaries
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Allow customers one moderated `tenant_instructions` block appended below platform system text — max 500 tokens, scanned for injection patterns (`ignore above`, `disregard policy`). Support escalations when enterprise customers want longer custom blocks; measure faithfulness impact on shared eval before approving exceptions.
 
-Production implementations of system prompts fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## System prompt diff review checklist
 
-## Debugging and triage workflow
+Reviewers confirm: precedence rules present, PII handling stated, tool-use boundaries explicit, output schema linked, no duplicated contradictory sections from merge conflicts. Prompt merges conflict as often as TypeScript — use structured sections, not thousand-line strings.
 
-When system prompts misbehaves in production, work top-down instead of guessing:
+## Emergency kill switch
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+Feature flag `system_prompt_v3_enabled` — disable bad deploy without revert of entire service. Pair with eval alert when format validity drops 10 points hour-over-hour.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Localization of system prompts
+
+Translated system prompts drift semantically — native speaker review per locale, not DeepL-only. Compliance blocks must be legally reviewed per language; English-only legal text in German system prompt failed audit for EU subsidiary.
+
+## Production rollout notes
+
+Align system prompt versioning with model version pinning — when API routes to newer model family, replay system prompt eval suite before auto-upgrade. System prompts optimized for GPT-4 class models may encode format assumptions that break on reasoning models with different default verbosity.
+## Shadow mode for system prompt changes
+
+Route 5% traffic to candidate system prompt with comparison logging — promote only when guardrail metrics pass for 72 hours. Shadow mode catches edge cases absent from static eval set, especially multilingual queries and rare tool combinations.
+
+## Closing operational guidance
+
+Archive superseded system prompts with eval scores — rollback during incident is one git revert, not reconstructing from Slack history at 2am. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

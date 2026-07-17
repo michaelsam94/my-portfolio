@@ -3,8 +3,8 @@ title: "Handling LLM Rate Limits Gracefully"
 slug: "llm-rate-limits-token-buckets"
 description: "Handle LLM API rate limits with token buckets, request queuing, backoff strategies, multi-provider failover, and client patterns that degrade gracefully instead of failing loudly."
 datePublished: "2024-12-30"
-dateModified: "2024-12-30"
-tags: ["AI", "LLM", "Backend", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM rate limits, token bucket rate limiting, API rate limit handling, OpenAI rate limit retry, LLM request queue"
 faq:
   - q: "What is the difference between RPM and TPM rate limits?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I prevent one tenant from consuming all rate limit capacity?"
     a: "Per-tenant token buckets inside your gateway. Each tenant gets a fair share of your org-level quota. When a tenant exhausts their bucket, queue or reject their requests — don't let them starve other tenants by burning shared provider limits."
 ---
-
 429 Too Many Requests at 2pm on a launch day. Your agent retries instantly — 429 again. And again. Now you're in a retry storm that makes things worse, users see errors, and the provider hasn't reset your quota because you never backed off. Rate limits are a shared resource contract, not an obstacle to brute-force. Handling them gracefully is basic reliability engineering.
 
 ## Understanding provider limits

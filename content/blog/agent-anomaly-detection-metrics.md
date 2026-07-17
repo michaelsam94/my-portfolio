@@ -1,111 +1,174 @@
 ---
 title: "AI Agents: Anomaly Detection Metrics"
 slug: "agent-anomaly-detection-metrics"
-description: "Anomaly Detection Metrics: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Choosing and calibrating anomaly metrics for LLM agent fleets — token burn spikes, tool-loop detection, retrieval drift, and alert thresholds that on-call engineers trust."
 datePublished: "2025-03-04"
 dateModified: "2025-03-04"
 tags: ["AI", "Agent", "Anomaly"]
-keywords: "agent, anomaly, detection, metrics, ai, production, engineering, architecture"
+keywords: "anomaly detection metrics, agent observability, token spike alerting, Prometheus anomaly, isolation forest ops, false positive rate, LLM SLO burn"
 faq:
-  - q: "What is Anomaly Detection Metrics?"
-    a: "Anomaly Detection Metrics covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Anomaly Detection Metrics?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Anomaly Detection Metrics?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Anomaly Detection Metrics fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Anomaly Detection Metrics should be observable in production and safe to change in small diffs."
+  - q: "Which metrics best detect anomalies in agent workloads?"
+    a: "Combine rate metrics (tokens/sec, tool calls/min, retrieval queries/sec), distribution metrics (p99 latency per tool, embedding similarity scores), and ratio metrics (refusal rate, error-to-success ratio, cost per completed task). Single-threshold alerts on raw counters fail when traffic grows — use seasonality-aware baselines or quantile-based bands."
+  - q: "How do you reduce false positives from anomaly alerts?"
+    a: "Group alerts by tenant and agent version, require multi-signal confirmation before paging (e.g., token spike AND error rate rise), use minimum support windows (anomaly sustained 10+ minutes), and maintain suppression rules for known events like marketing launches or batch reindex jobs."
+  - q: "What is the difference between point, contextual, and collective anomalies for agents?"
+    a: "Point anomalies are single outlier observations (one request with 500k tokens). Contextual anomalies are outliers given context (high token count during a known short prompt). Collective anomalies are subtle shifts across sequences (slow tool-call loop that each step looks normal). Agent failures often manifest as collective anomalies — optimize detectors accordingly."
+  - q: "Should anomaly detection use ML models or statistical thresholds?"
+    a: "Start with robust statistics (median absolute deviation, EWMA bands, seasonal decomposition) on 5–10 core metrics — they're explainable in postmortems. Add lightweight ML (isolation forest, matrix profile) for multivariate patterns once baselines are stable. Black-box models without feature attribution erode on-call trust quickly."
 ---
-Anomaly Detection Metrics sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Our pager fired at 3 a.m. because token consumption doubled. On-call rolled back a deploy that had nothing to do with it — marketing had emailed 40,000 users a link to the agent. The anomaly was real; the diagnosis was wrong because we alerted on a global counter without tenant segmentation, seasonality, or a companion signal distinguishing traffic growth from runaway tool loops. Anomaly detection for agent fleets lives or dies on **metric selection** and **threshold semantics**, not on which fancy algorithm you import.
 
-When anomaly detection metrics is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agents generate time series traditional web SRE playbooks weren't designed for: bursty LLM calls, fat-tailed latency, retrieval fan-out, and feedback loops where one bad tool response triggers ten retries. This piece is about the metrics worth instrumenting and how to calibrate detectors so alerts mean "investigate agent behavior" — not "someone popular clicked a link."
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Instrumentation map for agent pipelines
 
-Solid AI engineering turns anomaly detection metrics from a recurring argument into a documented pattern with tests and an owner.
+Before algorithms, enumerate what you measure. A minimal agent observability schema:
 
-## Design principles that survive production
+| Layer | Metrics | Anomaly question |
+|-------|---------|------------------|
+| Gateway | requests/sec, auth failures, queue depth | DDoS or credential stuffing? |
+| Orchestrator | active sessions, steps/session, loop detections | Runaway multi-turn loops? |
+| LLM | tokens in/out, time-to-first-token, model routing mix | Cost attack or wrong model route? |
+| Retrieval | queries/sec, chunks/request, cache hit rate | Retrieval storm or index corruption? |
+| Tools | calls/tool, error rate/tool, p99 latency/tool | Broken integration or abuse? |
+| Outcomes | task completion rate, human handoff rate | Silent quality collapse? |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent anomaly detection metrics bugs hide.
+Emit labels consistently: `tenant_id`, `agent_version`, `model`, `tool_name`. Anomalies without labels are noise.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for anomaly detection metrics, you do not yet understand the behavior you shipped.
+```python
+# instrumentation/agent_metrics.py
+from prometheus_client import Counter, Histogram, Gauge
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent anomaly detection metrics flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for anomaly detection metrics in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent anomaly detection metrics changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Anomaly Detection Metrics: typed boundary + structured errors
-export async function handleAnomalyDetectionMetrics(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-anomaly-detection-metrics");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+TOKENS = Counter(
+    "agent_llm_tokens_total",
+    "Tokens consumed",
+    ["tenant_id", "agent_version", "direction"],  # direction=in|out
+)
+TOOL_CALLS = Counter(
+    "agent_tool_calls_total",
+    "Tool invocations",
+    ["tenant_id", "tool_name", "status"],
+)
+SESSION_STEPS = Histogram(
+    "agent_session_steps",
+    "Orchestration steps per completed session",
+    ["tenant_id", "agent_version"],
+    buckets=[1, 2, 5, 10, 20, 50, 100],
+)
+ACTIVE_LOOPS = Gauge(
+    "agent_detected_loops",
+    "Sessions flagged for repeated identical tool pattern",
+    ["tenant_id"],
+)
 ```
 
+## Point anomalies: spikes you can explain
 
-## Operational concerns
+Point anomalies are single observations far from typical — a request with 200k input tokens, a tool call returning 50MB JSON. They're the easiest to detect and the easiest to misinterpret.
 
-Runbooks for anomaly detection metrics should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Use **per-request caps** as hard limits (fail closed) and **statistical detectors** for softer warnings. Robust z-scores via median absolute deviation (MAD) resist LLM latency outliers better than mean/std:
 
-Production agent anomaly detection metrics work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+import numpy as np
 
-Rollouts for anomaly detection metrics benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+def mad_zscore(series: np.ndarray, value: float) -> float:
+    med = np.median(series)
+    mad = np.median(np.abs(series - med)) or 1e-9
+    return 0.6745 * (value - med) / mad
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+# Alert if mad_zscore(last_7d_hourly_tokens, current_hour_tokens) > 6
+```
 
-## Security and compliance angles
+For token spikes, always pair with **request count**. Tokens/sec up 3× because requests/sec up 3× is capacity planning, not an incident. Tokens/sec up 3× at flat request count suggests prompt injection, retrieval bloat, or a model routing bug.
 
-Even when anomaly detection metrics is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Contextual anomalies: same number, different meaning
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent anomaly detection metrics so security reviews do not rely on tribal knowledge.
+Contextual anomalies violate expectations **given circumstances**. Completion tokens spike during "summarize this 80-page PDF" sessions — normal. The same spike on "what's the weather?" is not.
 
-## Testing strategy
+Encode context as detector dimensions:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that anomaly detection metrics depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+- **Intent class or route** (support vs coding vs retrieval-heavy)
+- **Input size bucket** (chars or pages ingested)
+- **User tier** (free vs enterprise quotas)
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Train separate baselines per `(tenant_id, route)` tuple. Cold-start tenants use global priors with wide bands until support ≥ 1000 sessions.
 
-## Migration and evolution
+Seasonality matters. B2B agents peak weekday mornings; consumer agents peak evenings. Use STL decomposition or Prophet-style seasonal bands on hourly aggregates before declaring anomaly.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent anomaly detection metrics functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Collective anomalies: where agents actually fail
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where anomaly detection metrics spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+The painful incidents are collective: each tool call looks fine, but the session executes `search → read → search → read` twenty times, burning tokens and never completing. Matrix profile algorithms and sequence-based rules catch these:
 
-## Related concepts
+```python
+def detect_tool_stutter(calls: list[str], window: int = 6) -> bool:
+    """True if same tool pattern repeats without progress."""
+    if len(calls) < window:
+        return False
+    recent = calls[-window:]
+    unique_tools = set(recent)
+    if len(unique_tools) <= 2 and recent.count(recent[0]) >= window // 2:
+        return True  # e.g., search,read,search,read,search,read
+    return False
+```
 
-Anomaly Detection Metrics intersects with broader ai topics — see companion notes on [agent-anomaly patterns](https://blog.michaelsam94.com/agent-anomaly/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Track **steps-to-completion** distributions per agent version. A deploy that raises p50 steps from 4 to 9 is a quality regression — collective drift — even if no single step errors.
 
-## The takeaway
+Similarly, watch **refusal rate** and **human escalation rate** in tandem. Refusals drop while escalations rise might indicate guardrail bypass, not improvement.
 
-Anomaly Detection Metrics rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent anomaly detection metrics becomes a maintainable asset instead of incident fuel.
+## Multivariate detection without black boxes
+
+Univariate alerts multiply; multivariate detectors find correlated shifts. Isolation forests on standardized feature vectors work when you limit features to those on-call can interpret:
+
+```python
+from sklearn.ensemble import IsolationForest
+
+features = ["tokens_out_p95", "tool_error_rate", "retrieval_chunks_p95", "ttft_p95"]
+X = hourly_rollups[features].values
+clf = IsolationForest(contamination=0.02, random_state=42)
+scores = clf.fit_predict(X[-168:])  # last week hourly
+# -1 = anomaly hour; log feature values alongside score for explainability
+```
+
+Never page on `-1` alone. Require at least one business-critical feature beyond bounds documented in the runbook.
+
+## Threshold design on-call engineers accept
+
+Alert fatigue kills agent platforms slowly. Rules that survived review with three teams:
+
+1. **Page on symptom, ticket on cause.** Page when task completion rate drops AND error rate rises; ticket when isolation forest score is weird but users unaffected.
+
+2. **Sustained breach.** Anomaly must persist 10–15 minutes to ignore flaky bursts from cold starts.
+
+3. **Minimum volume.** Don't z-score hours with &lt; 50 sessions — variance is meaningless.
+
+4. **Known-event suppressions.** Maintenance windows, index rebuilds, and launch calendars suppress predictable spikes.
+
+5. **Burn-rate alerts for SLOs.** Anomaly on error budget consumption (multi-window) beats static thresholds for latency.
+
+Document every alert with: **what it detects**, **what it doesn't**, **first actions**, **known false positives**. If you can't write that, delete the alert.
+
+## Feedback loops from incidents
+
+After every anomaly-driven incident or false page, record:
+
+- Which metric fired first
+- Root cause category (traffic, bug, attack, misconfiguration)
+- Whether companion metrics would have clarified faster
+
+Retune thresholds monthly from this log. Agents change behavior with every prompt and tool update — static thresholds rot faster than microservice CPU alerts.
+
+Synthetic probes help: scheduled canonical tasks ("health check agent" runs a fixed prompt/tool chain every 5 minutes). Anomaly on probe latency or token count signals platform regression independent of user traffic skew.
+
+Cost anomalies deserve equal billing with reliability anomalies. Track **cost per successful task** and **tokens per completed outcome** alongside latency. A deploy that doubles retrieval chunk count may leave error rates untouched while silently doubling inference spend — finance notices before SRE if you instrument spend as a first-class anomaly signal.
+
+Version your agent releases in metric labels. When `agent_version` shifts, expect baseline drift for 24–48 hours; temporarily widen bands or suppress version-comparison alerts until the new version accumulates enough samples. Otherwise every prompt change pages on-call for benign behavioral shifts.
+
+Anomaly detection for agents is not one algorithm — it's a layered strategy. Instrument rate, distribution, and ratio metrics with rich labels; treat point, contextual, and collective patterns differently; pair statistical bands with business SLO burn; and optimize for postmortem explainability over model sophistication. The goal is fewer 3 a.m. rollbacks for marketing emails, and faster detection of the tool loop that actually burns your budget.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Google SRE Workbook — Monitoring distributed systems](https://sre.google/workbook/monitoring/)
+- [Prometheus documentation — histograms and alerting](https://prometheus.io/docs/practices/histograms/)
+- [Robust statistics for anomaly detection (NIST Engineering Stats Handbook)](https://www.itl.nist.gov/div898/handbook/)
+- [Matrix Profile for time series motifs and discords](https://matrixprofile.org/)
+- [OpenTelemetry semantic conventions for generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)

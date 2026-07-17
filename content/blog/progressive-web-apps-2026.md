@@ -3,7 +3,7 @@ title: "Progressive Web Apps in 2026"
 slug: "progressive-web-apps-2026"
 description: "Where PWAs actually stand in 2026: service workers, installability, Web Push on iOS, offline strategies, and an honest take on when a PWA beats a native app."
 datePublished: "2026-07-03"
-dateModified: "2026-07-03"
+dateModified: "2026-07-17"
 tags: ["PWA", "Web", "Offline", "Mobile"]
 keywords: "PWA, progressive web apps, service workers, installable web apps, offline web, Web Push, web app manifest"
 faq:
@@ -111,6 +111,17 @@ The web has closed a lot of gaps — WebGPU for graphics, the File System Access
 Reach for a PWA when reach and update velocity matter more than deep OS integration: content sites, storefronts, dashboards, internal tools, communication apps. You get one codebase, instant loads, no store review, offline support, and — now — push on all major platforms. Reach for native when you need background execution, heavy graphics, or OS features the web can't touch, and consider a hybrid when you want most of the web's velocity with a few native capabilities bolted on.
 
 The technology arrived a while ago. In 2026 the PWA decision is a product decision about your specific app's needs, not a bet on whether the platform is ready — it is.
+
+
+## Web Share Target and badging in production
+
+Register your PWA as a share target so Android users can send photos or PDFs directly into your app from the system sheet. The manifest `share_target` entry must align with routes your service worker can offline-queue — a share target that 404s when offline trains users to abandon the installed app. Test share intents with large files; mobile browsers kill SWs that block the main thread during upload prep.
+
+The Badging API (`navigator.setAppBadge`) surfaces unread counts on home-screen icons without push. Pair badge updates with push notifications carefully: clear the badge when the user opens the inbox view, not only when they dismiss notifications. iOS support for badging on installed PWAs arrived alongside Web Push — verify current Safari release notes before assuming parity with Android.
+
+## CrUX-driven PWA investment cases
+
+Before committing eng weeks to install UX, pull Chrome UX Report data for your origin. If LCP and INP already pass thresholds but return-visitor rate is high, install prompts may move retention more than performance work. Conversely, a fast site with terrible offline behavior shows high bounce on `navigator.onLine === false` events in RUM — fix service worker strategy before marketing install banners.
 
 ## Resources
 

@@ -3,7 +3,7 @@ title: "GitOps Secrets with SOPS"
 slug: "ops-secrets-sops-age-encryption"
 description: "Encrypt secrets in Git with Mozilla SOPS and age: key management, Argo CD integration, rotation workflows, and why sealed-secrets isn't always the answer."
 datePublished: "2026-01-20"
-dateModified: "2026-01-20"
+dateModified: "2026-07-17"
 tags: ["DevOps", "GitOps", "Security", "Kubernetes"]
 keywords: "SOPS age encryption, GitOps secrets, Argo CD SOPS, Mozilla SOPS Kubernetes, encrypted secrets Git"
 faq:
@@ -178,6 +178,49 @@ When secrets sops age encryption misbehaves in production, work top-down instead
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## SOPS + age key ceremony
+
+Generate age keys in HSM or offline ceremony — store recipient public keys in repo, private keys only in CI KMS and operator password managers. Rotation procedure:
+
+1. Add new age recipient to `.sops.yaml`
+2. `sops updatekeys` all files
+3. Deploy CI with new key; revoke old after green deploy
+
+## File structure in monorepos
+
+```
+secrets/
+  staging/
+    database.enc.yaml
+  production/
+    database.enc.yaml
+```
+
+Never flatten — one wrong `sops -d` pipe to shell leaks prod into staging logs. CI decrypts only paths matching environment.
+
+## Integration with External Secrets Operator
+
+SOPS decrypt in CI → apply Kubernetes Secret is an anti-pattern. Prefer ESO pulling from Vault/AWS SM; use SOPS for Git-stored non-dynamic secrets (TLS certs, webhook HMAC keys) where audit trail in Git matters.
+
+## CI decrypt audit
+
+Log who triggered decrypt job (GitHub OIDC identity), which files touched — SOC2 auditors ask. Never print decrypted YAML to CI logs on validation failure; diff metadata only.
+
+## Multi-environment key segregation
+
+Staging age key must not decrypt production secrets — separate recipient lists in `.sops.yaml` per directory. Common mistake: one age key for all envs stored in shared 1Password vault.
+
+## Emergency decrypt break-glass
+
+Two-person rule for production age key — security and on-call. Audit log in vault who decrypted `production/database.enc.yaml` and when.
+
+## sops edit workflow
+
+Developers run `sops filename.enc.yaml` not decrypt-to-tmp — tmp file leaks on shared machines. Pre-commit hook blocks committing decrypted yaml extension.
+## KMS envelope hybrid
+
+Some teams SOPS-age for Git secrets, KMS for runtime — document boundary so engineers don't decrypt Git secrets into Kubernetes Secrets manually.
 
 ## Resources
 

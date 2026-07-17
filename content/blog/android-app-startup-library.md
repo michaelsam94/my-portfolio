@@ -105,6 +105,24 @@ App Startup is one tool in the cold-start toolbox, and it composes with the othe
 
 My default stance: adopt App Startup when provider count or init ordering is a real problem, be ruthless about marking components lazy, and always validate against a trace rather than intuition. Startup performance is unglamorous, measured in milliseconds, and absolutely worth it — those milliseconds are the first thing every user feels.
 
+## Initializer proguard keeps
+
+R8 removes Initializer classes if only referenced in manifest meta-data — add `-keep class com.example.init.** implements androidx.startup.Initializer`. Missing keep causes release-only `ClassNotFoundException` on cold start.
+
+## Lazy vs eager tradeoff
+
+Mark non-critical SDK init `Initializer<Lazy<Unit>>` or manual lazy singleton — Firebase and Maps on critical path delay `reportFullyDrawn` by hundreds of ms.
+
+## App Startup Library Supplement 0 on Samsung and Pixel divergence
+
+Exercise app startup library supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching app; regressions above 8% block release for `android-app-startup-library-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "App Startup Library Supplement 0" should map to a single runbook section with known workarounds.
+
+## Library regression gates for Play Vitals
+
+Before promoting `android-app-startup-library-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [App Startup — official documentation](https://developer.android.com/topic/libraries/app-startup)

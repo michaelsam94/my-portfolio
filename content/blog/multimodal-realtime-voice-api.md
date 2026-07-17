@@ -3,8 +3,8 @@ title: "Real-Time Voice with the Realtime API"
 slug: "multimodal-realtime-voice-api"
 description: "Build low-latency voice agents with OpenAI's Realtime API: WebSocket sessions, audio streaming, turn detection, function calling, and interruption handling."
 datePublished: "2025-08-13"
-dateModified: "2025-08-13"
-tags: ["AI", "Audio", "API", "Real-time"]
+dateModified: "2026-07-17"
+tags:
 keywords: "OpenAI Realtime API, voice agent, real-time speech AI, WebSocket audio streaming, conversational AI voice, speech-to-speech"
 faq:
   - q: "How is the Realtime API different from chaining Whisper and TTS?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can I use function calling with voice agents?"
     a: "Yes. Define tools in the session configuration. The model emits function_call events during conversation; execute the tool server-side and return results via conversation.item.create before requesting the next response."
 ---
-
 Phone support bots that wait three seconds after you stop talking feel broken. Users expect the rhythm of human conversation—overlap, interruption, quick acknowledgments. OpenAI's Realtime API maintains a persistent WebSocket where audio flows in both directions, processed by a single multimodal model. You build a voice agent without stitching together separate STT, chat, and TTS services.
 
 ## Session lifecycle
@@ -268,3 +267,17 @@ Voice + tools enables transactional voice agents (order lookup, appointment book
 - [Web Audio API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) — browser audio capture and playback
 - [WebRTC VAD alternatives](https://github.com/wiseman/py-webrtcvad) — client-side speech detection
 - [FastAPI WebSocket docs](https://fastapi.tiangolo.com/advanced/websockets/) — proxy pattern for browser clients
+
+## Production notes for LLM stacks
+
+When `multimodal-realtime-voice-api` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `real-time voice with the realtime api` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

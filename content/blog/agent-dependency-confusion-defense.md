@@ -7,105 +7,266 @@ dateModified: "2025-10-30"
 tags: ["AI", "Agent", "Dependency"]
 keywords: "agent, dependency, confusion, defense, ai, production, engineering, architecture"
 faq:
-  - q: "What is Dependency Confusion Defense?"
-    a: "Dependency Confusion Defense covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Dependency Confusion Defense?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Dependency Confusion Defense?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Dependency Confusion Defense fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Dependency Confusion Defense should be observable in production and safe to change in small diffs."
+  - q: "What is dependency confusion in agent and ML projects?"
+    a: "An attacker publishes a public package with the same name as your internal private package—often at a higher semver—so package managers resolve the malicious public version during CI or local installs. Agent repos are high-value targets because they contain API keys, model endpoints, and tool execution sandboxes."
+  - q: "Which package ecosystems affect agent stacks most?"
+    a: "Python (pip/Poetry/uv) and npm (LangChain, Vercel AI SDK, MCP servers) dominate. Also watch Docker base images tagged `:latest`, Hugging Face model repos with typosquatted names, and PyPI packages mimicking internal names like `company-agent-tools`."
+  - q: "Does pinning versions eliminate dependency confusion?"
+    a: "Pinning helps but does not fully protect. Attackers can still publish higher versions on public indexes if your resolver checks public before private. You need private registry priority, namespace controls, and lockfile integrity verification—not pins alone."
+  - q: "How should CI defend agent repos specifically?"
+    a: "Use scoped private indexes first, block install from public PyPI/npm unless allowlisted, verify lockfile package URLs point to approved registries, scan for typosquats on new dependencies, and run builds in ephemeral environments without persistent credential caches."
 ---
-Most teams encounter dependency confusion defense after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A CI pipeline for the customer-support agent started failing intermittently on Tuesday—then passing on re-run. By Thursday, security found outbound connections from build containers to an unknown PyPI package named `acme-agent-sdk` at version `99.0.0`. The team's internal SDK was also called `acme-agent-sdk`, hosted on a private Artifactory instance, pinned internally at `2.4.1`. pip resolved the public typosquat because an engineer's laptop had a misconfigured `.pip.conf` that listed PyPI before the private index. The malicious package exfiltrated `OPENAI_API_KEY` and `LANGCHAIN_API_KEY` from environment variables during `pip install`.
 
-When dependency confusion defense is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Dependency confusion attacks exploit **name collisions between private and public package registries**. Agent repositories are especially attractive: they bundle LLM credentials, MCP server configs, retrieval index URLs, and sometimes customer data in eval fixtures. Defense requires registry policy, CI hardening, and supply-chain verification—not hope that semver pins save you.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## How the attack works
 
-Solid AI engineering turns dependency confusion defense from a recurring argument into a documented pattern with tests and an owner.
+Classic sequence (Alex Birsan, 2021):
 
-## Design principles that survive production
+1. Attacker discovers internal package names via leaked `package.json`, `requirements.txt`, JS bundle source maps, or public GitHub repos.
+2. Attacker publishes same name to npm/PyPI with very high version.
+3. Developer or CI resolver prefers public high version over private lower version—or checks public first.
+4. Malicious `setup.py` / `postinstall` script runs with CI secrets in environment.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent dependency confusion defense bugs hide.
+Agent-specific variants:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for dependency confusion defense, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent dependency confusion defense flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for dependency confusion defense in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent dependency confusion defense changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Dependency Confusion Defense: typed boundary + structured errors
-export async function handleDependencyConfusionDefense(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-dependency-confusion-defense");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+- **Hugging Face model typosquats** — `meta-llama/Llama-3.1-8B` vs `meta-llama/Llama-3.1-8B-Instruct-official`
+- **MCP server npm packages** — `@company/mcp-internal-tools` vs `@company-tools/mcp`
+- **Docker `FROM`** pulling public image with internal naming convention
 
 ```
+Developer/CI
+     │
+     ▼
+ pip / npm resolver ──▶ checks PUBLIC index first (misconfig)
+     │                        │
+     │                        ▼
+     │              acme-agent-sdk@99.0.0 (MALICIOUS)
+     │
+     └── should resolve ──▶ private.registry/acme-agent-sdk@2.4.1
+```
 
+## Defense in depth
 
-## Operational concerns
+### Registry and resolver configuration
 
-Game-day exercises for dependency confusion defense beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+**Python (pip / uv / Poetry)**
 
-Production agent dependency confusion defense work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```ini
+# pip.conf — private index FIRST, explicit index-url
+[global]
+index-url = https://artifactory.company.com/api/pypi/pypi/simple
+extra-index-url = https://pypi.org/simple
 
-Rollouts for dependency confusion defense benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+# Better: disable public entirely in CI
+# index-url = https://artifactory.company.com/api/pypi/pypi/simple
+# no extra-index-url
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```toml
+# pyproject.toml — Poetry: explicit source priority
+[[tool.poetry.source]]
+name = "company"
+url = "https://artifactory.company.com/api/pypi/pypi/simple"
+priority = "primary"
 
-## Security and compliance angles
+[[tool.poetry.source]]
+name = "pypi"
+priority = "explicit"  # only if explicitly referenced
+```
 
-Even when dependency confusion defense is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+**npm**
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent dependency confusion defense so security reviews do not rely on tribal knowledge.
+```ini
+# .npmrc in repo root — scope internal packages to private registry
+@acme:registry=https://npm.company.com/
+//npm.company.com/:_authToken=${NPM_TOKEN}
 
-## Testing strategy
+# Block default registry for scoped packages
+registry=https://npm.company.com/
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that dependency confusion defense depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Enforce with `npm config list` in CI preflight; fail if public registry appears for `@acme` scope.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+### Namespace ownership
 
-## Migration and evolution
+Register your internal package names on public registries as **empty placeholder packages** published by the company account. Controversial but effective for names that ever leaked. Document in security policy; legal may prefer trademark claims instead.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent dependency confusion defense functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Prefer **scoped names** impossible to confuse: `@acme-internal/agent-sdk` on npm, `com.acme.internal.agent-sdk` Maven-style for Python via private index only.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where dependency confusion defense spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+### Lockfile integrity
 
-## Related concepts
+Lockfiles must record **resolved registry URL**, not only version:
 
-Dependency Confusion Defense intersects with broader ai topics — see companion notes on [agent-dependency patterns](https://blog.michaelsam94.com/agent-dependency/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```python
+# ci/verify_lockfile_sources.py
+import json
+import sys
+
+ALLOWED_REGISTRIES = {
+    "https://artifactory.company.com/api/pypi/pypi/simple",
+    "https://npm.company.com/",
+}
+
+def verify_poetry_lock(path: str) -> list[str]:
+    errors = []
+    # Poetry lock parsing — check [[package]] source urls
+    with open(path) as f:
+        content = f.read()
+    for line in content.splitlines():
+        if "url = " in line and "pypi.org" in line:
+            pkg_context = content[max(0, content.index(line) - 200): content.index(line)]
+            if "acme-" in pkg_context or "company" in pkg_context.lower():
+                errors.append(f"Internal-looking package resolves from public: {line.strip()}")
+    return errors
+
+if __name__ == "__main__":
+    errors = verify_poetry_lock("poetry.lock")
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    print("Lockfile source verification passed")
+```
+
+Run on every PR touching lockfiles.
+
+### CI pipeline hardening
+
+```yaml
+# .github/workflows/agent-ci.yml (excerpt)
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify registry config
+        run: |
+          pip config list | grep -q "artifactory.company.com" || exit 1
+          ! pip config list | grep -q "extra-index-url.*pypi.org" || \
+            echo "WARNING: public PyPI in extra-index-url"
+
+      - name: Install with locked deps only
+        run: uv sync --locked --no-dev
+        env:
+          UV_INDEX_URL: https://artifactory.company.com/api/pypi/pypi/simple
+          PIP_NO_INDEX: "false"
+
+      - name: Verify no post-install network
+        run: |
+          # Run import smoke test; network policy blocks egress in k8s CI
+          python -c "import acme_agent_sdk; print(acme_agent_sdk.__file__)"
+          python ci/verify_lockfile_sources.py
+```
+
+Additional CI controls:
+
+- Ephemeral runners with no persistent home directory
+- Secrets scoped to minimal jobs—not global `env` on install steps
+- `pip install --require-hashes` where feasible
+- Dependabot/Renovate configured to use private registry credentials
+
+### Pre-commit and dependency review
+
+Block new dependencies without review:
+
+```yaml
+# .github/dependabot.yml — route through private mirror
+registries:
+  company-artifactory:
+    type: python-index
+    url: https://artifactory.company.com/api/pypi/pypi/simple
+    username: ${{ secrets.ARTIFACTORY_USER }}
+    password: ${{ secrets.ARTIFACTORY_PASS }}
+```
+
+Human review for any new package name in PR. Typosquat detectors (Socket.dev, Snyk, OSSF Scorecard) flag `python-dateutil` vs `python_dateutil`.
+
+## Agent-specific supply chain surfaces
+
+| Surface | Risk | Mitigation |
+|---------|------|------------|
+| LangChain community tools | Arbitrary PyPI deps | Allowlist tool packages |
+| MCP server installs | `npx -y unknown-package` | Pin MCP server versions; no `-y` in prod |
+| HF `from_pretrained` | Model repo swap | Pin revision hash; verify org |
+| Docker agent runtime | Base image drift | Digest-pin `FROM`; scan in CI |
+| `.env` in repo | Credential leak to malicious postinstall | Secret scanning; never env in install hooks |
+
+For MCP servers specifically, treat `npx @modelcontextprotocol/server-*` like production dependencies—lock version, verify checksum, run in network-isolated sidecar.
+
+## Detection and response
+
+Monitor for:
+
+- New outbound DNS from CI/build pods to PyPI/npm during install phase
+- Package version jumps >10 minor without PR
+- Lockfile changes that shift registry URLs
+
+Incident response: rotate **all** secrets reachable from compromised build, audit artifact registry for poisoned wheels published internally, review git history for exfiltration scripts.
+
+## Developer machine hygiene
+
+CI hardening fails if laptops install packages differently. Standardize dev environments:
+
+- **Devcontainers** with the same `pip.conf` / `.npmrc` as CI—checked into repo
+- **Pre-commit hook** that rejects lockfile changes resolving internal names from public URLs
+- **Onboarding doc** that explains why `pip install package` without lock sync is forbidden
+
+Run occasional spot audits: ask engineers to run `pip debug --verbose` or `npm config list` and paste output to an internal bot that flags public-first resolver config.
+
+## Hugging Face and model supply chain
+
+Agent repos increasingly depend on `transformers`, `from_pretrained`, and LoRA adapters from Hugging Face Hub. Typosquatted model repos can serve malicious `custom_code` in model configs.
+
+Mitigations:
+
+- Pin `revision` commit hash, not only repo name
+- Verify `author` org matches expected (`meta-llama`, not `meta-llama-official`)
+- Use `trust_remote_code=False` unless explicitly reviewed
+- Mirror approved models to internal artifact storage; block runtime download from public hub in prod
+
+```python
+# Safe load pattern
+from huggingface_hub import hf_hub_download
+
+ALLOWED_MODELS = {
+    "meta-llama/Llama-3.1-8B-Instruct": "a1b2c3d4e5f6...",  # revision hash
+}
+
+def load_model(repo_id: str):
+    if repo_id not in ALLOWED_MODELS:
+        raise SecurityError(f"Model {repo_id} not in allowlist")
+    path = hf_hub_download(
+        repo_id,
+        revision=ALLOWED_MODELS[repo_id],
+        endpoint="https://hf-mirror.company.com",  # internal mirror
+    )
+    return path
+```
+
+## Organizational policy
+
+Technology controls need policy backing:
+
+- **Package naming standard** — all internal packages use `@company/` scope or `company_` prefix on private index only
+- **New dependency review** — security sign-off for packages with postinstall scripts
+- **Public placeholder registration** — security team owns squatting known leaked names
+- **Quarterly dependency confusion drill** — red team publishes harmless canary package; detect if any CI pipeline resolves it
+
+Publish an internal RFC template for new agent repos that includes a "Supply chain" section checked by security before first prod deploy.
 
 ## The takeaway
 
-Dependency Confusion Defense rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent dependency confusion defense becomes a maintainable asset instead of incident fuel.
+Dependency confusion defense for agent repos is registry policy plus CI enforcement, not developer diligence alone. Private index first, scoped namespaces, lockfile URL verification, ephemeral builds, and secret minimization during install. The `acme-agent-sdk@99.0.0` incident took one misconfigured `.pip.conf`—make misconfiguration impossible to merge.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Dependency Confusion: How I Hacked Into Apple, Microsoft (Alex Birsan)](https://medium.com/@alex.birsan/dependency-confusion-4a5dfeafd1cf)
+- [Google OSSF — Scorecard](https://github.com/ossf/scorecard)
+- [PyPI — Trusted Publishers](https://docs.pypi.org/trusted-publishers/)
+- [npm — Scope registry configuration](https://docs.npmjs.com/cli/v10/using-npm/scope)
+- [OpenSSF SLSA framework](https://slsa.dev/)
+- [Companion: SBOM Generation in CI](/agent-sbom-generation-ci/)
+- [Companion: Package Lock Integrity](/agent-package-lock-integrity/)

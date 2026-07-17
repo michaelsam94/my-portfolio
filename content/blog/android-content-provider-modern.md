@@ -218,6 +218,28 @@ Teams get content provider modern wrong in predictable ways:
 
 Shipping content provider modern on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## Column naming and SQL injection
+
+User-supplied sort columns in `query()` are injection surface — allowlist `validColumns` set. `ContentProvider.call()` method names similarly need allowlist when exposing custom RPC.
+
+## URI permission persistence
+
+Granting read URI permission via `FLAG_GRANT_READ_URI_PERMISSION` expires when granting task finishes — document for share-sheet flows; use `takePersistableUriPermission` when long-lived access required.
+
+## Content Provider Modern Supplement 0 on Samsung and Pixel divergence
+
+Exercise content provider modern supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching content; regressions above 8% block release for `android-content-provider-modern-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Content Provider Modern Supplement 0" should map to a single runbook section with known workarounds.
+
+## Modern regression gates for Play Vitals
+
+Before promoting `android-content-provider-modern-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing content with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing content provider modern supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [ContentProvider overview (Android)](https://developer.android.com/guide/topics/providers/content-providers)

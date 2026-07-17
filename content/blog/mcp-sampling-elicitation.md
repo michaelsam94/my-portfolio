@@ -3,8 +3,8 @@ title: "MCP Sampling and Elicitation"
 slug: "mcp-sampling-elicitation"
 description: "Use MCP sampling to let servers request LLM completions and elicitation to gather structured user input — reversing the typical client-server flow."
 datePublished: "2025-04-30"
-dateModified: "2025-04-30"
-tags: ["AI", "MCP", "Agents", "Protocol"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP sampling, MCP elicitation, Model Context Protocol sampling, server-initiated LLM, MCP user input, MCP reverse RPC"
 faq:
   - q: "What is MCP sampling and why would a server need it?"
@@ -14,7 +14,6 @@ faq:
   - q: "Are sampling and elicitation supported by all MCP clients?"
     a: "Support varies. Claude Desktop and Cursor support sampling in recent versions. Elicitation is newer and client support is still rolling out. Check your client's capability negotiation during MCP initialization — the server should gracefully degrade if the client does not advertise sampling or elicitation support."
 ---
-
 Most MCP interactions flow one direction: the client sends a user message to the model, the model decides to call a tool, the server executes it and returns results. But some server workflows need to ask the model a question or ask the user for input mid-execution. A code review server wants the model to analyze a diff before posting comments. A deployment server needs the user to confirm before pushing to production.
 
 MCP sampling and elicitation reverse the typical flow. Sampling lets servers request LLM completions. Elicitation lets servers request structured input from the user. Together they enable multi-step server workflows that were previously impossible without embedding an LLM inside the server itself.

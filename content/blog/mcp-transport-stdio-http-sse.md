@@ -3,8 +3,8 @@ title: "MCP Transports: stdio, HTTP, and SSE"
 slug: "mcp-transport-stdio-http-sse"
 description: "Choose the right MCP transport for your deployment: stdio for local tools, HTTP and SSE for remote servers, and Streamable HTTP for the latest spec."
 datePublished: "2025-05-16"
-dateModified: "2025-05-16"
-tags: ["AI", "MCP", "Protocol", "Infrastructure"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP transport stdio, MCP HTTP SSE, Model Context Protocol transport, MCP Streamable HTTP, MCP remote server connection, MCP wire protocol"
 faq:
   - q: "When should I use stdio vs HTTP for MCP?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can one MCP server support multiple transports simultaneously?"
     a: "Yes. Most SDK implementations let you expose the same server logic over stdio and HTTP. Run stdio for local development and HTTP for staging/production. The server code (tools, resources, prompts) is transport-agnostic — only the connection layer changes."
 ---
-
 The MCP specification defines how clients and servers exchange messages. That "how" — the transport layer — determines whether your server runs as a local subprocess on your laptop or as a remote service behind a load balancer. Pick the wrong transport and you either over-engineer a local tool with HTTP infrastructure or under-engineer a shared service with stdio pipes that cannot cross network boundaries.
 
 MCP supports three transport mechanisms: stdio for local communication, HTTP with SSE for remote connections, and Streamable HTTP as the evolving unified transport in the latest spec revision.

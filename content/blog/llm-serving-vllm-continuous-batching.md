@@ -3,8 +3,8 @@ title: "Serving LLMs with vLLM"
 slug: "llm-serving-vllm-continuous-batching"
 description: "Deploy production LLM APIs with vLLM: continuous batching, PagedAttention, OpenAI-compatible endpoints, and the configuration knobs that actually matter."
 datePublished: "2025-03-17"
-dateModified: "2025-03-17"
-tags: ["AI", "LLM", "vLLM", "Inference"]
+dateModified: "2026-07-17"
+tags:
 keywords: "vLLM serving, continuous batching, PagedAttention, OpenAI compatible API, LLM production deployment, vLLM configuration"
 faq:
   - q: "Why is vLLM faster than Hugging Face Transformers for serving?"
@@ -14,7 +14,6 @@ faq:
   - q: "How do I choose max_model_len and gpu_memory_utilization?"
     a: "max_model_len sets the maximum context window — higher values consume more KV cache memory per sequence, reducing concurrent capacity. gpu_memory_utilization (default 0.9) controls what fraction of GPU memory vLLM pre-allocates. Start at 0.9, reduce if you hit OOM during traffic spikes."
 ---
-
 Hugging Face Transformers loads a model and generates one request at a time. That works for notebooks. In production, where 50 users hit your API simultaneously with different prompt lengths, static batching either queues requests (high latency) or pads every sequence to the longest prompt (wasted compute).
 
 vLLM is the inference engine that fixed this for most self-hosted deployments. Its two core innovations — continuous batching and PagedAttention — let a single GPU serve many concurrent requests efficiently, and its OpenAI-compatible API server means you can swap it in without rewriting client code.
@@ -151,17 +150,6 @@ env:
     value: "0.9"
 ```
 
-## Common production mistakes
-
-Teams get serving vllm continuous batching wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-LLM features around serving vllm continuous batching break in production when prompts assume deterministic output, context windows are sized for dev datasets, or token costs are never budgeted per user session. Always log prompt hash, model version, and latency—not raw prompts with PII.
-
 ## Resources
 
 - [vLLM documentation](https://docs.vllm.ai/)
@@ -169,3 +157,17 @@ LLM features around serving vllm continuous batching break in production when pr
 - [vLLM GitHub repository](https://github.com/vllm-project/vllm)
 - [Continuous batching explained (Anyscale blog)](https://www.anyscale.com/blog/continuous-batching-llm-inference)
 - [vLLM production deployment guide](https://docs.vllm.ai/en/latest/serving/deploying_with_docker.html)
+
+## Production notes for LLM stacks
+
+When `llm-serving-vllm-continuous-batching` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `serving llms with vllm` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

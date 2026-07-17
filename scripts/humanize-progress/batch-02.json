@@ -1,0 +1,35 @@
+{
+  "batch": "02",
+  "range": [
+    500,
+    749
+  ],
+  "total": 250,
+  "completed_count": 250,
+  "pending_count": 0,
+  "parts": {
+    "part0": {
+      "ok": 50,
+      "pending": 0
+    },
+    "part1": {
+      "ok": 50,
+      "pending": 0
+    },
+    "part2": {
+      "ok": 50,
+      "pending": 0
+    },
+    "part3": {
+      "ok": 50,
+      "pending": 0
+    },
+    "part4": {
+      "ok": 50,
+      "pending": 0
+    }
+  },
+  "status": "complete",
+  "updated": "2026-07-17",
+  "notes": "Verified after 00343536 part2+4; no regressions."
+}

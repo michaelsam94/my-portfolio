@@ -3,8 +3,8 @@ title: "Authenticating MCP Servers with OAuth"
 slug: "mcp-server-authentication-oauth"
 description: "Implement OAuth 2.0 authentication for MCP servers: authorization flows, token management, scoped permissions, and client registration patterns."
 datePublished: "2025-05-08"
-dateModified: "2025-05-08"
-tags: ["AI", "MCP", "OAuth", "Security"]
+dateModified: "2026-07-17"
+tags:
 keywords: "MCP OAuth authentication, Model Context Protocol OAuth 2.0, MCP server auth, MCP bearer token, OAuth PKCE MCP, MCP authorization server"
 faq:
   - q: "Why does MCP specify OAuth instead of API keys?"
@@ -14,7 +14,6 @@ faq:
   - q: "How does token refresh work with long-lived MCP sessions?"
     a: "MCP clients store refresh tokens securely and request new access tokens before expiration. SSE connections may outlast a single access token lifetime — the client must refresh mid-session without disconnecting. Implement token refresh in the client's MCP transport layer, not in individual tool calls."
 ---
-
 Your MCP server connects to GitHub, Slack, and your internal CRM. Each service needs credentials. Hardcoding API keys in the server config means every client gets the same all-or-nothing access, keys never expire, and revoking one user's access means rotating for everyone.
 
 The MCP specification defines OAuth 2.0 as the standard authentication mechanism for remote servers. OAuth gives you scoped permissions, user consent, token expiration, and per-client access control — the same security properties you expect from any modern API integration.

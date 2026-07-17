@@ -3,8 +3,8 @@ title: "Serving Quantized Models: AWQ and GPTQ"
 slug: "llm-serving-quantization-awq-gptq"
 description: "Compare AWQ and GPTQ for serving quantized LLMs in production: accuracy trade-offs, throughput gains, and how to pick the right format for your inference stack."
 datePublished: "2025-03-03"
-dateModified: "2025-03-03"
-tags: ["AI", "LLM", "Quantization", "Inference"]
+dateModified: "2026-07-17"
+tags:
 keywords: "AWQ GPTQ comparison, LLM quantization serving, 4-bit inference, weight-only quantization, vLLM AWQ, llama.cpp GPTQ"
 faq:
   - q: "Should I use AWQ or GPTQ for production serving?"
@@ -14,7 +14,6 @@ faq:
   - q: "Can I quantize a fine-tuned model without retraining?"
     a: "Yes. Both AWQ and GPTQ are post-training quantization methods. You run calibration on a representative dataset (typically 128–512 samples) to determine scaling factors or salient channels, then produce a quantized checkpoint. No gradient updates required."
 ---
-
 Running a 70B parameter model in FP16 needs roughly 140 GB of GPU memory. That is two A100 80GB cards just to load weights, before KV cache or batching headroom. Quantization compresses those weights to 4 bits — about 35 GB — and the model still answers questions competently on most tasks. AWQ and GPTQ are the two post-training quantization methods you will encounter most when serving open-weight models, and they are not interchangeable.
 
 The choice affects accuracy on your eval set, which inference engines can load the checkpoint, and whether you need activation quantization on top of weight compression.

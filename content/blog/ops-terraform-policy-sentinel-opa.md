@@ -3,7 +3,7 @@ title: "Policy as Code for Terraform"
 slug: "ops-terraform-policy-sentinel-opa"
 description: "Enforce infrastructure standards with Terraform policy: OPA/Rego, Sentinel, Checkov, and CI gates that block non-compliant plans before apply."
 datePublished: "2026-01-23"
-dateModified: "2026-01-23"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Terraform", "Policy", "Security"]
 keywords: "Terraform policy as code, OPA Rego Terraform, Sentinel HashiCorp, Checkov IaC, infrastructure compliance"
 faq:
@@ -170,6 +170,53 @@ When terraform policy sentinel opa misbehaves in production, work top-down inste
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Policy scope: plan-time vs apply-time
+
+OPA/Conftest on `terraform plan -json` catches public S3 buckets before apply. Runtime policies (Sentinel in TFC) enforce org rules on private modules too. Combine:
+
+- **fmt/validate** in pre-commit
+- **Conftest** on plan in CI
+- **Sentinel/OPA** on Terraform Cloud apply for prod workspaces
+
+## Writable module exceptions
+
+Emergency break-glass: tagged `# policy:exception ticket=INFRA-123` in PR description with time-bounded override. Exceptions without expiry become permanent holes — weekly report of active exceptions.
+
+## Testing policies
+
+```rego
+test_deny_public_s3 {
+    deny with input as {"resource_changes": [{
+        "type": "aws_s3_bucket",
+        "change": {"after": {"acl": "public-read"}}
+    }]}
+}
+```
+
+Policy tests in CI — regressions when someone "simplifies" Rego catch prod incidents early.
+
+## Module version pinning policy
+
+Deny `version = "~> 0.0"` on public modules — enforce minimum ref tag or commit SHA for community modules. Supply chain policy as important as public S3 denial.
+
+## Plan-only CI for fork PRs
+
+External contributors run `terraform plan` without apply credentials — Conftest still runs on plan JSON. Secrets never in plan output if remote state redaction configured.
+
+## Policy version pinning
+
+Tag Rego policies in Git — apply same tag in CI and TFC. Drift when local Conftest uses main but TFC uses stale tag silently allows banned resources.
+
+## Exception audit quarterly
+
+Review all policy exceptions — remove expired. Permanent exceptions become policy debt; attackers probe known holes.
+## Generated code policies
+
+CDKTF and cdktf synth output must pass same Conftest — generated JSON in `cdktf.out` scanned in CI before apply.
+## Policy ownership in platform team
+
+Name policy maintainers in CODEOWNERS for `policy/` directory — orphan Rego files block deploys when authors leave without bus factor coverage.
 
 ## Resources
 

@@ -3,7 +3,7 @@ title: "Offline-First Flutter Apps with Local Sync"
 slug: "offline-first-flutter-sync"
 description: "Build offline-first Flutter apps for flaky networks: a local Drift database as source of truth, an outbox sync queue, and pragmatic conflict resolution."
 datePublished: "2026-05-21"
-dateModified: "2026-05-21"
+dateModified: "2026-07-17"
 tags: ["Flutter", "Offline-First", "Sync", "Drift"]
 keywords: "offline-first Flutter, local sync, Flutter offline, data sync, conflict resolution, Drift"
 faq:
@@ -115,6 +115,61 @@ Pulling from the server, I fetch changes since a stored cursor (a `since` timest
 Offline-first is as much UX as data. Show sync state truthfully: a subtle "pending" marker on unsynced items, a "last synced 3 min ago" line, and never a spinner that blocks input. The pattern I use for real-time apps applies here too — model connectivity as [state the UI reacts to](https://blog.michaelsam94.com/flutter-riverpod-state-management/), so the app can say "saved, will sync" instead of pretending everything is instantly on the server.
 
 Done right, offline-first makes an app feel *faster* even when online, because reads and writes never wait on a round trip. The work is in the plumbing — a local source of truth, a durable outbox with idempotency keys, and conflict rules chosen per data type. Get those three right and flaky networks become a non-event. Want a review of your sync design? [Let's talk](/#contact).
+
+## Schema migrations with Drift offline
+
+Local schema changes are harder than server migrations — users skip app versions. Use Drift's `MigrationStrategy`:
+
+```dart
+@override
+MigrationStrategy get migration => MigrationStrategy(
+  onUpgrade: (m, from, to) async {
+    if (from < 3) {
+      await m.addColumn(chargers, chargers.syncCursor);
+      await backfillSyncCursor();
+    }
+  },
+  beforeOpen: (details) async {
+    await customStatement('PRAGMA foreign_keys = ON');
+  },
+);
+```
+
+Never drop columns users still have pending outbox entries for — migrate data first, drain outbox, then compact.
+
+## Sync cursor and incremental pull
+
+Store `lastSyncedAt` or server change tokens per entity type. Pull uses `If-Modified-Since` or cursor APIs:
+
+```dart
+Future<void> pullChanges() async {
+  final cursor = await db.getSyncCursor('chargers');
+  final delta = await api.fetchChargers(since: cursor);
+  await db.transaction(() async {
+    for (final row in delta.upserts) {
+      await db.into(chargers).insertOnConflictUpdate(row);
+    }
+    for (final id in delta.deletes) {
+      await (db.delete(chargers)..where((c) => c.id.equals(id))).go();
+    }
+    await db.setSyncCursor('chargers', delta.newCursor);
+  });
+}
+```
+
+Push-then-pull ordering prevents overwriting local edits with stale server snapshots — drain outbox first unless server version wins by policy.
+
+## Testing sync without flaky integration tests
+
+Use in-memory Drift databases with a fake API that simulates latency, 409 conflicts, and partial failures. Property-based tests for outbox ordering: create → update → delete same entity should converge to delete on server.
+
+## Conflict resolution for charging session edits
+
+Field apps editing session notes while dispatcher updates status need explicit rules: server `updated_at` wins for status; client wins for local notes until synced. Surface conflict UI — silent overwrite loses trust with field technicians.
+
+## Background sync on mobile OS constraints
+
+iOS suspends background fetch — register `BGAppRefreshTask` and sync on `AppLifecycleState.resumed` with debounce. Android Doze delays WorkManager — use `connectivity` constraint plus expedited work for user-triggered "sync now."
 
 ## Resources
 

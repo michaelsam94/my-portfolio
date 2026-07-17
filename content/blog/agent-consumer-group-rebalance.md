@@ -1,111 +1,230 @@
 ---
 title: "AI Agents: Consumer Group Rebalance"
 slug: "agent-consumer-group-rebalance"
-description: "Consumer Group Rebalance: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Survive Kafka consumer group rebalances in agent pipelines—cooperative sticky assignors, partition revocation hooks, offset commit ordering, and LLM work that survives stop-the-world pauses."
 datePublished: "2025-01-31"
 dateModified: "2025-01-31"
 tags: ["AI", "Agent", "Consumer"]
-keywords: "agent, consumer, group, rebalance, ai, production, engineering, architecture"
+keywords: "Kafka consumer group rebalance, cooperative sticky assignor, partition revocation, agent event processing, consumer lag, rebalance listener"
 faq:
-  - q: "What is Consumer Group Rebalance?"
-    a: "Consumer Group Rebalance covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Consumer Group Rebalance?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Consumer Group Rebalance?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Consumer Group Rebalance fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Consumer Group Rebalance should be observable in production and safe to change in small diffs."
+  - q: "Why do agent pipelines feel rebalance pain more than CRUD consumers?"
+    a: "Agent handlers often hold long-running LLM calls, open WebSocket tool sessions, and in-memory conversation state tied to partition keys. A classic rebalance revokes partitions mid-flight, causing duplicate tool invocations or orphaned runs when offsets commit out of order. Short poll intervals do not help if processing takes minutes."
+  - q: "Should agent consumers use cooperative or eager rebalancing?"
+    a: "Prefer cooperative-sticky assignors (Kafka 2.4+) so consumers finish in-flight work on partitions they retain before losing others. Eager rebalance stops the world—every consumer drops all partitions, flushing partial agent runs. Cooperative reduces duplicate processing and tail latency spikes during deploys."
+  - q: "When is it safe to commit offsets during rebalance?"
+    a: "Commit only for partitions you still own and only after side effects are durable. On revocation callback, stop reading new messages, drain or checkpoint in-flight agent steps, write dedup records, then commit. Never commit offsets for partitions already revoked—another consumer may have started processing."
+  - q: "How many partitions should an agent consumer group have?"
+    a: "Size partitions for desired parallelism, not for peak agent concurrency per message. Rule of thumb: one partition per consumer instance you plan to run at steady state, with headroom for rolling deploys. Over-partitioning increases rebalance churn; under-partitioning creates hot keys when all runs for a tenant hash to one partition."
 ---
-Most teams encounter consumer group rebalance after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Deploy night looked clean: new agent worker pods passed health checks, consumer lag was flat, and the canary sat at ten percent. Then lag climbed from 200 to 40,000 in twelve minutes—not because throughput dropped, but because every pod entered a rebalance loop. Each worker lost partitions mid-LLM-call, retried from uncommitted offsets, and triggered another group join. The group coordinator was doing its job. Our consumer code was not.
 
-When consumer group rebalance is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Consumer group rebalance is the hidden scheduler of agent infrastructure. Every scale event, deploy, session timeout, and `max.poll.interval.ms` breach reshuffles which pod owns which agent run queue. If you treat rebalance as a Kafka implementation detail, you will duplicate billable tokens, lose tool results, and wonder why staging never showed the failure.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What rebalance actually does
 
-Solid AI engineering turns consumer group rebalance from a recurring argument into a documented pattern with tests and an owner.
+A consumer group is a contract: each partition of a subscribed topic is assigned to exactly one consumer instance at a time. When membership changes, the group rebalances—partitions move between consumers.
 
-## Design principles that survive production
+Common triggers:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent consumer group rebalance bugs hide.
+- Pod added or removed during HPA or deploy
+- Consumer exceeds `max.poll.interval.ms` while waiting on a slow LLM
+- Network partition causes session timeout
+- Subscription change or manual `partitions.revoke`
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for consumer group rebalance, you do not yet understand the behavior you shipped.
+Classic **eager** rebalance (range or round-robin assignors) revokes **all** partitions from **all** members, then reassigns. During the pause, no consumption happens group-wide. **Cooperative** protocols revoke only partitions that must move; unaffected consumers keep processing.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+For agent workloads measured in seconds to minutes per message, stop-the-world pauses are expensive. Default to `CooperativeStickyAssignor`:
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent consumer group rebalance flows so duplicates are harmless or detectable.
+```java
+props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
+    List.of(CooperativeStickyAssignor.class.getName()));
+```
 
-## Implementation patterns
+Verify your Kafka broker version and client library support cooperative protocols end-to-end—mixed assignors in one group cause opaque protocol errors.
 
-A practical baseline for consumer group rebalance in ai stacks:
+## The agent-specific failure modes
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Generic consumers read, transform, write. Agent consumers orchestrate:
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent consumer group rebalance changes safer because business rules stay isolated from transport details.
+```
+Partition message → load session → plan → LLM call(s) → tool calls → persist run state → commit offset
+                         ↑__________________________________________|
+                              may span 30–180 seconds
+```
 
-```typescript
-// Consumer Group Rebalance: typed boundary + structured errors
-export async function handleConsumerGroupRebalance(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-consumer-group-rebalance");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+When rebalance revokes a partition mid-run:
+
+| Failure | Symptom |
+|---------|---------|
+| Offset committed before side effects | Lost agent step on crash |
+| Side effects before offset, no dedup | Duplicate tool calls after redelivery |
+| In-memory session discarded on revoke | Orphan run stuck in "running" |
+| LLM call continues after revoke | Two consumers mutate same external resource |
+
+The fix is not "make LLM faster" alone—it is rebalance-aware lifecycle management.
+
+## RebalanceListener: the hook that matters
+
+Implement `ConsumerRebalanceListener` (Java) or equivalent callbacks in your client wrapper:
+
+```java
+@Override
+public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+  for (TopicPartition tp : partitions) {
+    inFlightTracker.awaitDrain(tp, Duration.ofSeconds(120));
+    checkpointStore.flush(tp);
+    // commit sync for revoked partitions only
+    Map<TopicPartition, OffsetAndMetadata> offsets =
+        inFlightTracker.committedOffsetsFor(tp);
+    if (!offsets.isEmpty()) {
+      consumer.commitSync(offsets);
+    }
+    inFlightTracker.clear(tp);
   }
 }
 
+@Override
+public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+  for (TopicPartition tp : partitions) {
+    runRegistry.resumeInterruptedRuns(tp);
+  }
+}
 ```
 
+**On revoke:** stop accepting new messages for lost partitions, wait for in-flight agent runs to reach a checkpoint or cancel gracefully, commit offsets for completed work, release resources.
 
-## Operational concerns
+**On assign:** reload idempotency state, resume runs that were checkpointed but not finished, warm caches scoped to new partitions.
 
-Runbooks for consumer group rebalance should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Never block revoke callbacks longer than broker tolerance—if drain exceeds limits, persist failure state to a dead-letter path and commit through that offset with explicit audit.
 
-Production agent consumer group rebalance work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## max.poll.interval.ms and long agent steps
 
-Rollouts for consumer group rebalance benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Kafka assumes the consumer thread will poll frequently. Agent handlers violate that assumption when they process one message for minutes.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Options:
 
-## Security and compliance angles
+1. **Decouple poll from processing** — classic queue pattern: poller thread enqueues, worker pool processes, separate committer tracks completion. Poll loop stays hot; workers respect partition ownership flags.
 
-Even when consumer group rebalance is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+2. **Increase `max.poll.interval.ms`** — acceptable with cooperative rebalance and bounded concurrency, but raises time-to-detection for truly dead consumers.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent consumer group rebalance so security reviews do not rely on tribal knowledge.
+3. **Break agent runs into smaller events** — emit `step.completed` messages instead of one giant handler. Rebalance then revokes between steps, not mid-tool-call.
 
-## Testing strategy
+```typescript
+// Poll thread enqueues; workers check ownership before side effects
+async function workerLoop(queue: AsyncQueue<Record>) {
+  for await (const record of queue) {
+    if (!ownership.owns(record.partition)) continue;
+    await processAgentEvent(record);
+    if (ownership.owns(record.partition)) {
+      await commitOffset(record);
+    }
+  }
+}
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that consumer group rebalance depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Most production agent stacks converge on (1) plus (3): event-sourced steps with short poll loops.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Sticky assignment and rolling deploys
 
-## Migration and evolution
+Sticky assignors minimize partition movement when only one consumer joins or leaves—critical during rolling Kubernetes deploys. Fewer partition moves mean fewer revoke storms and less duplicated LLM spend.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent consumer group rebalance functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Pair sticky assignment with **gradual rollouts**:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where consumer group rebalance spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+- Surge one new replica before terminating old (`maxUnavailable: 0`)
+- Use PodDisruptionBudgets so Kubernetes does not evict half the group at once
+- Stagger consumer group member joins with short jitter to avoid thundering herd
+
+Monitor `rebalance.rate` and `rebalance.duration` as first-class SLOs, not debug logs.
+
+## Idempotency across rebalance and redelivery
+
+Rebalance and at-least-once delivery overlap: a revoked consumer may have processed but not committed; the assignee redelivers. Every agent side effect needs an idempotency key stored **before** irreversible work:
+
+```sql
+CREATE TABLE agent_step_dedup (
+  idempotency_key TEXT PRIMARY KEY,
+  partition       INT NOT NULL,
+  offset          BIGINT NOT NULL,
+  status          TEXT NOT NULL, -- 'started', 'completed', 'failed'
+  updated_at      TIMESTAMPTZ NOT NULL
+);
+```
+
+On redelivery, if status is `completed`, skip processing and commit offset. If `started` without completion, implement recovery policy: resume if checkpoint exists, fail to DLQ if stuck beyond TTL.
+
+Partition key design matters: use `tenant_id` or `run_id` so all steps for one agent run land on one partition—rebalance moves whole runs, not half a conversation.
+
+## Observability during rebalance
+
+Dashboards should answer: is lag real or rebalance noise?
+
+Track per partition:
+
+- `consumer_lag`
+- `in_flight_agent_runs`
+- `revoke_drain_seconds`
+- `duplicate_step_detected` (dedup hits on processing)
+
+Alert when rebalance frequency exceeds baseline—often signals flapping pods, too-short session timeouts, or LLM-induced poll timeouts.
+
+Structured logs on revoke:
+
+```json
+{
+  "event": "partitions_revoked",
+  "consumer_id": "agent-worker-7",
+  "partitions": ["agent-runs-3", "agent-runs-7"],
+  "in_flight": 4,
+  "drained_ms": 8200,
+  "commits": 2
+}
+```
+
+Correlate with deploy timestamps to distinguish healthy rolls from incident loops.
+
+## Testing rebalance behavior
+
+Unit tests cannot catch rebalance races. Use:
+
+- **Embedded Kafka** integration tests that programmatically revoke partitions during simulated LLM latency
+- **Chaos during load tests** — kill random pods while agent throughput is steady; assert duplicate tool rate below threshold
+- **Game days** — scale consumers 2× then 0.5× while measuring p99 run completion time
+
+Replay production traffic into staging with production partition counts. A group with three partitions behaves differently than staging's one.
+
+## Configuration reference
+
+Sensible starting point for agent consumers (tune with evidence):
+
+```properties
+partition.assignment.strategy=org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+max.poll.interval.ms=300000
+session.timeout.ms=45000
+heartbeat.interval.ms=15000
+enable.auto.commit=false
+isolation.level=read_committed
+```
+
+Disable auto-commit always—agent pipelines need process-store-commit ordering tied to dedup writes.
+
+## Static membership vs dynamic scaling
+
+Some teams pin consumer group membership during business hours and scale only via partition count changes. That reduces rebalance frequency but sacrifices elastic response to traffic spikes. A hybrid works well for agent platforms: keep a stable minimum replica set for baseline throughput, scale up during peak windows with cooperative rebalance, and scale down gradually after queue depth stays low for a cooldown period. Sudden scale-to-zero events are rebalance storms waiting to happen—avoid them on worker pools that hold LLM sessions.
+
+When using Kubernetes, align `terminationGracePeriodSeconds` with your maximum revoke drain time. If the pod receives SIGTERM and exits before `onPartitionsRevoked` finishes draining in-flight agent runs, duplicates and orphaned steps follow. PreStop hooks that signal the consumer to leave the group gracefully—before the kubelet kills the process—buy the seconds cooperative drain needs.
 
 ## Related concepts
 
-Consumer Group Rebalance intersects with broader ai topics — see companion notes on [agent-consumer patterns](https://blog.michaelsam94.com/agent-consumer/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Rebalance interacts directly with [at-least-once idempotent consumers](https://blog.michaelsam94.com/agent-at-least-once-idempotent-consumers/) and [partition assignment stickiness](https://blog.michaelsam94.com/agent-partition-assignment-sticky/). Read those alongside this when designing agent event backbones.
 
 ## The takeaway
 
-Consumer Group Rebalance rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent consumer group rebalance becomes a maintainable asset instead of incident fuel.
+Consumer group rebalance is not a rare edge case—it is the normal cost of operating elastic agent workers. Cooperative sticky assignors, rebalance listeners that drain in-flight LLM work, and idempotent step storage turn chaotic partition shuffles into boring deploy noise. Instrument rebalance duration and duplicate detection before the next scale event surprises you.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Apache Kafka rebalance protocol documentation](https://kafka.apache.org/documentation/#consumerconfigs) — assignor and timeout configuration
+- [KIP-429: Cooperative Rebalancing](https://cwiki.apache.org/confluence/display/KAFKA/KIP-429%3A+Kafka+Consumer+Incremental+Rebalance+Protocol) — incremental cooperative design
+- [Confluent: Understanding consumer rebalance](https://docs.confluent.io/platform/current/clients/consumer.html) — operational troubleshooting
+- [KIP-848: Consumer group protocol (next gen)](https://cwiki.apache.org/confluence/display/KAFKA/KIP-848%3A+The+Next+Generation+of+the+Consumer+Rebalance+Protocol) — upcoming protocol improvements
+- [LinkedIn original analysis of stop-the-world rebalance](https://www.confluent.io/blog/cooperative-rebalancing-in-kafka-streams-consumer-ks/) — why cooperative matters for long processing

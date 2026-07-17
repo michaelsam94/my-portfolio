@@ -3,7 +3,7 @@ title: "Resource Hints: preload and prefetch"
 slug: "web-performance-resource-hints"
 description: "Use preload, prefetch, preconnect, and dns-prefetch to optimize page load: when to use each hint, priority control, and common mistakes."
 datePublished: "2026-05-13"
-dateModified: "2026-05-13"
+dateModified: "2026-07-17"
 tags: ["Web", "Performance", "HTML", "Frontend"]
 keywords: "preload, prefetch, preconnect, dns-prefetch, resource hints, fetchpriority, link rel"
 faq:
@@ -14,7 +14,6 @@ faq:
   - q: "Can too many resource hints hurt performance?"
     a: "Yes. Each preload competes for bandwidth with other critical resources. Over-preloading dilutes priority and can delay LCP. Limit preloads to two or three critical resources per page. Prefetch is low priority and less harmful, but prefetching resources the user never needs wastes bandwidth on mobile."
 ---
-
 We added preload for every script and stylesheet on the page — twelve preload tags in the head. LCP got worse. The browser prioritized all twelve resources equally, starving the hero image that actually mattered. Removing nine unnecessary preloads and keeping three targeted ones — hero image, primary font, critical CSS — recovered 600ms on LCP.
 
 ## The four resource hints
@@ -103,26 +102,6 @@ Link: </hero.avif>; rel=preload; as=image
 
 Browsers start fetching before HTML arrives. Cloudflare and Fastly support this — configure preload hints at the edge for dynamic pages where HTML preload tags aren't practical.
 
-## Measuring success in production
-
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
-
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
-
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
-
-## Additional production considerations
-
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
-
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
-
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
-
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
-
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
-
 ## Debugging checklist
 
 When something doesn't work as documented, verify browser support with Can I use before assuming a polyfill bug. Check the Network tab for failed resource loads, incorrect MIME types, and missing CORS headers. Use the Console for CSP violations and Trusted Types errors that silently block operations.
@@ -146,3 +125,93 @@ Train the team on these patterns during code review. Performance regressions usu
 - [MDN: rel=prefetch](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/prefetch)
 - [fetchpriority (web.dev)](https://web.dev/articles/fetch-priority)
 - [Preload responsive images](https://web.dev/articles/preload-responsive-images)
+
+## Operational checklist (1)
+
+Before promoting Web Performance Resource Hints changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Web Performance Resource Hints after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web Performance Resource Hints touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Web Performance Resource Hints changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Web Performance Resource Hints after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Web Performance Resource Hints touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Incident patterns around web performance resource hints
+
+Most incidents involving web performance resource hints start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+| Check | Expected for web performance resource hints |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Invariants to enforce for web performance resource hints
+
+Name three invariants that must hold after every deploy of web performance resource hints. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+Concrete probe 2: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for web performance resource hints
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to web performance resource hints, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+| Check | Expected for web performance resource hints |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for web performance resource hints
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for web performance resource hints should include the revert command and the expected user-visible effect within five minutes.
+
+Concrete probe 4: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for web performance resource hints
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how web performance resource hints breaks without a clear owner in the incident channel.
+
+| Check | Expected for web performance resource hints |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Capacity and cost notes for web performance resource hints
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct web performance resource hints changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+Concrete probe 6: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Reviewer checklist for web performance resource hints
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most web performance resource hints regressions before production.
+
+| Check | Expected for web performance resource hints |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for web performance resource hints in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

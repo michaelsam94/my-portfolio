@@ -3,7 +3,7 @@ title: "Secret Detection with Gitleaks"
 slug: "secret-detection-gitleaks"
 description: "Detect committed secrets with Gitleaks: pre-commit hooks, CI scanning, baselines, and remediation when keys hit git history."
 datePublished: "2025-06-24"
-dateModified: "2025-06-24"
+dateModified: "2026-07-17"
 tags: ["Security", "Secrets", "CI/CD", "Git"]
 keywords: "Gitleaks secret detection, git secrets scanning, pre-commit gitleaks, leaked API keys, trufflehog alternative, secret scanning CI"
 faq:
@@ -16,7 +16,6 @@ faq:
 ---
 
 A contractor pushed `.env.production` with AWS keys. GitHub notified you seventeen minutes later—after a bot cloned the public fork. Secret scanners like Gitleaks regex and entropy-scan files and commits for patterns: `AKIA`, `ghp_`, private key PEM headers, high-entropy strings beside `password=`. Finding secrets before push is ideal; finding them in CI beats learning from cryptocurrency miners in your account.
-
 
 ## Local pre-commit
 
@@ -31,8 +30,6 @@ repos:
 
 Developers fix locally without CI round trip. Pair with `.gitignore` for `.env*`—scanner catches what ignore misses.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## CI on pull requests
 
 ```yaml
@@ -43,8 +40,6 @@ Validate this in staging with production-like data volume before declaring done.
 ```
 
 Scan PR diff only to keep feedback fast. Fail build on new findings; block merge.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
 
 ## Custom rules for org keys
 
@@ -58,8 +53,6 @@ regex = '''sk_live_[A-Za-z0-9]{32}'''
 
 Commit config to repo so all pipelines share ruleset version.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## Baseline for legacy debt
 
 ```bash
@@ -68,20 +61,13 @@ gitleaks detect --report-path baseline.json --baseline-path baseline.json
 
 First run generates baseline of accepted historical findings with expiry review dates. New leaks still fail. Burn down baseline quarterly—rotate and rewrite history for high-risk entries.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## History rewrite caution
 
 `git filter-repo` removes secrets from history but force-pushes disrupt teams. Coordinate freeze windows. Prefer rotation over rewrite when secret was short-lived test key in private repo with limited exposure.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 ## Beyond Gitleaks
 
 Layer GitHub secret scanning, GitLab secret detection, and cloud provider hooks (AWS GitHub integration). Different tools catch different patterns.
-
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
-
 
 Fake secrets in docs should use obvious placeholders (`sk_test_xxxxxxxx`). Provide `gitleaks protect` in Makefile target. Incident retros include how secret entered repo—process fix, not blame.
 
@@ -91,22 +77,13 @@ Coordinate history rewrite with team freeze when rotation proves leak in private
 
 Layer GitHub secret scanning and cloud provider hooks. Different tools catch different patterns; one tool is not sufficient.
 
-Validate this in staging with production-like data volume before declaring done. Capture metrics baseline the week before change and compare for seven days after—subtle regressions hide in aggregates until a large tenant hits the path. Update the on-call runbook with the failure signature and rollback command so responders need not rediscover steps during an incident.
+## Custom rules for internal APIs
 
-Document the decision, owner, and rollback path in your team wiki the same week you ship. Future you will not remember which environment variable toggled the behavior unless it is written next to the runbook entry and linked from the alert. That habit costs ten minutes per change and saves hours when pagination or auth misbehaves under a single large tenant.
+Write gitleaks allowlist entries for test fixtures only after security review — blanket allowlists defeat the purpose. Custom regex rules catch internal API key formats that generic rules miss.
 
+## Developer education
 
-
-Run the change through your standard PR checklist: tests, observability, and a two-minute rollback drill in staging. Small operational habits accumulate into systems that survive on-call nights without heroics.
-
-
-Share a short write-up in your engineering channel after rollout: what shipped, what metric you watch, and who owns follow-up. That closes the loop for teammates who were not in the PR and surfaces gaps in docs before the next person repeats the same investigation.
-
-
-Prefer boring, repeatable process over one heroic migration weekend.
-
-
-Treat operational readiness as part of definition-of-done: dashboards, alerts, runbook links, and a named owner. Skipping those steps ships code that works in demo and fails quietly in production until a customer or auditor finds the gap.
+First blocked commit should include a one-page doc on where secrets belong — vault references, not literals. Teams that only punish without teaching get `--no-verify` culture.
 
 ## Resources
 
@@ -115,3 +92,109 @@ Treat operational readiness as part of definition-of-done: dashboards, alerts, r
 - [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
 - [git-filter-repo documentation](https://github.com/newren/git-filter-repo)
 - [TruffleHog scanner](https://github.com/trufflesecurity/trufflehog)
+
+## Operational checklist (1)
+
+Before promoting Secret Detection Gitleaks changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (2)
+
+Re-baseline Secret Detection Gitleaks after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (3)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Secret Detection Gitleaks touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (4)
+
+Before promoting Secret Detection Gitleaks changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (5)
+
+Re-baseline Secret Detection Gitleaks after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (6)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Secret Detection Gitleaks touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (7)
+
+Before promoting Secret Detection Gitleaks changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Field validation (8)
+
+Re-baseline Secret Detection Gitleaks after browser upgrades or CDN configuration changes. Mobile share above seventy percent shifts median device class — optimizations tuned on desktop lab profiles may not transfer.
+
+## Coordination (9)
+
+Align with platform and backend owners on cache TTL, deploy windows, and API contracts when Secret Detection Gitleaks touches shared infrastructure — single-layer wins often disappear when another tier invalidates caches.
+
+## Operational checklist (10)
+
+Before promoting Secret Detection Gitleaks changes, confirm observability dashboards cover error rate and p75 latency for affected routes, rollback is documented in the pull request, and a staging drill reproduced the last known failure mode.
+
+## Reviewer checklist for secret detection gitleaks
+
+Ask what happens when the dependency is slow, when authz is skipped on batch jobs, and when clients retry. Those three questions catch most secret detection gitleaks regressions before production.
+
+| Check | Expected for secret detection gitleaks |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 1: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Incident patterns around secret detection gitleaks
+
+Most incidents involving secret detection gitleaks start as a silent drift: a secondary path skips the control, a retry amplifies load, or a config default from a tutorial ships to production. Write the failure story before the happy path.
+
+Concrete probe 2: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Invariants to enforce for secret detection gitleaks
+
+Name three invariants that must hold after every deploy of secret detection gitleaks. Encode at least one in an automated test that fails when the invariant is disabled. Reviewers should reject PRs that only cover the primary UI path.
+
+| Check | Expected for secret detection gitleaks |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 3: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Telemetry and ownership for secret detection gitleaks
+
+Pair a leading operational signal with a lagging user or risk outcome. Page on burn related to secret detection gitleaks, not vanity counters. Keep a named owner and a dashboard link in the service catalog entry.
+
+Concrete probe 4: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Rollout sequence for secret detection gitleaks
+
+Prefer flags, weighted routes, or dual-running configs. Rehearse rollback once in staging. The on-call note for secret detection gitleaks should include the revert command and the expected user-visible effect within five minutes.
+
+| Check | Expected for secret detection gitleaks |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 5: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Cross-team contracts for secret detection gitleaks
+
+Document producers, consumers, timeouts, and idempotency keys. Silent schema or policy changes are how secret detection gitleaks breaks without a clear owner in the incident channel.
+
+Concrete probe 6: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.
+
+## Capacity and cost notes for secret detection gitleaks
+
+Estimate QPS, payload size, cardinality, and downstream saturation. Functionally correct secret detection gitleaks changes still cause outages through pool exhaustion, crawl waste, or CPU amplification.
+
+| Check | Expected for secret detection gitleaks |
+|--------|----------------------|
+| Happy path | Pass |
+| Injected fault | Controlled degradation |
+| After rollback | Prior stable behavior |
+
+Concrete probe 7: inject the failure mode you fear for secret detection gitleaks in staging, confirm the alarm fires, and confirm users see a controlled fallback. Record the result in the change ticket so the next on-call is not guessing.

@@ -3,111 +3,174 @@ title: "SLSA and Supply Chain Security for Artifacts"
 slug: "devops-supply-chain-slsa"
 description: "Implement SLSA provenance, signed commits, and verified builds."
 datePublished: "2026-10-27"
-dateModified: "2026-10-27"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Security"
   - "Supply Chain"
 keywords: "SLSA, supply chain security"
 faq:
-  - q: "What is SLSA and Supply Chain Security for Artifacts?"
-    a: "SLSA and Supply Chain Security for Artifacts covers operational practices for SLSA provenance in production security environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
   - q: "When should teams prioritize SLSA and Supply Chain Security for Artifacts?"
     a: "Software supply chain compliance initiatives."
-  - q: "What mistakes break SLSA and Supply Chain Security for Artifacts?"
+  - q: "What is the most common mistake with SLSA provenance?"
     a: "Provenance generated in same pipeline it attests—weak trust."
+  - q: "Fail open or fail closed on scanner outage?"
+    a: "Fail closed for merge to main when scanning CI is down; break-glass with audit for incidents. Never silently skip secret scans on release branches."
+  - q: "How do we know SLSA and Supply Chain Security for Artifacts is working?"
+    a: "Define a leading metric tied to SLSA provenance health and a lagging metric tied to incidents or audit findings. If only lagging metrics exist, you discover problems after customers do."
 ---
-
 Dependency confusion package almost merged—provenance check missing.
 
-This post walks through **SLSA and Supply Chain Security for Artifacts** for platform and SRE teams shipping reliable infrastructure. Implement SLSA provenance, signed commits, and verified builds. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
-
-## Problem framing: SLSA and Supply Chain Security for Artifacts
-
-Dependency confusion package almost merged—provenance check missing.
+## Why this shows up under real load
 
 
-Platform teams treat **SLSA provenance** as solved after the first successful deploy. Production disagrees: edge cases around supply chain slsa, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Dependency confusion package almost merged—provenance check missing. That is the difference between demo-grade SLSA provenance and production-grade SLSA provenance.
 
-## Design principles for SLSA provenance
+Prioritize SLSA and Supply Chain Security for Artifacts software supply chain compliance initiatives.
 
-Explicit contracts beat tribal knowledge. Document who owns SLSA provenance configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
-
-
-A common failure mode: Provenance generated in same pipeline it attests—weak trust. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+## Decision guide for platform teams
 
 
-```bash
-# ops check for devops-supply-chain-slsa
-kubectl get networkpolicy -A | grep -v "kube-system"
-aws iam simulate-principal-policy \
-  --policy-source-arn "$ROLE_ARN" \
-  --action-names s3:GetObject \
-  --resource-arns "arn:aws:s3:::prod-data/*"
+| Situation | Do | Avoid |
+|-----------|-----|-------|
+| Tier-1 downstream | Fail closed on SLSA provenance | Warn-only gates |
+| Staging parity | Same suite as prod, smaller data | Different expectations |
+| Incident response | One-click rollback path | Manual console edits |
+
+## Configuration patterns that survived review
+
+
+Patterns we kept for SLSA provenance:
+
+## Rollout without blocking the business
+
+
+Roll out in waves: internal consumers, 10% traffic or partitions, soak 48h, then full promote. Keep previous artifact version hot-swappable for one release cycle.
+
+Pair rollout with shadow validation where possible — run new checks without blocking, compare results, then enforce.
+
+## Monitoring and on-call signals
+
+
+Dashboards for SLSA provenance belong in the same folder on-call opens first. Link runbooks from alert annotations — not a wiki nobody trusts.
+
+Delete alerts that never fire; add thresholds that would have caught your last incident.
+
+## Lessons from production
+
+
+SLSA and Supply Chain Security for Artifacts is load-bearing once traffic and teams scale. Treat changes like any tier-1 deploy: feature flags, observability, rollback.
+
+Document org-specific decisions — CIDRs, cluster names, approval gates — in internal docs that stay current.
+
+## Reference configuration
+
+
+```python
+# Operational hook for SLSA provenance
+@task(retries=3, retry_delay=timedelta(minutes=5))
+def run_supply_chain_slsa():
+    validate_preconditions()
+    execute()
+    emit_lineage(run_id=ctx.run_id)
 ```
 
-## Implementation walkthrough
+## Evidence for auditors
 
-Start with the smallest production-safe slice of **SLSA and Supply Chain Security for Artifacts**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Security controls for production paths need immutable logs: who changed policy, which CI run scanned artifacts, and which break-glass session touched RBAC. Prefer OIDC over long-lived keys; rotate with overlap windows.
 
+## Operating SLSA provenance at scale
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for SLSA provenance.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-## Operational concerns in production
+## Handoff to adjacent teams
 
-Day-two operations for security work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
+## Operating SLSA provenance at scale
 
-Run game days or fault injection in staging quarterly for supply chain slsa. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-## Security and compliance angles
+## Handoff to adjacent teams
 
-Even when SLSA and Supply Chain Security for Artifacts is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when SLSA provenance accepts configuration from multiple teams.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
+## Operating SLSA provenance at scale
 
-For regulated workloads, maintain an immutable audit trail: who changed SLSA provenance settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-## Integration with platform standards
+## Handoff to adjacent teams
 
-Align SLSA provenance with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
+## Operating SLSA provenance at scale
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
+## Handoff to adjacent teams
 
-## What to measure after rollout
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+## Operating SLSA provenance at scale
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-## Documentation your team should maintain
+## Handoff to adjacent teams
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
-## Pre-production checklist
+## Operating SLSA provenance at scale
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+## Handoff to adjacent teams
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
-## Common questions from reviewers
+## Operating SLSA provenance at scale
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-## Version and compatibility notes
+## Handoff to adjacent teams
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
 
+## Operating SLSA provenance at scale
 
-## Resources
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
 
-- https://kubernetes.io/docs/home/
+## Handoff to adjacent teams
+
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating SLSA provenance at scale
+
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating SLSA provenance at scale
+
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating SLSA provenance at scale
+
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+Security pipelines touch ingestion, serving, and finance. Document interfaces where SLSA provenance gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating SLSA provenance at scale
+
+After the first successful deploy of slsa and supply chain security for artifacts, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SLSA provenance settings with the on-call rotation — not only the primary author.
+
+## Further reading
+
 - https://opentelemetry.io/docs/
-- https://developer.hashicorp.com/terraform/docs

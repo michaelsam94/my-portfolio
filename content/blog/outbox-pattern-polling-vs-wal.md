@@ -1,129 +1,273 @@
 ---
 title: "Outbox Pattern Polling vs WAL"
 slug: "outbox-pattern-polling-vs-wal"
-description: "Poll outbox table vs logical decoding — latency and operational complexity."
-datePublished: "2026-02-09"
-dateModified: "2026-02-09"
+description: "Compare polling the outbox table against Postgres logical replication and WAL-based CDC for reliable event publishing."
+datePublished: "2026-02-23"
+dateModified: "2026-07-17"
 tags:
+  - "PostgreSQL"
   - "Backend"
-  - "Messaging"
-  - "Reliability"
-keywords: "outbox pattern polling vs wal, production, backend"
+  - "Architecture"
+keywords: "transactional outbox, polling vs wal, logical replication, debezium, change data capture"
 faq:
-  - q: "What problem does Outbox Pattern Polling vs WAL solve?"
-    a: "It addresses production gaps teams hit when scaling outbox pattern polling vs wal: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when outbox pattern polling vs wal appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "When is polling the outbox table good enough?"
+    a: "Polling works well below roughly 500 events per second, when sub-second publish latency is acceptable, and when you want the simplest operational model — a background worker SELECT-ing unpublished rows. Add FOR UPDATE SKIP LOCKED, batch sizes tuned to your commit rate, and exponential backoff on empty polls."
+  - q: "What latency advantage does WAL-based CDC provide over polling?"
+    a: "WAL tailing delivers events within milliseconds of commit because the replication slot streams changes as they hit the write-ahead log. Polling introduces at least one poll interval of delay — often 100ms to 1s — plus query overhead. For user-facing read-your-writes across services, WAL CDC closes that gap."
+  - q: "Does WAL-based outbox publishing still require an outbox table?"
+    a: "Yes. The outbox table enforces atomic write-and-publish intent within the business transaction. WAL CDC replaces the polling relay — it watches the outbox table itself via logical replication rather than the application polling it. You still INSERT into outbox inside the same transaction as your domain write."
 ---
 
-## Production context
+The transactional outbox pattern guarantees that domain state changes and event publication intent commit atomically. The remaining design question — how unpublished events reach your message broker — splits teams into two camps: **poll the outbox table** or **tail the WAL** via logical replication. Both work. They differ in latency, operational complexity, failure modes, and how they behave under load.
 
-A billing service lost duplicate events because outbox pattern polling vs wal was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+This article compares both approaches with enough implementation detail to choose confidently for your throughput and latency requirements.
 
-Senior backend work on outbox pattern polling vs wal is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## The outbox contract
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
+Regardless of relay mechanism, the outbox contract is identical:
 
 ```sql
--- Example: idempotent ingest skeleton for outbox workloads
-CREATE TABLE IF NOT EXISTS processed_events (
+BEGIN;
+  UPDATE orders SET status = 'shipped' WHERE id = $1;
+  INSERT INTO outbox (aggregate_id, event_type, payload, created_at)
+  VALUES ($1, 'OrderShipped', '{"orderId": ...}', now());
+COMMIT;
+```
+
+Either both statements persist or neither does. The relay mechanism — polling or WAL — is a separate process that reads committed outbox rows and publishes to Kafka, SNS, or RabbitMQ.
+
+## Polling relay architecture
+
+A background worker loop:
+
+```sql
+SELECT id, event_type, payload
+FROM outbox
+WHERE published_at IS NULL
+ORDER BY id
+LIMIT 100
+FOR UPDATE SKIP LOCKED;
+```
+
+For each row: publish to broker, then mark published:
+
+```sql
+UPDATE outbox SET published_at = now() WHERE id = $1;
+```
+
+Or delete after publish for append-only outbox tables with archival elsewhere.
+
+Worker pseudocode:
+
+```python
+while True:
+    rows = db.fetch_unpublished(limit=100)
+    if not rows:
+        time.sleep(POLL_INTERVAL)  # 100ms - 1s typical
+        continue
+    for row in rows:
+        broker.publish(row.event_type, row.payload)
+        db.mark_published(row.id)
+```
+
+### Polling strengths
+
+- **Simplicity**: One table, one worker, no replication slots
+- **Debuggability**: `SELECT * FROM outbox WHERE published_at IS NULL` shows backlog instantly
+- **Portability**: Works on any Postgres version without logical replication enabled
+- **Backpressure control**: Batch size and poll interval throttle publish rate naturally
+
+### Polling weaknesses
+
+- **Latency floor**: Events wait at least one poll interval after commit
+- **Database load**: Empty polls still hit the database; high-frequency polling wastes connections
+- **Duplicate publish risk**: Worker crashes after broker publish but before mark_published — requires idempotent consumers or transactional outbox cleanup patterns
+- **Ordering**: Multiple workers with SKIP LOCKED may publish events for the same aggregate out of order
+
+### Polling optimizations
+
+**Adaptive poll interval**: Sleep 100ms when rows found, backoff to 1s when empty.
+
+**Partial index** for unpublished rows:
+
+```sql
+CREATE INDEX outbox_unpublished_idx ON outbox (id)
+WHERE published_at IS NULL;
+```
+
+**Batch publish**: Publish entire batch to broker in one produce call, then batch UPDATE.
+
+**Separate mark step in same transaction as publish** using the transactional producer pattern (see companion article on Kafka) — or accept at-least-once and rely on consumer idempotency.
+
+## WAL-based CDC relay architecture
+
+Postgres logical replication streams row-level changes from the WAL to a consumer. Debezium (or pgoutput-native consumers) watches the outbox table:
+
+```
+Business TX → INSERT outbox row → WAL record
+                                      ↓
+                              Logical replication slot
+                                      ↓
+                              Debezium connector
+                                      ↓
+                              Kafka topic
+```
+
+Debezium configuration snippet:
+
+```json
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "database.server.name": "orders-db",
+  "table.include.list": "public.outbox",
+  "plugin.name": "pgoutput",
+  "publication.name": "outbox_pub",
+  "transforms": "outbox",
+  "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter"
+}
+```
+
+The Outbox Event Router transform maps table columns to Kafka message key, topic, and payload automatically.
+
+Setup on Postgres:
+
+```sql
+-- Requires wal_level = logical
+CREATE PUBLICATION outbox_pub FOR TABLE outbox;
+
+-- Replication slot created by Debezium on first connect
+-- SELECT slot_name, confirmed_flush_lsn FROM pg_replication_slots;
+```
+
+### WAL CDC strengths
+
+- **Sub-second latency**: Events stream within milliseconds of commit
+- **No poll load**: Database does not serve repeated SELECT queries from relay workers
+- **Change ordering**: Replication slot preserves WAL order per table
+- **Decoupled scaling**: Kafka Connect cluster scales independently of application workers
+
+### WAL CDC weaknesses
+
+- **Operational complexity**: Replication slots, Connect cluster, schema history topics, connector restarts
+- **Slot lag danger**: If the consumer stops, the replication slot retains WAL — disk fills up
+- **Schema evolution**: Column additions require connector config updates and careful rollout
+- **Requires logical replication**: Not available on all managed Postgres tiers; read replicas cannot host slots on some providers
+- **Published row cleanup**: Still need a strategy to DELETE or archive published outbox rows
+
+### WAL slot monitoring — non-negotiable
+
+```sql
+SELECT slot_name,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) AS retained_wal
+FROM pg_replication_slots
+WHERE slot_type = 'logical';
+```
+
+Alert when retained WAL exceeds 1GB. A stalled Debezium connector with an active slot can fill your disk and crash Postgres.
+
+## Side-by-side comparison
+
+| Dimension | Polling | WAL CDC |
+| --- | --- | --- |
+| Publish latency | Poll interval (100ms–1s+) | ~10–100ms |
+| DB read load | Repeated SELECT queries | WAL stream (minimal query load) |
+| Setup complexity | Low | High |
+| Failure: worker down | Backlog grows, no WAL retention | Slot retains WAL — disk risk |
+| Exactly-once to broker | Hard (needs transactional producer) | Hard (same — at-least-once typical) |
+| Multi-table outbox | Single worker can batch across tables | One connector per table or route transforms |
+| Local dev experience | Trivial (run worker process) | Needs Connect + Kafka stack |
+
+## Hybrid approaches
+
+Teams often start with polling and migrate to WAL CDC when latency requirements tighten:
+
+1. **Phase 1**: Polling worker, idempotent consumers, partial index
+2. **Phase 2**: Add Debezium in shadow mode — compare events without consuming downstream
+3. **Phase 3**: Cut over consumers to CDC-sourced topics, retire polling worker
+4. **Phase 4**: DELETE published rows via scheduled job (both approaches need this)
+
+Some architectures run both: polling as fallback when the replication slot lag exceeds a threshold. The polling worker picks up anything the CDC stream missed during connector downtime. Duplicate events are handled by consumer idempotency keys.
+
+## Choosing for your workload
+
+**Choose polling when**:
+
+- Event volume under ~500/sec sustained
+- 1-second publish latency acceptable
+- Small team, minimal infrastructure
+- Managed Postgres without logical replication support
+
+**Choose WAL CDC when**:
+
+- Sub-200ms publish latency required
+- Event volume exceeds 1,000/sec
+- Already operating Kafka Connect or Debezium for other tables
+- Database team can monitor replication slot health
+
+**Choose hybrid when**:
+
+- Latency matters but CDC downtime cannot mean event loss
+- Migrating from polling to CDC with zero-downtime requirement
+
+## Outbox table design for both approaches
+
+Design the table to serve either relay:
+
+```sql
+CREATE TABLE outbox (
+  id            bigserial PRIMARY KEY,
+  aggregate_type text NOT NULL,
+  aggregate_id   text NOT NULL,
+  event_type     text NOT NULL,
+  payload        jsonb NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  published_at   timestamptz
+);
+
+CREATE INDEX outbox_unpublished_idx ON outbox (id)
+WHERE published_at IS NULL;
+```
+
+For Debezium Outbox Event Router, add routing columns:
+
+```sql
+ALTER TABLE outbox ADD COLUMN topic text NOT NULL DEFAULT 'domain-events';
+ALTER TABLE outbox ADD COLUMN partition_key text;
+```
+
+Polling workers use `published_at IS NULL`. Debezium reads all INSERTs regardless — use a separate `published_at` update from a downstream consumer acknowledgment, or DELETE rows after Kafka ack via a compaction consumer.
+
+## Idempotency regardless of relay choice
+
+Both polling and WAL CDC deliver **at-least-once** to the broker. Design consumers with idempotency keys:
+
+```sql
+CREATE TABLE processed_events (
   idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
+  processed_at    timestamptz NOT NULL DEFAULT now()
 );
 ```
 
-## Implementation checklist
+Key on `outbox.id` or a business idempotency key in the payload. The relay mechanism does not change consumer requirements.
 
-Validate inputs at the trust boundary with schema versioning.
+## Cleanup and table bloat
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Published outbox rows accumulate in both models. Without cleanup:
 
-Store idempotency keys with TTL; return cached responses on replay.
+- Index bloat on partial index (polling model checks unpublished filter)
+- Sequential scans slow as table grows
+- Debezium replays historical rows on snapshot (initial sync only, but table size affects snapshot duration)
 
-Run migrations with lock_timeout and statement_timeout set.
+Cleanup job:
 
-Load test at 2× expected peak with production-like payload sizes.
+```sql
+DELETE FROM outbox
+WHERE published_at IS NOT NULL
+  AND published_at < now() - interval '7 days';
+```
 
-## Observability
+Run during low-traffic windows with `LIMIT` batches to avoid long locks.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Summary
 
-Dashboards for outbox pattern polling vs wal should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
-
-## Security notes
-
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
-
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
-
-## Common production mistakes
-
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
-
-## Debugging and triage workflow
-
-When production misbehaves, work top-down:
-
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
-
-## Operational checklist
-
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
-
-## Performance tuning notes
-
-Measure before optimizing outbox pattern polling vs wal. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
-
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
-
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
-
-## Rollout and migration
-
-Ship outbox pattern polling vs wal changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
-
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
-
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
-
-## Testing recommendations
-
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
-
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
-
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
-
-## Incident patterns we see
-
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
-
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
-
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
-
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
-
-## Resources
-
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Polling the outbox table is the right default for most applications — simple, debuggable, and sufficient until latency or throughput demands push you elsewhere. WAL-based CDC via logical replication eliminates poll latency and database read overhead at the cost of replication slot monitoring, infrastructure complexity, and disk retention risk during consumer outages. The outbox table and atomic write pattern stay the same either way; only the relay changes. Start simple, measure publish lag against your SLO, and migrate to WAL CDC when the numbers justify the operational burden.

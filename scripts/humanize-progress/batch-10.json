@@ -1,0 +1,39 @@
+{
+  "batch": 10,
+  "slice": "2500-2749",
+  "updated_at": "2026-07-17T10:33:17.448851+00:00",
+  "status": "complete",
+  "total": 250,
+  "humanized_count": 250,
+  "template_remaining": 0,
+  "humanized_under_1200": 0,
+  "rewritten_by_generator": 141,
+  "word_stats_all": {
+    "min": 1200,
+    "max": 1586,
+    "avg": 1360
+  },
+  "samples_rewritten": [
+    "rag-inventory-forecasting-models",
+    "rag-invoice-generation-pdf",
+    "rag-ip-reputation-scoring",
+    "rag-isr-on-demand-revalidation",
+    "rag-json-schema-validation-pipeline",
+    "rag-jwt-rotation-key-management",
+    "rag-karpenter-provisioner-tuning",
+    "rag-keyboard-shortcuts-wcag",
+    "rag-kill-switch-incident-response",
+    "rag-knowledge-base-curation",
+    "rag-kubernetes-admission-webhooks",
+    "rag-kyc-document-verification",
+    "rag-lease-renewal-fencing-tokens",
+    "rag-ledger-double-entry-events",
+    "rag-lighthouse-ci-github-action",
+    "rag-lineage-openlineage-marquez",
+    "rag-load-test-production-shadow",
+    "rag-locale-number-date-format",
+    "rag-logical-replication-conflicts",
+    "rag-magic-link-security-tradeoffs"
+  ],
+  "samples_remaining": []
+}

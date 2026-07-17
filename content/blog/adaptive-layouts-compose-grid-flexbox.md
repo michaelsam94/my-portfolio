@@ -92,6 +92,53 @@ Foldables add a wrinkle: the window changes *while the app is running* when the 
 
 Adaptive layout and system insets go hand in hand. On modern Android, apps draw [edge-to-edge](https://blog.michaelsam94.com/edge-to-edge-android-16/) by default, so your adaptive content must respect `WindowInsets` (status bar, navigation bar, display cutout, IME) or it'll draw under system UI. Apply insets at the scaffold level and let padding flow down; combined with size-class-driven structure, that's what makes a layout feel native on everything from a compact phone to a desktop window.
 
+## BoxWithConstraints: local MediaQuery-style decisions
+
+`WindowSizeClass` answers global questions — single pane or list-detail — but leaf composables often need local reflow without another top-level branch. `BoxWithConstraints` exposes `maxWidth` and `maxHeight` inside a subtree, which is the Compose equivalent of a CSS `@container` or media query scoped to a parent:
+
+```kotlin
+@Composable
+fun ProductCard(product: Product, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier) {
+        if (maxWidth >= 400.dp) {
+            Row(Modifier.fillMaxWidth()) {
+                ProductImage(product, Modifier.weight(1f))
+                ProductDetails(product, Modifier.weight(1f))
+            }
+        } else {
+            Column {
+                ProductImage(product, Modifier.fillMaxWidth())
+                ProductDetails(product)
+            }
+        }
+    }
+}
+```
+
+Use size classes for navigation and pane structure; use `BoxWithConstraints` when the same screen hosts cards or rows that should reflow based on *allocated* width inside a pane — especially in list-detail where the detail pane might be medium-width even on an expanded window. Avoid nesting many `BoxWithConstraints` layers; one local breakpoint per composable is usually enough.
+
+## Typography and spacing that scale with width
+
+Adaptive layout is not only columns and panes. Material 3 typography tokens (`displayLarge`, `titleMedium`, `bodyLarge`) should track window width so headlines do not dominate a phone or shrink on a desktop window. A practical pattern is mapping width size class to a `Typography` override at the theme level:
+
+```kotlin
+@Composable
+fun AdaptiveTheme(windowSizeClass: WindowSizeClass, content: @Composable () -> Unit) {
+    val typography = when (windowSizeClass.widthSizeClass) {
+        WindowWidthSizeClass.Compact -> compactTypography()
+        WindowWidthSizeClass.Medium -> mediumTypography()
+        WindowWidthSizeClass.Expanded -> expandedTypography()
+    }
+    MaterialTheme(typography = typography, content = content)
+}
+```
+
+Spacing follows the same rule: 8dp gutters on compact, 16–24dp on expanded. Hardcoding `padding(16.dp)` everywhere makes tablet layouts feel cramped relative to the extra horizontal space you earned by switching to list-detail.
+
+## Testing adaptive behavior without a device farm
+
+You do not need every form factor on your desk. `ComposeTestRule` can inject width and height via `DeviceConfigurationOverride` (AndroidX Compose UI test) or by wrapping content in a sized `Box` in screenshot tests. For each critical screen, assert three configurations: compact portrait (~360dp), medium unfolded (~600dp), and expanded landscape (~840dp+). Verify that list-detail scaffolds show one vs two panes, that `GridCells.Adaptive` produces the expected column count, and that `rememberSaveable` state survives a simulated configuration change. Fold regression tests belong in CI — a broken split-screen layout ships silently otherwise.
+
 ## What I'd take away
 
 Stop asking "is this a tablet?" and start asking "how much window do I have?" Branch structure on `WindowSizeClass`, reflow uniform content with `GridCells.Adaptive`, wrap uneven content with `FlowRow`/`FlowColumn`, resolve size decisions high in the tree, and respect insets. That combination gives you a single codebase that behaves correctly across phones, foldables, tablets, split-screen, and desktop windows — without the fragile device checks that break the moment a new form factor ships.

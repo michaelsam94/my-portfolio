@@ -1,111 +1,153 @@
 ---
 title: "RAG: Dependency Confusion Defense"
 slug: "rag-dependency-confusion-defense"
-description: "Dependency Confusion Defense: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Defending against dependency confusion in ML and RAG pipelines — private package namespaces, lockfile integrity, registry proxies, and CI verification."
 datePublished: "2025-10-30"
-dateModified: "2025-10-30"
+dateModified: "2026-07-17"
 tags: ["AI", "Rag", "Dependency"]
-keywords: "rag, dependency, confusion, defense, ai, production, engineering, architecture"
+keywords: "rag, dependency, confusion, ai, production, engineering, architecture"
 faq:
-  - q: "What is Dependency Confusion Defense?"
-    a: "Dependency Confusion Defense covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Dependency Confusion Defense?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Dependency Confusion Defense?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Dependency Confusion Defense fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Dependency Confusion Defense should be observable in production and safe to change in small diffs."
+  - q: "What is dependency confusion in the context of RAG services?"
+    a: "An attacker publishes a public package with the same name as your internal private package—often with a higher semver version. Build tools that check public registries first may install the malicious package instead of your internal one, compromising embedding workers, document parsers, or evaluation harnesses at build or runtime."
+  - q: "Which RAG pipeline components are highest risk?"
+    a: "Custom Python ingestion workers, internal npm packages for chunking utilities, private Docker base images referenced without digest pinning, and CI jobs that pip install from requirements.txt without hash verification. Any step that resolves package names against both private and public registries is in scope."
+  - q: "Does scoped npm package naming eliminate the risk?"
+    a: "Scoped packages (@org/name) reduce accidental public squatting but do not eliminate it if CI is misconfigured to pull unscoped fallbacks or if attackers register similarly named scopes. Combine scope enforcement with registry proxy rules and explicit allowlists."
 ---
-Most teams encounter dependency confusion defense after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A document ingestion worker started exfiltrating chunk text to an unknown endpoint after a routine deploy. The diff showed no application code changes—only a patch version bump in `requirements.txt` resolved by CI. Investigation found that `acme-chunk-utils`, a private PyPI package used across RAG pipelines, had a namesake on the public index at version `99.0.0`. `pip` preferred the higher public version because the job's index URL order listed PyPI before the internal mirror. The malicious package wrapped the real chunker and forwarded decoded document content on every `split()` call.
 
-When dependency confusion defense is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+**Dependency confusion** exploits the gap between how developers name internal packages and how package managers resolve versions across registries. RAG systems amplify impact: ingestion workers handle pre-redaction document content, embedding jobs hold API keys, and eval runners often execute in CI with broad secrets access.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## How confusion attacks work
 
-Solid AI engineering turns dependency confusion defense from a recurring argument into a documented pattern with tests and an owner.
+Classic sequence (Alex Birsan, 2021):
 
-## Design principles that survive production
+1. Attacker enumerates internal package names from leaked manifests, public repos, or JS bundle source maps.
+2. Attacker publishes those names to public registries with inflated version numbers.
+3. Build or runtime resolver picks the public package because semver comparison favors `99.0.0` over your internal `1.4.2`.
+4. Malicious code runs with the privileges of your pipeline or service.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where rag dependency confusion defense bugs hide.
+Variants targeting RAG stacks:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for dependency confusion defense, you do not yet understand the behavior you shipped.
+- **Typosquat** on popular OSS (`langchian` vs `langchain`) in notebooks copied into production Dockerfiles.
+- **Transitive confusion** when an internal meta-package depends on a squatted public name.
+- **Container base image** tags that float to unexpected digests when registry namespaces collide across cloud accounts.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Registry architecture that fails closed
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design rag dependency confusion defense flows so duplicates are harmless or detectable.
+Configure package managers so internal names never resolve from public registries:
 
-## Implementation patterns
+### Python (pip)
 
-A practical baseline for dependency confusion defense in ai stacks:
+Use an **explicit index strategy** with `--index-url` pointing only to your Artifactory/CodeArtifact/proxy, and `--extra-index-url` for PyPI only when needed—or better, mirror PyPI internally and use a single index.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes rag dependency confusion defense changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Dependency Confusion Defense: typed boundary + structured errors
-export async function handleDependencyConfusionDefense(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("rag-dependency-confusion-defense");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```ini
+# pip.conf on build agents
+[global]
+index-url = https://pypi.internal.example.com/simple
+# No extra-index-url unless controlled mirror
 ```
 
+Enable **`--require-hashes`** or pip-tools with locked hashes for production builds. CI rejects lockfiles missing hashes on direct dependencies.
 
-## Operational concerns
+Block package names matching internal namespace patterns from public install:
 
-Game-day exercises for dependency confusion defense beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+```yaml
+# Artifactory virtual repo rule
+deny_public_if_internal_name_matches:
+  - "acme-*"
+  - "corp-rag-*"
+```
 
-Production rag dependency confusion defense work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+### npm
 
-Rollouts for dependency confusion defense benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Publish internal packages under **`@yourorg/` scope**. Configure `.npmrc`:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```
+@yourorg:registry=https://npm.internal.example.com/
+registry=https://registry.npmjs.org/
+```
 
-## Security and compliance angles
+CI fails if a dependency resolves outside expected registry per scope. Use **npm provenance** and **lockfile-only** installs (`npm ci`).
 
-Even when dependency confusion defense is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+### Go modules
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for rag dependency confusion defense so security reviews do not rely on tribal knowledge.
+Use **`GOPRIVATE=*.internal.example.com,github.com/yourorg/*`** and a module proxy (Athens) that refuses to fetch private module paths from the public sum database incorrectly.
 
-## Testing strategy
+## CI verification gates
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that dependency confusion defense depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Automated checks catch misconfiguration before merge:
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+1. **Resolution audit**: dry-run install logs every package source registry. Flag any internal-named package fetched from public URL.
+2. **Version ceiling test**: assert internal packages never resolve to versions not published on internal registry.
+3. **Source map / manifest leak scan**: block commits exposing internal package names without corresponding public squatting monitoring.
+4. **Dependabot with registry scope**: alerts when new dependencies introduce dual-registry resolution.
 
-## Migration and evolution
+```bash
+# Example: fail CI if acme-* came from pypi.org
+pip install -r requirements.lock --report /tmp/report.json
+jq -e '.install[] | select(.metadata.name | startswith("acme-")) | select(.download_info.url | contains("pypi.org")) | halt_error(1)' /tmp/report.json
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle rag dependency confusion defense functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Runtime and supply chain hardening
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where dependency confusion defense spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Build-time defense is necessary; runtime limits blast radius:
 
-## Related concepts
+- **Minimal base images** for ingestion workers; no compilers in production stage.
+- **Read-only root filesystem** and dropped capabilities in Kubernetes.
+- **Network egress allowlists**—a poisoned chunker cannot phone home if only embedding API endpoints are reachable.
+- **Secret scoping**: embedding API keys in worker pods, not in CI images shared with untrusted fork PRs.
 
-Dependency Confusion Defense intersects with broader ai topics — see companion notes on [rag-dependency patterns](https://blog.michaelsam94.com/rag-dependency/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Sign internal packages and verify signatures in CI. Cosign for containers, npm sigstore for JS where supported.
 
-## The takeaway
+## Monitoring for squatting
 
-Dependency Confusion Defense rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how rag dependency confusion defense becomes a maintainable asset instead of incident fuel.
+Proactive threat intel:
 
-## Resources
+- Subscribe to alerts when new public packages match internal name list (GitHub Dependabot, Sonatype, custom RSS on PyPI search).
+- Quarterly audit: export all unique dependency names from lockfiles across RAG repos; check public registry for exact matches.
+- Run **dependency confusion canary packages**—harmless internal names you never use; alert if anything attempts to install them from public.
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+Document an incident runbook: isolate affected workers, rotate secrets touched by compromised build agents, rebuild images from known-good lock hashes, scan artifact registry for packages published during exposure window.
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Developer experience without unsafe shortcuts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Engineers reach for `pip install acme-chunk-utils` in notebooks when internal docs are thin. Reduce temptation:
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+- Template `pyproject.toml` with correct index configuration checked into every RAG repo.
+- Internal package catalog with copy-paste install snippets including hash pins.
+- Pre-commit hook rejecting `requirements.txt` without lock companion for deployable services.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+Security policies fail when they add friction without alternatives. Make the secure path the easy path.
+
+Dependency confusion is not exotic— it is misordered index URLs and unpinned resolution doing exactly what semver math dictates. RAG pipelines processing sensitive documents need registry proxies that deny public resolution of internal names, lockfiles with cryptographic integrity, and CI that proves every package came from where you think it did. The exfiltrating chunker incident ends when `acme-chunk-utils` cannot resolve from PyPI, period.
+
+## Container and OCI registry confusion
+
+Dependency confusion extends beyond npm and PyPI. Internal base images like `corp/rag-ingest-worker` on a private registry compete with public Docker Hub if CI resolves unqualified names. Pin images by **digest** in Kubernetes manifests; deny pulls from docker.io for namespaces matching internal patterns.
+
+Helm charts referencing external subcharts should verify chart museum provenance— attackers publish chart names mirroring internal releases. Sign charts with Cosign and verify in Argo CD sync hooks.
+
+## Developer onboarding and education
+
+New hires copy Stack Overflow `pip install` lines into ingestion notebooks that bypass internal index config. Run **30-minute supply chain onboarding** covering pip.conf, `.npmrc`, and how to request new public dependency approval. Gamified phishing-style tests ("click to install faster embeddings package") measure whether lessons stuck.
+
+Quarterly report to leadership: blocked confusion attempts, new dependencies approved, mean time to add allowlisted vendor. Security becomes visible wins, not invisible denials.
+
+## SBOM and dependency review automation
+
+Generate **Software Bill of Materials** on every RAG worker image build; compare against previous release for unexpected new package names. Syft/Grype pipeline flags packages never seen in org before—human approves or blocks deploy.
+
+Dependabot PRs for OSS dependencies require two reviewers when package downloads exceed 1M weekly—popular typosquat targets. Internal package registry search before approving new public dep with similar name to internal library.
+
+## Long-term culture and metrics
+
+Track **mean time to approve** new public dependencies—if process takes two weeks, engineers bypass with creative package names. Streamline approval for well-known OSS with good SBOM while keeping strict path for packages matching internal namespace patterns.
+
+Annual tabletop exercise: red team attempts dependency confusion against staging CI; blue team detects via SBOM diff and registry alerts. Results presented to engineering all-hands with anonymized near-miss stories reinforcing why pip.conf matters more than once-a-year security training slides.
+
+Supply chain security is cumulative: dependency confusion defense works only alongside pinned lockfiles, signed commits, and least-privilege CI tokens. Treat internal package names as sensitive identifiers in threat models the same way you treat API keys—because in practice, they are keys to your build pipeline.
+
+## Acceptance criteria for dependency confusion defense
+
+Ship only when staging demonstrates the failure modes you claim to handle. Record the evidence — load test output, chaos result, or screenshot of the alert firing — in the PR. Revisit the settings after the first real incident; production will teach you which timeout or retention value was optimistic. Prefer boring, documented tradeoffs over clever defaults that only exist in one engineer's head.

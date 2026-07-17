@@ -4,7 +4,7 @@ seoTitle: "OCPP 2.0.1 vs 1.6: What Changed for EV Charging"
 slug: "ocpp-2-0-1-vs-1-6"
 description: "A field comparison of OCPP 2.0.1 vs 1.6 from someone who built a charging platform: device model, security, smart charging, ISO 15118, and migration reality."
 datePublished: "2026-07-14"
-dateModified: "2026-07-14"
+dateModified: "2026-07-17"
 tags: ["OCPP", "EV Charging", "IoT", "Protocols"]
 keywords: "OCPP 2.0.1, OCPP 1.6, EV charging protocol, OCPP comparison, charging station, smart charging, ISO 15118"
 faq:
@@ -75,6 +75,33 @@ Here's the honest operational picture. You can't flip a fleet from 1.6 to 2.0.1 
 That internal abstraction is the single most important design decision. Get it right and adding 2.0.1 is additive; get it wrong and every new feature forks into two codepaths forever. This is the same idempotency-and-state discipline that shows up across [distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/) — chargers reconnect, replay messages, and go offline mid-transaction, so both protocol handlers need to treat duplicate and out-of-order messages as normal.
 
 For a new platform in 2026, I'd build the core on 2.0.1's model and adapt 1.6 into it. For an existing 1.6 platform, I'd add 2.0.1 alongside rather than migrate — because the field decides your timeline, not the spec.
+
+## Message mapping cheat sheet
+
+Dual-protocol CSMS code rots when message mapping lives in developers' heads. Maintain an explicit table:
+
+| Concern | OCPP 1.6 | OCPP 2.0.1 |
+|---------|----------|------------|
+| Start session | `StartTransaction` | `TransactionEvent` (Started) |
+| Meter data | `MeterValues` | `TransactionEvent` (Updated) + Metering component |
+| Stop session | `StopTransaction` | `TransactionEvent` (Ended) |
+| Remote start | `RemoteStartTransaction` | `RequestStartTransaction` |
+| Config change | `ChangeConfiguration` | `SetVariables` |
+| Connector status | `StatusNotification` | Device Model `AvailabilityState` + `NotifyEvent` |
+| Auth | `Authorize` + `StartTransaction` | `Authorize` + `TransactionEvent` with `idToken` |
+| Firmware | `UpdateFirmware` | `FirmwareStatusNotification` + signed `UpdateFirmware` |
+
+Your normalization layer should emit internal events (`session.started`, `session.metered`, `session.ended`) regardless of protocol. Billing, OCPI session export, and demand-response modules consume those events — never OCPP JSON directly.
+
+## DisplayMessage, diagnostics, and operator UX
+
+OCPP 2.0.1 adds `SetDisplayMessage` and richer `GetLog` / `CustomerInformation` use cases that 1.6 handled with vendor-specific extensions. Fleet operators notice this immediately: unified fault messages on charger screens, standardized log upload requests, and tariff display without proprietary middleware.
+
+1.6 deployments often relied on manufacturer cloud portals for diagnostics — acceptable for 50 chargers, painful at 5,000. If your migration pitch to operations includes "one pane of glass," these 2.0.1-only features matter as much as TLS.
+
+## Certification and procurement language
+
+RFPs increasingly specify "OCPP 2.0.1 with Security Profile 3." Hardware procured as "1.6J compatible" may never receive 2.0.1 firmware. Lock firmware upgrade path and 2.0.1 certification status in purchase contracts. Budget engineering time for **two** OCPP test harnesses through at least one full release cycle — message schemas, state machines, and error codes all differ enough that shared test cases give false confidence.
 
 ## Resources
 

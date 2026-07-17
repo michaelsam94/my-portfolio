@@ -3,7 +3,7 @@ title: "System Design: News Feed"
 slug: "system-design-news-feed"
 description: "Design a social news feed system with fan-out on write vs read, ranking algorithms, and pagination for millions of users posting and consuming content."
 datePublished: "2025-10-29"
-dateModified: "2025-10-29"
+dateModified: "2026-07-17"
 tags: ["System Design", "Social", "Architecture", "Backend"]
 keywords: "news feed system design, fan-out on write, fan-out on read, social feed architecture, timeline generation, feed ranking algorithm"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Production feeds use multi-signal ranking: recency, engagement velocity (likes/comments in first hour), relationship strength (interaction frequency with poster), content type preferences, and diversity (don't show five posts from the same person). Build a candidate generation stage (fetch recent posts from followed users), then a lightweight ranking model (logistic regression or small neural net) to score and sort candidates."
   - q: "How do you paginate an infinite feed efficiently?"
     a: "Use cursor-based pagination with a composite cursor (timestamp + post_id) instead of offset pagination. Offset breaks when new items are inserted during scrolling. Store the cursor client-side and pass it with each request: GET /feed?cursor=1700000000:post_abc123&limit=20. The server returns the next 20 items before that cursor plus a next_cursor for the following page."
+faqAnswers:
+  - question: "When is system design news feed the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for system design news feed?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back system design news feed safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Facebook's news feed serves 2.9 billion users, each seeing a different ordered list of posts from hundreds of friends and pages they follow. The naive approach — query all posts from followed users, sort by time, return top 20 — takes seconds per request when a user follows 500 accounts with millions of total posts. Production feeds pre-compute, cache, rank, and paginate through a pipeline designed for read-heavy, write-bursty workloads.
 
 ## Fan-out strategies
@@ -162,29 +168,31 @@ Client stores `next_cursor` from each response and passes it to the next request
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
+## Cold start feed for new users
 
-Teams get news feed wrong in predictable ways:
+Users with zero follows need curated onboarding feed — merge RECOMMENDED stream with empty follow graph. Cache separately from personalized feeds; invalidate onboarding set daily without busting per-user feed keys.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Feed deduplication on repost
 
-System design for news feed breaks at scale when hot keys, thundering herds, and cache stampedes are discovered during launch week instead of load test week.
+Repost same post_id from different actors — ranker dedupes by canonical post_id keeping highest engagement entry. Without dedup, timeline shows identical content three times when viral post crosses follow graph clusters.
 
-## Debugging and triage workflow
+## Integration testing notes
 
-When news feed misbehaves in production, work top-down instead of guessing:
+Exercise the happy path plus three failure modes specific to system design news feed: dependency timeout, duplicate delivery, and partial deploy during rolling update. Automated tests should assert idempotent behavior and user-visible error messages—not only HTTP 200 from mocks.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Documentation and on-call
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Link runbook steps from the service catalog entry for system design news feed. On-call engineers should find rollback command, dashboard URL, and known false-positive alerts without searching Slack history. Update the entry when behavior or metrics change.
+
+## Rollout checklist
+
+Ship behind a feature flag when behavior is user-visible. Compare error rate and p95 latency for seven days against baseline captured before merge. Document rollback in the pull request so on-call can revert without author contact.
+
+## Quick reference
+
+Hybrid fan-out: push for normal users, pull merge for celebrity accounts above threshold. Keep a dashboard per critical user journey and review weekly during the first month after launch.
+
+Review metrics quarterly; traffic mix shifts can invert prior wins without code changes.
 
 ## Resources
 
@@ -193,3 +201,52 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Redis sorted sets documentation](https://redis.io/docs/data-types/sorted-sets/)
 - [Fan-out strategies comparison](https://www.youtube.com/results?search_query=news+feed+fan+out+system+design)
 - [Designing Data-Intensive Applications — Ch. 11 Stream Processing](https://dataintensive.net/)
+
+## Failure modes specific to system design news feed
+
+System design interviews and production systems diverge: system design news feed in production needs SLOs, abuse controls, and multi-region failure stories. Sketch the data model and consistency requirements before drawing boxes.
+
+For system design news feed:
+- Separate read and write scaling paths early if fan-out or search is involved
+- Idempotency keys on payments, bookings, and message delivery
+- Backpressure at every queue; unbounded buffers are delayed outages
+- Hot-key and thundering-herd mitigations (jitter, singleflight, cache stampedes)
+
+Write the load-test plan that would disprove your capacity claims — QPS, payload sizes, and regional failover RTO.
+
+| Signal | Target | Alarm |
+|--------|--------|-------|
+| Cold start p95 | Team-defined SLO | Page on burn rate |
+| Throttle count | Baseline − noise | Ticket if sustained |
+| Downstream timeouts | Budget cap | Weekly review |
+
+## Migration path into system design news feed
+
+Reviewers should challenge assumptions encoded in system design news feed: defaults copied from tutorials, timeouts that exceed upstream SLAs, and authz checks applied only on the primary UI path. Require a short threat or failure note in the PR when the change touches a trust boundary.
+
+Concrete probes:
+1. Scenario A for system design news feed: partial dependency outage — prove clients degrade gracefully and retries do not amplify load.
+2. Scenario B for system design news feed: bad config shipped — prove rollback within the declared RTO without data corruption.
+3. Scenario C for system design news feed: traffic 3× baseline — prove autoscaling or shedding keeps the golden journey healthy.
+
+## Post-incident changes after system design news feed failures
+
+Roll out system design news feed behind a flag or weighted route when possible. Start with internal users or a low-risk geography. Watch the signals in the table for at least one full business cycle before calling the migration done. Keep the previous path warm until error budgets stabilize.
+
+Document the owner, the dashboard, and the single command that reverts the change. If that sentence is hard to write, the design is not ready for production traffic.
+
+## Compliance evidence for system design news feed
+
+Detail 1 (660): for system design news feed, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When compliance evidence for system design news feed becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break system design news feed, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about system design news feed: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.
+
+## Developer experience when changing system design news feed
+
+Detail 2 (617): for system design news feed, define the contract between producers and consumers explicitly — payload shape, timeout, and idempotency key. When developer experience when changing system design news feed becomes painful, it is usually because that contract was implicit.
+
+I keep a short matrix: who can break system design news feed, how we detect it within five minutes, and who is paged. Update the matrix when ownership moves. Add one synthetic check that exercises the failure path, not only the happy path. Prefer checks that run continuously over quarterly manual reviews that everyone skips under deadline pressure.
+
+If you only remember one thing about system design news feed: optimize for reversible decisions. Reversibility beats cleverness when the incident channel is busy and the blast radius is unclear.

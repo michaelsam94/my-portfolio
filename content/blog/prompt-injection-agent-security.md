@@ -3,7 +3,7 @@ title: "Prompt Injection and Agent Security: Building Safe Harnesses"
 slug: "prompt-injection-agent-security"
 description: "Defend LLM agents from prompt injection with layered guardrails, tool allowlists, indirect injection containment, and harness patterns that limit blast radius."
 datePublished: "2026-01-20"
-dateModified: "2026-01-20"
+dateModified: "2026-07-17"
 tags: ["Security", "AI Agents", "LLM", "Prompt Injection"]
 keywords: "prompt injection, agent security, LLM security, tool poisoning, AI guardrails, indirect prompt injection"
 faq:
@@ -81,6 +81,27 @@ Before shipping an agent with tools, I run through this:
 7. Is every tool call logged and alertable?
 
 None of these individually stops prompt injection. Together, they turn a successful injection from a breach into a logged, contained, non-event. That's the realistic bar for agent security today — not prevention, but containment engineered so thoroughly that being fooled is survivable.
+
+
+## Canary strings in system prompts
+
+Embed random canary tokens in system prompts (`CANARY-7f3a`). Alert if canary appears in user-visible output or outbound tool args — signals successful instruction override. Rotate canaries monthly; static canaries become training artifacts in logged conversations.
+
+## Tool allowlists per agent profile
+
+Support agent: read_ticket, add_comment only. Admin agent: add read_user_metadata with MFA step-up. Profiles stored outside user-editable prompt text — injection cannot elevate tool access if authorization checks tool name against server-side profile, not LLM suggestion alone.
+
+## Output schema as defense
+
+Even if injection succeeds partially, JSON schema validation rejects exfil-shaped outputs (unexpected `external_url` field). Combine prompt hardening with structural validation on every agent response.
+
+## Human approval for sensitive tools
+
+Tools sending email or modifying billing require human click — injection cannot bypass UI gate if tool execution server-side checks approval token issued by UI session.
+
+## Sustaining quality over time
+
+Operational maturity for prompt injection agent security in production RAG and web stacks requires measurable SLOs, versioned runbooks indexed alongside code changes, and eval gates before prompt or routing updates. Teams that skip baseline metrics before rollout debate subjective quality while costs climb silently. Treat documentation, prompts, and caching policies as versioned artifacts with rollback paths — the same discipline applied to application deploys. Review quarterly whether indexed corpus still matches production behavior after dependency upgrades, schema migrations, and vendor API changes.
 
 ## Resources
 

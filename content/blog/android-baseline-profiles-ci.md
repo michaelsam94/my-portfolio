@@ -108,6 +108,28 @@ A profile you never measure is faith-based performance. Pair generation with a *
 
 Baseline Profiles buy real startup and scroll performance for free at runtime, but only if the profile stays current — and manual generation always rots. Move generation into CI using Gradle Managed Devices so it runs on a declared, reproducible emulator with no physical device dependency. Run `generateBaselineProfile` on release branches (and optionally on a schedule) rather than every PR, make the generator exercise the journeys users actually hit first, and back it with a startup Macrobenchmark that proves the improvement. Automated this way, the profile is always fresh, the win is measured, and nobody has to remember a manual step under deadline pressure.
 
+## Profile generation on representative devices
+
+Baseline profiles from emulator miss ARM dex layout differences. Generate on physical Pixel class device in CI macOS/ Linux farm, commit `baseline-prof.txt` per release. Diff profile size in PR — sudden shrink means generator did not exercise critical paths.
+
+## Macrobenchmark gate
+
+Run `BaselineProfileRule` plus startup benchmark comparing with/without profile merge. Fail if improvement below 10% on cold start — profile likely stale or generator skipped new Activity.
+
+## Baseline Profiles Ci Supplement 0 on Samsung and Pixel divergence
+
+Exercise baseline profiles ci supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching baseline; regressions above 8% block release for `android-baseline-profiles-ci-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Baseline Profiles Ci Supplement 0" should map to a single runbook section with known workarounds.
+
+## Ci regression gates for Play Vitals
+
+Before promoting `android-baseline-profiles-ci-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing baseline with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing baseline profiles ci supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Android — Baseline Profiles overview](https://developer.android.com/topic/performance/baselineprofiles/overview)

@@ -3,7 +3,7 @@ title: "Full-Text Search in Postgres"
 slug: "postgres-full-text-search-tsvector"
 description: "Build full-text search with PostgreSQL tsvector and tsquery: GIN indexes, ranking, phrase search, and when FTS beats Elasticsearch for your workload."
 datePublished: "2026-03-13"
-dateModified: "2026-03-13"
+dateModified: "2026-07-17"
 tags: ["PostgreSQL", "Backend", "Search", "Database"]
 keywords: "PostgreSQL full text search, tsvector tsquery, GIN index Postgres, pg_trgm search, Postgres FTS ranking"
 faq:
@@ -141,29 +141,80 @@ Expose search syntax help in UI — power users benefit from phrase quotes and m
 
 Reindex GIN indexes after major bulk loads if search recall drops — bloat in GIN posting trees affects result completeness before autovacuum catches up on very large tables.
 
-## Common production mistakes
 
-Teams get full text search tsvector wrong in predictable ways:
+## tsvector column vs generated
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Maintained tsvector updated by trigger vs GENERATED ALWAYS AS to_tsvector STORED. Generated simplifies schema; triggers allow custom weighting per field (title weight A, body weight D).
 
-Postgres work on full text search tsvector causes outages when migrations run without `lock_timeout`, connection pools are sized for app servers not PgBouncer modes, and `EXPLAIN` plans from staging are assumed to match production statistics.
+## Ranking with ts_rank_cd
 
-## Debugging and triage workflow
+ts_rank_cd covers density — prefer over ts_rank for longer documents. Combine with published_at DESC for recency boost in hybrid score.
 
-When full text search tsvector misbehaves in production, work top-down instead of guessing:
+## GIN index maintenance
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+GIN indexes bloat with heavy updates — monitor pg_stat_user_indexes. Autovacuum must keep pace; bulk reindex CONCURRENTLY if search latency drifts.
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Language configuration
+
+Multilingual content needs per-row regconfig or separate columns per language. Single english config stemmes French poorly — detect language at ingest.
+
+## Highlighting search results
+
+ts_headline generates snippet with match markers for UI:
+
+```sql
+SELECT id, ts_headline('english', body, query) AS snippet
+FROM articles, plainto_tsquery('english', $1) query
+WHERE search_vector @@ query;
+```
+
+Configure MaxWords and MinWords to control snippet length in mobile results list.
+
+## Synonym dictionaries
+
+Install custom thesaurus for product names ("laptop" ↔ "notebook") via CREATE TEXT SEARCH CONFIGURATION — reduces zero-result searches without OR-exploding query manually in application code.
+
+## Updating tsvector on row change
+
+Trigger maintains search_vector on INSERT/UPDATE:
+
+```sql
+CREATE TRIGGER tsvector_update BEFORE INSERT OR UPDATE ON articles
+FOR EACH ROW EXECUTE FUNCTION
+  tsvector_update_trigger(search_vector, 'pg_catalog.english', title, body);
+```
+
+Generated STORED column alternative in PG12+ reduces trigger boilerplate — choose based on team familiarity.
+
+## phraseto_tsquery vs plainto_tsquery
+
+User quoted phrase search uses phraseto_tsquery for proximity — "machine learning" as phrase not OR of tokens. plainto_tsquery ANDs words — better for single-word and casual search box. Expose mode in API query param; wrong choice frustrates power users.
+
+## Weighing title over body
+
+Setweight on tsvector components: setweight(to_tsvector(title), 'A') || setweight(to_tsvector(body), 'D') — rank boosts title matches. Maintain in trigger or generated expression; document weight scheme for relevance tuning QA.
+
+## Limiting search result explosion
+
+SET pg_trgm similarity threshold or ts_rank cutoff in query HAVING ts_rank > 0.05 — prevents low-relevance flood on common terms. Pagination with stable ORDER BY rank, id tiebreaker avoids duplicate/missing pages when rows updated during user scroll.
+
+## Accent-insensitive search
+
+unaccent extension paired with tsvector — GENERATED column to_tsvector('unaccent', lower(title)) STORED for user-facing search expecting café matching cafe. Extension install in all envs including CI; missing unaccent fails search deploy on staging only classic bug.
+
+## Closing notes
+
+Search analytics log zero-result queries weekly — add synonym or adjust weighting when product terms mismatch document vocabulary; tsvector tuning driven by real failed searches not engineer guesswork.
+
+## Additional guidance
+
+Combine tsvector with trigram index on title for typo tolerance when product requires fuzzy brand search — two indexes maintained on write, query uses OR of tsvector match and similarity threshold with rank merge in application layer documented in search architecture note.
+
+Reindex search GIN CONCURRENTLY after bulk catalog import before marketing launch — pending gin entries slow search below SLO during peak traffic when import finished hours before campaign start; runbook step often missed because functional tests pass on small staging catalog.
+
+Schedule REINDEX CONCURRENTLY on search GIN before large marketing catalog push — pending-list latency otherwise violates search SLO opening day.
+
+Log zero-result searches to analytics weekly — product adds synonyms when brand names mismatch document vocabulary causing empty SERP on internal catalog search.
 
 ## Resources
 

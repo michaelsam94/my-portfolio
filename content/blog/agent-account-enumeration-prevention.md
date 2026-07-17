@@ -1,111 +1,238 @@
 ---
 title: "AI Agents: Account Enumeration Prevention"
 slug: "agent-account-enumeration-prevention"
-description: "Account Enumeration Prevention: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Account enumeration leaks whether emails exist in your system — through response text, status codes, and timing. Here is how to design login, signup, and reset flows that resist it without lying to legitimate users."
 datePublished: "2025-12-24"
 dateModified: "2025-12-24"
 tags: ["AI", "Agent", "Account"]
-keywords: "agent, account, enumeration, prevention, ai, production, engineering, architecture"
+keywords: "account enumeration, authentication security, user enumeration, OWASP, password reset, login timing attacks, credential stuffing"
 faq:
-  - q: "What is Account Enumeration Prevention?"
-    a: "Account Enumeration Prevention covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Account Enumeration Prevention?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Account Enumeration Prevention?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Account Enumeration Prevention fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Account Enumeration Prevention should be observable in production and safe to change in small diffs."
+  - q: "What is account enumeration?"
+    a: "Account enumeration is when an attacker learns whether a specific email, phone, or username is registered by observing differences in API responses, HTTP status codes, error messages, or response timing across login, signup, password reset, and MFA enrollment endpoints."
+  - q: "Is account enumeration a critical vulnerability?"
+    a: "It is typically rated medium severity (CVSS ~5.3) but enables targeted phishing, credential stuffing, and social engineering. For high-profile users or B2B products, confirming account existence is a meaningful reconnaissance step before account takeover attempts."
+  - q: "Should login and signup return the same message for unknown emails?"
+    a: "Yes for the user-visible message. Both should say something like 'If an account exists, we sent instructions' or 'Invalid email or password' on login. Internally, log the distinction for security monitoring, but never expose it in HTML, JSON error fields, or redirect behavior."
+  - q: "Does CAPTCHA prevent enumeration?"
+    a: "CAPTCHA raises the cost of bulk enumeration but does not fix semantic leaks. An attacker solving one CAPTCHA per probe still learns account existence if responses differ. Use CAPTCHA for rate limiting abuse, not as a substitute for uniform responses."
 ---
-Account Enumeration Prevention sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
+Security reviewers flag account enumeration in nearly every auth audit. Developers push back: "We need to tell users their email isn't registered so they can sign up." Both sides are half right.
 
-When account enumeration prevention is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Enumeration matters because attackers compile lists of valid accounts before credential stuffing, SIM swap targeting, and spear-phishing. A password reset flow that says "no account found" is a free oracle. Login endpoints that return 404 vs 401 leak the same information. Timing differences between "user not found" and "wrong password" paths complete the picture.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+The fix is not obscurity theater. It is consistent semantics, constant-time code paths, and rate limits — without trapping legitimate users in vague error loops.
 
-Solid AI engineering turns account enumeration prevention from a recurring argument into a documented pattern with tests and an owner.
+## The attack surface map
 
-## Design principles that survive production
+Enumeration vectors appear anywhere identity is resolved:
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent account enumeration prevention bugs hide.
+| Endpoint | Leaky behavior | Safe behavior |
+|----------|----------------|---------------|
+| Login | "User not found" vs "Wrong password" | Single message: "Invalid credentials" |
+| Signup | "Email already registered" | "Check your email to continue" (same for new/existing) |
+| Password reset | "Email not found" | "If an account exists, we sent a reset link" |
+| MFA enrollment | "Phone not associated" | Generic failure |
+| Invite acceptance | "Invalid user" vs "Invite expired" | Uniform messaging where feasible |
+| OAuth linking | Provider-specific errors | Normalize at API boundary |
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for account enumeration prevention, you do not yet understand the behavior you shipped.
+Mobile apps leak through UI copy and animation timing as much as APIs. iOS and Android clients must share the same response contract as web.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Uniform responses without lying awkwardly
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent account enumeration prevention flows so duplicates are harmless or detectable.
+Product teams worry that generic messages confuse users. The pattern that works:
 
-## Implementation patterns
+**Login:** Always "Invalid email or password." Never specify which failed. Offer password reset link on the same screen.
 
-A practical baseline for account enumeration prevention in ai stacks:
+**Signup with email verification:** Whether the email is new or existing-unverified, respond: "We sent a verification link to your email." For existing verified accounts, send a "someone tried to sign up" notification instead of creating a duplicate.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent account enumeration prevention changes safer because business rules stay isolated from transport details.
+**Password reset:** Always: "If an account exists for this email, you will receive reset instructions within a few minutes." Send email only when account exists; send nothing when it does not — but the user cannot tell which happened.
 
 ```typescript
-// Account Enumeration Prevention: typed boundary + structured errors
-export async function handleAccountEnumerationPrevention(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-account-enumeration-prevention");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+interface ResetRequest {
+  email: string;
 }
 
+async function requestPasswordReset(req: ResetRequest): Promise<{ message: string }> {
+  const GENERIC = "If an account exists, reset instructions were sent.";
+
+  // Always consume similar time — see timing section below
+  const user = await userRepo.findByEmail(normalizeEmail(req.email));
+
+  if (user && user.isActive) {
+    const token = await resetTokenService.issue(user.id, { ttlMinutes: 30 });
+    await emailQueue.enqueue("password_reset", {
+      to: user.email,
+      token,
+      locale: user.locale,
+    });
+  } else {
+    // No email sent — attacker learns nothing from response
+    await timingPad.randomDelay(200, 400);
+  }
+
+  // Log internally for abuse detection — never return to client
+  auditLog.info("password_reset_requested", {
+    emailHash: hashEmail(req.email),
+    accountFound: !!user,
+  });
+
+  return { message: GENERIC };
+}
 ```
 
+## Timing side channels
 
-## Operational concerns
+Even identical JSON responses leak through latency:
 
-Alert on user-visible symptoms for account enumeration prevention — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+- User-not-found skips bcrypt verification (~50ms saved)
+- User-not-found skips database joins on MFA devices
+- Password reset skips email queue enqueue
 
-Production agent account enumeration prevention work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Attackers run statistical timing analysis over hundreds of requests. Mitigations:
 
-Rollouts for account enumeration prevention benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+**Constant-work authentication.** Always run bcrypt (or Argon2id) against a dummy hash when the user does not exist.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```typescript
+const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$..."; // precomputed
 
-## Security and compliance angles
+async function verifyLogin(email: string, password: string): Promise<boolean> {
+  const user = await userRepo.findByEmail(email);
+  const hash = user?.passwordHash ?? DUMMY_HASH;
 
-Even when account enumeration prevention is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+  const valid = await argon2.verify(hash, password);
+  if (!user || !valid) {
+    return false;
+  }
+  return true;
+}
+```
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent account enumeration prevention so security reviews do not rely on tribal knowledge.
+**Pad response times** to a minimum threshold with jitter on all auth paths.
 
-## Testing strategy
+**Rate limit by IP and identifier** — exponential backoff after failures, CAPTCHA at threshold.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that account enumeration prevention depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Measure p50 and p95 latency separately for hit and miss paths in staging. If delta exceeds 20ms, you have work to do.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Signup: the duplicate email problem
 
-## Migration and evolution
+Signup is the hardest endpoint because product wants to steer existing users to login.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent account enumeration prevention functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Options ranked by enumeration resistance:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where account enumeration prevention spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+1. **Email verification for all paths.** New signup sends verify link. Existing verified account triggers "login attempt notice" email. Same API response either way.
 
-## Related concepts
+2. **Magic link login-only.** No password signup; every entry point sends a link. Removes "already exists" branch entirely.
 
-Account Enumeration Prevention intersects with broader ai topics — see companion notes on [agent-account patterns](https://blog.michaelsam94.com/agent-account/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+3. **Split flow after email entry (careful).** Single "continue" button, then server-side routing — but only after email verification proves ownership. Do not reveal existence before verification.
 
-## The takeaway
+Avoid: inline validation that turns the email field red with "already registered" on blur.
 
-Account Enumeration Prevention rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent account enumeration prevention becomes a maintainable asset instead of incident fuel.
+## OAuth and SSO leakage
+
+Social login buttons leak through account linking:
+
+- "Google account not linked" vs "Google auth failed"
+- Auto-provisioning errors that mention existing email
+
+Normalize OAuth callback errors to a single landing page. Log provider error codes server-side.
+
+For enterprise SSO, "domain not configured" may be acceptable — attackers can DNS-enumerate tenants anyway. Still avoid per-user SSO existence checks on public forms.
+
+## Rate limiting and detection
+
+Uniform responses stop casual enumeration; rate limits stop bulk scanning.
+
+```python
+# Redis sliding window — limit by IP + email hash
+def check_rate_limit(ip: str, email: str) -> bool:
+    keys = [
+        f"auth:ip:{ip}",
+        f"auth:email:{sha256(email.lower())}",
+    ]
+    for key in keys:
+        count = redis.incr(key)
+        if count == 1:
+            redis.expire(key, 3600)
+        if count > 50:  # tune per endpoint
+            return False
+    return True
+```
+
+Alert on:
+
+- High distinct email probes from single IP
+- Password reset requests with >90% non-existent rate (internal metric only)
+- Geographic anomalies on login probes
+
+Honeypot accounts (canary emails) that should never receive traffic trigger immediate blocks.
+
+## Logging for defenders, not attackers
+
+Internal logs should record:
+
+- `accountFound` boolean on auth attempts
+- Normalized email hash (not plaintext in shared logs)
+- Request ID correlating WAF, app, and email delivery
+
+Never echo `accountFound` to client-facing error payloads, GraphQL extensions, or mobile debug builds shipped to App Store.
+
+## Testing enumeration resistance
+
+Automated tests belong in CI:
+
+```typescript
+describe("enumeration resistance", () => {
+  const existingUser = "registered@example.com";
+  const unknownUser = "nobody@example.com";
+
+  it("login responses are indistinguishable", async () => {
+    const res1 = await api.post("/login", {
+      email: existingUser,
+      password: "wrong-password",
+    });
+    const res2 = await api.post("/login", {
+      email: unknownUser,
+      password: "wrong-password",
+    });
+
+    expect(res1.status).toBe(res2.status);
+    expect(res1.body.error).toBe(res2.body.error);
+    // timing: compare median of 20 requests, assert delta < 30ms
+  });
+
+  it("password reset returns generic message", async () => {
+    for (const email of [existingUser, unknownUser]) {
+      const res = await api.post("/password-reset", { email });
+      expect(res.body.message).toMatch(/if an account exists/i);
+    }
+  });
+});
+```
+
+Include mobile client contract tests — product designers love specific error copy that breaks your API discipline.
+
+## Balancing UX and security
+
+Legitimate users forget whether they registered. Offer:
+
+- Passwordless magic link from the same form as login
+- Account recovery via verified phone without confirming registration status upfront
+- Support path that does not expose account existence to unauthenticated callers
+
+Customer support consoles can look up accounts after verifying identity through other channels — that privilege belongs behind authenticated staff tools, not public APIs.
+
+## Compliance and breach notification angles
+
+GDPR and state privacy laws do not exempt enumeration risks. Confirming that someone uses your service can itself be sensitive (health, dating, financial apps). In those verticals, enumeration resistance is a privacy requirement, not a nice-to-have CVSS item.
+
+Document auth flow decisions in your security appendix for SOC 2 and ISO 27001 audits. Reviewers ask for evidence that user enumeration was considered.
+
+Account enumeration prevention is unglamorous backend work: same bytes out regardless of truth, same CPU burned on fake and real lookups, alerts on probing patterns. It will not get a launch blog post. It will keep your user list out of an attacker's spreadsheet — and that is worth the product negotiation.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [OWASP: Testing for Account Enumeration](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/03-Identity_Management_Testing/04-Testing_for_Account_Enumeration_and_Guessable_User_Account)
+- [CWE-204: Observable Response Discrepancy](https://cwe.mitre.org/data/definitions/204.html)
+- [NIST SP 800-63B: Digital Identity Guidelines (Authentication)](https://pages.nist.gov/800-63-3/sp800-63b.html)
+- [Have I Been Pwned: Understanding credential stuffing](https://haveibeenpwned.com/Passwords)
+- [PortSwigger Web Security Academy: Username enumeration](https://portswigger.net/web-security/authentication/password-based/lab-username-enumeration-via-different-responses)

@@ -3,8 +3,8 @@ title: "PII Redaction in LLM Pipelines"
 slug: "llm-safety-pii-redaction"
 description: "Redact PII in LLM pipelines: detection before inference, token masking strategies, reversible vs irreversible redaction, logging hygiene, and compliance patterns for GDPR and HIPAA."
 datePublished: "2025-03-12"
-dateModified: "2025-03-12"
-tags: ["AI", "LLM", "Security", "Privacy"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM PII redaction, privacy LLM pipeline, PHI de-identification AI, Presidio PII detection, GDPR LLM compliance"
 faq:
   - q: "Should PII be redacted before sending data to an LLM or after the response?"
@@ -14,7 +14,6 @@ faq:
   - q: "What PII detection tools work in production LLM pipelines?"
     a: "Microsoft Presidio, AWS Comprehend PII, Google DLP API, and spaCy NER models are common. Combine ML detectors with regex for structured identifiers (SSN, credit cards, IBAN). Tune confidence thresholds per entity type — false positives frustrate users; false negatives create compliance incidents. Human review sampling validates detector quality over time."
 ---
-
 A customer pasted medical records into our summarization feature. The prompt logged to our observability vendor contained patient names, dates of birth, and MRN numbers in plain text — three compliance violations before the model returned a single token. LLM pipelines treat text as fuel; PII redaction is the filter that keeps you from burning regulated data in third-party inference, training corpora, and log aggregators that retain everything for ninety days.
 
 ## Where PII enters the pipeline

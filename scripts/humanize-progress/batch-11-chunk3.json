@@ -1,0 +1,226 @@
+{
+  "done": 55,
+  "skipped": 0,
+  "results": [
+    {
+      "slug": "web-performance-module-preload-import",
+      "words": 1216
+    },
+    {
+      "slug": "web-performance-multi-step-form-wizard",
+      "words": 1229
+    },
+    {
+      "slug": "web-performance-navigation-timing-api",
+      "words": 1249
+    },
+    {
+      "slug": "web-performance-network-status-indicator",
+      "words": 1226
+    },
+    {
+      "slug": "web-performance-optimistic-navigation-ui",
+      "words": 1246
+    },
+    {
+      "slug": "web-performance-passive-event-listeners",
+      "words": 1256
+    },
+    {
+      "slug": "web-performance-password-strength-meter",
+      "words": 1286
+    },
+    {
+      "slug": "web-performance-prefetch-on-hover-intent",
+      "words": 1234
+    },
+    {
+      "slug": "web-performance-priority-hints-fetch",
+      "words": 1272
+    },
+    {
+      "slug": "web-performance-progressive-enhancement-modern",
+      "words": 1258
+    },
+    {
+      "slug": "web-performance-rate-limit-user-feedback",
+      "words": 1274
+    },
+    {
+      "slug": "web-performance-requestidlecallback-patterns",
+      "words": 1274
+    },
+    {
+      "slug": "web-performance-resize-observer-layout",
+      "words": 1301
+    },
+    {
+      "slug": "web-performance-resource-hints",
+      "words": 1296
+    },
+    {
+      "slug": "web-performance-resumability-qwik",
+      "words": 1264
+    },
+    {
+      "slug": "web-performance-scheduler-yield-api",
+      "words": 1205
+    },
+    {
+      "slug": "web-performance-search-autocomplete-debounce",
+      "words": 1241
+    },
+    {
+      "slug": "web-performance-selective-hydration",
+      "words": 1274
+    },
+    {
+      "slug": "web-performance-service-worker-stale-while-revalidate",
+      "words": 1203
+    },
+    {
+      "slug": "web-performance-sidebar-collapse-responsive",
+      "words": 1213
+    },
+    {
+      "slug": "web-performance-skeleton-screen-design",
+      "words": 1220
+    },
+    {
+      "slug": "web-performance-speculative-prerendering",
+      "words": 1212
+    },
+    {
+      "slug": "web-performance-stale-ui-patterns",
+      "words": 1289
+    },
+    {
+      "slug": "web-performance-status-page-integration",
+      "words": 1294
+    },
+    {
+      "slug": "web-performance-tab-navigation-aria",
+      "words": 1242
+    },
+    {
+      "slug": "web-performance-third-party-script-impact",
+      "words": 1265
+    },
+    {
+      "slug": "web-performance-toast-queue-management",
+      "words": 1220
+    },
+    {
+      "slug": "web-performance-tree-shaking-side-effects",
+      "words": 1291
+    },
+    {
+      "slug": "web-performance-web-workers-heavy-compute",
+      "words": 1308
+    },
+    {
+      "slug": "web-performance-will-change-sparingly",
+      "words": 1254
+    },
+    {
+      "slug": "web-popover-api-native",
+      "words": 1298
+    },
+    {
+      "slug": "web-scroll-snap-carousels",
+      "words": 1213
+    },
+    {
+      "slug": "web-signals-fine-grained-reactivity",
+      "words": 1297
+    },
+    {
+      "slug": "web-speculation-rules-prefetch",
+      "words": 1282
+    },
+    {
+      "slug": "web-storage-indexeddb-patterns",
+      "words": 1269
+    },
+    {
+      "slug": "web-view-transitions-multi-page",
+      "words": 1251
+    },
+    {
+      "slug": "web-vitals-rum-dashboard-design",
+      "words": 1211
+    },
+    {
+      "slug": "web-workers-offloading-compute",
+      "words": 1264
+    },
+    {
+      "slug": "webassembly-beyond-browser-wasi",
+      "words": 1263
+    },
+    {
+      "slug": "webauthn-passkeys-server",
+      "words": 1275
+    },
+    {
+      "slug": "webgpu-compute-graphics",
+      "words": 1277
+    },
+    {
+      "slug": "webhooks-reliable-delivery",
+      "words": 1213
+    },
+    {
+      "slug": "webhooks-retry-idempotency",
+      "words": 1262
+    },
+    {
+      "slug": "webhooks-signature-verification",
+      "words": 1219
+    },
+    {
+      "slug": "webrtc-data-channels-realtime",
+      "words": 1281
+    },
+    {
+      "slug": "websocket-heartbeat-ping-pong",
+      "words": 1231
+    },
+    {
+      "slug": "websocket-reconnection-backoff",
+      "words": 1229
+    },
+    {
+      "slug": "whats-new-android-17",
+      "words": 1257
+    },
+    {
+      "slug": "workmanager-reliable-background-work",
+      "words": 1301
+    },
+    {
+      "slug": "xss-dom-based-prevention",
+      "words": 1284
+    },
+    {
+      "slug": "xss-prevention-csp-trusted-types",
+      "words": 1284
+    },
+    {
+      "slug": "xss-sanitize-html-user-content",
+      "words": 1207
+    },
+    {
+      "slug": "zero-downtime-database-migrations",
+      "words": 1273
+    },
+    {
+      "slug": "zero-trust-mobile-apps",
+      "words": 1219
+    },
+    {
+      "slug": "zero-trust-network-access",
+      "words": 1209
+    }
+  ]
+}

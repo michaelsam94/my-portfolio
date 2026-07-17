@@ -1,111 +1,291 @@
 ---
 title: "Row Level Security Policies"
 slug: "llm-row-level-security-policies"
-description: "Row Level Security Policies: production patterns for ai teams — design, implementation, testing, security, and operations."
-datePublished: "2024-12-31"
-dateModified: "2024-12-31"
-tags: ["AI", "Llm", "Row"]
-keywords: "llm, row, level, security, policies, ai, production, engineering, architecture"
+description: "Row-level security for AI agent database access — PostgreSQL RLS policies, session context, SQL generation guardrails, and tests that prove tenants cannot leak through agent tool calls for teams running LLM features in production."
+datePublished: "2025-01-02"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "LLM"
+keywords: "row level security, RLS, PostgreSQL policies, multi-tenant AI, agent SQL access, tenant isolation, SET LOCAL, database security"
 faq:
-  - q: "What is Row Level Security Policies?"
-    a: "Row Level Security Policies covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Row Level Security Policies?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Row Level Security Policies?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Row Level Security Policies fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Row Level Security Policies should be observable in production and safe to change in small diffs."
+  - q: "Why is application-level filtering not enough for agent SQL access?"
+    a: "Agents generate dynamic SQL. A forgotten WHERE clause in one tool call exposes rows. RLS enforces tenant boundaries inside the database regardless of how the query was composed — buggy prompt, hallucinated table join, or compromised middleware."
+  - q: "How do you pass tenant context to PostgreSQL for RLS?"
+    a: "Set session variables at connection checkout: SET LOCAL app.current_tenant = 'uuid'. Policies reference current_setting('app.current_tenant', true). Never trust tenant IDs embedded in agent-generated SQL — bind them from authenticated session context only."
+  - q: "Does RLS break agent performance?"
+    a: "Poorly written policies can. Index columns used in policy expressions, avoid per-row subqueries to unrelated tables, and test EXPLAIN plans under representative agent queries. RLS adds predicate overhead; proper indexing usually keeps P95 acceptable."
+  - q: "How do you test RLS for agent workloads?"
+    a: "Automated tests that SET ROLE to each tenant session, run agent tool query templates, and assert row counts match fixtures. Include negative tests: tenant A must never see tenant B rows even with UNION tricks or OR 1=1 injection in generated filters."
 ---
-Most teams encounter row level security policies after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+The ticket was labeled "agent returns wrong customer's invoice." Engineering assumed prompt drift. Three hours later we found the real bug: the SQL tool connected as a shared `app_readonly` role with SELECT on the entire `invoices` table. The agent's generated query had a typo in the tenant filter. PostgreSQL happily returned another customer's rows.
 
-When row level security policies is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Application code "always adds tenant_id" until it does not — especially when an LLM writes the WHERE clause. Row-level security (RLS) moves isolation from hope to enforcement.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## RLS in the agent threat model
 
-Solid AI engineering turns row level security policies from a recurring argument into a documented pattern with tests and an owner.
+Agents with database tools sit in a awkward place:
 
-## Design principles that survive production
+- They need **flexible read access** to answer varied questions
+- They must **never exceed** the requesting user's authorization
+- They will occasionally produce **malformed or overbroad SQL**
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where llm row level security policies bugs hide.
+Your defenses stack:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for row level security policies, you do not yet understand the behavior you shipped.
+1. **Tool allowlist** — read-only, specific schemas, statement timeouts
+2. **Query validation** — parse SQL, reject DDL/DML, multi-statement
+3. **RLS** — database enforces row visibility per session tenant
+4. **Audit logging** — every query tied to user + agent trace ID
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+RLS is layer 3. Without it, layers 1–2 eventually fail.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design llm row level security policies flows so duplicates are harmless or detectable.
+## PostgreSQL RLS fundamentals
 
-## Implementation patterns
+RLS attaches policies to tables. When enabled, rows must pass policy expressions for SELECT/INSERT/UPDATE/DELETE.
 
-A practical baseline for row level security policies in ai stacks:
+```sql
+-- Enable RLS on tenant-scoped tables
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes llm row level security policies changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Row Level Security Policies: typed boundary + structured errors
-export async function handleRowLevelSecurityPolicies(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("llm-row-level-security-policies");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+-- Application role cannot bypass
+REVOKE ALL ON invoices FROM app_agent_role;
+GRANT SELECT ON invoices TO app_agent_role;
 ```
 
+Define tenant isolation policy:
 
-## Operational concerns
+```sql
+CREATE POLICY invoices_tenant_isolation ON invoices
+  FOR SELECT
+  TO app_agent_role
+  USING (
+    tenant_id = current_setting('app.current_tenant', true)::uuid
+  );
+```
 
-Alert on user-visible symptoms for row level security policies — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+`FORCE ROW LEVEL SECURITY` ensures even table owners respect policies — important when DBAs and migration roles exist.
 
-Production llm row level security policies work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+For multi-tenant SaaS with hierarchical access (org → workspace → user), compose policies with helper functions:
 
-Rollouts for row level security policies benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```sql
+CREATE OR REPLACE FUNCTION app.user_can_access_tenant(t uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = app, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM app.user_tenant_memberships m
+    WHERE m.user_id = current_setting('app.current_user', true)::uuid
+      AND m.tenant_id = t
+      AND m.revoked_at IS NULL
+  );
+$$;
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+CREATE POLICY invoices_membership ON invoices
+  FOR SELECT TO app_agent_role
+  USING (app.user_can_access_tenant(tenant_id));
+```
 
-## Security and compliance angles
+Mark helper functions `STABLE` and index `user_tenant_memberships(user_id, tenant_id)` — policy evaluation runs per row.
 
-Even when row level security policies is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Session context: wiring the agent pool
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for llm row level security policies so security reviews do not rely on tribal knowledge.
+Never embed tenant UUIDs from the model into SQL strings. Set context when checking out a connection from the pool:
 
-## Testing strategy
+```python
+from contextlib import contextmanager
+import psycopg
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that row level security policies depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+@contextmanager
+def agent_db_session(tenant_id: str, user_id: str):
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            # SET LOCAL scopes to transaction — safe with pooled connections
+            cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
+            cur.execute("SET LOCAL app.current_user = %s", (user_id,))
+            cur.execute("SET LOCAL statement_timeout = '8000ms'")
+            cur.execute("SET LOCAL transaction_read_only = on")
+        yield conn
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Critical details:
 
-## Migration and evolution
+- **`SET LOCAL`** — resets at transaction end; prevents tenant bleed in PgBouncer transaction pooling
+- **`transaction_read_only`** — blocks agent-generated UPDATE slips
+- **`statement_timeout`** — caps runaway scans from bad joins
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle llm row level security policies functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+The agent tool receives only the connection with context already bound:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where row level security policies spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```python
+def run_readonly_query(conn, sql: str, params: dict) -> list[dict]:
+    validate_select_only(sql)  # sqlparse / sqlglot
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.fetchall()
+```
 
-## Related concepts
+## SQL generation guardrails that complement RLS
 
-Row Level Security Policies intersects with broader ai topics — see companion notes on [llm-row patterns](https://blog.michaelsam94.com/llm-row/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+RLS is not an excuse to run raw agent SQL unsupervised. Parse and constrain:
 
-## The takeaway
+```python
+import sqlglot
+from sqlglot import exp
 
-Row Level Security Policies rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how llm row level security policies becomes a maintainable asset instead of incident fuel.
+ALLOWED_TABLES = {"invoices", "invoice_lines", "customers"}
+
+def validate_select_only(sql: str) -> None:
+    parsed = sqlglot.parse_one(sql, read="postgres")
+    if not isinstance(parsed, exp.Select):
+        raise ValueError("only SELECT allowed")
+    for table in parsed.find_all(exp.Table):
+        if table.name not in ALLOWED_TABLES:
+            raise ValueError(f"table not allowed: {table.name}")
+    if parsed.find(exp.Insert, exp.Update, exp.Delete, exp.Drop):
+        raise ValueError("DML/DDL not allowed")
+```
+
+Agents should prefer **parameterized query templates** over free-form SQL for high-risk domains:
+
+```sql
+-- tools/invoice_lookup.sql (template, not generated)
+SELECT id, amount_cents, status, issued_at
+FROM invoices
+WHERE customer_id = %(customer_id)s
+ORDER BY issued_at DESC
+LIMIT 20;
+```
+
+RLS still applies — templates reduce attack surface and make evals reproducible.
+
+## Column-level exposure
+
+RLS controls rows, not columns. Agents that SELECT * on tables with `ssn_last_four` or internal cost fields leak horizontally.
+
+Options:
+
+- **`GRANT SELECT (col1, col2)`** on views, not base tables
+- **Security-barrier views** exposing agent-safe projections
+- Separate **`agent_read` schema** synced from canonical tables
+
+```sql
+CREATE VIEW agent_safe.invoices AS
+SELECT id, tenant_id, customer_id, amount_cents, status, issued_at
+FROM public.invoices;
+
+GRANT SELECT ON agent_safe.invoices TO app_agent_role;
+-- no grant on public.invoices
+```
+
+Point agent tools at `agent_safe` only. RLS policies duplicate on views or apply on underlying tables depending on your Postgres version and view definition — test both.
+
+## Testing RLS with agent query patterns
+
+Unit tests without a real database lie about RLS. Use pytest with template SQL the agent issues:
+
+```python
+def test_tenant_a_cannot_see_tenant_b_invoices(db, tenant_a, tenant_b):
+    db.seed_invoice(tenant_a, amount=100)
+    db.seed_invoice(tenant_b, amount=999)
+
+    with agent_db_session(tenant_id=tenant_a, user_id="user-1") as conn:
+        rows = run_readonly_query(
+            conn,
+            "SELECT amount_cents FROM agent_safe.invoices",
+            {},
+        )
+    assert len(rows) == 1
+    assert rows[0]["amount_cents"] == 100
+
+def test_injected_or_does_not_bypass_rls(db, tenant_a, tenant_b):
+    db.seed_invoice(tenant_b, amount=999)
+    malicious = "SELECT amount_cents FROM agent_safe.invoices WHERE 1=0 OR tenant_id = %s"
+    with agent_db_session(tenant_id=tenant_a, user_id="user-1") as conn:
+        rows = run_readonly_query(conn, malicious, {"tenant_id": tenant_b})
+    assert rows == []  # RLS still filters; parameter cannot override session
+```
+
+Add fuzz tests that mutate WHERE clauses — RLS should keep result sets within tenant boundary regardless.
+
+## Performance tuning under agent load
+
+Agents generate unpredictable joins. Watch for:
+
+- **Sequential scans** on large tables when policy expressions disable index use
+- **InitPlans** that re-evaluate subqueries per row
+
+Run EXPLAIN (ANALYZE, BUFFERS) with session vars set:
+
+```sql
+BEGIN;
+SET LOCAL app.current_tenant = '550e8400-e29b-41d4-a716-446655440000';
+SET LOCAL app.current_user = '660e8400-e29b-41d4-a716-446655440001';
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM agent_safe.invoices i
+JOIN agent_safe.customers c ON c.id = i.customer_id
+WHERE c.status = 'active';
+ROLLBACK;
+```
+
+Index `invoices(tenant_id, customer_id)` and `customers(tenant_id, id, status)` together. Partial indexes help when agents always filter `status = 'active'`.
+
+## Bypass paths that undo RLS
+
+Even perfect policies fail when something connects as a superuser or table owner without `FORCE ROW LEVEL SECURITY`. Audit these bypass paths quarterly:
+
+- **Migration roles** — Flyway/Liquibase often use superuser; never point agent tools at migration credentials
+- **BI read replicas** — analysts connecting with roles that bypass RLS for "convenience"
+- **Connection pool misconfiguration** — PgBouncer session pooling reusing connections without resetting session vars
+- **`SECURITY DEFINER` functions** — helper functions that forget to validate tenant inside the function body
+
+Add a CI check that fails if any new table in agent-accessible schemas lacks RLS enabled:
+
+```sql
+SELECT c.relname
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname IN ('public', 'agent_safe')
+  AND c.relkind = 'r'
+  AND NOT c.relrowsecurity;
+```
+
+Any row returned is a merge blocker.
+
+## Operational monitoring
+
+Log `current_setting('app.current_tenant')` with each query in pg_audit or application logs. Alert on:
+
+- Queries returning row counts >> baseline for tenant size
+- Session context missing errors (`current_setting` returns NULL — fail closed)
+- Agent tool errors spike after schema migration
+
+Schema migrations must include RLS policy updates. A new `invoices_archive` table without policies is a launch-day leak.
+
+## Policy change management
+
+RLS policies are code. Store them in migrations, review in PRs, version alongside agent tool definitions.
+
+Checklist for policy changes:
+
+- [ ] EXPLAIN on representative agent queries before/after
+- [ ] Negative tenant isolation tests pass
+- [ ] Rollback migration ready
+- [ ] Agent eval suite re-run — some answers may legitimately shrink when holes close
+
+## The bottom line
+
+Agents plus shared database roles are a data breach waiting for a bad prompt. RLS makes the breach bounded: worst case, the agent wastes tokens on empty result sets — not competitor invoices.
+
+Invest in session context discipline, agent-safe views, and tests that assume the model will eventually generate terrible SQL. The database should remain the adult in the room.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [PostgreSQL documentation: Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [PostgreSQL SET LOCAL session variables](https://www.postgresql.org/docs/current/sql-set.html)
+- [OWASP Query Parameterization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html)
+- [sqlglot SQL parser](https://github.com/tobymao/sqlglot)
+- [PgBouncer transaction pooling considerations](https://www.pgbouncer.org/features.html)

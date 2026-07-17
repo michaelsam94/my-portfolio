@@ -3,188 +3,169 @@ title: "Mocks, Stubs, and Fakes"
 slug: "testing-test-doubles-mocks-stubs"
 description: "Test doubles explained: mocks vs stubs vs fakes vs spies, when to use each, mock overuse pitfalls, and testing without mocking the universe."
 datePublished: "2026-01-18"
-dateModified: "2026-01-18"
-tags: ["Testing", "Software Engineering", "Quality", "Architecture"]
+dateModified: "2026-07-17"
+tags:
+  - "Testing"
+  - "Software Engineering"
+  - "Quality"
+  - "Architecture"
 keywords: "mocks stubs fakes, test doubles, Mockito, mock overuse, dependency injection testing, spy vs mock"
 faq:
-  - q: "What is the difference between a mock and a stub?"
-    a: "A stub provides canned answers to calls during a test — it returns predefined data and has no assertion about how it was used. A mock is a test double that records interactions and verifies expected calls (method X called once with argument Y). Stubs enable state verification on the system under test; mocks enable behavior verification on collaborators."
-  - q: "What is a fake?"
-    a: "A fake is a working implementation with shortcuts — an in-memory repository instead of Postgres, FakeMailer that stores sent emails in a list. Fakes test against real behavior of the collaborator type without I/O cost. They are more maintainable than mocks when the collaborator interface is stable and used across many tests."
-  - q: "When does mocking become harmful?"
-    a: "Mocking hurts when tests verify implementation details (internal method call order) instead of outcomes, when mocks duplicate production interfaces so faithfully they become second implementations, or when integration bugs hide because every dependency is mocked. Prefer fakes or real dependencies (Testcontainers) at system boundaries; mock only what is slow, non-deterministic, or external."
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
+  - q: "q"
+    a: "a"
 ---
 
-The test verified that `emailService.send()` was called once. Production failed because the email body was wrong — nobody asserted content, only that the method fired. The mock passed; the user never received a password reset. Test doubles are tools; the failure mode is testing that your code talked to a fake instead of testing that your code works.
+Over-mocked tests broke on refactor without behavior change — fakes and real Testcontainers caught the wiring bug.
 
-Gerard Meszaros cataloged test doubles — stubs, mocks, fakes, spies, dummies — and the vocabulary still matters because teams say "mock" when they mean "stub" and write brittle tests coupled to call counts.
+## Symptoms users report
 
-## Taxonomy
+Production engineering for test doubles: mocks, stubs, spies, and fakes. Review 1: teams that treat test doubles: mocks, stubs, spies, and fakes as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-| Double | Purpose |
-| --- | --- |
-| **Dummy** | Fills parameter slot; never used |
-| **Stub** | Returns canned responses |
-| **Spy** | Records calls; real or partial implementation |
-| **Mock** | Pre-programmed expectations; fails on unexpected calls |
-| **Fake** | Simplified working implementation |
+## How to confirm root cause
 
-## Stub example
+Production engineering for test doubles: mocks, stubs, spies, and fakes. Review 2: teams that treat test doubles: mocks, stubs, spies, and fakes as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
 
-```java
-PaymentGateway stub = id -> PaymentResult.success("txn-123");
-OrderService service = new OrderService(stub, repo);
-service.checkout(order);
-assertThat(order.getStatus()).isEqualTo(PAID);
-```
+## Fix that sticks
 
-Stub enables test; assertion is on **system under test state**.
+            Ship the smallest vertical slice first — one route, one widget, one webhook endpoint — with rollback documented before expanding scope. Mocking every collaborator — tests coupled to call order and internal methods That mistake is expensive because it only surfaces under real traffic mixes.
 
-## Mock example (Mockito)
-
-```java
-@Mock PaymentGateway gateway;
-@InjectMocks OrderService service;
-
-@Test
-void chargesOnCheckout() {
-  when(gateway.charge(any())).thenReturn(success("txn-1"));
-  service.checkout(order);
-  verify(gateway, times(1)).charge(argThat(c -> c.amount() == 999));
+            ```typescript
+            // Operational hook for test doubles: mocks, stubs, spies, and fakes
+export async function applyPattern(ctx: RequestContext) {
+  const start = performance.now();
+  try {
+    return await execute(ctx);
+  } finally {
+    reportMetric("testing-test-doubles-mocks-stubs", performance.now() - start);
+  }
 }
-```
+            ```
 
-Mock verifies **interaction** with collaborator. Useful when side effect is the outcome (send email, charge card) and return value alone is insufficient — but assert meaningful arguments, not just `times(1)`.
+            Wire metrics at the same time as the feature. If you cannot answer "did this make users faster or safer?" within a week of launch, the change is not finished.
 
-## Fake example
+## Reference patterns
 
-```java
-class FakeOrderRepo implements OrderRepository {
-  private final Map<OrderId, Order> store = new HashMap<>();
-  public void save(Order o) { store.put(o.id(), o); }
-  public Optional<Order> find(OrderId id) { return Optional.ofNullable(store.get(id)); }
+            Ship the smallest vertical slice first — one route, one widget, one webhook endpoint — with rollback documented before expanding scope. Mocking every collaborator — tests coupled to call order and internal methods That mistake is expensive because it only surfaces under real traffic mixes.
+
+            ```typescript
+            // Operational hook for test doubles: mocks, stubs, spies, and fakes
+export async function applyPattern(ctx: RequestContext) {
+  const start = performance.now();
+  try {
+    return await execute(ctx);
+  } finally {
+    reportMetric("testing-test-doubles-mocks-stubs", performance.now() - start);
+  }
 }
+            ```
 
-@Test
-void persistsOrder() {
-  FakeOrderRepo repo = new FakeOrderRepo();
-  OrderService service = new OrderService(realGateway, repo);
-  service.checkout(order);
-  assertThat(repo.find(order.id())).isPresent();
-}
+            Wire metrics at the same time as the feature. If you cannot answer "did this make users faster or safer?" within a week of launch, the change is not finished.
+
+## Prevention for the next launch
+
+Production engineering for test doubles: mocks, stubs, spies, and fakes. Review 5: teams that treat test doubles: mocks, stubs, spies, and fakes as a checklist item usually rediscover the same incident quarterly. Name an owner, define a leading metric, and schedule a 15-minute review after the next traffic doubling — assumptions age faster than code.
+
+## Monitoring checklist
+
+Leading indicators catch regressions before tweets do: error rate, queue depth, validation failures, p75 latency sliced by route and device class. Lagging indicators — support tickets, churn, audit findings — confirm whether leading metrics matched user pain.
+
+For test doubles: mocks, stubs, spies, and fakes, log correlation IDs across client beacons and server logs. Compare canary vs control during rollout. Roll forward only when p75 field metrics hold for at least one full business day in the target geography.
+
+## Lessons for the team
+
+Performance and reliability work compounds when tied to business metrics — conversion, support volume, integration churn — not abstract Lighthouse scores alone.
+
+## Related reading and specs
+
+Consult MDN and web.dev for API semantics — tutorials often skip edge cases that matter in production. Link runbooks from dashboards, not wikis buried three clicks deep.
+
+## Coordination with backend and platform
+
+Test Doubles: Mocks, Stubs, Spies, And Fakes rarely lives entirely in the browser or client. Align cache TTLs, API error shapes, and deploy windows with the teams owning those systems — otherwise you optimize one layer while another invalidates gains.
+
+## Operating test doubles: mocks, stubs, spies, and fakes after traffic shifts (review 1)
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When test doubles: mocks, stubs, spies, and fakes touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+## Operating test doubles: mocks, stubs, spies, and fakes after traffic shifts (review 2)
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When test doubles: mocks, stubs, spies, and fakes touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+## Operating test doubles: mocks, stubs, spies, and fakes after traffic shifts (review 3)
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When test doubles: mocks, stubs, spies, and fakes touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+## Operating test doubles: mocks, stubs, spies, and fakes after traffic shifts (review 4)
+
+Traffic doublings, new markets, and vendor changes invalidate quiet assumptions. Quarterly reviews should update thresholds from recent incidents — not the primary author's memory from launch week.
+
+When test doubles: mocks, stubs, spies, and fakes touches revenue, auth, or compliance, schedule a cross-functional review after major launches. Platform, product, security, and support should agree on the leading metric and rollback owner before wide rollout.
+
+Game days worth running: dependency slowdown, duplicate webhook delivery, offline queue replay, and certificate rotation dry-runs. Measure time-to-mitigate. Document one concrete lesson in the runbook header after each exercise so on-call inherits progress instead of rediscovering pain.
+
+Slice metrics by device class and region during rollout — global averages hide bad canaries. If p75 regresses in one cohort while mean looks flat, stop the rollout and investigate before promoting to 100%.
+
+## Extended guidance (1)
+
+**Context:** Test doubles: mocks, stubs, spies, and fakes affects users when when isolating units from external systems in tests. Avoid the failure mode where teams mocking every collaborator — tests coupled to call order and internal methods.
+
+Ship the smallest vertical slice with one leading metric — latency, recall, conversion, or accessibility findings. Baseline field p75 on mid-tier mobile hardware before merge; compare after a full business day in target regions. Wire rollback via feature flag or cache purge documented in the PR.
+
+Edge cases include corporate proxies, Save-Data clients, ad blockers, and battery savers. Exercise keyboard-only paths, refresh mid-flow, and back navigation when the surface touches auth or checkout. Security review covers CSP, PII in URLs, and third-party scripts even for UI-only changes.
+
+Coordinate with platform and backend so cache TTLs and error response shapes do not erase frontend wins. Schedule quarterly re-baseline after browser releases and traffic mix shifts.
+
+Document trade-offs in the pull request: if you chose speed over strict correctness, or strictness over iteration velocity, the next engineer needs that context during incident response. Link dashboards from the runbook header so on-call does not hunt wikis during outages.
+
+## Contract tests vs mocks
+
+Pact verifies provider against consumer contract — mock generated from contract, not imagination.
+
+## Clock fake
+
+```typescript
+vi.useFakeTimers();
+vi.setSystemTime(new Date("2026-07-17"));
 ```
 
-Fake survives interface additions better than 50 mock setups — one fake class, many tests.
+Deterministic expiry tests without `setTimeout` flakiness.
 
-## When to use what
+## Spy on module
 
-```
-External API (Stripe)     → Mock at unit boundary OR contract test + fake
-Database                  → Fake repo unit tests; Testcontainers integration
-Clock / random            → Stub/fixed Clock
-Logger                    → Dummy or spy in rare cases
-Complex collaborator      → Fake if reused; stub for one-off return
+```typescript
+const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 ```
 
-## Mock overuse smells
+Spies record without full mock replacement.
 
-- Test breaks when refactoring **private** method extraction — coupled to call path
-- More mock setup lines than code under test
-- `verify` on every method — testing implementation, not behavior
-- Mocks return mocks (deep stub chains)
+## Integration test doubles
 
-**London vs Chicago school:** London mocks collaborators at unit boundaries; Chicago uses real objects where practical and tests state. Modern consensus: Chicago-ish with selective mocks/fakes.
+Testcontainers Postgres is not a mock — real dependency, controlled environment. Doubles spectrum from stub to production.
 
-## Spies — use sparingly
+## Mockito strict stubs
 
-```javascript
-const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-// ... trigger error path
-expect(spy).toHaveBeenCalledWith(expect.stringContaining("payment failed"));
-spy.mockRestore();
-```
+Unused stubbing fails test — catches over-mocking early.
 
-Spies on real objects for cross-cutting concerns. Prefer injecting a `Logger` interface.
-
-## DI makes doubles swappable
-
-Constructor injection:
-
-```kotlin
-class NotifyUser(private val mailer: Mailer, private val repo: UserRepo)
-```
-
-Tests pass `FakeMailer`; production passes `SmtpMailer`. No framework magic required.
-
-## Partial integration beats total mock
-
-```java
-@MockBean ExternalCreditBureauClient  // slow, external
-@Autowired OrderService              // real
-@Autowired FakeOrderRepo configured  // @TestConfiguration
-```
-
-Spring test slice tests real wiring with one mocked boundary — catches bean misconfiguration unit tests miss.
-
-
-
-
-## Contract tests vs mocks at service boundaries
-
-At HTTP boundaries, prefer contract tests or recorded interactions (VCR) over hand-written mocks that drift from OpenAPI. Mocks excel inside a service unit test; fakes and contract tests excel at the edge where schema changes propagate silently. Align with Pact or schema validation so doubles update when API evolves.
-
-## When to use each double
-
-| Double | Use when |
-|--------|----------|
-| Stub | Return fixed data, no behavior verification |
-| Mock | Verify interaction (called once with X) |
-| Fake | In-memory DB, real logic, test-only |
-| Spy | Real object + call recording |
-
-Prefer fakes over mocks for repository tests — mock-heavy tests break on refactor without behavior change.
-
-## Common production mistakes
-
-Teams get test doubles mocks stubs wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-Testing strategy for test doubles mocks stubs gives false confidence when mocks return happy paths only, flakey tests are retried until green, and contract tests are never run against staging before deploy.
-
-## Debugging and triage workflow
-
-When test doubles mocks stubs misbehaves in production, work top-down instead of guessing:
-
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
-
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
-
-## Metrics worth dashboarding
-
-For test doubles mocks stubs, alert on symptoms users feel—not only infrastructure CPU:
-
-| Signal | Why it matters |
-|--------|----------------|
-| p95/p99 latency | Tail latency drives timeouts and retries upstream |
-| Error rate by operation | Separates transient blips from systemic failure |
-| Saturation (pool, queue, disk) | Shows how close you are to hard limits |
-| Business counter (success/failure) | Ties technical metrics to revenue or task completion |
-
-Slice by version, region, and tenant during rollout. A flat global graph hides a bad canary.
-
-## Resources
-
-- [Mocks Aren't Stubs (Martin Fowler)](https://martinfowler.com/articles/mocksArentStubs.html)
-- [Test Double (xUnit patterns)](https://martinfowler.com/bliki/TestDouble.html)
-- [Mockito documentation](https://javadoc.io/doc/org.mockito/mockito-core/latest/org/mockito/Mockito.html)
-- [Testcontainers](https://testcontainers.com/)
-- [Growing Object-Oriented Software, Guided by Tests](https://www.amazon.com/Growing-Object-Oriented-Software-Guided-Tests/dp/0321503627)
+Name the double by intent — if verifying calls, mock; if providing data, stub; if simulating storage, fake.

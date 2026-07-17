@@ -3,8 +3,8 @@ title: "Self-Consistency and Answer Voting"
 slug: "llm-self-consistency-voting"
 description: "Improve LLM accuracy with self-consistency decoding: multiple sampled reasoning paths, majority voting, weighted aggregation, and when the technique pays for its compute cost."
 datePublished: "2025-03-15"
-dateModified: "2025-03-15"
-tags: ["AI", "LLM", "Prompt Engineering", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM self-consistency, answer voting LLM, multiple sampling reasoning, chain of thought voting, LLM accuracy improvement"
 faq:
   - q: "What is self-consistency in LLM prompting?"
@@ -14,7 +14,6 @@ faq:
   - q: "When is self-consistency not worth the cost?"
     a: "Skip it for creative writing, open-ended chat, and tasks with no discrete extractable answer. Skip when latency budget is tight (sub-second) or a single greedy decode already exceeds 95% accuracy. Use it for high-stakes structured decisions: math, classification, extraction, medical triage support — where wrong answers have cost and answers can be normalized for comparison."
 ---
-
 The support bot answered "Tuesday" to a shipping ETA question on the first try. On the second identical request — same model, temperature 0.7 — it said "Wednesday." Same tracking data, same prompt template, different stochastic path through the decoder. Self-consistency and answer voting exploit exactly this property: independent samples that agree are more likely correct; samples that disagree signal uncertainty you should surface to a human instead of picking one at random.
 
 ## How self-consistency works

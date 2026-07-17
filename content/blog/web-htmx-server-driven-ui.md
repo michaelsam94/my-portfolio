@@ -3,16 +3,146 @@ title: "Server-Driven UI with htmx"
 slug: "web-htmx-server-driven-ui"
 description: "Build interactive web apps with htmx: HTML-over-the-wire, hx-get and hx-post attributes, partial page updates, and when server-driven UI beats SPA complexity."
 datePublished: "2026-05-05"
-dateModified: "2026-05-05"
-tags: ["Web", "htmx", "Backend", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "htmx, server-driven UI, HTML over the wire, partial updates, hypermedia, hx-get, hx-swap"
 faq:
-  - q: "What problem does htmx solve compared to a React or Vue SPA?"
-    a: "htmx lets you add interactivity — partial page updates, form submissions, polling — using HTML attributes instead of a JavaScript framework. The server returns HTML fragments, and htmx swaps them into the DOM. You avoid client-side routing, state management, build tooling, and API serialization. The tradeoff is less client-side interactivity and more server round-trips."
-  - q: "How does htmx differ from traditional AJAX with fetch?"
-    a: "With fetch, you write JavaScript to parse JSON, build DOM nodes, and handle errors. htmx sends requests and swaps HTML responses directly into the page using declarative attributes like hx-get and hx-target. The server renders partial templates — the same templating engine used for full pages — and the client just inserts the result."
-  - q: "Can htmx work with any backend framework?"
-    a: "Yes. htmx is backend-agnostic because it consumes HTML responses. Django, Rails, Express, Go templates, PHP — any framework that renders HTML works. The server returns HTML fragments instead of JSON, and htmx handles the DOM update. You may add an HX-Request header check to return partial layouts."
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Server-Driven UI with htmx"
+slug: "web-htmx-server-driven-ui"
+description: "Build interactive web apps with htmx: HTML-over-the-wire, hx-get and hx-post attributes, partial page updates, and when server-driven UI beats SPA complexity."
+datePublished: "2026-05-05"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "htmx, server-driven UI, HTML over the wire, partial updates, hypermedia, hx-get, hx-swap"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-htmx-server-driven-ui"
+slug: "web-htmx-server-driven-ui"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-htmx-server-driven-ui"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-htmx-server-driven-ui"
+slug: "web-htmx-server-driven-ui"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-htmx-server-driven-ui"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-htmx-server-driven-ui"
+slug: "web-htmx-server-driven-ui"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-htmx-server-driven-ui"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-htmx-server-driven-ui"
+slug: "web-htmx-server-driven-ui"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-htmx-server-driven-ui"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-htmx-server-driven-ui"
+slug: "web-htmx-server-driven-ui"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-htmx-server-driven-ui"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Server-Driven UI with htmx"
+slug: "web-htmx-server-driven-ui"
+description: "Build interactive web apps with htmx: HTML-over-the-wire, hx-get and hx-post attributes, partial page updates, and when server-driven UI beats SPA complexity."
+datePublished: "2026-05-05"
+dateModified: "2026-07-17"
+tags:
+  - "Web"
+  - "htmx"
+  - "Backend"
+  - "Frontend"
+keywords: "htmx, server-driven UI, HTML over the wire, partial updates, hypermedia, hx-get, hx-swap"
+faq:
+  - q: "What is the main production risk with web htmx server driven ui?"
+    a: "Teams ship without field measurement—web htmx server driven ui failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web htmx server driven ui?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web htmx server driven ui changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Our admin dashboard was a React SPA with 200 API endpoints returning JSON that the client re-rendered into HTML. Adding a filter dropdown required a new API route, a TypeScript type, a React component, and a loading state. We rebuilt one section with htmx: the server returned an HTML table fragment, the client swapped it in. The feature shipped in an afternoon.
@@ -166,25 +296,55 @@ Return toast notifications alongside main content:
 
 Update notification areas without targeting them explicitly in hx-target.
 
-## Measuring success in production
+## Caching partials
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Fragment caches keyed by `(route, user_segment, page)` reduce server render cost:
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+```python
+@cache.memoize(timeout=60)
+def render_contact_table(page, tenant_id):
+    return render_template('_contact_rows.html', ...)
+```
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Invalidate on mutation via `HX-Trigger` calling cache bust endpoint or versioned ETags in `HX-Headers`.
 
-## Additional production considerations
+## WebSocket + htmx extension
 
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
+htmx websockets extension swaps messages into DOM—useful for live dashboards without full SPA. Still sanitize HTML fragments from server; XSS in partial templates is critical severity.
 
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
+## Comparison with Hotwire/Turbo
 
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
+Rails Turbo Drive similar to htmx philosophy—teams on Rails often use Turbo; htmx fits Python, Go, PHP, Java templates equally. Choose based on server stack, not religious preference.
 
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
+## Practical follow-through (1)
 
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 
@@ -193,3 +353,15 @@ Collaborate with backend teams on TTFB and API response times. Frontend optimiza
 - [Hypermedia Systems (book)](https://hypermedia.systems/)
 - [django-htmx integration](https://django-htmx.readthedocs.io/)
 - [htmx vs React comparison](https://htmx.org/essays/a-response-to-rich-harris/)
+
+## CSRF in partials
+
+Include CSRF tokens in every htmx form partial — cookies send automatically on same-origin POST.
+
+## Partial template tests
+
+Pytest-render `_table.html` fragments with fixture data — no browser needed for row logic. One Playwright spec per critical swap path covers integration.
+
+## hx-boost navigation
+
+`hx-boost="true"` on body upgrades link navigation without full reload — server returns full HTML documents; htmx swaps body content for MPA-style speed.

@@ -3,113 +3,185 @@ title: "Grafana Dashboards as Code with Jsonnet or Terraform"
 slug: "devops-grafana-dashboard-as-code"
 description: "Version control Grafana dashboards and provision via GitOps."
 datePublished: "2026-06-03"
-dateModified: "2026-06-03"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "Observability"
   - "GitOps"
 keywords: "Grafana as code, dashboards"
 faq:
-  - q: "What is Grafana Dashboards as Code?"
-    a: "Grafana Dashboards as Code covers operational practices for Grafana as code in production observability environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize Grafana Dashboards as Code?"
-    a: "When more than ten engineers edit the same Grafana instance."
-  - q: "What mistakes break Grafana Dashboards as Code?"
-    a: "Dashboard UID churn—Terraform recreates panels every apply."
+  - q: "Grafonnet vs JSON?"
+    a: "Jsonnet modules reduce duplication—env-specific overrides in libsonnet parameters."
+  - q: "CI for dashboards?"
+    a: "lint jsonnet, render JSON, grafana diff or preview API—no manual UI save in prod folder."
+  - q: "UID stability?"
+    a: "Fixed dashboard UIDs in code—import without duplicate dashboards on re-apply."
+  - q: "Folder permissions?"
+    a: "Terraform or Grafana operator manages folder RBAC—code owns structure not individuals."
 ---
+Manual dashboard edits in UI diverged from git; jsonnet Grafonnet modules plus CI lint restored single source of truth and fixed UID duplicates on import.
 
-Critical dashboard edited in UI—lost on Grafana pod restart.
+## Jsonnet structure
 
-This post walks through **Grafana Dashboards as Code with Jsonnet or Terraform** for platform and SRE teams shipping reliable infrastructure. Version control Grafana dashboards and provision via GitOps. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+lib/ panels reusable; environments/prod params for datasource UID differences.
 
-## Problem framing: Grafana Dashboards as Code with Jsonnet or Terraform
+Production teams running grafana dashboard as code learned that jsonnet structure regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-Critical dashboard edited in UI—lost on Grafana pod restart.
+Runbook for jsonnet structure: confirm blast radius, identify last config change, execute single-
+step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument jsonnet structure with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Platform teams treat **Grafana as code** as solved after the first successful deploy. Production disagrees: edge cases around grafana dashboard as code, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day for jsonnet structure: quarterly staging injection with rollback under fifteen minutes
+using linked runbook only—update runbook with what broke.
 
-## Design principles for Grafana as code
+Ownership for jsonnet structure belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-Explicit contracts beat tribal knowledge. Document who owns Grafana as code configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in jsonnet structure configs.
 
+Capacity note: estimate peak concurrency for jsonnet structure, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-A common failure mode: Dashboard UID churn—Terraform recreates panels every apply. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+Security review for grafana dashboard as code: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
+FinOps tie-in for jsonnet structure: attribute cloud spend to owning team via tags; monthly review
+of cost drivers prevents silent bill growth after config drift.
 
-```yaml
-# PrometheusRule / experiment hook for devops-grafana-dashboard-as-code
-groups:
-  - name: grafana_dashboard_as_code
-    rules:
-      - alert: Grafana_Dashboard_As_CodeHighErrorRate
-        expr: rate(http_errors_total{job="grafana_dashboard_as_code"}[5m]) > 0.05
-        for: 10m
-        labels:
-          severity: page
-```
+## CI pipeline
 
-## Implementation walkthrough
+jsonnetfmt lint; render to JSON; optional grafana API diff on PR preview.
 
-Start with the smallest production-safe slice of **Grafana Dashboards as Code with Jsonnet or Terraform**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
+Production teams running grafana dashboard as code learned that ci pipeline regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
+Runbook for ci pipeline: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for Grafana as code.
+Instrument ci pipeline with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Operational concerns in production
+Game day for ci pipeline: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Day-two operations for observability work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
+Ownership for ci pipeline belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in ci pipeline configs.
 
-Run game days or fault injection in staging quarterly for grafana dashboard as code. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
+Capacity note: estimate peak concurrency for ci pipeline, apply 1.5–2× headroom against cloud quotas
+before launch week—not during first outage.
 
-## Security and compliance angles
+Security review for grafana dashboard as code: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-Even when Grafana Dashboards as Code with Jsonnet or Terraform is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when Grafana as code accepts configuration from multiple teams.
+FinOps tie-in for ci pipeline: attribute cloud spend to owning team via tags; monthly review of cost
+drivers prevents silent bill growth after config drift.
 
+## UID stability
 
-For regulated workloads, maintain an immutable audit trail: who changed Grafana as code settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
+Fixed dashboard UIDs in code—re-import without duplicate dashboards.
 
-## Integration with platform standards
+Production teams running grafana dashboard as code learned that uid stability regressions appear
+when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-Align Grafana as code with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
+Runbook for uid stability: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
+Instrument uid stability with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
+Game day for uid stability: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
+Ownership for uid stability belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## What to measure after rollout
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in uid stability configs.
 
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
+Capacity note: estimate peak concurrency for uid stability, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
+Security review for grafana dashboard as code: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Documentation your team should maintain
+FinOps tie-in for uid stability: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
+## RBAC as code
 
-## Pre-production checklist
+Terraform or Grafana operator for folder permissions—not manual UI sharing.
 
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
+Production teams running grafana dashboard as code learned that rbac as code regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
 
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
+Runbook for rbac as code: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
 
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
+Instrument rbac as code with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
 
-## Common questions from reviewers
+Game day for rbac as code: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
 
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
+Ownership for rbac as code belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
 
-## Version and compatibility notes
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in rbac as code configs.
 
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
+Capacity note: estimate peak concurrency for rbac as code, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
 
+Security review for grafana dashboard as code: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
 
-## Resources
+FinOps tie-in for rbac as code: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.
 
-- https://prometheus.io/docs/
-- https://opentelemetry.io/docs/
+## Anti-pattern
+
+Screenshot-driven dashboard requests without code change—product process routes through PR.
+
+Production teams running grafana dashboard as code learned that anti-pattern regressions appear when
+traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
+production timestamps.
+
+Runbook for anti-pattern: confirm blast radius, identify last config change, execute single-step
+rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+
+Instrument anti-pattern with low-cardinality metrics tied to user-visible SLIs—error rate, tail
+latency, freshness—not vanity gauges that never correlated with past pages.
+
+Game day for anti-pattern: quarterly staging injection with rollback under fifteen minutes using
+linked runbook only—update runbook with what broke.
+
+Ownership for anti-pattern belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers deploy safe canary within one week using that doc.
+
+Change management: peer review from outside authoring team before prod promote—fresh eyes catch
+embedded assumptions in anti-pattern configs.
+
+Capacity note: estimate peak concurrency for anti-pattern, apply 1.5–2× headroom against cloud
+quotas before launch week—not during first outage.
+
+Security review for grafana dashboard as code: least privilege on automation roles, short-lived
+credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
+with mandatory retrospective.
+
+FinOps tie-in for anti-pattern: attribute cloud spend to owning team via tags; monthly review of
+cost drivers prevents silent bill growth after config drift.

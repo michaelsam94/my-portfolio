@@ -119,6 +119,28 @@ Teams get camerax video capture wrong in predictable ways:
 
 Shipping camerax video capture on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## QualitySelector vs device codec limits
+
+4K selector falls back silently on mid devices — log resolved `VideoSpec` in debug. Audio sync drift appears when CPU throttled during recording; prefer 1080p30 for field apps on unknown hardware.
+
+## Lifecycle unbind on multi-window
+
+User splits screen; camera may not release until `ON_STOP`. Use `LifecycleCameraController` and verify `unbindAll()` in `onPause` when picture-in-picture not active — otherwise second app gets `ERROR_CAMERA_IN_USE`.
+
+## Camerax Video Capture Supplement 0 on Samsung and Pixel divergence
+
+Exercise camerax video capture supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching camerax; regressions above 8% block release for `android-camerax-video-capture-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Camerax Video Capture Supplement 0" should map to a single runbook section with known workarounds.
+
+## Capture regression gates for Play Vitals
+
+Before promoting `android-camerax-video-capture-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing camerax with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing camerax video capture supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Capture video (CameraX)](https://developer.android.com/media/camera/camerax/video-capture)

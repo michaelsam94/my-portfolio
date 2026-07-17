@@ -3,8 +3,8 @@ title: "Long Context vs RAG: When Bigger Windows Win"
 slug: "long-context-vs-rag"
 description: "Long context vs RAG in 2026: when million-token windows beat retrieval, when they don't, and how to combine them. Cost, latency, and accuracy tradeoffs explained."
 datePublished: "2026-03-09"
-dateModified: "2026-03-09"
-tags: ["LLM", "RAG", "Architecture", "AI Engineering"]
+dateModified: "2026-07-17"
+tags:
 keywords: "long context, context window, RAG vs long context, million token context, LLM context tradeoffs, retrieval"
 faq:
   - q: "Does long context make RAG obsolete?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why is stuffing everything into a long context window expensive?"
     a: "You pay per input token on every call, so sending 500K tokens of context for a one-line question is enormously wasteful and slow. RAG retrieves only the relevant few thousand tokens, which is cheaper and often more accurate because there's less noise."
 ---
-
 The pitch is seductive: models now take a million tokens or more, so just paste the whole knowledge base into the prompt and skip the retrieval pipeline entirely. No chunking, no embeddings, no vector database, no reranker. For a certain class of problem, that's exactly right. For most production systems, it's a trap that shows up on your invoice and in your p95 latency.
 
 Long context vs RAG isn't a winner-take-all fight. They solve overlapping-but-different problems, and the interesting engineering is knowing which one — or which combination — fits the task in front of you. After building both, here's how I decide.

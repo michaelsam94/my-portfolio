@@ -1,0 +1,395 @@
+{
+  "batch": "02-part4",
+  "slice": [
+    700,
+    749
+  ],
+  "total": 50,
+  "ok": 50,
+  "needs_rewrite": 0,
+  "rewritten": 0,
+  "skipped": 0,
+  "errors": 0,
+  "under_1200_words": 0,
+  "template_markers_remaining": 0,
+  "target_words": 1200,
+  "completed_at": "2026-07-17",
+  "all_word_stats": {
+    "min": 1221,
+    "max": 1372,
+    "avg": 1261.5
+  },
+  "word_stats": {
+    "min": 1221,
+    "max": 1372,
+    "avg": 1261.5
+  },
+  "samples": [
+    {
+      "slug": "android-wifi-scanning-privacy",
+      "status": "ok",
+      "words": 1276,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-window-insets-handling",
+      "status": "ok",
+      "words": 1372,
+      "reason": "ok",
+      "template_free": true
+    }
+  ],
+  "results": [
+    {
+      "slug": "android-wifi-scanning-privacy",
+      "status": "ok",
+      "words": 1276,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-window-insets-handling",
+      "status": "ok",
+      "words": 1372,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-window-manager-embedding-activities",
+      "status": "ok",
+      "words": 1259,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-coroutine-worker",
+      "status": "ok",
+      "words": 1252,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-expedited-work",
+      "status": "ok",
+      "words": 1248,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-hilt-integration",
+      "status": "ok",
+      "words": 1254,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-test-driver",
+      "status": "ok",
+      "words": 1266,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-unique-work-chains",
+      "status": "ok",
+      "words": 1252,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-workmanager-vs-jobscheduler",
+      "status": "ok",
+      "words": 1265,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-xr-headset-development",
+      "status": "ok",
+      "words": 1246,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "android-xr-vs-visionos",
+      "status": "ok",
+      "words": 1258,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-authentication-jwt-vs-sessions",
+      "status": "ok",
+      "words": 1271,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-bulk-operations-batch-endpoints",
+      "status": "ok",
+      "words": 1247,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-conditional-requests-etag",
+      "status": "ok",
+      "words": 1276,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-content-negotiation-accept",
+      "status": "ok",
+      "words": 1252,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-contract-testing-pact-provider",
+      "status": "ok",
+      "words": 1271,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-correlation-id-propagation",
+      "status": "ok",
+      "words": 1244,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-cors-preflight-production",
+      "status": "ok",
+      "words": 1224,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-cursor-pagination-stable-sort",
+      "status": "ok",
+      "words": 1261,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-deprecation-sunset-headers",
+      "status": "ok",
+      "words": 1250,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-documentation-openapi",
+      "status": "ok",
+      "words": 1253,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-error-envelope-consistency",
+      "status": "ok",
+      "words": 1255,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-field-selection-sparse-fieldsets",
+      "status": "ok",
+      "words": 1271,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-gateway-auth-offload-patterns",
+      "status": "ok",
+      "words": 1269,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-gateway-patterns",
+      "status": "ok",
+      "words": 1279,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-graceful-shutdown-drain",
+      "status": "ok",
+      "words": 1262,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-health-check-deep-shallow",
+      "status": "ok",
+      "words": 1239,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-hypermedia-hateoas-pragmatic",
+      "status": "ok",
+      "words": 1265,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-idempotency-key-header-standard",
+      "status": "ok",
+      "words": 1221,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-json-patch-merge-patch",
+      "status": "ok",
+      "words": 1274,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-long-running-async-jobs",
+      "status": "ok",
+      "words": 1281,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-multi-tenant-header-isolation",
+      "status": "ok",
+      "words": 1250,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-openapi-codegen-tradeoffs",
+      "status": "ok",
+      "words": 1260,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-pagination-keyset-vs-offset",
+      "status": "ok",
+      "words": 1254,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-problem-details-rfc7807",
+      "status": "ok",
+      "words": 1276,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-rate-limit-response-headers",
+      "status": "ok",
+      "words": 1248,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-rate-limiting-algorithms",
+      "status": "ok",
+      "words": 1240,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-request-size-limits-dos",
+      "status": "ok",
+      "words": 1281,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-request-validation-zod-joi",
+      "status": "ok",
+      "words": 1250,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-response-compression-brotli",
+      "status": "ok",
+      "words": 1260,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-security-owasp-api-top-10",
+      "status": "ok",
+      "words": 1251,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-server-sent-events-streaming",
+      "status": "ok",
+      "words": 1264,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "api-versioning-strategies",
+      "status": "ok",
+      "words": 1264,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "astro-content-collections",
+      "status": "ok",
+      "words": 1267,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-api-key-hashing-storage",
+      "status": "ok",
+      "words": 1269,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-break-glass-emergency-access",
+      "status": "ok",
+      "words": 1257,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-mtls-client-certificates",
+      "status": "ok",
+      "words": 1260,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-rbac-vs-abac-decision",
+      "status": "ok",
+      "words": 1272,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-session-hardening-cookies",
+      "status": "ok",
+      "words": 1267,
+      "reason": "ok",
+      "template_free": true
+    },
+    {
+      "slug": "auth-spiffe-spire-workload-identity",
+      "status": "ok",
+      "words": 1274,
+      "reason": "ok",
+      "template_free": true
+    }
+  ]
+}

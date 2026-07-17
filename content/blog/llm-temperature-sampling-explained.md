@@ -3,8 +3,8 @@ title: "Temperature and Sampling, Demystified"
 slug: "llm-temperature-sampling-explained"
 description: "Understand LLM temperature, top-p, top-k, and frequency penalty: what each parameter actually does to token probabilities and when to use which setting."
 datePublished: "2025-04-02"
-dateModified: "2025-04-02"
-tags: ["AI", "LLM", "Sampling", "Inference"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM temperature explained, top-p nucleus sampling, top-k sampling, frequency penalty, LLM sampling parameters, temperature 0 vs 1"
 faq:
   - q: "Should I always use temperature 0 for deterministic output?"
@@ -14,7 +14,6 @@ faq:
   - q: "Why does my output change between identical requests at temperature 0?"
     a: "True greedy decoding at temperature 0 should be deterministic on the same hardware and software version. Non-determinism usually comes from floating-point operation ordering in batched inference, different CUDA kernels, or the provider not actually using temperature 0 internally. Set a fixed seed where supported for reproducibility."
 ---
-
 You set temperature to 0.7 because the blog post said to. Your chatbot gives different answers to the same question. Your extraction pipeline occasionally returns malformed JSON. Your creative writing feature produces the same three opening sentences repeatedly.
 
 Temperature and sampling parameters control how the model chooses the next token from its probability distribution. They are not magic knobs — they are precise mathematical operations on logits. Understanding what they do lets you pick the right settings per task instead of copying defaults.
@@ -150,17 +149,6 @@ params = SamplingParams(temperature=0.0, seed=42)
 
 Log the full sampling configuration with every request. When output quality shifts after a model update, you need to know exactly which parameters were used to isolate whether the model or the settings changed.
 
-## Common production mistakes
-
-Teams get temperature sampling explained wrong in predictable ways:
-
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
-
-LLM features around temperature sampling explained break in production when prompts assume deterministic output, context windows are sized for dev datasets, or token costs are never budgeted per user session. Always log prompt hash, model version, and latency—not raw prompts with PII.
-
 ## Resources
 
 - [The Curious Case of Neural Text Degeneration (top-p paper)](https://arxiv.org/abs/1904.09751)
@@ -168,3 +156,17 @@ LLM features around temperature sampling explained break in production when prom
 - [Hugging Face generation strategies guide](https://huggingface.co/docs/transformers/en/generation_strategies)
 - [vLLM SamplingParams documentation](https://docs.vllm.ai/en/latest/dev/sampling_params.html)
 - [Holtzman et al. on repetition in neural text generation](https://arxiv.org/abs/1904.09751)
+
+## Production notes for LLM stacks
+
+When `llm-temperature-sampling-explained` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `temperature and sampling, demystified` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

@@ -1,111 +1,310 @@
 ---
 title: "AI Agents: Oidc Discovery Caching"
 slug: "agent-oidc-discovery-caching"
-description: "Oidc Discovery Caching: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Cache OpenID Provider discovery documents without stale JWKS disasters: TTL math, rotation handling, and fallback behavior for agent authentication gateways."
 datePublished: "2025-12-31"
 dateModified: "2025-12-31"
 tags: ["AI", "Agent", "Oidc"]
-keywords: "agent, oidc, discovery, caching, ai, production, engineering, architecture"
+keywords: "OIDC discovery document, JWKS caching, OpenID Connect metadata, agent authentication, stale-while-revalidate, HTTP cache-control"
 faq:
-  - q: "What is Oidc Discovery Caching?"
-    a: "Oidc Discovery Caching covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Oidc Discovery Caching?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Oidc Discovery Caching?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Oidc Discovery Caching fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Oidc Discovery Caching should be observable in production and safe to change in small diffs."
+  - q: "What is the minimum you must cache from /.well-known/openid-configuration?"
+    a: "At minimum: issuer, authorization_endpoint, token_endpoint, jwks_uri, and supported signing algorithms. Agent gateways that only cache jwks_uri still hit the discovery endpoint on every cold start unless they persist the full document. Cache the JSON blob atomically so partial reads never serve a Frankenstein config."
+  - q: "How long can JWKS safely be cached?"
+    a: "Follow Cache-Control from the IdP when present; default to 15–60 minutes for JWKS with a stale-while-revalidate window equal to one TTL period. Never cache beyond the IdP's key rotation schedule without a background refresh job—Auth0, Okta, and Azure AD rotate on unpredictable cadences tied to admin action."
+  - q: "Should agent pods fetch discovery directly or through a central auth service?"
+    a: "Central auth service. Thousands of agent replicas hammering an IdP discovery endpoint triggers rate limits and creates N distinct cache states. One gateway cluster caches discovery and JWKS; pods receive already-validated signing keys via internal API or mounted JWKS snapshot refreshed by the gateway."
+  - q: "What happens when cached keys are stale after an emergency IdP rotation?"
+    a: "JWT signature verification fails with key-not-found. Implement negative-cache bypass: on kid miss, force-refresh JWKS synchronously once per minute per cluster, then retry verification. Page if forced refresh fails twice—likely IdP outage or network partition, not ordinary rotation."
 ---
-Most teams encounter oidc discovery caching after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Every agent pod that cold-starts and fetches `/.well-known/openid-configuration` adds latency and loads someone else's IdP. Multiply by autoscaling during a traffic spike and you get throttled—401s that look like "agent broken" but are really "cache missing." OIDC discovery caching is the unglamorous layer between your agent gateway and Azure AD that determines whether login survives Black Friday concurrency.
 
-When oidc discovery caching is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+## Anatomy of what you are caching
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+OpenID Connect discovery returns JSON describing the provider:
 
-Solid AI engineering turns oidc discovery caching from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent oidc discovery caching bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for oidc discovery caching, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent oidc discovery caching flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for oidc discovery caching in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent oidc discovery caching changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Oidc Discovery Caching: typed boundary + structured errors
-export async function handleOidcDiscoveryCaching(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-oidc-discovery-caching");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
+```json
+{
+  "issuer": "https://login.example.com/",
+  "authorization_endpoint": "https://login.example.com/oauth2/v2.0/authorize",
+  "token_endpoint": "https://login.example.com/oauth2/v2.0/token",
+  "jwks_uri": "https://login.example.com/oauth2/v2.0/discovery/v2.0/keys",
+  "id_token_signing_alg_values_supported": ["RS256"],
+  "response_types_supported": ["code"],
+  "subject_types_supported": ["pairwise"]
 }
-
 ```
 
+JWKS at `jwks_uri` is a separate JSON document:
 
-## Operational concerns
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "abc123",
+      "use": "sig",
+      "n": "...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
 
-Alert on user-visible symptoms for oidc discovery caching — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Your cache has two logical entries per issuer: **discovery** (low churn) and **jwks** (rotates). Treat them as a versioned pair keyed by `issuer` URL normalized to HTTPS without trailing slash inconsistencies.
 
-Production agent oidc discovery caching work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Why naive fetch-on-every-request fails
 
-Rollouts for oidc discovery caching benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Agent gateways validate inbound JWTs from orchestrators and outbound tokens from tool OAuth. Each validation path needs the current signing key for `kid` in the JWT header.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Without cache:
 
-## Security and compliance angles
+- p99 auth latency includes DNS + TLS + IdP RTT on every request.
+- IdP rate limits (`429`) surface as agent errors.
+- Autoscaling creates thundering herds after deploys.
 
-Even when oidc discovery caching is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+With overly aggressive cache:
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent oidc discovery caching so security reviews do not rely on tribal knowledge.
+- Emergency key rotation breaks all verification until TTL expires.
+- Compromised JWKS served from cache extends attacker window.
 
-## Testing strategy
+The design target is **fresh enough, fast enough, fail visibly**.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that oidc discovery caching depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Cache layer architecture
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```
+Agent pod → Auth gateway → [Discovery cache] → IdP
+                ↓
+           [JWKS cache]
+                ↓
+         JWT verify (local)
+```
 
-## Migration and evolution
+Gateway exposes internal endpoint `/internal/jwks/{issuer}` for pods that cannot run HTTP cache logic—optional, but keeps verification libraries uniform.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent oidc discovery caching functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Implementation sketch with stale-while-revalidate:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where oidc discovery caching spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```typescript
+interface CacheEntry<T> {
+  value: T;
+  fetchedAt: number;
+  softExpiresAt: number;
+  hardExpiresAt: number;
+}
 
-## Related concepts
+class OidcDiscoveryCache {
+  constructor(
+    private readonly fetcher: (url: string) => Promise<Response>,
+    private readonly softTtlMs = 3600_000,   // 1 hour
+    private readonly hardTtlMs = 7200_000,     // 2 hours SWR max
+  ) {}
 
-Oidc Discovery Caching intersects with broader ai topics — see companion notes on [agent-oidc patterns](https://blog.michaelsam94.com/agent-oidc/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+  private discovery = new Map<string, CacheEntry<OidcDiscovery>>();
 
-## The takeaway
+  async getDiscovery(issuer: string): Promise<OidcDiscovery> {
+    const key = normalizeIssuer(issuer);
+    const hit = this.discovery.get(key);
+    const now = Date.now();
 
-Oidc Discovery Caching rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent oidc discovery caching becomes a maintainable asset instead of incident fuel.
+    if (hit && now < hit.softExpiresAt) return hit.value;
+
+    if (hit && now < hit.hardExpiresAt) {
+      void this.refreshDiscovery(key).catch(() => {}); // background
+      return hit.value;
+    }
+
+    return this.refreshDiscovery(key);
+  }
+
+  private async refreshDiscovery(issuer: string): Promise<OidcDiscovery> {
+    const url = `${issuer}/.well-known/openid-configuration`;
+    const res = await this.fetcher(url);
+    if (!res.ok) throw new Error(`discovery fetch failed: ${res.status}`);
+    const doc = (await res.json()) as OidcDiscovery;
+    validateDiscovery(doc, issuer);
+    const now = Date.now();
+    this.discovery.set(issuer, {
+      value: doc,
+      fetchedAt: now,
+      softExpiresAt: now + this.softTtlMs,
+      hardExpiresAt: now + this.hardTtlMs,
+    });
+    return doc;
+  }
+}
+```
+
+Honor upstream `Cache-Control` when IdP sends it—many enterprise providers do not; your defaults apply.
+
+## JWKS refresh on kid miss
+
+Normal path: JWT arrives with `kid: abc123`. Local JWKS map has `abc123` → verify.
+
+Rotation path: `kid` unknown. Trigger synchronous refresh once, not per request:
+
+```typescript
+async function verifyJwt(token: string, cache: JwksCache): Promise<Payload> {
+  const header = decodeProtectedHeader(token);
+  const issuer = normalizeIssuer(decodeJwt(token).iss!);
+
+  let jwks = await cache.getJwks(issuer);
+  let key = jwks.keys.find((k) => k.kid === header.kid);
+
+  if (!key) {
+    jwks = await cache.forceRefreshJwks(issuer);
+    key = jwks.keys.find((k) => k.kid === header.kid);
+  }
+
+  if (!key) throw new AuthError("unknown_signing_key");
+  return jwtVerify(token, await importJwk(key), { issuer });
+}
+```
+
+Rate-limit `forceRefreshJwks` per issuer—one refresh per 60 seconds cluster-wide via distributed lock:
+
+```typescript
+async function forceRefreshJwks(issuer: string): Promise<Jwks> {
+  const lock = await redis.set(`jwks:refresh:${issuer}`, "1", "NX", "EX", 60);
+  if (!lock) {
+    await sleep(200);
+    return this.getJwks(issuer); // another instance refreshed
+  }
+  return this.refreshJwks(issuer);
+}
+```
+
+## Validating discovery before trust
+
+Never cache unvalidated JSON. Minimum checks:
+
+```typescript
+function validateDiscovery(doc: OidcDiscovery, expectedIssuer: string): void {
+  if (normalizeIssuer(doc.issuer) !== normalizeIssuer(expectedIssuer)) {
+    throw new Error("issuer mismatch — possible misconfiguration or MITM");
+  }
+  if (!doc.jwks_uri.startsWith("https://")) {
+    throw new Error("jwks_uri must be HTTPS");
+  }
+  const allowedAlgs = doc.id_token_signing_alg_values_supported ?? [];
+  if (!allowedAlgs.includes("RS256") && !allowedAlgs.includes("ES256")) {
+    throw new Error("unsupported signing algorithms");
+  }
+}
+```
+
+Pin issuers in config—agent gateways should not accept arbitrary `iss` from tokens and then fetch discovery dynamically for unknown tenants without an allowlist.
+
+## Multi-tenant agent platforms
+
+Enterprise customers bring their own IdP. Store per-tenant issuer URL in tenant config; cache partition key is `(tenant_id, issuer)`.
+
+```yaml
+# tenant-acme-auth.yaml
+tenantId: acme
+oidc:
+  issuer: https://acme.okta.com/oauth2/default
+  clientId: ${OKTA_CLIENT_ID}
+  discoverySoftTtl: 3600
+  jwksSoftTtl: 900
+```
+
+Different TTLs per tenant when contracts require faster rotation detection. Never share cache entries across tenants—even identical issuer strings should include tenant ID in the key to prevent cache poisoning via misconfigured admin UI.
+
+## Persistence across gateway restarts
+
+In-memory caches cold-start empty. Options ranked:
+
+1. **Redis backing store** — write-through on refresh; gateway reads Redis first.
+2. **File snapshot on disk** — acceptable for single-replica gateways; watch permissions.
+3. **Init container preload** — fetch discovery before accepting traffic in readiness probe.
+
+Readiness gate:
+
+```yaml
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8080
+  initialDelaySeconds: 2
+  periodSeconds: 5
+```
+
+`/readyz` returns 503 until discovery and JWKS for all configured issuers load successfully.
+
+## Security considerations
+
+- **HTTPS only** for discovery and JWKS fetch; pin nothing at TLS layer unless you operate corporate MITM—prefer standard CA validation.
+- **Do not cache error responses** beyond a short negative TTL (30s) to avoid amplifying IdP outages into long self-inflicted ones.
+- **Log cache age** on verification failures—`kid_miss` with `cache_age_seconds > 3600` implicates stale cache, not bad token.
+- **Protect internal cache admin API** — force-refresh endpoints are DoS vectors if exposed.
+
+## Observability
+
+Metrics per issuer:
+
+- `oidc_discovery_fetch_total{result}`
+- `oidc_jwks_refresh_total{trigger=scheduled|kid_miss|forced}`
+- `oidc_cache_age_seconds` gauge
+- `jwt_verify_failures_total{reason=unknown_kid|expired|issuer_mismatch}`
+
+Trace spans: `discovery.fetch`, `jwks.refresh`, `jwt.verify` as siblings so latency regressions show whether network or crypto dominates.
+
+## Testing rotation without waiting for Okta
+
+Use a local IdP (Keycloak, Dex) with admin API to rotate keys on demand:
+
+```bash
+# Keycloak example: create new RSA key, disable old after overlap window
+kcadm.sh create components -r agents -s name=rsa-new -s providerId=rsa-generated ...
+```
+
+Integration test flow:
+
+1. Fetch token signed with key A → verify OK.
+2. Rotate to key B only.
+3. Old token still verifies until exp (expected).
+4. New token with kid B verifies after kid-miss refresh.
+5. Remove key A; tokens with kid A fail.
+
+Automate in CI with Testcontainers Keycloak.
+
+## Operational runbook snippet
+
+**Symptom:** Spike in `jwt_verify_failures{reason=unknown_kid}`
+
+1. Check IdP status page.
+2. Inspect `oidc_jwks_refresh_total` — did kid_miss trigger refresh?
+3. If refresh errors, verify egress from gateway to `jwks_uri`.
+4. Manual mitigator: `curl` JWKS URL, compare `kid` list to cache dump endpoint.
+5. Force cluster-wide refresh via admin API once network confirmed healthy.
+
+**Symptom:** Discovery fetch slow but JWKS fine
+
+Discovery TTL can be longer—verify background refresh job runs and soft TTL is not set to zero in a recent config change.
+
+## ETag and If-None-Match for bandwidth discipline
+
+Some IdPs support conditional GET on discovery and JWKS endpoints. Pass through stored ETags on refresh:
+
+```typescript
+async function fetchWithEtag(url: string, etag?: string): Promise<{ status: 304 | 200; body?: unknown; etag?: string }> {
+  const headers: Record<string, string> = {};
+  if (etag) headers["If-None-Match"] = etag;
+  const res = await fetch(url, { headers });
+  if (res.status === 304) return { status: 304 };
+  return { status: 200, body: await res.json(), etag: res.headers.get("etag") ?? undefined };
+}
+```
+
+A `304 Not Modified` response skips JSON parsing and proves the cache is current—useful when soft TTL expires but content has not changed. Store ETag alongside cache entries; reset hard TTL only when body actually changes.
+
+## Closing perspective
+
+Discovery caching trades a few minutes of potential staleness for orders-of-magnitude fewer outbound calls and predictable auth latency. The implementation details—stale-while-revalidate, kid-miss refresh, issuer pinning—are what separate agent platforms that scale from those that mysteriously fail auth every time the IdP hiccups.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [OpenID Connect Discovery 1.0 specification](https://openid.net/specs/openid-connect-discovery-1_0.html)
+- [RFC 7517 — JSON Web Key (JWK)](https://datatracker.ietf.org/doc/html/rfc7517)
+- [RFC 7519 — JSON Web Token (JWT)](https://datatracker.ietf.org/doc/html/rfc7519)
+- [Auth0 — signing key rotation](https://auth0.com/docs/secure/tokens/signing-keys/signing-key-rotation)
+- [jose — JavaScript JWT/JWK library](https://github.com/panva/jose)

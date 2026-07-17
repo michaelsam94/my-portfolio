@@ -84,6 +84,33 @@ Log `UsageStatsManager.getAppStandbyBucket()` in beta builds — users in `restr
 
 Document expected background behavior per standby bucket in your app's troubleshooting guide — support teams otherwise escalate "notifications stopped" as bugs when Android is working as designed.
 
+## Requesting bucket exemption (rarely granted)
+
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` triggers Play policy scrutiny — only for user-visible core use cases (VoIP, active navigation). Agent sync apps should use WorkManager with expedited work sparingly, not whitelist requests.
+
+## Testing bucket transitions
+
+```bash
+adb shell am set-standby-bucket com.example.app rare
+adb shell cmd jobscheduler run -f com.example.app JOB_ID
+```
+
+Verify sync resumes when user opens app (bucket promotion to active). Document expected delay in UX for background-only users.
+
+## Doze App Standby Buckets Supplement 0 on Samsung and Pixel divergence
+
+Exercise doze app standby buckets supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching doze; regressions above 8% block release for `android-doze-app-standby-buckets-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Doze App Standby Buckets Supplement 0" should map to a single runbook section with known workarounds.
+
+## Buckets regression gates for Play Vitals
+
+Before promoting `android-doze-app-standby-buckets-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
+## Field testing doze with battery saver enabled
+
+Xiaomi and Oppo ship aggressive background killers. After implementing doze app standby buckets supplement 0, run 24-hour monkey test on three OEM devices with battery saver enabled. Failures here predict one-star reviews that Crashlytics never captures — especially for 0 flows that assume reliable background delivery.
+
 ## Resources
 
 - [Optimize for Doze and App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby)

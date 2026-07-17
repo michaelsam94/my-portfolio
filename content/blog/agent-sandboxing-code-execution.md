@@ -184,6 +184,22 @@ When sandboxing code execution misbehaves in production, work top-down instead o
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Output exfiltration via encoding tricks
+
+Models learn to base64-encode secrets into stdout when network is blocked. Enforce stdout size limits and scan for high-entropy blobs before returning results to the orchestrator. Block `open('/proc/self/environ')` paths even inside containers — some images leak parent env via procfs if not masked.
+
+## Sandbox pool sizing under burst
+
+Black Friday agent traffic spikes concurrent code executions. Size warm pool from p99 concurrent tool calls, not average. Cold-start latency during pool exhaustion looks like model slowness — metric pool acquire wait separately from model TTFT.
+
+## Production validation for Sandboxing Code Execution Supplement 0
+
+Ship behind a flag when touching Sandboxing Code Execution Supplement 0; measure error rate and latency against baseline for seven days. Document rollback steps and owner on-call before enabling for enterprise tenants.
+
+## Incident signals to watch
+
+Alert on spikes in 5xx, client ANR rate, or support tag volume referencing Sandboxing Code Execution Supplement 0. Correlate with server deploys and Remote Config changes within ±2 hours before deep debugging client-only hypotheses.
+
 ## Resources
 
 - [gVisor — application kernel for containers](https://gvisor.dev/docs/)

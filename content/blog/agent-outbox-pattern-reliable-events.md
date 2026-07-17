@@ -1,115 +1,299 @@
 ---
 title: "AI Agents: Outbox Pattern Reliable Events"
 slug: "agent-outbox-pattern-reliable-events"
-description: "Outbox Pattern Reliable Events: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Use the transactional outbox so agent run completions and tool side effects publish domain events atomically with Postgres commits — relay workers, idempotent consumers, and why dual-write breaks billing."
 datePublished: "2024-11-06"
 dateModified: "2024-11-06"
-tags: ["AI", "Agent", "Outbox"]
-keywords: "agent, outbox, pattern, reliable, events, ai, production, engineering, architecture"
+tags: ["AI Agents", "Events", "Distributed Systems", "Postgres"]
+keywords: "transactional outbox pattern, agent domain events, reliable event publishing, outbox relay worker, dual write problem"
 faq:
-  - q: "What is Outbox Pattern Reliable Events?"
-    a: "Outbox Pattern Reliable Events covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Outbox Pattern Reliable Events?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Outbox Pattern Reliable Events?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Outbox Pattern Reliable Events fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Outbox Pattern Reliable Events should be observable in production and safe to change in small diffs."
+  - q: "What problem does the outbox pattern solve for agent platforms?"
+    a: "When an agent run completes, you must persist final status in Postgres AND notify webhooks, search indexes, and billing consumers. Updating the DB then publishing to Kafka is two writes — either can fail independently, causing charged-but-not-recorded or recorded-but-not-billed states. Outbox makes both atomic in one transaction."
+  - q: "Who reads the outbox table?"
+    a: "A dedicated relay process (polling or logical replication) reads unpublished rows, publishes to your broker or invokes webhooks, then marks rows published. It is not application request code — it runs continuously with retries and metrics."
+  - q: "At-least-once delivery — is that acceptable?"
+    a: "Yes, if downstream consumers are idempotent on `event_id`. Outbox guarantees no lost events after commit; duplicates happen on relay retry. Design consumers with dedupe stores or natural keys, not wishful exactly-once."
+  - q: "Outbox vs change data capture (CDC)?"
+    a: "CDC streams all table changes — great for analytics sync. Outbox emits curated domain events with explicit payloads and versioning for product workflows. Many agent stacks use both: outbox for `RunCompleted`, CDC for warehouse mirrors."
 ---
-Outbox Pattern Reliable Events sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When outbox pattern reliable events is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The billing team found four hundred agent runs marked `completed` in Postgres with no corresponding `run.completed` events in Kafka — and eighty-seven webhook deliveries charged twice. Root cause: the orchestrator updated run status, then called `producer.send()`. On process crash between the two, events vanished. On retry after timeout, events duplicated. The fix was not "better retry logic" in the request handler; it was the transactional outbox — one commit, guaranteed relay, idempotent consumers.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns outbox pattern reliable events from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent outbox pattern reliable events bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for outbox pattern reliable events, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent outbox pattern reliable events flows so duplicates are harmless or detectable.
-
-## Key terms
-
-**outbox** — The transactional outbox pattern writes domain events to the same database transaction as business data, then a relay publishes them — avoiding dual-write inconsistency.
-
-## Implementation patterns
-
-A practical baseline for outbox pattern reliable events in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent outbox pattern reliable events changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Outbox Pattern Reliable Events: typed boundary + structured errors
-export async function handleOutboxPatternReliableEvents(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-outbox-pattern-reliable-events");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Dual-write failure modes
 
 ```
+Request handler (broken pattern)
+─────────────────────────────────
+  BEGIN
+    UPDATE agent_runs SET status='completed'
+  COMMIT                         ✓ row saved
+  kafka.send(run.completed)      ✗ broker timeout → event lost
 
+  OR
 
-## Operational concerns
+  kafka.send()                   ✓ delivered
+  UPDATE ...                     ✗ DB down → orphan event, no row
+```
 
-Alert on user-visible symptoms for outbox pattern reliable events — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+Users see completed runs; finance never meters them. Or finance meters ghost runs that rolled back. Agent platforms with tool side effects amplify the damage — downstream automations fire on events, not DB rows product managers query.
 
-Production agent outbox pattern reliable events work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## Outbox in one transaction
 
-Rollouts for outbox pattern reliable events benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+```
+  BEGIN
+    UPDATE agent_runs SET status='completed', finished_at=now() WHERE run_id=$1;
+    INSERT INTO outbox (event_id, aggregate_type, aggregate_id, payload, created_at)
+    VALUES ($2, 'AgentRun', $1, $3, now());
+  COMMIT
+       │
+       ▼
+  Relay worker (separate process)
+    SELECT * FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT 100
+    → publish to Kafka / HTTP webhook
+    → UPDATE outbox SET published_at=now() WHERE event_id=$2
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+If the process dies after commit but before relay, rows remain unpublished — picked up on next poll. No lost events.
 
-## Security and compliance angles
+## Schema
 
-Even when outbox pattern reliable events is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```sql
+CREATE TABLE outbox (
+  id              BIGSERIAL PRIMARY KEY,
+  event_id        UUID NOT NULL UNIQUE,
+  aggregate_type  TEXT NOT NULL,
+  aggregate_id    UUID NOT NULL,
+  event_type      TEXT NOT NULL,
+  payload         JSONB NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at    TIMESTAMPTZ,
+  publish_attempts INT NOT NULL DEFAULT 0
+);
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent outbox pattern reliable events so security reviews do not rely on tribal knowledge.
+CREATE INDEX outbox_unpublished_idx
+  ON outbox (id)
+  WHERE published_at IS NULL;
+```
 
-## Testing strategy
+Partial index keeps relay polls fast as published history grows — archive old rows to cold storage monthly.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that outbox pattern reliable events depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+## Application code — completing a run
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+```python
+import json
+import uuid
+from dataclasses import dataclass
 
-## Migration and evolution
+@dataclass
+class RunCompleted:
+    run_id: str
+    tenant_id: str
+    input_tokens: int
+    output_tokens: int
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent outbox pattern reliable events functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+def complete_run(conn, run: RunCompleted) -> None:
+    event_id = str(uuid.uuid4())
+    payload = {
+        "event_type": "agent.run.completed",
+        "event_id": event_id,
+        "run_id": run.run_id,
+        "tenant_id": run.tenant_id,
+        "input_tokens": run.input_tokens,
+        "output_tokens": run.output_tokens,
+    }
+    with conn.transaction():
+        conn.execute(
+            """
+            UPDATE agent_runs
+            SET status = 'completed', finished_at = now(), updated_at = now()
+            WHERE run_id = %s AND status = 'running'
+            """,
+            (run.run_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO outbox (event_id, aggregate_type, aggregate_id, event_type, payload)
+            VALUES (%s, 'AgentRun', %s, 'agent.run.completed', %s::jsonb)
+            """,
+            (event_id, run.run_id, json.dumps(payload)),
+        )
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where outbox pattern reliable events spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Status transition and event insert share the transaction boundary — the handler never touches Kafka directly.
 
-## Related concepts
+## Relay worker
 
-Outbox Pattern Reliable Events intersects with broader ai topics — see companion notes on [agent-outbox patterns](https://blog.michaelsam94.com/agent-outbox/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```python
+import time
+import psycopg
+from kafka import KafkaProducer
 
-## The takeaway
+producer = KafkaProducer(bootstrap_servers="kafka:9092")
 
-Outbox Pattern Reliable Events rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent outbox pattern reliable events becomes a maintainable asset instead of incident fuel.
+def relay_batch(conn) -> int:
+    with conn.transaction():
+        rows = conn.execute(
+            """
+            SELECT id, event_id, event_type, payload
+            FROM outbox
+            WHERE published_at IS NULL
+            ORDER BY id
+            FOR UPDATE SKIP LOCKED
+            LIMIT 50
+            """
+        ).fetchall()
+
+        if not rows:
+            return 0
+
+        for row in rows:
+            producer.send(
+                topic="agent.events",
+                key=row.payload["run_id"].encode(),
+                value=json.dumps(row.payload).encode(),
+                headers=[("event_id", row.event_id.encode())],
+            )
+            conn.execute(
+                "UPDATE outbox SET published_at = now(), publish_attempts = publish_attempts + 1 WHERE id = %s",
+                (row.id,),
+            )
+        producer.flush()
+    return len(rows)
+
+while True:
+    with psycopg.connect(DSN) as conn:
+        n = relay_batch(conn)
+    time.sleep(0.5 if n else 2)
+```
+
+`FOR UPDATE SKIP LOCKED` lets multiple relay instances partition work without double-publish in the same batch. Duplicates still possible if crash occurs after Kafka ack but before `published_at` update — consumers must dedupe.
+
+## Idempotent consumer
+
+```typescript
+const seen = new Set<string>(); // production: Redis SET with TTL
+
+async function handleRunCompleted(payload: RunCompletedEvent) {
+  if (await dedupe.exists(payload.event_id)) {
+    return; // already processed
+  }
+
+  await billing.recordUsage({
+    tenantId: payload.tenant_id,
+    runId: payload.run_id,
+    tokens: payload.input_tokens + payload.output_tokens,
+  });
+
+  await webhooks.dispatch("run.completed", payload);
+  await dedupe.mark(payload.event_id, 86400 * 7);
+}
+```
+
+Natural keys (`run_id` for billing) provide second-line idempotency if `event_id` dedupe store evicts entries.
+
+## Payload versioning
+
+Agent event schemas evolve — add `schema_version` in payload:
+
+```json
+{
+  "schema_version": 2,
+  "event_type": "agent.run.completed",
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "run_id": "…",
+  "tool_calls": [{"name": "github.merge", "status": "ok"}]
+}
+```
+
+Consumers switch on version; old relays can still publish v1 events until drained. Never mutate published payload shape in place.
+
+## Operational metrics
+
+| Metric | Alert when |
+|--------|------------|
+| `outbox_unpublished_count` | > 1000 for 5 min — relay stuck |
+| `outbox_oldest_unpublished_age_sec` | > 300 — SLA breach for webhooks |
+| `relay_publish_errors_total` | spike — broker auth, schema rejection |
+| Consumer `duplicate_event_skipped` | sudden drop — dedupe broken, investigate double billing |
+
+Archive published outbox rows older than thirty days to `outbox_archive` — keeps partial index small.
+
+## Outbox vs inbox (related pattern)
+
+**Outbox** — you emit events reliably after local commit.
+
+**Inbox** — you ingest external events idempotently (partner webhook → inbox table → process once).
+
+Agent platforms often need both: outbox for `RunCompleted`, inbox for Stripe webhooks feeding agent resume. Do not conflate the tables.
+
+## When outbox is overkill
+
+If agent runs are fire-and-forget with no billing or external automations, a simple status column suffices. The moment finance, SLAs, or customer webhooks depend on completion signals, dual-write becomes technical debt with invoice-shaped interest.
+
+The four hundred missing events backfilled from outbox unpublished rows after relay deploy — zero manual SQL. The eighty-seven duplicates stopped when consumers keyed billing on `event_id`. One pattern, two incident classes resolved.
+
+## Ordering guarantees downstream cares about
+
+Outbox relay publishes in primary-key order — usually fine for `RunCompleted` events where each `run_id` is independent. If you emit sequenced events for the same aggregate (`RunStarted` before `RunCompleted`), keep them in one transaction as two outbox rows with monotonic `id` — relay order preserves causal sequence per process.
+
+Cross-aggregate ordering (tenant A before tenant B) is **not** guaranteed and rarely needed. Document that webhooks may arrive out of order; consumers reconcile by reading latest DB state when event order ambiguous.
+
+## Poison messages and dead-letter handling
+
+When `payload` fails schema validation at the broker or consumer permanently rejects an event, do not block the relay forever:
+
+```python
+MAX_ATTEMPTS = 10
+
+def relay_row(conn, row):
+    try:
+        publish(row)
+        mark_published(conn, row.id)
+    except ValidationError as e:
+        conn.execute(
+            """
+            UPDATE outbox
+            SET publish_attempts = publish_attempts + 1,
+                last_error = %s
+            WHERE id = %s
+            """,
+            (str(e)[:500], row.id),
+        )
+        if row.publish_attempts + 1 >= MAX_ATTEMPTS:
+            move_to_dead_letter(conn, row)
+            mark_published(conn, row.id)  # stop blocking queue
+```
+
+Dead-letter table gets human review — fix payload generation bug, replay manually. Alert on any dead-letter insert; silent accumulation means billing holes return.
+
+## Testing the outbox in CI
+
+Spin Postgres + test relay in integration tests:
+
+```python
+def test_complete_run_emits_outbox_event(db):
+    run_id = create_running_run(db)
+    complete_run(db, RunCompleted(run_id, "tenant-1", 100, 50))
+
+    row = db.one("SELECT * FROM outbox WHERE aggregate_id = %s", run_id)
+    assert row.event_type == "agent.run.completed"
+    assert row.published_at is None
+
+    relay_once(db)
+    row = db.one("SELECT * FROM outbox WHERE aggregate_id = %s", run_id)
+    assert row.published_at is not None
+```
+
+Kill relay mid-batch in chaos tests — verify unpublished count returns to zero after restart without duplicate billing in mock consumer.
+
+## Scaling the relay without reordering chaos
+
+When unpublished outbox depth consistently exceeds five thousand rows, split relay by `aggregate_type` or shard on `id % N` workers — each shard runs `FOR UPDATE SKIP LOCKED` against its slice. Avoid publishing the same `event_id` from two shards by partitioning on primary key ranges, not arbitrary filters. Throughput scales linearly until Kafka or Postgres becomes the bottleneck; watch replication lag on the outbox table if relay and OLTP share the same primary.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Microservices.io — Transactional Outbox Pattern](https://microservices.io/patterns/data/transactional-outbox.html)
+- [Debezium Outbox Event Router](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)
+- [Enterprise Integration Patterns — Guaranteed Delivery](https://www.enterpriseintegrationpatterns.com/patterns/messaging/GuaranteedMessaging.html)
+- [PostgreSQL SELECT FOR UPDATE SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
+- [Apache Kafka Producer Documentation](https://kafka.apache.org/documentation/#producerapi)

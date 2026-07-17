@@ -3,127 +3,218 @@ title: "NATS JetStream Persistence"
 slug: "queue-nats-jetstream-persistence"
 description: "Stream retention, consumer ack wait, and at-least-once redelivery config."
 datePublished: "2026-03-15"
-dateModified: "2026-03-15"
+dateModified: "2026-07-17"
 tags:
   - "Backend"
   - "Queues"
   - "Messaging"
-keywords: "queue nats jetstream persistence, production, backend"
+keywords: "nats jetstream, stream retention, consumer ack wait, at-least-once messaging"
 faq:
-  - q: "What problem does NATS JetStream Persistence solve?"
-    a: "It addresses production gaps teams hit when scaling queue nats jetstream persistence: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when queue nats jetstream persistence appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is the difference between Core NATS and JetStream?"
+    a: "Core NATS is fire-and-forget pub/sub with no persistence — subscribers must be online. JetStream adds streams that store messages on disk, consumer state, replay, and at-least-once delivery with explicit acks. Use JetStream when consumers can crash or lag and messages must survive broker restarts."
+  - q: "How does ack wait affect redelivery?"
+    a: "Each consumer defines ack_wait — if the message is not acked within that interval, JetStream redelivers it to the same or another subscriber on the queue group. Set ack_wait longer than p99 handler time plus downstream timeout, but short enough to recover quickly from crashed consumers."
+  - q: "Which retention policy should I use: limits, interest, or work queue?"
+    a: "Limits retention keeps messages until byte/count/age limits — good for event logs and replay. Interest retention deletes after all known consumers ack — memory efficient for fan-out. Work queue retention deletes after first ack — use for job dispatch where only one worker should process each message."
 ---
 
-## Production context
+Core NATS delivered metrics to a Grafana bridge until the bridge pod restarted during a deploy — sixty seconds of host telemetry vanished because nothing persisted. Moving the pipeline to JetStream with a limits-based stream and explicit pull consumers gave at-least-once delivery, replay after outages, and backpressure when the bridge fell behind. JetStream is not "NATS with disk"; it is a different operational contract.
 
-A billing service lost duplicate events because queue nats jetstream persistence was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Stream fundamentals
 
-Senior backend work on nats jetstream persistence is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+A **stream** captures subjects and stores messages according to retention and limits:
 
-## Architecture pattern
-
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for queue workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```bash
+nats stream add TELEMETRY \
+  --subjects "metrics.host.>" \
+  --storage file \
+  --retention limits \
+  --max-age 72h \
+  --max-bytes 50GB \
+  --replicas 3 \
+  --discard old
 ```
 
-## Implementation checklist
+| Retention | Behavior |
+|-----------|----------|
+| `limits` | Keep until max age/bytes/count |
+| `interest` | Remove after all consumers have acked |
+| `workqueue` | Remove after first ack — job queue semantics |
 
-Validate inputs at the trust boundary with schema versioning.
+**Storage:** `file` for production durability; `memory` for dev/low-latency ephemeral.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+## Consumers: push vs pull
 
-Store idempotency keys with TTL; return cached responses on replay.
+**Push consumer** — server delivers to subscription:
 
-Run migrations with lock_timeout and statement_timeout set.
+```bash
+nats consumer add TELEMETRY HOST_BRIDGE \
+  --filter "metrics.host.prod.>" \
+  --deliver group host-workers \
+  --ack explicit \
+  --ack-wait 30s \
+  --max-deliver 5
+```
 
-Load test at 2× expected peak with production-like payload sizes.
+**Pull consumer** — client fetches batches:
 
-## Observability
+```go
+sub, _ := js.PullSubscribe("metrics.host.>", "HOST_BRIDGE",
+    nats.BindStream("TELEMETRY"),
+    nats.ManualAck(),
+)
+msgs, _ := sub.Fetch(10, nats.MaxWait(2*time.Second))
+for _, msg := range msgs {
+    if err := process(msg.Data); err != nil {
+        msg.NakWithDelay(10 * time.Second)
+        continue
+    }
+    msg.Ack()
+}
+```
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Pull suits workers that cannot keep up with push fan-out.
 
-Dashboards for queue nats jetstream persistence should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+## Ack models and redelivery
 
-## Security notes
+| Ack | Meaning |
+|-----|---------|
+| `Ack()` | Success |
+| `Nak()` / `NakWithDelay()` | Retry after delay |
+| `Term()` | Poison — stop redelivery |
+| `InProgress()` | Reset ack_wait timer for long jobs |
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+`max_deliver` caps retries before server stops. Monitor `NumRedelivered` in consumer info.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## At-least-once and idempotency
 
-## Common production mistakes
+JetStream guarantees **at-least-once**, not exactly-once. Handlers must be idempotent:
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+```go
+func process(msg *nats.Msg) error {
+    var evt Event
+    json.Unmarshal(msg.Data, &evt)
+    inserted, err := db.InsertEventIdempotent(evt.ID, evt.Payload)
+    if err != nil { return err }
+    return nil
+}
+```
 
-## Debugging and triage workflow
+## Stream limits and disk planning
 
-When production misbehaves, work top-down:
+Watch `Bytes` vs `--max-bytes`, consumer pending counts, and `FirstSeq`/`LastSeq` gaps.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+`discard: old` drops oldest when full — preferable for telemetry. `discard: new` rejects publishers when full.
 
-## Operational checklist
+## Cluster durability and DR
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Three-node cluster tolerates one loss with R3 streams. Backup with stream snapshot; test restore on staging.
 
-## Performance tuning notes
+```bash
+nats server report jetstream
+```
 
-Measure before optimizing queue nats jetstream persistence. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## Subject design and ordering
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+JetStream preserves order **per subject** within a stream, not globally. Partition hot keys:
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+```
+orders.us-east.12345
+orders.us-east.67890
+```
 
-## Rollout and migration
+Parallel consumers on queue group process different subjects concurrently; same subject serializes.
 
-Ship queue nats jetstream persistence changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Mirror streams and disaster recovery
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+JetStream supports mirror streams for cross-cluster replication — asynchronous, plan RPO accordingly.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+## Ephemeral vs durable consumers
 
-## Testing recommendations
+Ephemeral push consumers disappear when client disconnects — messages redeliver. Production always uses durable names.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Operational gotchas
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+1. **Consumer not bound to stream** — messages published but never delivered.
+2. **Ephemeral vs durable** — production uses durable names.
+3. **Ordered consumers + slow handler** — blocks partition; split or use non-ordered for throughput.
+4. **Disk full on single node** — alert on JetStream storage usage per server.
+5. **Core NATS subscribers mixed with JetStream** — only ingested subjects in stream config persist.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+## Prometheus metrics
 
-## Incident patterns we see
+```
+nats_jetstream_stream_messages{stream="TELEMETRY"}
+nats_jetstream_consumer_num_pending{stream="TELEMETRY",consumer="HOST_BRIDGE"}
+```
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Pending growth with flat processing rate signals consumer failure.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+JetStream turns NATS into a durable log with consumer-controlled delivery. Configure retention for your data lifecycle, tune `ack_wait` and `max_deliver` for failure modes, design idempotent handlers for at-least-once reality, and monitor stream bytes plus redelivery rates before consumers drown in silent lag.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+## Stream sourcing and aggregation
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+JetStream can source from other streams — aggregate edge telemetry streams into central stream for analytics without dual-publish from agents. Source lag metrics indicate edge-to-core pipeline health; alert separately from consumer lag.
 
-## Resources
+## Consumer max ack pending
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Push consumers with high `max_ack_pending` pipeline messages to slow clients — memory grows on server. Tune `max_ack_pending` to match client processing parallelism × average message size. Pull consumers control inflight via fetch batch size — preferred for variable handler duration.
+
+## JetStream Key-Value and Object Store
+
+Related JetStream KV and Object Store APIs share cluster — do not confuse message stream retention with KV TTL for large blob references. Pattern: store payload in Object Store, publish pointer in stream message — keeps stream bytes low while retaining large artifact.
+
+## NATS account isolation
+
+Multi-tenant NATS uses accounts and exports — stream in account A imported by account B requires explicit export/import config. Misconfigured export looks like "messages published but stream empty" from subscriber account perspective.
+
+## Upgrade and server roll
+
+Rolling NATS cluster upgrade with R3 streams requires quorum majority healthy — schedule upgrades during low publish rate. Verify stream leader per cluster after roll: `nats stream report` — unbalanced leaders skew disk IO to one node.
+
+## JetStream domain isolation
+
+Super-cluster JetStream domains isolate stream namespace — disaster recovery domain failover requires stream export/import plan. Test domain switch failover quarterly; DNS or client config must point subscribers to new domain leader.
+
+## Message trace and advisories
+
+Enable JetStream advisories for max deliveries exceeded — publish to `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES` monitoring subject. Automate ticket when advisory fires with stream, consumer, and sequence number for replay decision.
+
+## Compare to Kafka retention
+
+Kafka log retention by time/size parallels JetStream limits retention — migration from Kafka to JetStream map topic partition to subject plus stream, consumer group to durable pull consumer. Ordering scope changes from partition to subject — revisit hot key design during migration.
+
+## Stream compression (JetStream 2.10+)
+
+Optional stream compression reduces disk for telemetry streams — CPU tradeoff on publish path similar to Postgres wal_compression. Benchmark on representative message size before enabling on high-throughput stream.
+
+## Consumer inactive threshold
+
+Inactive consumer threshold deletes dormant consumers — long-lived pull consumer with typo in durable name recreates fresh consumer losing ack state — alert on consumer create rate. Document durable naming convention `{service}-{stream}-{env}`.
+
+## Pull consumer max bytes
+
+Fetch with MaxBytes prevents OOM on large messages — combine with stream max_msg_size at publish boundary. Consumer processing 10MB messages one at a time should fetch batch size 1 regardless of default fetch 10.
+
+## JetStream vs Core request-reply coexistence
+
+Services using NATS request-reply for sync API and JetStream for async events share cluster — ensure stream subjects do not capture reply inbox subjects accidentally via broad wildcard `>` in stream config. Narrow stream subject to `events.>` not root `>`.
+
+## Storage cleanup and disk alerts
+
+JetStream file store does not shrink immediately after purge — monitor OS free space not only stream byte metrics. Schedule maintenance window for disk reclaim after large purge on busy stream.
+
+## Bench publish rate before production cutover
+
+Load test JetStream stream at expected peak publish rate on three-node cluster — measure publish ack latency p99 and disk write rate. Core NATS benchmarks do not predict JetStream disk saturation; stream add is one-way door for subject capture until reconfigured.
+
+## Consumer pause and resume
+
+Administrative consumer pause stops delivery without deleting consumer — use during downstream maintenance instead of stopping all subscribers. Resume continues from last ack sequence; document pause in runbook instead of deleting durable consumer which loses position semantics depending on config.
+
+## Final operational note
+
+Treat JetStream consumer lag like database replication lag — product reads from stale consumer see old world. Document maximum acceptable lag per stream in SLO; pause publishers only as last resort because backpressure strategy differs from Kafka — publishers may not know stream full until publish error.
+Set both max-age and max-bytes on every durable stream; age alone will not save you when average payload size doubles after a schema change.
+
+Document the SLO this setting protects for queue-nats-jetstream-persistence.

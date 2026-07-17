@@ -3,7 +3,7 @@ title: "The OAuth 2.0 Authorization Code Flow"
 slug: "oauth2-authorization-code-flow"
 description: "Implement the OAuth 2.0 authorization code flow with PKCE: redirects, token exchange, refresh tokens, and common security mistakes."
 datePublished: "2025-09-15"
-dateModified: "2025-09-15"
+dateModified: "2026-07-17"
 tags: ["Security", "Authentication", "API", "Web"]
 keywords: "OAuth 2.0 authorization code flow, OAuth PKCE, authorization code grant, OAuth redirect URI, refresh token OAuth, OAuth security"
 faq:
@@ -212,6 +212,10 @@ When authorization code flow misbehaves in production, work top-down instead of 
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## PKCE and LLM product surfaces
+
+If your LLM app uses the authorization code flow in a desktop or mobile shell, PKCE is mandatory. Never reuse web client IDs for native builds — redirect URI and token storage models differ. Backend token exchange should validate `aud` and `iss` on every ID token before minting session cookies for chat history APIs.
 
 ## Resources
 

@@ -4,7 +4,7 @@ seoTitle: "World Cup 2026 Player & Ball Tracking: SAOT Explained"
 slug: "world-cup-real-time-analytics-player-ball-tracking"
 description: "How FIFA World Cup 2026 Semi-Automated Offside Technology (SAOT) works: 12+ tracking cameras, 500Hz ball IMU, 3D player avatars, VAR fusion, and real-time offside detection."
 datePublished: "2026-06-19"
-dateModified: "2026-06-19"
+dateModified: "2026-07-17"
 tags:
   - "World Cup 2026"
   - "FIFA World Cup"
@@ -35,8 +35,14 @@ faq:
     a: "World Cup 2026 adds pre-scanned 3D player avatars fitted to live multi-camera footage (instead of inferring a generic skeleton), plus upgraded ball touch-detection sensor packages like KINEXON's xBall. Together they cut offside position determination from minutes to seconds."
   - q: "Is World Cup offside fully automated?"
     a: "No. SAOT is deliberately semi-automated: sensors and AI measure geometry and timing, but human referees and VAR officials review the output and decide the final call — including whether an offside player interfered with play, which the system does not judge."
+faqAnswers:
+  - question: "When is world cup real time analytics player ball tracking the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for world cup real time analytics player ball tracking?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back world cup real time analytics player ball tracking safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 A football pitch during a World Cup match looks calm from the stands. Underneath that calm sits one of the densest real-time data systems in live sports: a dozen-plus cameras, an instrumented ball, edge inference running faster than human reaction time, and a decision pipeline that has to be both fast and defensible enough to overturn a goal in front of a billion viewers.
 
 This article breaks down the actual architecture — sensing layer, tracking algorithms, the inference pipeline, and the engineering tradeoffs — using FIFA's Semi-Automated Offside Technology (SAOT) as the running example, since it's the most mature, publicly documented real-time computer vision system in the sport. World Cup 2026, currently underway across the US, Canada, and Mexico, is the largest live deployment of this stack to date, so the numbers below are drawn from the live tournament.

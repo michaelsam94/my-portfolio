@@ -1,111 +1,225 @@
 ---
 title: "AI Agents: Cache Stampede Prevention"
 slug: "agent-cache-stampede-prevention"
-description: "Cache Stampede Prevention: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "When a hot cache key expires, hundreds of agent sessions can hammer the same embedding query or LLM call at once—singleflight, probabilistic early expiration, and stale-while-revalidate keep p95 flat."
 datePublished: "2026-05-04"
 dateModified: "2026-05-04"
 tags: ["AI", "Agent", "Cache"]
-keywords: "agent, cache, stampede, prevention, ai, production, engineering, architecture"
+keywords: "cache stampede, thundering herd, singleflight, stale-while-revalidate, probabilistic early expiration, agent cache, LLM cache, Redis lock, embedding cache"
 faq:
-  - q: "What is Cache Stampede Prevention?"
-    a: "Cache Stampede Prevention covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Cache Stampede Prevention?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Cache Stampede Prevention?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Cache Stampede Prevention fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Cache Stampede Prevention should be observable in production and safe to change in small diffs."
+  - q: "What triggers a cache stampede in an agent pipeline?"
+    a: "A stampede happens when many concurrent requests miss the same cache key at once—usually after TTL expiry, a deploy that clears the cache, or a viral prompt that every session retrieves. Each miss fans out to the slow path: vector search, embedding API, or LLM completion. Without coordination, N concurrent misses become N identical expensive calls."
+  - q: "Is singleflight enough for agent workloads?"
+    a: "Singleflight (request coalescing) is necessary but not sufficient. It deduplicates in-flight misses for one process, but multi-pod deployments need a distributed lock or lease around the recompute path. Pair singleflight with stale-while-revalidate so callers get slightly old data while one worker refreshes."
+  - q: "Should agent response caches use fixed TTL or jitter?"
+    a: "Never use identical TTL for hot keys across replicas. Add per-key jitter (±10–20%) so expiry times spread across a window. For retrieval caches keyed by query hash, consider probabilistic early expiration: each read has a small chance of triggering background refresh before hard expiry."
+  - q: "How do I detect stampede conditions before users notice?"
+    a: "Alert on miss-rate spikes correlated with single-key QPS, lock wait time p95, and downstream duplicate-call ratio. A healthy cache shows smooth miss curves; a stampede shows a vertical wall of misses on one key followed by LLM latency p95 blowing past SLO."
 ---
-Cache Stampede Prevention is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The pager fired at 09:01—not because error rates climbed, but because embedding latency p95 crossed 8 seconds. Traffic was normal. The culprit was a single cache key: a rewritten system prompt hash shared by every tenant using the default agent template. At 09:00:00 the Redis key expired. Four hundred pods each saw a miss. Four hundred identical embedding batches hit the GPU cluster in the same 200 ms window. Nothing was "wrong" with the model server; the architecture had simply allowed a thundering herd.
 
-When cache stampede prevention is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Cache stampede prevention is load-bearing infrastructure for agent systems because agent pipelines cache at every layer—prompt templates, retrieval results, tool outputs, and final completions. A miss is never cheap. This post covers the patterns that keep one expiry event from becoming a regional incident.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Why agent caches stampede harder than web caches
 
-Solid AI engineering turns cache stampede prevention from a recurring argument into a documented pattern with tests and an owner.
+Traditional HTTP caches serve mostly static or slowly changing content. Agent caches are different in three ways that amplify herd behavior.
 
-## Design principles that survive production
+**Shared hot keys.** A popular prompt template, a default RAG chunk set, or a feature-flag-gated model route creates keys hit by every session. One expiry affects all tenants at once unless you partition keys by tenant or add entropy.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent cache stampede prevention bugs hide.
+**Expensive miss paths.** A web cache miss might cost 50 ms to origin. An agent miss might chain embedding (200 ms), vector search (100 ms), rerank (150 ms), and LLM first-token (800 ms). The amplification factor is 10–50× per concurrent miss.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for cache stampede prevention, you do not yet understand the behavior you shipped.
+**TTL-driven invalidation.** Deploys that flush cache namespaces, schema migrations that bump key versions, and "helpful" ops scripts that `FLUSHDB` on Redis turn predictable expiry into unpredictable stampedes. Agent teams invalidate aggressively because stale retrieval poisons answers—but blunt invalidation trades correctness for availability cliffs.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+The design goal is not zero misses. It is **bounded concurrent recomputes** per key and **graceful degradation** when the slow path is saturated.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent cache stampede prevention flows so duplicates are harmless or detectable.
+## Singleflight: coalesce in-flight misses
 
-## Implementation patterns
-
-A practical baseline for cache stampede prevention in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent cache stampede prevention changes safer because business rules stay isolated from transport details.
+Singleflight ensures that when ten goroutines (or Node promises) miss the same key simultaneously, only one executes the loader; the other nine await its result.
 
 ```typescript
-// Cache Stampede Prevention: typed boundary + structured errors
-export async function handleCacheStampedePrevention(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-cache-stampede-prevention");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
+// cache/singleflight.ts
+import { createHash } from "crypto";
+
+type Loader<T> = () => Promise<T>;
+
+export class SingleflightGroup<T> {
+  private inFlight = new Map<string, Promise<T>>();
+
+  async do(key: string, loader: Loader<T>): Promise<T> {
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+
+    const promise = loader().finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, promise);
+    return promise;
   }
 }
 
+const sf = new SingleflightGroup<string>();
+
+export async function getCachedCompletion(
+  redis: RedisClient,
+  promptHash: string,
+  compute: () => Promise<string>,
+): Promise<string> {
+  const cacheKey = `completion:v3:${promptHash}`;
+
+  const cached = await redis.get(cacheKey);
+  if (cached) return cached;
+
+  return sf.do(cacheKey, async () => {
+    // Double-check after acquiring coalescing slot
+    const again = await redis.get(cacheKey);
+    if (again) return again;
+
+    const result = await compute();
+    await redis.set(cacheKey, result, { EX: 3600 });
+    return result;
+  });
+}
 ```
 
+Singleflight works within one process. In Kubernetes with 50 replicas, you still get 50 parallel loads unless you add a distributed layer.
 
-## Operational concerns
+## Distributed locks and lease-based refresh
 
-Runbooks for cache stampede prevention should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+For multi-pod deployments, wrap the recompute path in a short-lived lock. Only the lock holder refreshes; others serve stale data or wait briefly.
 
-Production agent cache stampede prevention work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```python
+# cache/distributed_refresh.py
+import asyncio
+import json
+import time
+import uuid
+from redis.asyncio import Redis
 
-Rollouts for cache stampede prevention benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+LOCK_TTL_SEC = 30
+STALE_GRACE_SEC = 300  # serve stale up to 5 min during refresh
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+async def get_with_lock(
+    redis: Redis,
+    key: str,
+    loader,
+    ttl_sec: int = 3600,
+) -> dict:
+    raw = await redis.get(key)
+    if raw:
+        envelope = json.loads(raw)
+        age = time.time() - envelope["stored_at"]
+        if age < ttl_sec:
+            return envelope["value"]
+        if age < ttl_sec + STALE_GRACE_SEC:
+            # Stale-while-revalidate: return old, refresh in background
+            asyncio.create_task(_refresh_if_leader(redis, key, loader, ttl_sec))
+            return envelope["value"]
 
-## Security and compliance angles
+    return await _refresh_if_leader(redis, key, loader, ttl_sec)
 
-Even when cache stampede prevention is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent cache stampede prevention so security reviews do not rely on tribal knowledge.
+async def _refresh_if_leader(redis, key, loader, ttl_sec):
+    lock_key = f"lock:{key}"
+    token = str(uuid.uuid4())
+    acquired = await redis.set(lock_key, token, nx=True, ex=LOCK_TTL_SEC)
+    if not acquired:
+        # Another pod is refreshing; wait and read
+        for _ in range(20):
+            await asyncio.sleep(0.1)
+            raw = await redis.get(key)
+            if raw:
+                return json.loads(raw)["value"]
+        return await loader()  # last resort
 
-## Testing strategy
+    try:
+        value = await loader()
+        envelope = {"value": value, "stored_at": time.time()}
+        await redis.set(key, json.dumps(envelope), ex=ttl_sec + STALE_GRACE_SEC)
+        return value
+    finally:
+        # Release lock only if we still hold it
+        current = await redis.get(lock_key)
+        if current == token:
+            await redis.delete(lock_key)
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that cache stampede prevention depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Key details: lock TTL must exceed p99 loader latency but stay short enough that a crashed holder does not block refresh for hours. Always use stale-while-revalidate so lock waiters are not blocked on the slow path.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## Probabilistic early expiration (PER)
 
-## Migration and evolution
+Fixed TTL creates synchronized expiry. Probabilistic early expiration spreads refresh across time: on each read, compute a small probability that this read triggers background refresh even though the key is still valid.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent cache stampede prevention functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+```typescript
+function shouldEarlyRefresh(storedAt: number, ttlSec: number, beta = 1.0): boolean {
+  const age = (Date.now() - storedAt) / 1000;
+  const remaining = ttlSec - age;
+  if (remaining <= 0) return true;
+  // Higher age → higher refresh probability; beta tunes aggressiveness
+  const probability = Math.exp(-remaining / (beta * ttlSec));
+  return Math.random() < probability;
+}
+```
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where cache stampede prevention spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+PER shines for retrieval caches where keys are read thousands of times per minute but recomputed only once per hour. The first reads after the "soft expiry window" gradually refresh the key so hard expiry rarely coincides with peak traffic.
 
-## Related concepts
+## Jitter, key design, and invalidation hygiene
 
-Cache Stampede Prevention intersects with broader ai topics — see companion notes on [agent-cache patterns](https://blog.michaelsam94.com/agent-cache/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**TTL jitter.** When setting expiry, use `TTL + random(-0.15, +0.15) * TTL` so keys created in the same deploy wave do not expire together.
 
-## The takeaway
+**Key granularity.** Cache at the narrowest stable unit. Caching entire agent sessions is fragile; caching `(tenant_id, query_embedding_hash, index_version)` survives prompt changes without invalidating everything.
 
-Cache Stampede Prevention rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent cache stampede prevention becomes a maintainable asset instead of incident fuel.
+**Soft invalidation.** Bump a version suffix in the key (`v14`) instead of deleting keys. Old keys expire naturally; new reads miss to the new namespace without a thundering herd on delete.
+
+**Never flush production Redis during business hours.** If you must invalidate, write the new version prefix and let TTL drain the old namespace over hours.
+
+## Layer-specific guidance for agent stacks
+
+| Cache layer | Stampede risk | Recommended pattern |
+|-------------|---------------|---------------------|
+| Prompt / system template | Very high (shared key) | PER + distributed lock + versioned keys |
+| Embedding vectors | High (batch API limits) | Singleflight + request batching |
+| Retrieval results | Medium (query diversity) | SWR with 60s grace, tenant-scoped keys |
+| LLM completion | Low–medium | Cache only deterministic paths; skip streaming |
+| Tool call results | Medium (idempotency) | Short TTL (30s) + coalescing |
+
+Streaming completions generally should not be cached at the response level—users expect fresh tokens. Cache the retrieval context that feeds the stream instead.
+
+## Observability and runbooks
+
+Dashboards should answer: "Are we stampeding right now?"
+
+- `cache_miss_total` by key prefix (top 10 keys)
+- `cache_lock_wait_seconds` histogram
+- `loader_in_flight` gauge per key prefix
+- Ratio of downstream calls to cache hits for embedding and LLM endpoints
+
+Runbook steps when miss rate spikes on a single key:
+
+1. Confirm whether a deploy or invalidation event preceded the spike.
+2. Temporarily extend TTL or enable stale-while-revalidate for the affected prefix.
+3. If lock contention is high, increase lock wait timeout or serve stale unconditionally for that key class.
+4. Post-incident: add PER or key versioning so the next expiry spreads load.
+
+## Testing stampedes before production
+
+Unit tests prove singleflight coalescing. Integration tests need concurrent load:
+
+```bash
+# 100 concurrent requests, key expired 1 second ago
+hey -n 100 -c 100 -m POST \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_hash":"hot-key-abc"}' \
+  https://staging.agent.example/v1/completion
+```
+
+Assert downstream embedding QPS stays near 1 (or pod count if no distributed lock yet), not 100. Chaos tests: expire a hot key during synthetic peak and verify p95 latency stays within SLO.
+
+## Closing
+
+Cache stampede prevention is not a Redis configuration tweak—it is a concurrency design problem at the boundary between fast memory and slow AI inference. Singleflight stops herds within a process; distributed locks and stale-while-revalidate stop them across a fleet; probabilistic early expiration stops synchronized expiry from forming herds in the first place. Agent teams that nail this pattern ship prompt changes and cache invalidations without fearing the top of the hour.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Facebook's Scaling Memcache at Facebook (PER origins)](https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala)
+- [Go singleflight package documentation](https://pkg.go.dev/golang.org/x/sync/singleflight)
+- [Redis SET NX distributed locking patterns](https://redis.io/docs/manual/patterns/distributed-locks/)
+- [RFC 5861: HTTP Stale-While-Revalidate](https://datatracker.ietf.org/doc/html/rfc5861)
+- [AWS ElastiCache best practices for TTL and eviction](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/BestPractices.html)

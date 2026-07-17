@@ -1,111 +1,217 @@
 ---
 title: "AI Agents: Api Key Scoping Tenants"
 slug: "agent-api-key-scoping-tenants"
-description: "Api Key Scoping Tenants: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Design tenant-bound API keys for multi-tenant agent platforms—scope matrices, prefix routing, rotation without cross-tenant bleed, and audit-friendly key lifecycle."
 datePublished: "2026-01-11"
 dateModified: "2026-01-11"
 tags: ["AI", "Agent", "Api"]
-keywords: "agent, api, key, scoping, tenants, ai, production, engineering, architecture"
+keywords: "API key scoping, multi-tenant agents, tenant isolation, least privilege API keys, key rotation, agent platform security"
 faq:
-  - q: "What is Api Key Scoping Tenants?"
-    a: "Api Key Scoping Tenants covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Api Key Scoping Tenants?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Api Key Scoping Tenants?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Api Key Scoping Tenants fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Api Key Scoping Tenants should be observable in production and safe to change in small diffs."
+  - q: "Should each tenant get one API key or many scoped keys?"
+    a: "Many scoped keys. One omnibus key per tenant simplifies onboarding but makes rotation a cliff and leaks full tenant access when a single integration is compromised. Issue keys per integration surface—embed widget, batch ETL, admin console—with explicit scope bundles and separate rate limits."
+  - q: "How do you prevent a scoped key from accessing another tenant's data?"
+    a: "Bind tenant_id at issuance time into the key record and enforce it in middleware before any handler runs. Never trust tenant_id from request body or query string when a key is present. Cross-check resource IDs against the key's tenant on every database query."
+  - q: "What scopes matter most for agent API keys?"
+    a: "Separate read vs write for conversations, tool invocation, file upload, embedding index, and billing. Agent run creation and tool execution should require distinct scopes so a read-only analytics key cannot trigger paid side effects."
+  - q: "How often should tenant API keys rotate?"
+    a: "User-facing keys: 90-day soft expiry with 14-day overlap. Service keys: 30 days with automated rotation via your secrets manager. Emergency revoke should propagate to edge caches within 60 seconds—measure this in game days, not assume it."
 ---
-Most teams encounter api key scoping tenants after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+A partner pasted their production API key into a public Slack thread. Revoking it was easy. What took three hours was figuring out whether that key could read every tenant in our staging cluster because someone copied the "platform admin" scope template into the self-serve key generator. **Tenant scoping is not a column on the keys table—it is a enforcement chain that starts at the edge and ends at every row your agent touches.**
 
-When api key scoping tenants is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Multi-tenant agent platforms sit at an awkward intersection: customers want simple `Authorization: Bearer sk-...` ergonomics, while your security team wants per-integration least privilege, rotation, and provable isolation. This piece walks through how to design keys that survive real onboarding, real incidents, and real auditors.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The key object model
 
-Solid AI engineering turns api key scoping tenants from a recurring argument into a documented pattern with tests and an owner.
+Treat an API key as a credential **record**, not a random string. At minimum:
 
-## Design principles that survive production
+| Field | Purpose |
+|-------|---------|
+| `key_id` | Public prefix for logs (`sk_live_acme_7f3a`) |
+| `secret_hash` | Argon2id or bcrypt of the full secret—never store plaintext after creation |
+| `tenant_id` | Immutable binding set at creation |
+| `scopes[]` | Machine-readable capability set |
+| `environment` | `live` vs `test`—hard separation, no scope overlap |
+| `rate_limit_tier` | Per-key throttle independent of tenant plan |
+| `expires_at` | Soft expiry with grace window |
+| `created_by` | User or service account for audit |
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent api key scoping tenants bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for api key scoping tenants, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent api key scoping tenants flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for api key scoping tenants in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent api key scoping tenants changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Api Key Scoping Tenants: typed boundary + structured errors
-export async function handleApiKeyScopingTenants(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-api-key-scoping-tenants");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Scopes should be namespaced and composable:
 
 ```
+agent:conversation:read
+agent:conversation:write
+agent:run:create
+agent:tool:invoke
+agent:file:upload
+agent:embedding:query
+billing:usage:read
+```
 
+Avoid `admin:*` wildcards in tenant-issued keys. Platform operators get a separate auth path—SSO with short-lived tokens—not the same key format customers use.
 
-## Operational concerns
+## Prefix routing and fail-closed middleware
 
-Game-day exercises for api key scoping tenants beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Parse the key prefix before hitting your application database. Live keys starting with `sk_live_` route to production validators; test keys never touch production data stores even if someone misconfigures a connection string.
 
-Production agent api key scoping tenants work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+```typescript
+import { createHash, timingSafeEqual } from "crypto";
 
-Rollouts for api key scoping tenants benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+type ApiKeyRecord = {
+  keyId: string;
+  tenantId: string;
+  secretHash: string;
+  scopes: Set<string>;
+  environment: "live" | "test";
+  revokedAt: Date | null;
+};
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+export async function authenticateApiKey(
+  authHeader: string | undefined,
+  requiredScope: string
+): Promise<{ tenantId: string; keyId: string }> {
+  if (!authHeader?.startsWith("Bearer sk_")) {
+    throw new AuthError("missing_or_malformed_key", 401);
+  }
 
-## Security and compliance angles
+  const presented = authHeader.slice("Bearer ".length);
+  const keyId = presented.slice(0, 24); // public prefix segment
+  const record = await keyStore.findByKeyId(keyId);
 
-Even when api key scoping tenants is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+  if (!record || record.revokedAt) {
+    throw new AuthError("invalid_key", 401);
+  }
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent api key scoping tenants so security reviews do not rely on tribal knowledge.
+  const hash = createHash("sha256").update(presented).digest();
+  const stored = Buffer.from(record.secretHash, "base64");
+  if (!timingSafeEqual(hash, stored)) {
+    throw new AuthError("invalid_key", 401);
+  }
 
-## Testing strategy
+  if (!record.scopes.has(requiredScope)) {
+    throw new AuthError("insufficient_scope", 403);
+  }
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that api key scoping tenants depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+  return { tenantId: record.tenantId, keyId: record.keyId };
+}
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Attach `tenantId` and `keyId` to request context **before** routing to handlers. Handlers that accept `tenant_id` as a parameter should reject mismatches:
 
-## Migration and evolution
+```typescript
+export function assertTenantMatch(ctx: RequestContext, resourceTenantId: string) {
+  if (ctx.tenantId !== resourceTenantId) {
+    // Log as potential IDOR attempt; do not leak existence
+    throw new AuthError("not_found", 404);
+  }
+}
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent api key scoping tenants functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Returning 404 instead of 403 for cross-tenant probes reduces oracle attacks where an attacker learns which resource IDs exist in other tenants.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where api key scoping tenants spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Scope bundles for common integrations
 
-## Related concepts
+Ship curated bundles so customers do not hand-pick twelve scopes:
 
-Api Key Scoping Tenants intersects with broader ai topics — see companion notes on [agent-api patterns](https://blog.michaelsam94.com/agent-api/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+**Embed widget (browser-exposed proxy key):** `agent:conversation:read`, `agent:conversation:write`, `agent:run:create` — never `agent:tool:invoke` on a key that could be extracted from frontend JavaScript. Tool calls go through your server-side proxy with a different credential.
 
-## The takeaway
+**Batch reindex pipeline:** `agent:file:upload`, `agent:embedding:write` — no conversation scopes. Rate limit aggressively; batch jobs should not share limits with interactive traffic.
 
-Api Key Scoping Tenants rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent api key scoping tenants becomes a maintainable asset instead of incident fuel.
+**Analytics export:** `agent:conversation:read`, `billing:usage:read` — read-only, no run creation.
+
+Document each bundle in your developer portal with a diagram showing which backend paths it can reach. Security reviewers and customers both benefit from the same artifact.
+
+## Rotation without downtime
+
+Rotation fails when teams treat it as "generate new key, delete old key, hope nobody cached the old one."
+
+Better pattern:
+
+1. Issue `key_v2` with identical scopes, 14-day overlap window.
+2. Emit webhook `api_key.rotation_available` to tenant admin contacts.
+3. Log usage by `key_id`—alert when `key_v1` still receives traffic after day 10.
+4. Soft-revoke `key_v1` (returns 401 with `Retry-After` header pointing to docs).
+5. Hard-delete `key_v1` secret hash after overlap ends.
+
+For service-to-service keys your platform owns, automate via Vault or AWS Secrets Manager with dual-active secrets during rotation. Agent worker pools should hot-reload credentials on SIGHUP or file watch without draining in-flight runs.
+
+```python
+# Rotation job: never delete until traffic hits zero
+async def finalize_rotation(old_key_id: str) -> None:
+    stats = await metrics.daily_requests_by_key(old_key_id, days=7)
+    if stats.total > 0:
+        await alerts.send(
+            f"Rotation blocked: {old_key_id} still has {stats.total} req/week"
+        )
+        return
+    await key_store.hard_revoke(old_key_id)
+```
+
+## Rate limits and cost isolation per key
+
+A misconfigured cron job with a tenant's main key can burn through LLM budget in minutes. Per-key rate limits decouple "tenant plan tier" from "this one integration went haywire."
+
+Implement token bucket limits at the edge (Cloudflare, API gateway) **and** application-level quotas on `agent:run:create` and `agent:tool:invoke`. The edge stops floods; the app stops subtle spend drift.
+
+Expose current utilization in the tenant dashboard: requests remaining, runs created today, estimated cost attribution by `key_id`. When a key hits 80% of its daily run quota, email the admin—before the invoice surprises them.
+
+## Observability and audit
+
+Every authenticated request should log structured fields:
+
+```json
+{
+  "event": "api_request",
+  "key_id": "sk_live_acme_7f3a",
+  "tenant_id": "ten_acme_corp",
+  "scope_used": "agent:run:create",
+  "route": "POST /v1/runs",
+  "latency_ms": 142,
+  "outcome": "success"
+}
+```
+
+Never log the full secret or prompt contents in the same stream as key metadata. Separate PII-adjacent audit logs with tighter retention and access controls.
+
+Dashboards worth building:
+
+- Top keys by request volume (detect leaked keys running hot)
+- 401/403 rate by `key_id` (detect brute force or misconfigured clients)
+- Cross-tenant rejection count (should be zero; any spike is an incident)
+- Scope denial heatmap (product signal for missing bundles)
+
+## Testing tenant isolation
+
+Isolation bugs are silent until they are catastrophic. Add CI checks that cannot merge without passing:
+
+**Contract tests:** Create two tenants, two keys. Tenant A's key must receive 404 for Tenant B's conversation IDs, not B's data.
+
+**Property tests:** Random UUID resource IDs with Tenant A's key always return 404/403, never 200 with another tenant's payload.
+
+**Chaos:** Rotate a key mid-integration-test; verify in-flight requests with old key fail cleanly and new key succeeds.
+
+**Game day:** Revoke a production key used by your own dogfood tenant. Measure time-to-detection and time-to-mitigation.
+
+## Migration from shared platform keys
+
+Legacy setups often have one `PLATFORM_API_KEY` env var shared across services. Migration path:
+
+1. Issue per-service keys with minimal scopes.
+2. Deploy dual-auth middleware accepting both old shared key (deprecated) and new scoped keys.
+3. Metric on shared key usage; block new services from receiving it.
+4. Set hard cutoff date; remove shared key validation.
+
+Do not skip step 2—teams discover mystery dependencies at cutoff otherwise.
+
+## Closing thoughts
+
+Tenant-scoped API keys are the front door to your agent platform. If the scoping model is vague, every downstream authorization check becomes a debate. If it is explicit—immutable tenant binding, composable scopes, per-key rate limits, rotation with overlap—your agents can grow features without growing blast radius.
+
+Start by drawing the scope matrix on a whiteboard with your three most common integrations. Implement middleware before you add the fourth integration. Measure cross-tenant rejection rate in production; it should be a flat zero line.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [OWASP API Security Top 10 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/)
+- [Stripe API key best practices](https://stripe.com/docs/keys)
+- [HashiCorp Vault — Dynamic Secrets](https://developer.hashicorp.com/vault/docs/secrets)
+- [RFC 9700 — OAuth 2.0 Security Best Current Practice](https://datatracker.ietf.org/doc/html/rfc9700)
+- [NIST SP 800-57 — Key Management Recommendations](https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final)

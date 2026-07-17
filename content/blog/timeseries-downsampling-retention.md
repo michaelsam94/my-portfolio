@@ -3,7 +3,7 @@ title: "Downsampling and Retention Policies"
 slug: "timeseries-downsampling-retention"
 description: "Design downsampling and retention policies for time-series data: tiered rollups, continuous aggregates, storage math, and query patterns that keep historical telemetry fast and cheap."
 datePublished: "2026-02-01"
-dateModified: "2026-02-01"
+dateModified: "2026-07-17"
 tags: ["Data", "Databases", "Time Series", "Architecture"]
 keywords: "downsampling, retention policy, time series, continuous aggregates, TimescaleDB, Prometheus, telemetry storage"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Start from how your users actually query: if nobody looks at per-second data older than two weeks, keep raw at 14 days. Hourly rollups are useful for six months to a year of operational history. Daily aggregates can live for years at negligible cost. The pattern is tiered retention — raw for the hot window, progressively coarser resolutions for colder tiers — and each tier's window should match a real query pattern, not an arbitrary calendar date."
   - q: "Should downsampling happen at ingest or after the fact?"
     a: "Almost always after the fact, via continuous aggregates or scheduled rollups that read from a raw table and write to a coarser one. Ingest-time downsampling loses information you cannot recover and makes debugging recent incidents harder. Post-ingest rollups let you keep full resolution for a defined window, then compress on a schedule. The exception is edge devices with severe bandwidth limits, where pre-aggregation on the device itself is justified."
+faqAnswers:
+  - question: "When is timeseries downsampling retention the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for timeseries downsampling retention?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back timeseries downsampling retention safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 A monitoring stack I inherited was storing 15-second resolution metrics at full fidelity for three years. Disk was growing 40 GB a month, queries over a month of data timed out, and nobody on the team had ever asked for sub-minute granularity older than a week. The fix wasn't a bigger server — it was defining what resolution we actually needed at each age tier and automating the transition between them. Downsampling and retention policies are where time-series economics are won or lost, and most teams configure them too late.
 
 The core idea is simple: raw high-resolution data is expensive and rarely queried at full resolution forever. You ingest at full fidelity for a hot window, roll up into coarser aggregates on a schedule, and drop what you no longer need. Done well, you keep 95% of analytical value at 10% of the storage cost.
@@ -109,16 +115,35 @@ function metricTable(rangeHours: number): string {
 
 **Forgetting cardinality in rollups.** A continuous aggregate grouped by `host` is fine. Grouped by `request_id` recreates the cardinality problem at every tier.
 
-## Common production mistakes
+## Choosing aggregation functions per metric type
 
-Teams get timeseries downsampling retention wrong in predictable ways:
+Counters downsample with `sum` or `rate` — gauges with `avg`, `min`, `max` depending on question. Never average percentiles — average of p99s is meaningless. Use max of p99 for capacity planning, or store raw histograms and recompute. Document downsampling rules in runbooks so on-call understands why dashboard shows different values at 1-hour vs 1-minute resolution.
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+## Alerting on raw vs downsampled
 
-Production implementations of timeseries downsampling retention fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+Page on raw 1-minute series; trend on hourly downsampled — averaging p99 for alerting is mathematically wrong. Document in dashboard subtitles: "Hourly avg — not valid for incident detection."
+
+## Retention tier storage costs
+
+Hot SSD for 7d raw, warm object storage for 90d 5m rollups, cold glacier for 7y compliance — automate lifecycle policies. Rehydrate cold tier before postmortem spanning old dates — plan query latency for historical incidents.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

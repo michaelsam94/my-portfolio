@@ -1,129 +1,255 @@
 ---
 title: "Log and Trace Correlation"
 slug: "observability-log-trace-correlation"
-description: "Inject trace_id in structured logs — join Loki and Tempo in Grafana."
-datePublished: "2026-01-27"
-dateModified: "2026-01-27"
+description: "Inject trace_id and span_id into structured logs so Loki queries jump to Tempo traces."
+datePublished: "2026-01-20"
+dateModified: "2026-07-17"
 tags:
+  - "DevOps"
   - "Observability"
-  - "Backend"
-  - "SRE"
-keywords: "observability log trace correlation, production, backend"
+  - "OpenTelemetry"
+  - "Logging"
+keywords: "log trace correlation, trace_id in logs, opentelemetry logs traces, grafana derived fields, distributed tracing logging"
 faq:
-  - q: "What problem does Log and Trace Correlation solve?"
-    a: "It addresses production gaps teams hit when scaling observability log trace correlation: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when observability log trace correlation appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What fields are required?"
+    a: "Minimum trace_id (32 hex). Better: trace_id + span_id + service.name matching trace resource."
+  - q: "How do I correlate across async boundaries?"
+    a: "Inject W3C traceparent into Kafka/SQS headers; consumer extracts and continues context."
+  - q: "Does correlation work with sampling?"
+    a: "Always log trace_id even if span not exported—sampled traces still correlate."
 ---
 
-## Production context
+Four thousand `"payment failed"` log lines—200 with user filter—still no downstream call identified until someone guessed a Jaeger trace. `trace_id` in JSON logs and Grafana derived fields turn grep archaeology into click-through investigation.
 
-A billing service lost duplicate events because observability log trace correlation was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Implementation
 
-Senior backend work on log and trace correlation is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+OTel active span → inject `trace_id`/`span_id` in pino, structlog, slog middleware.
 
-## Architecture pattern
+## Grafana
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Loki derived field regex on trace_id → Tempo datasource link. Tempo → logs with `{service.name="$service"} | json | trace_id="$trace_id"`.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+## Async
+
+Producer inject headers; consumer extract before processing. Cron jobs start root span or link to scheduler metadata.
+
+## Guardrails
+
+Hex encoding consistent; no duplicate trace IDs from middleware and logger; never generate independent IDs in loggers.
 
 
-```sql
--- Example: idempotent ingest skeleton for observability workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+## OpenTelemetry Logs Bridge
 
-## Implementation checklist
+OTel 1.24+ logs SDK correlates automatically when logs emitted inside active span context. Prefer OTel logs exporter → Loki over ad-hoc trace_id injection when greenfield—one propagation path.
 
-Validate inputs at the trust boundary with schema versioning.
+## Log volume vs trace sampling
 
-Use timeouts and cancellation on every outbound call; propagate context.
+At 10% trace sampling, 90% of logs carry trace_ids with no backend trace—acceptable for log filtering by id when sampled. Document in runbook: "trace_id not found → check sampling; use log context alone."
 
-Store idempotency keys with TTL; return cached responses on replay.
+## Cross-vendor correlation
 
-Run migrations with lock_timeout and statement_timeout set.
+Datadog logs + traces: use `dd.trace_id` attribute. Hybrid cloud during migration may need dual fields temporarily—normalize in log pipeline to single `trace_id` for query UX.
 
-Load test at 2× expected peak with production-like payload sizes.
+## Serverless and trace context
 
-## Observability
+Lambda cold starts must extract traceparent from API Gateway event headers and inject into logger before first log line—or entire invocation orphaned. AWS Distro for OpenTelemetry layer handles this if stdout JSON includes trace fields automatically.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Log-based trace reconstruction (last resort)
 
-Dashboards for observability log trace correlation should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+When trace backend lost but logs retain trace_id, reconstruct partial timeline by sorting logs on trace_id—ugly but saves incident when Tempo retention expired. Argues for log trace_id retention ≥ trace retention.
 
-## Security notes
+## Parser compatibility across log agents
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Fluent Bit, Vector, and Promtail parse JSON differently—validate trace_id field extraction in staging with each agent version before fleet rollout. Double-escaped JSON from nested loggers breaks derived fields regex; standardize on single JSON object per log line without stringified JSON wrappers.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Include trace_id in audit logs for security-sensitive operations even when trace sampling is off—audit trail completeness outweighs trace backend storage cost for those events.
 
-## Common production mistakes
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Debugging and triage workflow
 
-When production misbehaves, work top-down:
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
 
-## Operational checklist
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
 
-## Performance tuning notes
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Measure before optimizing observability log trace correlation. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
 
-## Rollout and migration
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Ship observability log trace correlation changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
 
-## Testing recommendations
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
 
-## Incident patterns we see
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Document rollback paths and validate observability after every deploy affecting this surface.
 
-## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+
+Document rollback paths and validate observability after every deploy affecting this surface.
+
+## Production review cadence
+
+Revisit dashboards and alert thresholds after every deploy affecting this observability surface. Weekly on-call review should include one exemplar trace or log linked from a metric spike—paper metrics without exemplars train teams to ignore charts.

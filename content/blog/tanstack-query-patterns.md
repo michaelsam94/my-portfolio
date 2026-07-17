@@ -3,8 +3,9 @@ title: "TanStack Query Patterns for Server State"
 slug: "tanstack-query-patterns"
 description: "Practical TanStack Query patterns for server state: query keys, cache invalidation, optimistic mutations, and prefetching that keep React apps fast and consistent."
 datePublished: "2026-06-24"
-dateModified: "2026-06-24"
-tags: ["React", "TanStack Query", "State Management", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "TanStack Query, React Query, server state, data fetching, caching React, mutations, query keys"
 faq:
   - q: "What problem does TanStack Query solve?"
@@ -13,8 +14,14 @@ faq:
     a: "Use TanStack Query for server state (anything fetched from an API) and a lightweight client-state tool for genuine UI state. Most apps that adopt TanStack Query find their global store shrinks dramatically, because the majority of what was in it was really cached server data."
   - q: "How does query invalidation work in TanStack Query?"
     a: "You call queryClient.invalidateQueries with a query key, which marks matching cached queries as stale and triggers a refetch for any that are actively rendered. Because query keys are hierarchical, invalidating a prefix invalidates all queries nested under it, which makes cache updates after mutations straightforward."
+faqAnswers:
+  - question: "When is tanstack query patterns the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for tanstack query patterns?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back tanstack query patterns safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 The single most useful reframing TanStack Query gives you is that **server state is not client state**. The data in your Redux store that came from an API isn't really application state you own — it's a local cache of state that lives on a server, and it can go stale the moment you fetch it. Treating cached server data like owned client state is why so many React apps accumulate tangled `useEffect` fetching, manual loading flags, and stores full of data that's silently out of date. TanStack Query (formerly React Query) exists to manage that cache properly.
 
 I'll skip the "what is a query" intro and go straight to the patterns that actually determine whether a TanStack Query codebase stays clean or turns into a mess: query keys, invalidation, optimistic mutations, and prefetching.
@@ -113,3 +120,15 @@ TanStack Query is less a fetching library than a server-state cache manager, and
 - [React docs: You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
 - [TkDodo's blog: Practical React Query](https://tkdodo.eu/blog/practical-react-query)
 - [MDN: Using Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+
+## When to prioritize
+
+When react apps fetch from apis and need caching, invalidation, and optimistic updates.
+
+## Anti-pattern
+
+Scattered string query keys without hierarchy — invalidation refetches everything or misses stale data
+
+## Incident context
+
+Cached server data in Redux goes stale silently — TanStack Query exists because server state is not client state.

@@ -212,6 +212,24 @@ Teams get emulator ci testing wrong in predictable ways:
 
 Shipping emulator ci testing on Android fails quietly when you test only on flagship devices, skip process-death scenarios, or assume `minSdk` behavior matches latest API docs. Emulator-only validation misses OEM-specific battery optimizations and background execution limits.
 
+## KVM and nested virtualization
+
+GitHub-hosted runners lack KVM — use reactive arm64 macOS or self-hosted for Macrobenchmark. Snapshot cold boot vs quick boot affects startup test variance — pin emulator `-no-snapshot-load` for consistent cold start CI.
+
+## Google Play system image vs AOSP
+
+Play image includes GMS — billing tests need Play image; pure AOSP misses `SafetyNet` and misleads security integration tests.
+
+## Emulator Ci Testing Supplement 0 on Samsung and Pixel divergence
+
+Exercise emulator ci testing supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching emulator; regressions above 8% block release for `android-emulator-ci-testing-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "Emulator Ci Testing Supplement 0" should map to a single runbook section with known workarounds.
+
+## Testing regression gates for Play Vitals
+
+Before promoting `android-emulator-ci-testing-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [android-emulator-runner GitHub Action](https://github.com/ReactiveCircus/android-emulator-runner)

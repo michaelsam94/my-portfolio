@@ -1,111 +1,224 @@
 ---
 title: "AI Agents: Webhook Signature Verification"
 slug: "agent-webhook-signature-verification"
-description: "Webhook Signature Verification: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Verify inbound webhooks to agent platforms: HMAC timing-safe comparison, key rotation, replay prevention, and provider-specific quirks for Stripe, GitHub, and tool callbacks."
 datePublished: "2025-09-15"
-dateModified: "2025-09-15"
-tags: ["AI", "Agent", "Webhook"]
-keywords: "agent, webhook, signature, verification, ai, production, engineering, architecture"
+dateModified: "2026-07-17"
+tags: ["AI Agents", "Webhooks", "Security", "Integration"]
+keywords: "agent webhook signature verification, HMAC webhook security, Stripe webhook agent, replay attack prevention"
 faq:
-  - q: "What is Webhook Signature Verification?"
-    a: "Webhook Signature Verification covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Webhook Signature Verification?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Webhook Signature Verification?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Webhook Signature Verification fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Webhook Signature Verification should be observable in production and safe to change in small diffs."
+  - q: "Why must agent platforms verify webhooks at the edge?"
+    a: "Unverified webhooks let attackers forge tool-completion events, billing state changes, or human-approval callbacks — triggering agent runs that execute real side effects (refunds, deployments, emails). Verification is authentication for server-to-server callbacks."
+  - q: "Raw body or parsed JSON for HMAC verification?"
+    a: "Always HMAC the raw request bytes before JSON parsing. Re-serialized JSON changes whitespace and key order — signature mismatch on legit requests. Buffer raw body in middleware, then parse."
+  - q: "How do you handle webhook secret rotation?"
+    a: "Accept two signing secrets during overlap window — try primary, fallback secondary on failure. Provider dashboards (Stripe, Svix) support dual secrets. Remove old secret after 72h zero secondary usage."
+  - q: "What stops replay attacks on signed webhooks?"
+    a: "Timestamp tolerance (e.g., reject if >5 min skew) plus idempotency store on event ID. Signature proves integrity; timestamp + dedupe proves freshness."
 ---
-Webhook Signature Verification sits in the boring center of reliable ai delivery: not flashy, but load-bearing. Get it wrong and you fight the same incident repeatedly; get it right and features ship on top of a stable base. Below is how I think about design, implementation, testing, and day-two operations.
-## Problem framing
 
-When webhook signature verification is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Your agent resumes a workflow when Stripe sends `payment_intent.succeeded` or when a human approver clicks Approve in an external ticketing system. If those POST requests aren't cryptographically verified, anyone who guesses the URL shape can **forge completions** and trigger tool chains that ship orders, merge PRs, or exfiltrate data via agent tool calls. Webhook signature verification is non-negotiable at the agent gateway.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
-
-Solid AI engineering turns webhook signature verification from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent webhook signature verification bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for webhook signature verification, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent webhook signature verification flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for webhook signature verification in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent webhook signature verification changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Webhook Signature Verification: typed boundary + structured errors
-export async function handleWebhookSignatureVerification(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-webhook-signature-verification");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Verification flow
 
 ```
+Provider                    Agent gateway
+   │                              │
+   │  POST /webhooks/stripe       │
+   │  Stripe-Signature: t=...,v1=│
+   │  body: raw JSON              │
+   │ ────────────────────────────►│
+   │                              │ 1. Read raw body
+   │                              │ 2. Verify signature + timestamp
+   │                              │ 3. Dedupe event_id
+   │                              │ 4. Parse JSON → enqueue agent resume
+   │◄──────────────────────────────│ 200 OK (fast — work async)
+```
 
+Return 200 quickly after verification; heavy agent work belongs on queue.
 
-## Operational concerns
+## Generic HMAC verifier (timing-safe)
 
-Runbooks for webhook signature verification should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+```python
+import hmac
+import hashlib
+import time
 
-Production agent webhook signature verification work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+def verify_hmac_sha256(
+    secret: str,
+    raw_body: bytes,
+    signature_header: str,
+    timestamp_header: str | None = None,
+    tolerance_sec: int = 300,
+) -> bool:
+    if timestamp_header:
+        ts = int(timestamp_header)
+        if abs(time.time() - ts) > tolerance_sec:
+            return False
+        signed_payload = f"{ts}.".encode() + raw_body
+    else:
+        signed_payload = raw_body
 
-Rollouts for webhook signature verification benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+    expected = hmac.new(secret.encode(), signed_payload, hashlib.sha256).hexdigest()
+    provided = signature_header.removeprefix("sha256=")
+    return hmac.compare_digest(expected, provided)
+```
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Never use `==` for signature comparison — timing leaks.
 
-## Security and compliance angles
+## Stripe-specific verification
 
-Even when webhook signature verification is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```python
+import stripe
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent webhook signature verification so security reviews do not rely on tribal knowledge.
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("Stripe-Signature")
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig, secrets.current("stripe_webhook")
+        )
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(400, "invalid signature")
 
-## Testing strategy
+    if await dedupe.seen(event["id"]):
+        return {"ok": True}
+    await queue.publish({"type": "stripe", "event": event})
+    await dedupe.mark(event["id"], ttl=86400 * 7)
+    return {"ok": True}
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that webhook signature verification depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Stripe signs `timestamp.payload` — library handles edge cases.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+## GitHub webhooks
 
-## Migration and evolution
+```python
+def verify_github(payload: bytes, sig_header: str, secret: str) -> bool:
+    if not sig_header.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig_header)
+```
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent webhook signature verification functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Also validate `X-Hub-Signature-256` on **raw body**; consider IP allowlist for github.com meta ranges as defense in depth.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where webhook signature verification spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Tool callback webhooks (custom integrations)
 
-## Related concepts
+Third-party tools calling back to agent orchestrator need standardized signing:
 
-Webhook Signature Verification intersects with broader ai topics — see companion notes on [agent-webhook patterns](https://blog.michaelsam94.com/agent-webhook/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+```http
+POST /webhooks/tools/acme-crm
+X-Agent-Timestamp: 1721200000
+X-Agent-Signature: v1=abc123...
+X-Agent-Event-Id: evt_unique_8842
 
-## The takeaway
+{"tool_run_id": "tr_9f3", "status": "completed", "result_ref": "s3://..."}
+```
 
-Webhook Signature Verification rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent webhook signature verification becomes a maintainable asset instead of incident fuel.
+Document in partner integration guide; issue per-tenant webhook secrets rotatable in admin UI.
+
+## Dual-secret rotation
+
+```python
+def verify_with_rotation(raw: bytes, header: str) -> bool:
+    for secret in secrets.list_active("webhook_hmac"):
+        if verify_hmac_sha256(secret, raw, header):
+            metrics.increment("webhook_verify", labels={"secret_version": secret.version})
+            return True
+    return False
+```
+
+Alert if `secret_version=old` exceeds 5% after rotation window.
+
+## Idempotency store
+
+| Provider | Dedupe key |
+|----------|------------|
+| Stripe | `event.id` |
+| GitHub | `X-GitHub-Delivery` |
+| Custom | `X-Agent-Event-Id` |
+
+```sql
+CREATE TABLE webhook_events (
+  event_id text PRIMARY KEY,
+  received_at timestamptz DEFAULT now(),
+  provider text NOT NULL
+);
+```
+
+Duplicate delivery returns 200 without re-enqueueing agent resume — critical for at-least-once providers.
+
+## Fastify / Express raw body capture
+
+```typescript
+app.addContentTypeParser(
+  "application/json",
+  { parseAs: "buffer" },
+  (req, body, done) => {
+    (req as any).rawBody = body;
+    done(null, JSON.parse(body.toString()));
+  }
+);
+```
+
+Next.js App Router — disable default body parser on webhook route or use `request.text()`.
+
+## Failure modes
+
+| Mistake | Symptom |
+|---------|---------|
+| JSON re-stringify before verify | Random 400s in prod |
+| NGINX buffer mutation | Signature drift — disable unnecessary transforms |
+| 500 on duplicate event | Provider infinite retry storm |
+| Sync agent run in handler | Timeouts → provider retries → duplicate side effects |
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
+- [Stripe — Webhook signatures](https://docs.stripe.com/webhooks/signatures)
+- [GitHub — Validating webhook deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
+- [Svix — Webhook standard](https://docs.svix.com/receiving/verifying-payloads)
+- [OWASP — Webhook security cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Webhook_Security_Cheat_Sheet.html)
 
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
+## Operational checklist for production rollouts
 
-- [www.anthropic.com/research](https://www.anthropic.com/research)
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
 
-- [huggingface.co/docs](https://huggingface.co/docs)
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
 
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+
+## Operational checklist for production rollouts
+
+Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
+
+Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
+
+When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
+
+## Field notes from incident reviews
+
+Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
+
+Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+

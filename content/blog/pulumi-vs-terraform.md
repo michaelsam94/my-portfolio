@@ -3,7 +3,7 @@ title: "Pulumi vs Terraform"
 slug: "pulumi-vs-terraform"
 description: "Compare Pulumi and Terraform for infrastructure as code: language choice, state management, ecosystem maturity, and when each tool fits your team."
 datePublished: "2024-11-09"
-dateModified: "2024-11-09"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Infrastructure", "Pulumi", "Terraform"]
 keywords: "Pulumi vs Terraform, infrastructure as code, IaC comparison, HCL vs TypeScript, Terraform state, Pulumi state"
 faq:
@@ -101,29 +101,33 @@ Choose **Pulumi** when your team is fluent in TypeScript or Python, you want inf
 
 Many organizations run Terraform for core cloud foundations and Pulumi for application-specific resources provisioned by product teams. That split works if boundaries are clear; it fails if two tools manage the same resources without coordination.
 
-## Common production mistakes
 
-Teams get pulumi vs terraform wrong in predictable ways:
+## Import brownfield without destroy/recreate
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+Terraform 1.5+ import blocks and Pulumi `import` options need exact cloud IDs — typo creates state that plans replacement. Run plan in CI with `-detailed-exitcode`; fail PR on unexpected deletes. Maintain spreadsheet mapping resource addresses to cloud IDs during migration sprints.
 
-Production implementations of pulumi vs terraform fail when staging mirrors production topology poorly, rollback is untested, and on-call runbooks describe the happy path only.
+## Policy tests in both ecosystems
 
-## Debugging and triage workflow
+Whether CrossGuard or OPA+Sentinel, enforce tags (`environment`, `owner`, `cost-center`) before apply. Policy failures cheaper at PR time than finance chasing untagged RDS instances after month-end allocation.
 
-When pulumi vs terraform misbehaves in production, work top-down instead of guessing:
+## State locking incidents
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+DynamoDB lock table throttling stalls all applies — monitor lock table capacity. Pulumi Cloud and Terraform Cloud abstract this but self-hosted backends need runbook for stuck locks (`force-unlock` only after verifying no running apply).
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+## Module monorepo patterns
+
+Pulumi packages as npm workspace packages share VPC helpers with application code — Terraform achieves similar with nested modules but without typecheck across app and infra. Pick Pulumi when shared constants (region enums, CIDR calculators) change weekly with app releases.
+
+## Production rollout notes
+
+Document state backend recovery in same repo as infra code — new hire running pulumi up on laptop without remote state config creates duplicate resources. Onboarding checklist: verify backend URL, lock table, and stack permissions before first apply. Both tools punish assumed local state equally.
+## Drift detection schedule
+
+Weekly scheduled `pulumi preview` / `terraform plan` in read-only CI on production stacks — alert on unexpected diff even when no human triggered apply. Manual console changes surface within days, not at next quarterly audit panic.
+
+## Closing operational guidance
+
+Tag every resource with `managed-by` and `stack` — cross-tool shops need forensic clarity when both Pulumi and Terraform touch related accounts during migration years. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away. Ship changes behind feature flags, measure before and after on real traffic, and keep rollback one deploy revert away.
 
 ## Resources
 

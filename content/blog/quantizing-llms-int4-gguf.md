@@ -4,7 +4,7 @@ seoTitle: "LLM Quantization: INT4, GPTQ & GGUF Tradeoffs"
 slug: "quantizing-llms-int4-gguf"
 description: "LLM quantization tradeoffs for INT4, GPTQ, AWQ, and GGUF: quality loss, VRAM savings, on-device serving, and when each format is the right call."
 datePublished: "2026-02-09"
-dateModified: "2026-02-09"
+dateModified: "2026-07-17"
 tags: ["LLM", "Inference", "Performance", "On-Device"]
 keywords: "LLM quantization, INT4, GPTQ, AWQ, GGUF, quantization tradeoffs, on-device LLM"
 faq:
@@ -110,6 +110,30 @@ Also decide *who* quantizes. Community GGUF repos are convenient and sometimes w
 - **Eval before / after** — store scores next to the artifact. When someone asks "why did support quality drop last Tuesday?", you want a diff, not vibes.
 
 Quantization is not magic compression — it's a controlled precision trade. Pick INT4 when the memory math demands it, pick the method that matches your runtime, and prove quality on *your* prompts. Everything else is branding on the Hugging Face card.
+
+
+## Calibration sets from production logs
+
+Sample 1k redacted production prompts stratified by intent (chat, extract, tool-call) for AWQ/GPTQ calibration — WikiText calibration optimizes perplexity, not your JSON tool-call validity. Store calibration hash with model artifact in registry.
+
+## GGUF quant tier picking
+
+On 7B instruct models, compare Q4_K_M vs Q5_K_M on your golden set before defaulting — reasoning tasks often need Q5 while FAQ bots tolerate Q4. Document quant choice next to eval scores so Tuesday's quality drop traces to artifact change, not mystery.
+
+## Batch inference on quantized models
+
+Batch size affects throughput nonlinearly on INT4 — benchmark batch 1 vs 8 vs 32 on target GPU before capacity planning. Quantized kernels may saturate memory bandwidth at lower batch than FP16.
+
+## Legal review of redistributed quants
+
+Community quants of Llama-derived models still carry license terms — legal review before shipping GGUF in commercial product update channel.
+
+## Production rollout notes
+
+Track GPU driver version with quant model deployments — driver updates occasionally change INT4 kernel behavior slightly. Pin driver version in serving runbook same as model artifact hash for reproducible inference.
+## A/B quant in shadow
+
+Serve FP16 to 1% shadow traffic comparing output logprob margin or exact match on golden prompts vs INT4 primary — detect quality regression before full quant rollout when calibration set missed edge case domain jargon.
 
 ## Resources
 

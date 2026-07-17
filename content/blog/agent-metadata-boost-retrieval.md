@@ -1,111 +1,331 @@
 ---
-title: "AI Agents: Metadata Boost Retrieval"
+title: "Metadata Boost Retrieval for Agent RAG Pipelines"
 slug: "agent-metadata-boost-retrieval"
-description: "Metadata Boost Retrieval: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Use structured metadata—recency, tenant tier, doc type, tool affinity—to re-rank vector and BM25 hits so agents retrieve the right playbook, not the most similar paragraph."
 datePublished: "2025-06-23"
 dateModified: "2025-06-23"
-tags: ["AI", "Agent", "Metadata"]
-keywords: "agent, metadata, boost, retrieval, ai, production, engineering, architecture"
+tags: ["AI Agents", "RAG", "Retrieval", "Search Ranking"]
+keywords: "metadata boost retrieval, RAG ranking, Elasticsearch function score, recency boost, hybrid search metadata, agent knowledge base"
 faq:
-  - q: "What is Metadata Boost Retrieval?"
-    a: "Metadata Boost Retrieval covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Metadata Boost Retrieval?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Metadata Boost Retrieval?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Metadata Boost Retrieval fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Metadata Boost Retrieval should be observable in production and safe to change in small diffs."
+  - q: "What metadata fields matter most for agent retrieval?"
+    a: "Start with doc_type (runbook vs changelog vs API ref), recency (updated_at), environment (prod vs staging), product surface (billing vs infra), and authority (verified vs draft). For multi-tenant agents add tenant_id and visibility scope. Avoid boosting on fields the LLM could infer wrongly from content alone."
+  - q: "Should metadata boost happen before or after vector search?"
+    a: "Apply lightweight boosts in the first-stage retrieval (function_score in Elasticsearch, filter + weighted sum in pgvector hybrid) to shape the candidate pool. Run cross-encoder reranking after boosts so semantic relevance still dominates top-k. Boost-only without rerank overfits hand-tuned weights."
+  - q: "How do you prevent stale docs from ranking first?"
+    a: "Use gaussian decay on updated_at with scale ~30–90 days depending on doc velocity. Cap boost so a ancient but keyword-perfect doc cannot beat a recent moderate match. Surface as-of dates in chunk headers so the model knows freshness."
+  - q: "Can metadata boosts leak across tenants?"
+    a: "Yes if filters are optional. Always apply hard filters (tenant_id, ACL bitmap) before boosts—boosts are multipliers on an already permission-filtered set. Integration tests with two tenants querying the same string must assert zero cross-tenant doc ids."
 ---
-Most teams encounter metadata boost retrieval after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
 
-When metadata boost retrieval is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+The agent cited a **deprecated** refund policy because it scored highest on embedding similarity—the 2022 PDF shared vocabulary with the user's question and nobody boosted `status: canonical` or penalized `superseded_by`. Support escalations spiked until we added **metadata-aware retrieval**: not replacing vectors, but reshaping ranks with fields humans already curate in the CMS.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+Pure semantic search treats a draft blog post and a verified runbook as peers if the wording aligns. Agent RAG needs **policy-aware ranking**: which doc types can ground answers, how fresh they must be, which environment they apply to. Metadata boost retrieval is the layer between hybrid search and the reranker where those rules live—explicit, testable, and tunable per agent persona.
 
-Solid AI engineering turns metadata boost retrieval from a recurring argument into a documented pattern with tests and an owner.
-
-## Design principles that survive production
-
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent metadata boost retrieval bugs hide.
-
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for metadata boost retrieval, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent metadata boost retrieval flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for metadata boost retrieval in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent metadata boost retrieval changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Metadata Boost Retrieval: typed boundary + structured errors
-export async function handleMetadataBoostRetrieval(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-metadata-boost-retrieval");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+## Architecture placement
 
 ```
+Query ──► Query understanding (optional entity extract)
+              │
+              ▼
+     Hard filters (tenant, ACL, language)
+              │
+              ▼
+     Hybrid retrieval (BM25 + vector)
+              │
+              ▼
+     Metadata boost / function_score  ◄── this article
+              │
+              ▼
+     Cross-encoder rerank (top 50 → top 8)
+              │
+              ▼
+     Chunk assembly + citation headers → LLM
+```
 
+Boosts adjust **first-stage** scores. If you only boost after fetching top-10 vectors, a doc at rank 400 never enters the pool—**recall** loss. Expand `k` before boost (e.g., 100) then cut to 20 post-boost for reranker.
+
+## Metadata schema for agent corpora
+
+Normalize at index time:
+
+```json
+{
+  "chunk_id": "doc_refund_policy_v3#sec2",
+  "text": "...",
+  "embedding": [0.012, -0.034, "..."],
+  "metadata": {
+    "tenant_id": "ten_acme",
+    "doc_type": "runbook",
+    "status": "canonical",
+    "product": "billing",
+    "environment": "production",
+    "updated_at": "2025-05-01T00:00:00Z",
+    "authority_score": 1.0,
+    "superseded_by": null,
+    "tool_tags": ["stripe_refund", "billing_api"]
+  }
+}
+```
+
+`authority_score` captures human or workflow verification—0.0 draft, 0.5 team-reviewed, 1.0 legal-approved.
+
+Index mappings should mark filter fields as `keyword` and dates as `date`—not analyzed text.
+
+## Elasticsearch function_score pattern
+
+Combine BM25/vector with boosts:
+
+```json
+{
+  "query": {
+    "function_score": {
+      "query": {
+        "hybrid": {
+          "queries": [
+            { "match": { "text": "{{query}}" } },
+            { "knn": { "field": "embedding", "query_vector": "{{vec}}", "k": 100, "num_candidates": 500 } }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "filter": { "term": { "metadata.status": "canonical" } },
+          "weight": 1.4
+        },
+        {
+          "filter": { "term": { "metadata.doc_type": "runbook" } },
+          "weight": 1.2
+        },
+        {
+          "gauss": {
+            "metadata.updated_at": {
+              "origin": "now",
+              "scale": "30d",
+              "decay": 0.5
+            }
+          }
+        },
+        {
+          "filter": { "exists": { "field": "metadata.superseded_by" } },
+          "weight": 0.3
+        }
+      ],
+      "score_mode": "multiply",
+      "boost_mode": "multiply"
+    }
+  },
+  "size": 50
+}
+```
+
+`score_mode: multiply` compounds signals—canonical + recent multiplies; superseded crushes score. Alternative `sum` for finer tuning but easier to overweight one function.
+
+## Postgres + pgvector hybrid with metadata
+
+When stack is SQL-first:
+
+```sql
+WITH vector_hits AS (
+  SELECT chunk_id, 1 - (embedding <=> $1::vector) AS vec_score
+  FROM kb_chunks
+  WHERE tenant_id = $2
+    AND acl_allowed($3, chunk_id)
+  ORDER BY embedding <=> $1::vector
+  LIMIT 100
+),
+bm25_hits AS (
+  SELECT chunk_id, ts_rank_cd(text_tsv, plainto_tsquery($4)) AS bm25_score
+  FROM kb_chunks
+  WHERE tenant_id = $2
+    AND text_tsv @@ plainto_tsquery($4)
+  LIMIT 100
+),
+combined AS (
+  SELECT
+    COALESCE(v.chunk_id, b.chunk_id) AS chunk_id,
+    COALESCE(v.vec_score, 0) AS vec_score,
+    COALESCE(b.bm25_score, 0) AS bm25_score
+  FROM vector_hits v
+  FULL OUTER JOIN bm25_hits b USING (chunk_id)
+)
+SELECT
+  c.chunk_id,
+  (0.6 * c.vec_score + 0.4 * normalize_bm25(c.bm25_score))
+    * meta_boost(m) AS final_score
+FROM combined c
+JOIN kb_chunks m ON m.chunk_id = c.chunk_id
+ORDER BY final_score DESC
+LIMIT 50;
+```
+
+Boost function in SQL or application code:
+
+```python
+from datetime import datetime, timezone
+
+def meta_boost(meta: dict, query_tools: set[str]) -> float:
+    boost = 1.0
+    if meta.get("status") == "canonical":
+        boost *= 1.4
+    if meta.get("doc_type") == "runbook":
+        boost *= 1.15
+    if meta.get("superseded_by"):
+        boost *= 0.25
+
+    updated = datetime.fromisoformat(meta["updated_at"].replace("Z", "+00:00"))
+    age_days = (datetime.now(timezone.utc) - updated).days
+    recency = 0.5 ** (age_days / 30)  # half-life 30 days
+    boost *= 0.5 + 0.5 * recency  # floor 0.5
+
+    tool_overlap = len(query_tools & set(meta.get("tool_tags", [])))
+    if tool_overlap:
+        boost *= 1.0 + 0.1 * min(tool_overlap, 3)
+
+    return boost
+```
+
+## Agent persona weight profiles
+
+Store boost profiles per agent—not global constants:
+
+```yaml
+agents:
+  support_l1:
+    doc_type_weights:
+      runbook: 1.3
+      changelog: 0.9
+      marketing: 0.4
+    recency_half_life_days: 21
+  coding_agent:
+    doc_type_weights:
+      api_reference: 1.5
+      runbook: 1.0
+    tool_tag_boost: 1.2
+```
+
+Load at query time; version profiles; A/B test with retrieval eval harness (nDCG@10 on labeled ticket→doc pairs).
+
+## Query-time metadata inference
+
+Boosts work better when query supplies implicit filters. Lightweight classifier:
+
+```python
+INTENT_FILTERS = {
+    "refund": {"product": "billing", "doc_type": ["runbook", "policy"]},
+    "deploy": {"product": "infra", "doc_type": ["runbook", "changelog"]},
+}
+
+def infer_hard_filters(query: str) -> dict:
+    intent = intent_model.predict(query)  # small fast model or rules
+    return INTENT_FILTERS.get(intent, {})
+```
+
+Apply inferred filters as **should** clauses (soft) if confidence < 0.8; **filter** (hard) if high confidence to avoid wrong domain exclusion.
+
+## Chunk headers for the LLM
+
+Metadata helps the model, not just the index:
+
+```markdown
+[source: runbook | product: billing | updated: 2025-05-01 | status: canonical]
+## Refund eligibility
+...
+```
+
+The model learns to prefer canonical headers when chunks conflict—retrieval and prompt alignment.
+
+## Evaluation without fooling yourself
+
+Build a eval set of `(query, relevant_chunk_ids, metadata_context)` from support tickets. Metrics:
+
+- nDCG@10 with and without boosts
+- **Wrong-version rate** — top-1 has `superseded_by` set
+- **Cross-type error** — marketing doc in top-3 for procedural query
+
+Tune boosts on validation; report once on held-out test. Log production retrieval with boost components for offline replay:
+
+```json
+{
+  "query_id": "q_991",
+  "chunk_id": "doc_12",
+  "vec_score": 0.82,
+  "bm25_score": 0.41,
+  "meta_boost": 1.68,
+  "final_score": 1.09,
+  "boost_factors": {"canonical": 1.4, "recency": 1.0}
+}
+```
+
+## Failure modes
+
+| Failure | Cause | Mitigation |
+|---------|-------|------------|
+| Boost explosion | multiply stack | Cap meta_boost at 2.0 |
+| Fresh but wrong | recency only | require minimum vec score floor |
+| Tenant leak | filter after boost | filter first in SQL/ES |
+| Tool tag spam | CMS mis-tags | audit tool_tags on publish |
 
 ## Operational concerns
 
-Game-day exercises for metadata boost retrieval beat documentation every time. Inject latency, kill dependencies, and verify that retries, fallbacks, and idempotency behave as designed.
+Reindex when metadata schema changes. Boost weights live in config—deploy via feature flag, not index rebuild.
 
-Production agent metadata boost retrieval work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Dashboard: average meta_boost by doc_type, fraction of answers citing non-canonical docs (from citation parser).
 
-Rollouts for metadata boost retrieval benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+## Parent-child chunk linking
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Long runbooks split into chunks lose document-level metadata if only leaf chunks carry fields. Propagate parent metadata at index time:
 
-## Security and compliance angles
+```python
+def enrich_chunk_metadata(leaf: dict, parent: dict) -> dict:
+    return {
+        **leaf["metadata"],
+        "doc_type": parent["doc_type"],
+        "status": parent["status"],
+        "updated_at": parent["updated_at"],
+        "superseded_by": parent.get("superseded_by"),
+        "parent_doc_id": parent["doc_id"],
+    }
+```
 
-Even when metadata boost retrieval is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+Boost on parent `status: canonical` even when child chunk text is generic ("See section 3"). Retrieval logs should include `parent_doc_id` for analytics on which source docs drive answers.
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent metadata boost retrieval so security reviews do not rely on tribal knowledge.
+## Negative boosts and exclusion rules
 
-## Testing strategy
+Some metadata demands **hard exclusion**, not soft penalty:
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that metadata boost retrieval depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+- `environment: staging` — filter out for production-facing agents entirely
+- `legal_hold: true` — exclude from customer support agents
+- `language: ja` — filter when query language detector returns `en`
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Soft penalties handle ambiguous cases: `audience: internal` gets weight 0.6 for external tenant agents but remains retrievable for employee-only personas. Document exclusion vs boost in runbooks—on-call should know which rules are filter vs multiplier.
 
-## Migration and evolution
+## Combining metadata boost with RRF
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent metadata boost retrieval functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+When using Reciprocal Rank Fusion for hybrid lists, apply metadata as a **post-fusion rerank** step on the top 100 fused ids:
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where metadata boost retrieval spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+```python
+def post_fusion_meta_rerank(
+    fused: list[tuple[str, float]],
+    meta_by_id: dict[str, dict],
+    cap: float = 2.0,
+) -> list[tuple[str, float]]:
+    reranked = []
+    for doc_id, rrf_score in fused:
+        boost = min(cap, meta_boost(meta_by_id[doc_id]))
+        reranked.append((doc_id, rrf_score * boost))
+    return sorted(reranked, key=lambda x: x[1], reverse=True)
+```
 
-## Related concepts
-
-Metadata Boost Retrieval intersects with broader ai topics — see companion notes on [agent-metadata patterns](https://blog.michaelsam94.com/agent-metadata/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+This keeps RRF scale-free while still elevating canonical docs. Compare nDCG@10 against pre-fusion function_score—pick whichever wins on your eval set; do not stack both without measurement (double-counting risk).
 
 ## The takeaway
 
-Metadata Boost Retrieval rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent metadata boost retrieval becomes a maintainable asset instead of incident fuel.
+Metadata boost retrieval turns CMS structure into ranking signal so agents prefer canonical, fresh, on-domain docs. Hard-filter tenancy and ACL first, expand hybrid recall, apply bounded multiplicative boosts, then rerank semantically. Tune per agent persona with labeled evals and log boost factors so regressions are debuggable—not mysterious "the agent got worse."
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Elasticsearch function_score query](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dfunction-score-query.html)
+- [OpenSearch hybrid search with filters](https://opensearch.org/docs/latest/search-plugins/hybrid-search/)
+- [pgvector documentation](https://github.com/pgvector/pgvector)
+- [BEIR benchmark — retrieval evaluation mindset](https://github.com/beir-cellar/beir)
+- [Reciprocal Rank Fusion paper (Cormack et al.)](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)

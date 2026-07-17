@@ -3,110 +3,188 @@ title: "dbt CI/CD: Slim CI and State Comparison"
 slug: "devops-dbt-cicd-testing"
 description: "Run dbt slim CI with defer and state:modified+ on pull requests."
 datePublished: "2026-09-09"
-dateModified: "2026-09-09"
+dateModified: "2026-07-17"
 tags:
   - "DevOps"
   - "dbt"
   - "CI/CD"
-keywords: "dbt CI/CD, slim CI"
+keywords: "dbt CI/CD, slim CI, state:modified, dbt defer, manifest.json"
 faq:
-  - q: "What is dbt CI/CD?"
-    a: "dbt CI/CD covers operational practices for dbt slim CI in production spark/dbt environments: design, rollout, observability, failure modes, and day-two maintenance—not a one-time setup task."
-  - q: "When should teams prioritize dbt CI/CD?"
-    a: "When dbt project exceeds 15 minute PR feedback budget."
-  - q: "What mistakes break dbt CI/CD?"
-    a: "Slim CI without prod manifest artifact—defer broken."
+  - q: "What is dbt slim CI?"
+    a: "Running state:modified+ on pull requests to rebuild only changed models and downstream dependents, often with --defer to production relations."
+  - q: "Why does slim CI fail with defer errors?"
+    a: "Missing, stale, or dbt-version-mismatched production manifest.json used for state comparison."
+  - q: "How should production manifests be published for CI?"
+    a: "Upload target/manifest.json after every successful production dbt run to durable object storage as manifest-latest."
+  - q: "What should slim CI still run besides selected models?"
+    a: "dbt parse, SQL lint, and schema tests on affected nodes; nightly full runs catch drift PR slim CI misses."
 ---
+A README typo triggered a two-hour full dbt run on four hundred models—zero SQL changed.
 
-Full dbt run 2 hours on typo in docs—slim CI would run 4 models.
+## state:modified+
 
-This post walks through **dbt CI/CD: Slim CI and State Comparison** for platform and SRE teams shipping reliable infrastructure. Run dbt slim CI with defer and state:modified+ on pull requests. You will get concrete configuration patterns, operational guardrails, and review questions that catch mistakes before production—not after an incident writes the requirements doc.
+Select changed models and downstream dependents vs prod manifest. Plus suffix is essential for column renames propagating.
 
-## Problem framing: dbt CI/CD
+A production team running dbt cicd testing discovered that state:modified+ failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
 
-Full dbt run 2 hours on typo in docs—slim CI would run 4 models.
+Runbook entry for state:modified+: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
 
+For dbt cicd testing, instrument state:modified+ with low-cardinality metrics tied to user-visible
+outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging on
+vanity gauges that never correlated with past incidents.
 
-Platform teams treat **dbt slim CI** as solved after the first successful deploy. Production disagrees: edge cases around dbt cicd testing, dependency failures, and human process gaps show up under real load. The sections below capture patterns that survive review, incident response, and gradual traffic growth—not just a green CI badge.
+Game day scenario for state:modified+: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
 
-## Design principles for dbt slim CI
+Ownership for state:modified+ belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
 
-Explicit contracts beat tribal knowledge. Document who owns dbt slim CI configuration, which environments may change it, and how rollback works when a change misbehaves. Prefer defaults that **fail closed**—deny, queue, or degrade safely rather than return partial wrong answers.
+Change management for dbt cicd testing: require peer review from someone outside the authoring team
+before production promotion—fresh eyes catch assumptions embedded in state:modified+ configs that
+authors no longer notice.
 
+Capacity planning note: estimate peak QPS or job concurrency for state:modified+, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
 
-A common failure mode: Slim CI without prod manifest artifact—defer broken. Bake guards into CI, admission control, or plan-time policy so the mistake is caught before merge—not discovered by customers or auditors.
+## defer in CI
 
+Unresolved refs bind to production relations for unchanged upstream; CI schema builds subgraph only.
 
-```python
-# Airflow / dbt task pattern for devops-dbt-cicd-testing
-@task(retries=3, retry_delay=timedelta(minutes=5))
-def run_dbt_cicd_testing():
-    validate_schema("dbt-cicd-testing")
-    execute_transform("dbt-cicd-testing")
+A production team running dbt cicd testing discovered that defer in ci failures show up only when
+upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the regression
+until Black Friday.
+
+Runbook entry for defer in ci: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
+
+For dbt cicd testing, instrument defer in ci with low-cardinality metrics tied to user-visible
+outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging on
+vanity gauges that never correlated with past incidents.
+
+Game day scenario for defer in ci: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
+
+Ownership for defer in ci belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
+
+Change management for dbt cicd testing: require peer review from someone outside the authoring team
+before production promotion—fresh eyes catch assumptions embedded in defer in ci configs that
+authors no longer notice.
+
+Capacity planning note: estimate peak QPS or job concurrency for defer in ci, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
+
+## Manifest publishing
+
+Upload target/manifest.json after every prod run to manifest-latest; pin dbt version to producer.
+
+A production team running dbt cicd testing discovered that manifest publishing failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
+
+Runbook entry for manifest publishing: confirm blast radius (single namespace vs fleet-wide),
+identify last config change, roll back via documented single step, then capture metrics screenshots
+for postmortem—not ad-hoc dashboard hunting.
+
+For dbt cicd testing, instrument manifest publishing with low-cardinality metrics tied to user-
+visible outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging
+on vanity gauges that never correlated with past incidents.
+
+Game day scenario for manifest publishing: inject partial outage in staging quarterly, verify on-
+call can execute rollback in under fifteen minutes using only the linked runbook, update runbook
+with what actually broke.
+
+Ownership for manifest publishing belongs in the service catalog with named rotation, last drill
+date, and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
+
+Change management for dbt cicd testing: require peer review from someone outside the authoring team
+before production promotion—fresh eyes catch assumptions embedded in manifest publishing configs
+that authors no longer notice.
+
+Capacity planning note: estimate peak QPS or job concurrency for manifest publishing, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
+
+## Merge queue
+
+Refresh manifest from main after merge queue completes to avoid stale state comparisons on batched PRs.
+
+A production team running dbt cicd testing discovered that merge queue failures show up only when
+upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the regression
+until Black Friday.
+
+Runbook entry for merge queue: confirm blast radius (single namespace vs fleet-wide), identify last
+config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
+
+For dbt cicd testing, instrument merge queue with low-cardinality metrics tied to user-visible
+outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging on
+vanity gauges that never correlated with past incidents.
+
+Game day scenario for merge queue: inject partial outage in staging quarterly, verify on-call can
+execute rollback in under fifteen minutes using only the linked runbook, update runbook with what
+actually broke.
+
+Ownership for merge queue belongs in the service catalog with named rotation, last drill date, and
+known sharp edges—new engineers should deploy a safe canary within one week using that doc alone.
+
+Change management for dbt cicd testing: require peer review from someone outside the authoring team
+before production promotion—fresh eyes catch assumptions embedded in merge queue configs that
+authors no longer notice.
+
+Capacity planning note: estimate peak QPS or job concurrency for merge queue, multiply by headroom
+factor one-point-five to two, compare against cloud quotas and license limits before launch week—not
+during the first outage.
+
+## Slim CI metrics
+
+Track PR duration, selected model count, defer failures—alert when selection hits root facts.
+
+A production team running dbt cicd testing discovered that slim ci metrics failures show up only
+when upstream dependencies shift traffic mix—staging load tests with uniform QPS missed the
+regression until Black Friday.
+
+Runbook entry for slim ci metrics: confirm blast radius (single namespace vs fleet-wide), identify
+last config change, roll back via documented single step, then capture metrics screenshots for
+postmortem—not ad-hoc dashboard hunting.
+
+For dbt cicd testing, instrument slim ci metrics with low-cardinality metrics tied to user-visible
+outcomes: error rate, tail latency, freshness, or cost per successful operation—avoid paging on
+vanity gauges that never correlated with past incidents.
+
+Game day scenario for slim ci metrics: inject partial outage in staging quarterly, verify on-call
+can execute rollback in under fifteen minutes using only the linked runbook, update runbook with
+what actually broke.
+
+Ownership for slim ci metrics belongs in the service catalog with named rotation, last drill date,
+and known sharp edges—new engineers should deploy a safe canary within one week using that doc
+alone.
+
+Change management for dbt cicd testing: require peer review from someone outside the authoring team
+before production promotion—fresh eyes catch assumptions embedded in slim ci metrics configs that
+authors no longer notice.
+
+Capacity planning note: estimate peak QPS or job concurrency for slim ci metrics, multiply by
+headroom factor one-point-five to two, compare against cloud quotas and license limits before launch
+week—not during the first outage.
+
+## Slim CI pipeline sketch
+
+```bash
+aws s3 cp s3://dbt-artifacts/prod/manifest-latest.json prod-state/manifest.json
+dbt run --select state:modified+ --defer --state ./prod-state --target ci
+dbt test --select state:modified+ --state ./prod-state
 ```
 
-## Implementation walkthrough
-
-Start with the smallest production-safe slice of **dbt CI/CD: Slim CI and State Comparison**. Ship observability first: structured logs, metrics with low-cardinality labels, and traces where requests cross team boundaries. Without telemetry, you cannot prove the change helped or hurt after rollout.
-
-
-Automate repetitive steps—CLI scripts, GitOps repos, or pipeline jobs—so on-call engineers do not hand-edit production during incidents. Keep runbooks next to dashboards with the three golden signals: latency, errors, and saturation for dbt slim CI.
-
-## Operational concerns in production
-
-Day-two operations for spark/dbt work is mostly guardrails: capacity headroom, alert routing, and ownership rotation. Define SLOs tied to user-visible outcomes—not vanity metrics like pod count alone. Page on symptom-based alerts (error budget burn, queue age, failed reconciliation) and ticket on causes.
-
-
-Run game days or fault injection in staging quarterly for dbt cicd testing. Inject latency, credential expiry, and partial outages. Update this runbook with what broke—not generic advice copied from vendor docs.
-
-## Security and compliance angles
-
-Even when dbt CI/CD is not labeled security software, it participates in your trust boundary. Apply least privilege to service accounts and CI roles. Rotate secrets on a schedule with overlap windows. Validate inputs at the perimeter—especially when dbt slim CI accepts configuration from multiple teams.
-
-
-For regulated workloads, maintain an immutable audit trail: who changed dbt slim CI settings, when, and from which pipeline or break-glass session. Prefer short-lived credentials and OIDC federation over long-lived keys in environment variables.
-
-## Integration with platform standards
-
-Align dbt slim CI with org-wide pod security, network policy, and secret management baselines. If External Secrets Operator syncs credentials, verify rotation does not require chart upgrades. If service mesh mTLS is mandatory, confirm sidecar injection labels in rendered manifests before merge.
-
-
-Capacity planning should precede rollout: estimate peak QPS, bytes per second, or concurrent jobs; multiply by headroom (typically 1.5–2×); compare against quotas and cloud limits. File increase requests before launch week, not during an incident.
-
-
-## What to measure after rollout
-
-Track error rates, tail latency, and resource utilization for two weeks after changes land—most regressions appear under real traffic mixes, not in staging smoke tests. Keep a rollback path documented: feature flags, Helm revision, or Git revert with known good digest. Review on-call pages tied to the topic quarterly; delete alerts that never fire and add thresholds that would have caught your last incident.
-
-Run a short blameless postmortem if production surprised you, even for minor issues. The goal is updating this runbook section with one concrete lesson per quarter so the next engineer inherits context, not just configuration snippets.
-
-## Documentation your team should maintain
-
-Maintain a one-page runbook link from your main service README: prerequisites, owner rotation, last drill date, and known sharp edges. Link to vendor docs in the Resources section below but capture org-specific decisions (CIDR ranges, cluster names, approval gates) in internal docs that stay current. New hires should deploy a safe canary within a week using only that runbook—if they cannot, the doc is incomplete.
-
-## Pre-production checklist
-
-Before promoting to production, walk through this list with someone who was not the primary author—fresh eyes catch assumptions.
-
-- **Staging parity**: The staging environment exercises the same code paths as production, including failure modes you expect to handle (timeouts, retries, partial outages).
-- **Observability**: Dashboards and alerts exist for the metrics and log patterns discussed above; on-call knows where to look first.
-- **Rollback**: You can revert to the previous known-good state in one documented step without improvising.
-- **Access control**: Only the principals that need access have it; audit logs are enabled where the topic touches secrets or infrastructure APIs.
-- **Load test**: You have evidence—not intuition—about behavior at expected peak plus headroom.
-
-If any item is "we will do that later," treat it as a release blocker for tier-1 services.
-
-## Common questions from reviewers
-
-Reviewers and auditors often ask whether this approach scales with team growth and whether it fails safely. Answer explicitly in your design doc: what happens when dependencies are down, when credentials expire, and when traffic doubles overnight. Prefer defaults that deny or degrade gracefully over defaults that fail open. Document known limits (throughput ceilings, supported versions, regions) in the same place operators look during incidents—avoid scattering critical constraints across Slack threads.
-
-## Version and compatibility notes
-
-Pin library and control-plane versions in production manifests; track upstream release notes quarterly. Run upgrade drills in non-production before bumping minor versions that touch serialization, auth, or CRD schemas. Keep a compatibility matrix in your internal wiki listing supported Kubernetes, broker, and SDK versions validated together.
-
-
-## Resources
-
-- https://kubernetes.io/docs/home/
-- https://opentelemetry.io/docs/
-- https://developer.hashicorp.com/terraform/docs
+Pin dbt version to manifest producer. Refresh manifest-latest after each merge queue completion on main. Alert when slim selection count spikes—large refactors touching root models need human review.

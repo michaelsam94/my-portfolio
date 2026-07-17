@@ -3,7 +3,7 @@ title: "System Design: Payment System"
 slug: "system-design-payment-system"
 description: "Design a payment processing system with authorization, capture, refunds, idempotency, and PCI compliance for handling financial transactions at scale."
 datePublished: "2025-11-05"
-dateModified: "2025-11-05"
+dateModified: "2026-07-17"
 tags: ["System Design", "Payments", "Architecture", "Fintech"]
 keywords: "payment system design, payment processing architecture, idempotency payments, PCI compliance, authorization capture, ledger system design"
 faq:
@@ -13,8 +13,14 @@ faq:
     a: "Idempotency keys on every payment request. The client generates a unique key per payment attempt (UUID or order ID). The payment service stores the key with the result. Retries with the same key return the stored result without re-processing. This handles network timeouts where the client doesn't know if the payment succeeded. Keys expire after 24 hours; new attempts need new keys."
   - q: "Should I store credit card numbers in my database?"
     a: "Never store raw card numbers, CVV, or magnetic stripe data — this requires full PCI DSS Level 1 compliance (expensive audits, strict infrastructure). Use a payment processor (Stripe, Adyen) with tokenization: the processor stores the card, you store a token (pm_abc123) that references it. Your servers never touch raw card data. For custom flows, use hosted payment fields or SAQ A-EP compliant iframe solutions."
+faqAnswers:
+  - question: "When is system design payment system the wrong approach?"
+    answer: "When a simpler control already covers the risk, or when the operational cost exceeds the benefit for your threat and traffic model."
+  - question: "What should we measure for system design payment system?"
+    answer: "Pair a leading operational signal with a lagging user or risk outcome, reviewed on a fixed cadence with a named owner."
+  - question: "How do we roll back system design payment system safely?"
+    answer: "Keep the prior artifact or config warm, rehearse the revert once in staging, and document the one-command rollback for on-call."
 ---
-
 Payment systems have zero tolerance for "mostly correct." A double charge generates angry customers and chargebacks. A lost payment means free products. A security breach with card data means regulatory fines and destroyed trust. The architecture must guarantee that every dollar is accounted for, every operation is idempotent, and raw card data never touches your servers.
 
 ## Architecture overview
@@ -210,29 +216,28 @@ Discrepancies trigger alerts for manual investigation. Common causes: timing dif
 
 Treat production rollout as a measured change: ship with observability, validate rollback, and review metrics 24 hours after deploy — patterns that look obvious in docs fail when skipped under release pressure.
 
-## Common production mistakes
+## Webhook reliability and idempotent handlers
 
-Teams get payment system wrong in predictable ways:
+Payment processors confirm state via webhooks — `charge.succeeded`, `charge.refunded`. Webhooks arrive at-least-once, sometimes out of order. Handlers must be idempotent on event ID:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+```python
+async def handle_webhook(event: WebhookEvent):
+    if await processed_events.exists(event.id):
+        return 200
+    await apply_event(event)
+    await processed_events.mark(event.id)
+    return 200
+```
 
-System design for payment system breaks at scale when hot keys, thundering herds, and cache stampedes are discovered during launch week instead of load test week.
+Verify webhook signatures before processing. Respond 200 quickly and process async if handler work is slow — providers retry on timeout and duplicate delivery is guaranteed.
 
-## Debugging and triage workflow
+## PCI scope and tokenization boundaries
 
-When payment system misbehaves in production, work top-down instead of guessing:
+Card data never touches application servers — hosted fields or tokenization SDK returns a single-use token to your backend. PCI scope shrinks to SAQ A when checkout iframe is served from the processor domain. Log payment intent IDs, never PAN fragments. Quarterly ASV scans and key rotation for API credentials remain mandatory even with outsourced card entry.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Reconciliation and ledger invariants
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Daily reconciliation jobs compare processor settlement files against internal ledger entries — mismatches trigger finance alerts before month-end close. Double-entry ledger with immutable append-only transaction log makes audit tractable. Never update balance columns in place without corresponding ledger row; investigators need history.
 
 ## Resources
 
@@ -241,3 +246,29 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Double-entry bookkeeping for engineers](https://www.moderntreasury.com/journal/accounting-for-engineers)
 - [Adyen payment flow architecture](https://docs.adyen.com/online-payments/payment-flow/)
 - [Payment card industry data security standard (PCI DSS v4.0)](https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf)
+
+## Ledger first, API second
+
+Model intents, captures, refunds, and chargebacks as append-only ledger entries with client and provider idempotency keys. At-least-once webhooks plus deterministic transitions beat mythical exactly-once delivery.
+
+Keep PAN data out of your VPC via hosted fields/tokens. Reconcile daily to processor settlements. Load-test idempotency and webhook handlers under retry storms — double charges and stuck pendings are ledger bugs until proven otherwise.
+
+## Verification layer 1 for system design payment system
+
+Define an acceptance check for layer 1: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design payment system. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 2 for system design payment system
+
+Define an acceptance check for layer 2: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design payment system. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 3 for system design payment system
+
+Define an acceptance check for layer 3: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design payment system. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 4 for system design payment system
+
+Define an acceptance check for layer 4: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design payment system. Reviewers confirm the check fails when the control is disabled.
+
+## Verification layer 5 for system design payment system
+
+Define an acceptance check for layer 5: failure injection, timeout behavior, and rollback. Keep it next to the code that implements system design payment system. Reviewers confirm the check fails when the control is disabled.

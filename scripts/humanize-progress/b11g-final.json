@@ -1,0 +1,463 @@
+{
+  "report": {
+    "total": 45,
+    "ok": 0,
+    "fail": [
+      {
+        "slug": "typescript-module-augmentation-globals",
+        "status": "fail",
+        "words": 665
+      },
+      {
+        "slug": "typescript-path-mapping-monorepo",
+        "status": "fail",
+        "words": 673
+      },
+      {
+        "slug": "typescript-type-guards-narrowing",
+        "status": "fail",
+        "words": 738
+      },
+      {
+        "slug": "web-performance-attribution-reporting-api",
+        "status": "fail",
+        "words": 698
+      },
+      {
+        "slug": "web-performance-brotli-gzip-compression",
+        "status": "fail",
+        "words": 744
+      },
+      {
+        "slug": "web-performance-captcha-alternatives-ux",
+        "status": "fail",
+        "words": 775
+      },
+      {
+        "slug": "web-performance-composite-layers-gpu",
+        "status": "fail",
+        "words": 699
+      },
+      {
+        "slug": "web-performance-http2-multiplexing-assets",
+        "status": "fail",
+        "words": 779
+      },
+      {
+        "slug": "web-performance-intersection-observer-debounce",
+        "status": "fail",
+        "words": 723
+      },
+      {
+        "slug": "web-performance-layout-shift-debugging",
+        "status": "fail",
+        "words": 661
+      },
+      {
+        "slug": "web-performance-long-tasks-monitoring",
+        "status": "fail",
+        "words": 729
+      },
+      {
+        "slug": "web-performance-memory-leak-detection",
+        "status": "fail",
+        "words": 744
+      },
+      {
+        "slug": "web-performance-module-preload-import",
+        "status": "fail",
+        "words": 718
+      },
+      {
+        "slug": "web-performance-navigation-timing-api",
+        "status": "fail",
+        "words": 743
+      },
+      {
+        "slug": "web-performance-prefetch-on-hover-intent",
+        "status": "fail",
+        "words": 784
+      },
+      {
+        "slug": "web-performance-priority-hints-fetch",
+        "status": "fail",
+        "words": 719
+      },
+      {
+        "slug": "web-performance-progressive-enhancement-modern",
+        "status": "fail",
+        "words": 738
+      },
+      {
+        "slug": "web-performance-rate-limit-user-feedback",
+        "status": "fail",
+        "words": 776
+      },
+      {
+        "slug": "web-performance-scheduler-yield-api",
+        "status": "fail",
+        "words": 680
+      },
+      {
+        "slug": "web-performance-speculative-prerendering",
+        "status": "fail",
+        "words": 736
+      },
+      {
+        "slug": "xss-dom-based-prevention",
+        "status": "fail",
+        "words": 724
+      },
+      {
+        "slug": "xss-sanitize-html-user-content",
+        "status": "fail",
+        "words": 686
+      },
+      {
+        "slug": "seo-open-graph-twitter-cards",
+        "status": "fail",
+        "words": 711
+      },
+      {
+        "slug": "typescript-const-type-parameters",
+        "status": "fail",
+        "words": 751
+      },
+      {
+        "slug": "typescript-result-type-error-handling",
+        "status": "fail",
+        "words": 702
+      },
+      {
+        "slug": "typescript-zod-runtime-validation",
+        "status": "fail",
+        "words": 716
+      },
+      {
+        "slug": "web-performance-404-page-product-sites",
+        "status": "fail",
+        "words": 760
+      },
+      {
+        "slug": "web-performance-breadcrumb-navigation-seo",
+        "status": "fail",
+        "words": 635
+      },
+      {
+        "slug": "web-performance-debounce-throttle-input",
+        "status": "fail",
+        "words": 720
+      },
+      {
+        "slug": "web-performance-document-visibility-api",
+        "status": "fail",
+        "words": 764
+      },
+      {
+        "slug": "web-performance-early-hints-103",
+        "status": "fail",
+        "words": 686
+      },
+      {
+        "slug": "web-performance-tree-shaking-side-effects",
+        "status": "fail",
+        "words": 740
+      },
+      {
+        "slug": "web-performance-web-workers-heavy-compute",
+        "status": "fail",
+        "words": 790
+      },
+      {
+        "slug": "wcag-22-new-criteria-implementation",
+        "status": "fail",
+        "words": 649
+      },
+      {
+        "slug": "web-performance-http3-quic-benefits",
+        "status": "fail",
+        "words": 764
+      },
+      {
+        "slug": "web-vitals-rum-dashboard-design",
+        "status": "fail",
+        "words": 753
+      },
+      {
+        "slug": "typescript-generics-constraints",
+        "status": "fail",
+        "words": 645
+      },
+      {
+        "slug": "zero-trust-mobile-apps",
+        "status": "fail",
+        "words": 778
+      },
+      {
+        "slug": "supply-chain-provenance-slsa",
+        "status": "fail",
+        "words": 746
+      },
+      {
+        "slug": "riverpod-vs-bloc-2026",
+        "status": "fail",
+        "words": 699
+      },
+      {
+        "slug": "system-design-distributed-cache",
+        "status": "fail",
+        "words": 750
+      },
+      {
+        "slug": "ssrf-prevention-defense",
+        "status": "fail",
+        "words": 723
+      },
+      {
+        "slug": "system-design-payment-system",
+        "status": "fail",
+        "words": 659
+      },
+      {
+        "slug": "terraform-state-management-backends",
+        "status": "fail",
+        "words": 704
+      },
+      {
+        "slug": "system-design-metrics-monitoring",
+        "status": "fail",
+        "words": 756
+      }
+    ],
+    "min": 635,
+    "max": 790,
+    "all_ge_1200": false
+  },
+  "results": [
+    {
+      "slug": "typescript-module-augmentation-globals",
+      "status": "fail",
+      "words": 665
+    },
+    {
+      "slug": "typescript-path-mapping-monorepo",
+      "status": "fail",
+      "words": 673
+    },
+    {
+      "slug": "typescript-type-guards-narrowing",
+      "status": "fail",
+      "words": 738
+    },
+    {
+      "slug": "web-performance-attribution-reporting-api",
+      "status": "fail",
+      "words": 698
+    },
+    {
+      "slug": "web-performance-brotli-gzip-compression",
+      "status": "fail",
+      "words": 744
+    },
+    {
+      "slug": "web-performance-captcha-alternatives-ux",
+      "status": "fail",
+      "words": 775
+    },
+    {
+      "slug": "web-performance-composite-layers-gpu",
+      "status": "fail",
+      "words": 699
+    },
+    {
+      "slug": "web-performance-http2-multiplexing-assets",
+      "status": "fail",
+      "words": 779
+    },
+    {
+      "slug": "web-performance-intersection-observer-debounce",
+      "status": "fail",
+      "words": 723
+    },
+    {
+      "slug": "web-performance-layout-shift-debugging",
+      "status": "fail",
+      "words": 661
+    },
+    {
+      "slug": "web-performance-long-tasks-monitoring",
+      "status": "fail",
+      "words": 729
+    },
+    {
+      "slug": "web-performance-memory-leak-detection",
+      "status": "fail",
+      "words": 744
+    },
+    {
+      "slug": "web-performance-module-preload-import",
+      "status": "fail",
+      "words": 718
+    },
+    {
+      "slug": "web-performance-navigation-timing-api",
+      "status": "fail",
+      "words": 743
+    },
+    {
+      "slug": "web-performance-prefetch-on-hover-intent",
+      "status": "fail",
+      "words": 784
+    },
+    {
+      "slug": "web-performance-priority-hints-fetch",
+      "status": "fail",
+      "words": 719
+    },
+    {
+      "slug": "web-performance-progressive-enhancement-modern",
+      "status": "fail",
+      "words": 738
+    },
+    {
+      "slug": "web-performance-rate-limit-user-feedback",
+      "status": "fail",
+      "words": 776
+    },
+    {
+      "slug": "web-performance-scheduler-yield-api",
+      "status": "fail",
+      "words": 680
+    },
+    {
+      "slug": "web-performance-speculative-prerendering",
+      "status": "fail",
+      "words": 736
+    },
+    {
+      "slug": "xss-dom-based-prevention",
+      "status": "fail",
+      "words": 724
+    },
+    {
+      "slug": "xss-sanitize-html-user-content",
+      "status": "fail",
+      "words": 686
+    },
+    {
+      "slug": "seo-open-graph-twitter-cards",
+      "status": "fail",
+      "words": 711
+    },
+    {
+      "slug": "typescript-const-type-parameters",
+      "status": "fail",
+      "words": 751
+    },
+    {
+      "slug": "typescript-result-type-error-handling",
+      "status": "fail",
+      "words": 702
+    },
+    {
+      "slug": "typescript-zod-runtime-validation",
+      "status": "fail",
+      "words": 716
+    },
+    {
+      "slug": "web-performance-404-page-product-sites",
+      "status": "fail",
+      "words": 760
+    },
+    {
+      "slug": "web-performance-breadcrumb-navigation-seo",
+      "status": "fail",
+      "words": 635
+    },
+    {
+      "slug": "web-performance-debounce-throttle-input",
+      "status": "fail",
+      "words": 720
+    },
+    {
+      "slug": "web-performance-document-visibility-api",
+      "status": "fail",
+      "words": 764
+    },
+    {
+      "slug": "web-performance-early-hints-103",
+      "status": "fail",
+      "words": 686
+    },
+    {
+      "slug": "web-performance-tree-shaking-side-effects",
+      "status": "fail",
+      "words": 740
+    },
+    {
+      "slug": "web-performance-web-workers-heavy-compute",
+      "status": "fail",
+      "words": 790
+    },
+    {
+      "slug": "wcag-22-new-criteria-implementation",
+      "status": "fail",
+      "words": 649
+    },
+    {
+      "slug": "web-performance-http3-quic-benefits",
+      "status": "fail",
+      "words": 764
+    },
+    {
+      "slug": "web-vitals-rum-dashboard-design",
+      "status": "fail",
+      "words": 753
+    },
+    {
+      "slug": "typescript-generics-constraints",
+      "status": "fail",
+      "words": 645
+    },
+    {
+      "slug": "zero-trust-mobile-apps",
+      "status": "fail",
+      "words": 778
+    },
+    {
+      "slug": "supply-chain-provenance-slsa",
+      "status": "fail",
+      "words": 746
+    },
+    {
+      "slug": "riverpod-vs-bloc-2026",
+      "status": "fail",
+      "words": 699
+    },
+    {
+      "slug": "system-design-distributed-cache",
+      "status": "fail",
+      "words": 750
+    },
+    {
+      "slug": "ssrf-prevention-defense",
+      "status": "fail",
+      "words": 723
+    },
+    {
+      "slug": "system-design-payment-system",
+      "status": "fail",
+      "words": 659
+    },
+    {
+      "slug": "terraform-state-management-backends",
+      "status": "fail",
+      "words": 704
+    },
+    {
+      "slug": "system-design-metrics-monitoring",
+      "status": "fail",
+      "words": 756
+    }
+  ]
+}

@@ -158,6 +158,24 @@ When a b testing firebase misbehaves in production, work top-down instead of gue
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
 
+## Experiment interference
+
+Overlapping Remote Config experiments on same key collide — namespace keys per experiment (`checkout_v2_enabled`). Holdout groups need sticky assignment via Firebase Analytics user properties, not random per fetch.
+
+## Instant rollback
+
+Remote Config `minimumFetchIntervalInSeconds` production should be 3600+ but keep emergency zero interval channel for incident kill switch operator role only.
+
+## A B Testing Firebase Supplement 0 on Samsung and Pixel divergence
+
+Exercise a b testing firebase supplement 0 on Galaxy A-series and Pixel a-series — emulators hide OEM battery and storage quirks. Capture Macrobenchmark or Firebase trace for the critical path touching a; regressions above 8% block release for `android-a-b-testing-firebase-supplement-0`.
+
+Document permission and background behavior in internal runbook: what breaks under Doze, what requires foreground service, and what Play policy declarations apply. Support tickets referencing "A B Testing Firebase Supplement 0" should map to a single runbook section with known workarounds.
+
+## Firebase regression gates for Play Vitals
+
+Before promoting `android-a-b-testing-firebase-supplement-0` changes past 20% rollout, compare ANR rate, slow cold start, and excessive wakeups against seven-day baseline. Fail rollback review if 0 path shows >5% increase in `slow frames` without documented trade-off approval.
+
 ## Resources
 
 - [Firebase A/B Testing documentation](https://firebase.google.com/docs/ab-testing)

@@ -3,8 +3,8 @@ title: "Mutual TLS Authentication"
 slug: "mtls-mutual-authentication"
 description: "Implement mutual TLS for service-to-service authentication: certificate issuance, rotation, trust stores, and how mTLS differs from one-way TLS and API keys."
 datePublished: "2025-08-01"
-dateModified: "2025-08-01"
-tags: ["Security", "Backend", "Infrastructure", "TLS"]
+dateModified: "2026-07-17"
+tags:
 keywords: "mutual TLS, mTLS authentication, client certificate authentication, service mesh mTLS, certificate rotation, SPIFFE"
 faq:
   - q: "When should I use mTLS instead of API keys or JWT?"
@@ -14,7 +14,6 @@ faq:
   - q: "Does mTLS replace OAuth or JWT for user authentication?"
     a: "No. mTLS authenticates machines and services, not end users. A typical pattern is mTLS between your API gateway and backend services, with OAuth or session cookies handling user identity at the edge."
 ---
-
 Your API gateway trusts every internal service because they share a VPC and a static API key in an environment variable. Then someone copies that key into a staging pod, and suddenly production traffic routes through a misconfigured deployment. Mutual TLS fixes a specific gap: it proves identity at the connection layer before any HTTP header is parsed. Both the client and server present X.509 certificates signed by a trusted CA. If either side fails verification, the TCP connection never becomes an application request.
 
 ## How mTLS differs from one-way TLS

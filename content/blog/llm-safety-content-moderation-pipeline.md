@@ -3,8 +3,8 @@ title: "Building a Content Moderation Pipeline"
 slug: "llm-safety-content-moderation-pipeline"
 description: "Build a content moderation pipeline for LLM apps: input filtering, provider moderation APIs, custom classifiers, output scanning, and layered defense that catches policy violations before users see them."
 datePublished: "2025-01-08"
-dateModified: "2025-01-08"
-tags: ["AI", "LLM", "Security", "Architecture"]
+dateModified: "2026-07-17"
+tags:
 keywords: "LLM content moderation, AI safety pipeline, OpenAI moderation API, input output filtering, content policy LLM"
 faq:
   - q: "Should I moderate LLM inputs, outputs, or both?"
@@ -14,7 +14,6 @@ faq:
   - q: "What should happen when moderation flags content?"
     a: "Tier by severity. Block and log critical violations (CSAM, violence, hate). Refuse with generic message for high-severity. Rewrite or redact for medium (PII in output). Log-only for low-severity borderline cases with human review sampling. Never silently pass flagged critical content."
 ---
-
 A user pasted content into your AI writing assistant that shouldn't have reached the model. The model complied. The output violated your terms of service and appeared on screen before any human saw it. Content moderation for LLM apps isn't one API call — it's a pipeline that checks input before inference, output before display, and logs everything for review and compliance.
 
 ## Pipeline architecture
@@ -249,3 +248,17 @@ Publish transparency reports: total requests, blocked rate, top block categories
 - [Perspective API (Jigsaw/Google)](https://perspectiveapi.com/)
 - [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [Meta Llama Guard safety model](https://huggingface.co/meta-llama/LlamaGuard-7b)
+
+## Production notes for LLM stacks
+
+When `llm-safety-content-moderation-pipeline` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `building a content moderation pipeline` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.

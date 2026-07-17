@@ -1,111 +1,222 @@
 ---
 title: "AI Agents: Same Site Cookie Policy"
 slug: "agent-same-site-cookie-policy"
-description: "Same Site Cookie Policy: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "SameSite=Lax broke our OAuth return flow; SameSite=None broke CSRF assumptions. A field guide to cookie policy for agent platforms with embedded widgets and cross-origin API calls."
 datePublished: "2025-10-01"
 dateModified: "2025-10-01"
 tags: ["AI", "Agent", "Same"]
-keywords: "agent, same, site, cookie, policy, ai, production, engineering, architecture"
+keywords: "SameSite cookie, Secure attribute, CSRF protection, OAuth cookie flow, cross-origin agent embedding, session cookie policy"
 faq:
-  - q: "What is Same Site Cookie Policy?"
-    a: "Same Site Cookie Policy covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Same Site Cookie Policy?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Same Site Cookie Policy?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Same Site Cookie Policy fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Same Site Cookie Policy should be observable in production and safe to change in small diffs."
+  - q: "Why did Chrome stop sending my session cookie after I set SameSite=Lax?"
+    a: "SameSite=Lax sends cookies on top-level navigations (clicking a link) but blocks them on cross-site subresource requests and most POST navigations. If your agent UI loads in an iframe on a customer domain, or your API receives credentialed fetches from a different origin, Lax cookies will not attach. You need SameSite=None; Secure for cross-site credentialed requests — and you must accept the CSRF implications that come with it."
+  - q: "When is SameSite=Strict the right default for agent session cookies?"
+    a: "Strict when your agent console and API share one origin and users always navigate directly to your domain — internal admin tools, standalone SaaS dashboards. Strict blocks all cross-site cookie sends, which eliminates an entire class of CSRF but breaks OAuth/OIDC return flows unless you use a same-site redirect hop or store tokens differently for the callback leg."
+  - q: "How do I debug SameSite issues without guessing?"
+    a: "Open DevTools → Application → Cookies and check the SameSite column. In Network tab, inspect request headers — if Cookie is missing on a credentialed fetch, compare the request origin to the cookie's registrable domain. Chrome's Issues panel flags SameSite warnings. Reproduce with curl using -H 'Cookie: ...' to isolate server-side vs browser-side problems."
+  - q: "Should agent refresh tokens use the same SameSite policy as access session cookies?"
+    a: "Often no. Short-lived session cookies can be Strict or Lax on your primary origin. Refresh tokens, if stored in cookies at all, benefit from Strict plus Path=/auth/refresh and a separate cookie name — limiting exposure if XSS ever bypasses HttpOnly. Many teams move refresh tokens to HTTP-only Secure cookies on an auth subdomain while keeping access tokens in memory on the client."
 ---
-Same Site Cookie Policy is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The support ticket read: "Agent works in staging, blank screen in production." Staging lived at `staging.app.example.com`. Production embedded the agent widget inside `customer-crm.com` via iframe. The session cookie had `SameSite=Lax`. The browser correctly refused to send it on the cross-site iframe load. Auth returned 401. The widget rendered an empty state with no error message.
 
-When same site cookie policy is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+SameSite is not a security checkbox — it is a scoping rule that tells the browser which requests may carry which cookies. Get it wrong and authentication silently fails, CSRF defenses crumble, or OAuth callbacks loop forever. Agent platforms compound the problem because they mix embedded widgets, server-sent streaming, third-party tool callbacks, and long-lived sessions in one product surface.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What SameSite actually controls
 
-Solid AI engineering turns same site cookie policy from a recurring argument into a documented pattern with tests and an owner.
+Before 2016, browsers sent cookies on nearly every request to a matching domain — including cross-site `<img>` tags and `fetch()` calls from attacker-controlled pages. CSRF attacks exploited this liberally.
 
-## Design principles that survive production
+The `SameSite` attribute restricts when a cookie attaches to outgoing requests based on the **site** (roughly the registrable domain) of the requesting context versus the cookie's site.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent same site cookie policy bugs hide.
+Three values matter in production:
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for same site cookie policy, you do not yet understand the behavior you shipped.
+| Value | Cross-site subresource (iframe, fetch, XHR) | Top-level GET navigation from external site | Top-level POST from external site |
+|---|---|---|---|
+| **Strict** | Blocked | Blocked | Blocked |
+| **Lax** (browser default since Chrome 80) | Blocked | Sent | Blocked |
+| **None** | Sent (requires `Secure`) | Sent | Sent |
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+`Secure` is mandatory when `SameSite=None`. Non-secure cookies with `None` are rejected by modern browsers.
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent same site cookie policy flows so duplicates are harmless or detectable.
+`HttpOnly` is orthogonal — it prevents JavaScript from reading the cookie but does not change SameSite send behavior. You need both on session identifiers.
 
-## Implementation patterns
+## The agent platform topology problem
 
-A practical baseline for same site cookie policy in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent same site cookie policy changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Same Site Cookie Policy: typed boundary + structured errors
-export async function handleSameSiteCookiePolicy(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-same-site-cookie-policy");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
+Agent products rarely live on a single origin. Typical topology:
 
 ```
+app.example.com          — Agent console (first-party)
+api.example.com          — Agent API + streaming
+embed.example.com        — Widget loader script
+customer-site.com        — Partner page with embedded iframe
+auth.example.com         — OIDC provider / token endpoint
+```
 
+Each arrow represents a context where cookies might need to flow — or must not.
 
-## Operational concerns
+**First-party console**: `SameSite=Lax` or `Strict` on session cookies works. Users navigate directly to your app. CSRF on state-changing POSTs still needs anti-CSRF tokens or double-submit cookies because Lax allows cookies on top-level GET navigations from external sites.
 
-Alert on user-visible symptoms for same site cookie policy — error rate, latency SLO burn, queue depth — not on every internal counter. Noise desensitizes on-call engineers.
+**Embedded iframe on partner domain**: Session cookies scoped to `example.com` will not be sent inside an iframe on `customer-site.com` unless they are `SameSite=None; Secure`. That opens credentialed cross-site requests — and CSRF on any endpoint that accepts cookie auth without additional proof.
 
-Production agent same site cookie policy work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Credentialed API calls from a SPA on a different subdomain**: `app.example.com` calling `api.example.com` is same-site (both are `example.com`). Lax cookies attach. But `app.example.com` calling `api.otherproduct.com` is cross-site — they will not.
 
-Rollouts for same site cookie policy benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Draw your origin diagram before setting cookie attributes. The mistake in the opening incident was assuming staging topology matched production embedding.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+## Setting cookies correctly at each layer
 
-## Security and compliance angles
+### Express / Node
 
-Even when same site cookie policy is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+```typescript
+import session from "express-session";
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent same site cookie policy so security reviews do not rely on tribal knowledge.
+app.use(
+  session({
+    name: "__Host-agent.sid",
+    secret: process.env.SESSION_SECRET!,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax", // console-only deployment
+      maxAge: 8 * 60 * 60 * 1000,
+      path: "/",
+    },
+  })
+);
 
-## Testing strategy
+// Embedded widget auth — separate cookie with explicit cross-site policy
+function setEmbedSessionCookie(res: Response, token: string): void {
+  res.cookie("agent_embed", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none", // required for iframe on partner origins
+    maxAge: 60 * 60 * 1000,
+    path: "/embed",
+    domain: ".example.com", // shared across api + embed subdomains
+  });
+}
+```
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that same site cookie policy depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+The `__Host-` prefix on the console session enforces `Secure`, `Path=/`, and no `Domain` attribute — binding the cookie to exactly `app.example.com`, not sibling subdomains. Embed cookies intentionally use a broader domain and different SameSite policy because their threat model and delivery context differ.
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+### Next.js App Router — Server Actions and middleware
 
-## Migration and evolution
+```typescript
+// middleware.ts — set policy per route class
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent same site cookie policy functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  const isEmbedRoute = request.nextUrl.pathname.startsWith("/embed");
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where same site cookie policy spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+  if (isEmbedRoute) {
+    // Embed routes expect cross-origin iframe parents
+    response.headers.set(
+      "Set-Cookie",
+      serialize("agent_ctx", ctxToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/embed",
+        maxAge: 3600,
+      })
+    );
+  }
+  return response;
+}
+```
 
-## Related concepts
+Middleware runs at the edge — useful for setting cookies before SSR renders a page that will load inside a partner iframe.
 
-Same Site Cookie Policy intersects with broader ai topics — see companion notes on [agent-same patterns](https://blog.michaelsam94.com/agent-same/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+### Reverse proxy (nginx)
 
-## The takeaway
+```nginx
+# Strip dangerous client-supplied Set-Cookie overrides
+proxy_cookie_path / "/; Secure; HttpOnly; SameSite=Lax";
 
-Same Site Cookie Policy rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent same site cookie policy becomes a maintainable asset instead of incident fuel.
+# Embed location block — different policy
+location /embed/ {
+    proxy_pass http://agent_backend;
+    proxy_cookie_flags ~ secure samesite=none;
+}
+```
+
+Proxy-level cookie rewriting is a migration tool when legacy backends emit bare `Set-Cookie` without SameSite. Prefer fixing the application, but nginx flags buy time during rollouts.
+
+## OAuth, OIDC, and the Lax redirect exception
+
+OAuth authorization code flows depend on cookies surviving a round trip: your app redirects to the IdP, the IdP redirects back with a code, your callback endpoint exchanges it for tokens.
+
+With `SameSite=Strict`, the callback request from the IdP is cross-site — session cookies do not attach — and the callback handler cannot correlate state. Classic failure mode: "Invalid state parameter."
+
+Mitigations:
+
+1. **Same-site redirect hop**: IdP callback hits `auth.example.com/callback` (same site as cookie), which sets tokens and redirects to `app.example.com`.
+2. **Lax on session cookie**: Top-level GET navigations from the IdP carry Lax cookies. This is why Lax became the browser default.
+3. **Store OAuth state in sessionStorage** keyed by state parameter, not server session — trades CSRF surface for simpler cross-site behavior on the callback leg only.
+
+For agent platforms integrating third-party tool OAuth (Google Calendar, Slack, GitHub), each provider callback URL must match the SameSite policy you chose for the correlating cookie.
+
+## CSRF when you must use SameSite=None
+
+Cross-site credentialed requests require `SameSite=None`. They also require explicit CSRF defense because cookies will attach to attacker-initiated requests.
+
+Defense stack:
+
+```typescript
+// Double-submit: cookie + header must match
+export function csrfMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    const cookieToken = req.cookies["csrf"];
+    const headerToken = req.headers["x-csrf-token"];
+    if (!cookieToken || cookieToken !== headerToken) {
+      return res.status(403).json({ error: "csrf_validation_failed" });
+    }
+  }
+  next();
+}
+```
+
+Prefer `Authorization: Bearer` tokens in headers for API calls from embedded widgets instead of cookie auth — headers are not sent automatically on cross-site requests, eliminating classic CSRF. If you must use cookies cross-site, pair them with CSRF tokens and Origin/Referer validation on mutating endpoints.
+
+## Migration playbook: from broken defaults to explicit policy
+
+**Phase 1 — Inventory.** Export all `Set-Cookie` headers from production responses. Classify each cookie: session, analytics, CSRF, embed, legacy. Note current SameSite, Domain, Path, Secure, HttpOnly.
+
+**Phase 2 — Classify by delivery context.** Console-only cookies → Lax or Strict. Embed/API cross-origin cookies → None + Secure + CSRF. Analytics → consider removing; third-party analytics cookies are dying under privacy regulation anyway.
+
+**Phase 3 — Staged rollout.** Ship cookie changes behind a feature flag that sets new attributes for internal users first. Monitor auth error rates, OAuth callback failures, and embed load success by partner origin.
+
+**Phase 4 — Partner communication.** Embedded widget customers may need CSP frame-ancestors updates and documented allowed origins. Send them a checklist before you flip SameSite=None in production.
+
+## Debugging checklist for auth failures after a cookie change
+
+1. DevTools → Network → failing request → Request Headers → is `Cookie` present?
+2. DevTools → Application → Cookies → verify SameSite, Secure, Domain, Path, Expires.
+3. Compare request URL origin to cookie's site. Cross-site? Expect Lax/Strict cookies to be withheld.
+4. Is the request inside an iframe? Third-party cookie phaseout in Safari/Firefox may block regardless of SameSite — test in each target browser.
+5. Check for duplicate cookies with conflicting Domain scopes — browsers pick one unpredictably.
+6. curl the endpoint with explicit `-H "Cookie: name=value"` to isolate browser policy from server bugs.
+
+Log auth failures with `{ origin, cookiePresent: boolean, route, embed: boolean }` — not cookie values. Aggregate by partner origin to spot embed-specific regressions within minutes.
+
+## Policy defaults worth documenting in your runbook
+
+| Cookie | SameSite | Secure | HttpOnly | Path | Notes |
+|---|---|---|---|---|---|
+| Console session | Lax | yes | yes | / | __Host- prefix if single host |
+| Embed session | None | yes | yes | /embed | Requires CSRF on mutations |
+| CSRF token | Lax | yes | no | / | Readable by JS for header submit |
+| Refresh token | Strict | yes | yes | /auth/refresh | Narrow path limits blast radius |
+
+Document these in your security review template. When a new engineer adds a cookie for "just a quick experiment," they should find the table before copying Stack Overflow's `sameSite: 'lax'` into an embed route.
+
+SameSite policy is where browser security models meet product topology. Agent platforms that embed across customer origins pay the complexity tax upfront — or pay it in silent auth failures and weekend incidents later.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [MDN — SameSite cookies explained](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite) — Authoritative attribute semantics and browser behavior
+- [web.dev — SameSite cookies explained](https://web.dev/articles/samesite-cookies-explained) — Practical guide with Lax/Strict/None examples
+- [Chromium — SameSite cookie policy](https://www.chromium.org/administrators/policy-list-3/cookie-legacy-samesite-policies/) — Enterprise policy knobs and rollout timeline
+- [OWASP — Cross-Site Request Forgery Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) — CSRF defenses required when using SameSite=None
+- [RFC 6265bis — Cookies: HTTP State Management Mechanism](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis) — Current draft standard for cookie attributes

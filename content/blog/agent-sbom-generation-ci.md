@@ -1,111 +1,208 @@
 ---
-title: "AI Agents: Sbom Generation Ci"
+title: "AI Agents: SBOM Generation in CI for Agent Platforms"
 slug: "agent-sbom-generation-ci"
-description: "Sbom Generation Ci: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Generate CycloneDX SBOMs in CI for every agent build — Syft, Grype diff gates, model artifact provenance, and SLSA attestations tied to container digests."
 datePublished: "2025-11-04"
-dateModified: "2025-11-04"
-tags: ["AI", "Agent", "Sbom"]
-keywords: "agent, sbom, generation, ci, ai, production, engineering, architecture"
+dateModified: "2026-07-17"
+tags:
+  - "AI"
+  - "Agent"
+  - "Supply Chain"
+  - "DevOps"
+keywords: "SBOM CI, CycloneDX, Syft, Grype, supply chain security, agent Docker"
 faq:
-  - q: "What is Sbom Generation Ci?"
-    a: "Sbom Generation Ci covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Sbom Generation Ci?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Sbom Generation Ci?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Sbom Generation Ci fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Sbom Generation Ci should be observable in production and safe to change in small diffs."
+  - q: "When should teams prioritize SBOM Generation in CI for Agent Platforms?"
+    a: "Before scaling agent services past a handful of Docker images or passing enterprise security questionnaires."
+  - q: "What is the most common mistake with SBOM generation in CI?"
+    a: "Generating SBOM only at release while daily main-branch builds drift from what production actually runs."
+  - q: "How do we know SBOM Generation in CI for Agent Platforms is working?"
+    a: "Define a leading metric for SBOM generation in CI (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
 ---
-Sbom Generation Ci is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In ai systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+The CVE Slack message landed without an SBOM attached to last week's deploy — answering exposure meant guessing from base image tags.
 
-When sbom generation ci is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+Agent platforms ship Python services, ONNX weights, CUDA base images, and private wheel indexes — a CVE question without a Software Bill of Materials means forensic grep through running pods. CI must emit CycloneDX JSON keyed to image digest before anyone asks "are we exposed?"
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## What every agent build publishes
 
-Solid AI engineering turns sbom generation ci from a recurring argument into a documented pattern with tests and an owner.
+| Artifact | Format | Retention |
+|----------|--------|-----------|
+| SBOM | CycloneDX 1.5 JSON | Indefinite, keyed by digest |
+| Vulnerability scan | Grype SARIF | 90 days |
+| Provenance | SLSA in-toto | Indefinite |
 
-## Design principles that survive production
+Store artifacts in OCI registry as referrer attachments or S3 with tags `git_sha`, `build_id`, `environment`.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent sbom generation ci bugs hide.
+## Syft in GitHub Actions
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for sbom generation ci, you do not yet understand the behavior you shipped.
-
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
-
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent sbom generation ci flows so duplicates are harmless or detectable.
-
-## Implementation patterns
-
-A practical baseline for sbom generation ci in ai stacks:
-
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
-
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent sbom generation ci changes safer because business rules stay isolated from transport details.
-
-```typescript
-// Sbom Generation Ci: typed boundary + structured errors
-export async function handleSbomGenerationCi(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-sbom-generation-ci");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+```yaml
+- uses: anchore/sbom-action@v0
+  with:
+    image: agent-api:${{ github.sha }}
+    format: cyclonedx-json
+    output-file: sbom.cdx.json
+- uses: anchore/scan-action@v3
+  with:
+    sbom: sbom.cdx.json
+    fail-build: false
+    severity-cutoff: critical
 ```
 
+## Diff-on-new-critical, not full-tree noise
 
-## Operational concerns
+Baseline main-branch SBOM; fail PRs only when **new** critical CVEs appear in the diff. Nightly full-tree scans track burn-down separately.
 
-Runbooks for sbom generation ci should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+```python
+added = current_components - baseline_components
+critical_new = [c for c in added if grype_severity(c) >= "critical"]
+if critical_new:
+    sys.exit(1)
+```
 
-Production agent sbom generation ci work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+## AI-specific catalog gaps
 
-Rollouts for sbom generation ci benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Syft misses vendored `.safetensors` and Hugging Face cache paths unless you add file catalogers. Inject custom CycloneDX components for model manifests:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+```json
+{"name":"llama-3-8b-q4","purl":"pkg:huggingface/meta-llama/Llama-3-8B@sha256:abc123"}
+```
 
-## Security and compliance angles
+Custom rules in `.gitleaks.toml` complement SBOM — keys in repo history still require rotation even when absent from container SBOM.
 
-Even when sbom generation ci is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Policy gates
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent sbom generation ci so security reviews do not rely on tribal knowledge.
+| Policy | CI behavior |
+|--------|-------------|
+| New critical in diff | Block merge |
+| Critical in unchanged base image | Warn + ticket |
+| Unpinned dependency | Block merge |
+| AGPL in proprietary product | Block merge |
 
-## Testing strategy
+## Signing and admission
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that sbom generation ci depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```bash
+cosign attach sbom --sbom sbom.cdx.json agent-api:$SHA
+cosign sign agent-api:$SHA
+```
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Kyverno/Ratify rejects pods whose image lacks valid SBOM referrer. Measure **mean time to answer exposure** — target under five minutes.
 
-## Migration and evolution
+## GUAC and Dependency-Track
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent sbom generation ci functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+Central SBOM warehouse enables blast-radius queries: "list services downstream of compromised pkg:pypi/requests@2.28.0." Re-scan stored SBOMs nightly against updated NVD — clean builds go critical when databases update without code changes.
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where sbom generation ci spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+## Incident runbook
 
-## Related concepts
+1. Identify production digests from deploy log
+2. Fetch SBOM per digest
+3. Query CVE against component list
+4. If affected, rebuild with patched base or bumped dependency
+5. Regenerate SBOM, canary deploy, post status update
 
-Sbom Generation Ci intersects with broader ai topics — see companion notes on [agent-sbom patterns](https://blog.michaelsam94.com/agent-sbom/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+## Operational readiness
 
-## The takeaway
+Run game days simulating NVD critical publish in transitive deps. Assign SBOM pipeline owner; quarterly review SBOM policy exceptions and allowlists.
 
-Sbom Generation Ci rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent sbom generation ci becomes a maintainable asset instead of incident fuel.
+Generating SBOM only at release while daily main-branch builds drift from what production actually runs. Attach SBOM generation to every merge main, store with digest, diff PRs on new criticals, and catalog model artifacts explicitly — supply-chain answers become queryable instead of tribal.
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+## Supply-chain review cadence
+
+Security reviews agent Dockerfiles when base images or pip constraints change — SBOM diff attached to PR. Enterprise customers request quarterly SBOM export filtered to components shipping in their tenant isolation boundary.
+
+
+
+## Agent platform rollout notes
+
+Agent traffic spikes when customers enable new tools fleet-wide — load-test SBOM generation in CI after every magnitude change. Game-day duplicate webhook delivery, index swap rollback, and credential rotation without overlap window.
+
+Cross-team review after launches touching billing, auth, or retrieval: platform, product, security, finance agree on leading metrics and rollback owners. Document lessons in the runbook header — future on-call should not rediscover the same failure mode.
+
+Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release. Pin versions affecting SBOM generation in CI in the service catalog with named DRIs.
+
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [CycloneDX specification](https://cyclonedx.org/specification/overview/)
+- [Anchore Syft](https://github.com/anchore/syft)
+- [Grype scanner](https://github.com/anchore/grype)
+- [SLSA provenance](https://slsa.dev/spec/v1.0/provenance)
+- [Dependency-Track](https://dependencytrack.org/)

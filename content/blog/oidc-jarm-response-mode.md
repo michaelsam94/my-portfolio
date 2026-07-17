@@ -1,129 +1,254 @@
 ---
-title: "OIDC JARM Secure Authorization Response"
+title: "OIDC JARM Response Mode"
 slug: "oidc-jarm-response-mode"
-description: "Signed authorization response mode — prevent authorization code interception on mobile."
-datePublished: "2026-02-06"
-dateModified: "2026-02-06"
+description: "Use JWT Secured Authorization Response Mode (JARM) to sign and optionally encrypt authorization responses instead of passing tokens in query strings."
+datePublished: "2026-02-04"
+dateModified: "2026-07-17"
 tags:
   - "Authentication"
   - "OIDC"
   - "Backend"
-keywords: "oidc jarm response mode, production, backend"
+keywords: "JARM, jwt secured authorization response, oidc response mode, authorization response jwt, query tampering"
 faq:
-  - q: "What problem does OIDC JARM Secure Authorization Response solve?"
-    a: "It addresses production gaps teams hit when scaling oidc jarm response mode: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when oidc jarm response mode appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What problem does JARM solve that PKCE alone does not?"
+    a: "PKCE protects the authorization code from interception during exchange. JARM protects the authorization response itself — the code, state, and error parameters returned in the redirect. Without JARM, an attacker who can observe or modify query parameters (compromised proxy, open redirect adjacent to your callback) can tamper with error codes or inject parameters. JARM wraps the entire response in a signed JWT the client verifies before processing."
+  - q: "Should I use signed-only or signed-and-encrypted JARM responses?"
+    a: "Signed-only (response mode jwt) suffices when the authorization response transits over TLS and you need integrity verification. Add encryption (response mode jwt with encrypted response) when responses pass through intermediaries that should not read authorization codes — high-assurance financial flows or when regulations require payload confidentiality beyond transport encryption."
+  - q: "How does JARM interact with PAR and the authorization code flow?"
+    a: "JARM is orthogonal to PAR. PAR pushes authorization request parameters to the server beforehand; JARM secures the response on the way back. Production deployments commonly combine both: PAR eliminates large request URLs, JARM eliminates tamperable response query strings. The client registers supported response modes and the AS returns a response JWT instead of bare query parameters."
 ---
 
-## Production context
+Authorization redirects are the most exposed moment in OAuth. The browser bounces from your application to the identity provider and back, carrying an authorization code, state parameter, and sometimes error details in the URL query string. Any intermediary — a corporate proxy, a browser extension, referrer headers leaking to third parties — can read those parameters. Worse, a manipulated response can trick client-side code into accepting a forged error or substituting parameters before your server-side token exchange runs.
 
-A billing service lost duplicate events because oidc jarm response mode was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+**JWT Secured Authorization Response Mode (JARM)**, defined in [FAPI 2.0 Part 2](https://openid.net/specs/openid-financial-api-jarm.html), replaces cleartext query parameters with a signed (and optionally encrypted) JWT. The client verifies issuer signature and claims before extracting the authorization code. This article explains the mechanics, response mode values, and how to implement JARM without breaking existing redirect handlers.
 
-Senior backend work on oidc jarm secure authorization response is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## Cleartext redirects and their weaknesses
 
-## Architecture pattern
+Standard authorization code flow redirect:
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for oidc workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+HTTP/1.1 302 Found
+Location: https://app.example.com/callback?code=SplxlOBeZQQYbYS6WxSbIA&state=xyz123
 ```
 
-## Implementation checklist
+Problems:
 
-Validate inputs at the trust boundary with schema versioning.
+- **Query string logging**: Web servers, CDNs, and browser history persist query parameters
+- **Referrer leakage**: Subsequent navigation may leak the full callback URL
+- **Parameter injection**: If the client parses query strings naively, extra parameters from an attacker-controlled redirect can merge with legitimate ones
+- **Error ambiguity**: `error=access_denied` in the URL is indistinguishable from a legitimate IdP response without out-of-band verification
 
-Use timeouts and cancellation on every outbound call; propagate context.
+PKCE protects the code exchange step but does not sign the redirect itself. JARM closes that gap.
 
-Store idempotency keys with TTL; return cached responses on replay.
+## JARM response modes
 
-Run migrations with lock_timeout and statement_timeout set.
+Register supported modes in client metadata via `authorization_signed_response_alg` and `authorization_encrypted_response_alg`:
 
-Load test at 2× expected peak with production-like payload sizes.
+| Response mode | Response delivery | Contents |
+| --- | --- | --- |
+| `query.jwt` | `?response=eyJ...` | Signed JWT in query |
+| `fragment.jwt` | `#response=eyJ...` | Signed JWT in fragment |
+| `form_post.jwt` | HTML form POST body | Signed JWT in hidden field |
+| `query.jwt` + encryption | Same, encrypted JWT | Signed then encrypted |
 
-## Observability
+The `response` parameter contains the JWT. All other OAuth/OIDC response parameters (`code`, `state`, `error`) move **inside** the JWT payload — they no longer appear as separate query parameters.
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+Example authorization request with JARM:
 
-Dashboards for oidc jarm response mode should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+```
+GET /authorize?
+  response_type=code
+  &client_id=billing-app
+  &redirect_uri=https://app.example.com/callback
+  &scope=openid%20profile
+  &state=xyz123
+  &nonce=abc456
+  &response_mode=query.jwt
+  &code_challenge=...
+  &code_challenge_method=S256
+```
 
-## Security notes
+Example redirect response:
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+```
+HTTP/1.1 302 Found
+Location: https://app.example.com/callback?response=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImlkcC1zaWduaW5nLWtleSJ9...
+```
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Authorization response JWT structure
 
-## Common production mistakes
+Signed payload claims:
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+```json
+{
+  "iss": "https://idp.example.com",
+  "aud": "billing-app",
+  "exp": 1704067260,
+  "iat": 1704067200,
+  "code": "SplxlOBeZQQYbYS6WxSbIA",
+  "state": "xyz123"
+}
+```
 
-## Debugging and triage workflow
+Error responses embed OAuth error fields inside the JWT:
 
-When production misbehaves, work top-down:
+```json
+{
+  "iss": "https://idp.example.com",
+  "aud": "billing-app",
+  "exp": 1704067260,
+  "iat": 1704067200,
+  "error": "access_denied",
+  "error_description": "User cancelled login",
+  "state": "xyz123"
+}
+```
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Client validation steps:
 
-## Operational checklist
+1. Parse JWT from `response` parameter
+2. Verify signature using IdP JWKS (`iss` must match registered issuer)
+3. Verify `aud` matches your `client_id`
+4. Verify `exp` has not passed (allow small clock skew)
+5. Extract `code`/`error` and `state` from payload — ignore any duplicate query parameters outside the JWT
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+```typescript
+async function handleCallback(url: URL): Promise<AuthResult> {
+  const responseJwt = url.searchParams.get('response');
+  if (!responseJwt) throw new Error('Missing JARM response');
 
-## Performance tuning notes
+  const payload = await verifyJwt(responseJwt, {
+    issuer: IDP_ISSUER,
+    audience: CLIENT_ID,
+    algorithms: ['RS256', 'PS256'],
+  });
 
-Measure before optimizing oidc jarm response mode. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+  // Defense in depth: reject if cleartext code also present
+  if (url.searchParams.has('code')) {
+    throw new Error('Ambiguous response: code outside JWT');
+  }
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+  const state = payload.state as string;
+  if (state !== expectedState) throw new Error('State mismatch');
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+  if (payload.error) {
+    return { type: 'error', error: payload.error as string };
+  }
 
-## Rollout and migration
+  return { type: 'success', code: payload.code as string };
+}
+```
 
-Ship oidc jarm response mode changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+## Encryption layer
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+For `authorization_encrypted_response_alg` (typically `RSA-OAEP` with `A256GCM`), the IdP encrypts the signed JWT to the client's registered public key. Only the confidential client can decrypt — useful when even the authorization code must remain hidden from browser JavaScript (hybrid flows) or logging infrastructure.
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Registration:
 
-## Testing recommendations
+```json
+{
+  "client_id": "billing-app",
+  "authorization_signed_response_alg": "PS256",
+  "authorization_encrypted_response_alg": "RSA-OAEP-256",
+  "jwks": {
+    "keys": [{
+      "kty": "RSA",
+      "kid": "enc-2026-01",
+      "use": "enc",
+      "n": "...",
+      "e": "AQAB"
+    }]
+  }
+}
+```
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Processing order: IdP signs payload → encrypts signed JWT → returns in `response` parameter. Client decrypts → verifies signature → reads claims.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+## form_post.jwt for front-channel security
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+`query.jwt` still exposes the JWT in server access logs if the callback endpoint logs full URLs. `form_post.jwt` delivers the response via auto-submitting HTML form — the JWT transits in POST body, not query string:
 
-## Incident patterns we see
+```html
+<html><body onload="document.forms[0].submit()">
+<form method="post" action="https://app.example.com/callback">
+  <input type="hidden" name="response" value="eyJ..."/>
+</form>
+</body></html>
+```
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Your callback handler reads `response` from POST body instead of query. Combine with CSRF protection on the callback endpoint since POST requests are forgeable without state validation inside the JWT.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+## JARM with PAR
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+Pushed Authorization Requests (PAR) and JARM compose cleanly:
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+1. Client pushes authorization request to PAR endpoint → receives `request_uri`
+2. Browser opens `/authorize?client_id=...&request_uri=urn:ietf:params:oauth:request_uri:...`
+3. IdP returns JARM-wrapped response
 
-## Resources
+The large parameter set lives server-side (PAR); the response integrity is JWT-protected (JARM). FAPI 2.0 security profiles require both for high-assurance clients.
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+## IdP configuration
+
+Keycloak, Auth0, and Okta support JARM with varying defaults:
+
+- **Keycloak**: Enable FAPI profiles per client; set `authorization.response.mode` attributes
+- **Auth0**: JARM available for FAPI-compliant applications in enterprise tiers
+- **Custom AS**: Implement response mode negotiation — if client registers `authorization_signed_response_alg`, return JWT responses
+
+Authorization server signing key rotation follows the same JWKS pattern as ID token signing. Clients must refresh JWKS periodically and honor `kid` in JWT headers.
+
+## Migration from standard redirects
+
+Roll out incrementally:
+
+1. Register JARM algorithms in client metadata alongside existing redirect URIs
+2. Add `response_mode=query.jwt` to authorization requests from new app versions only
+3. Callback handler accepts both cleartext and JARM responses during transition
+4. Remove cleartext fallback after all client versions support JARM
+
+Dual-mode callback pseudocode:
+
+```typescript
+function parseAuthorizationResponse(url: URL, body: FormData | null) {
+  const jwt = url.searchParams.get('response')
+    ?? body?.get('response')?.toString();
+
+  if (jwt) return parseJarmResponse(jwt);
+
+  // Legacy path — deprecate after migration
+  return {
+    code: url.searchParams.get('code'),
+    state: url.searchParams.get('state'),
+    error: url.searchParams.get('error'),
+  };
+}
+```
+
+## Security analysis
+
+**What JARM protects**: Response integrity and authenticity. An attacker cannot forge a successful authorization response without the IdP private key.
+
+**What JARM does not protect**: Phishing (user enters credentials on fake IdP site), authorization code interception if PKCE is absent, token endpoint attacks.
+
+**JWT in browser history**: `query.jwt` still stores the JWT in history — the code is inside the JWT, not cleartext, but the JWT itself is bearer-equivalent until expiry. Prefer `form_post.jwt` or ensure JWT `exp` is very short (minutes).
+
+**Algorithm confusion**: Accept only explicitly registered algorithms. Reject `none` and unexpected algs during JWKS verification.
+
+## Testing checklist
+
+- Valid signed response extracts code and state correctly
+- Tampered JWT signature rejected
+- Expired JWT rejected
+- Wrong `aud` rejected
+- Error responses inside JWT parsed correctly
+- Cleartext `code` parameter alongside JWT rejected (parameter injection)
+- Encrypted responses decrypt and verify when encryption enabled
+- JWKS rotation: new `kid` works without client deploy
+
+## Summary
+
+JARM transforms OAuth authorization redirects from tamperable query strings into verifiable JWTs. It complements PKCE and PAR rather than replacing them. Implement response JWT verification on the client before trusting any authorization code, prefer `form_post.jwt` when query logging is a concern, and add encryption when authorization codes require confidentiality beyond TLS. For regulated or high-value applications, JARM is the difference between hoping redirect parameters were not modified and knowing they were not.
+
+
+Validate state from inside the signed JWT claims, not only from the outer query string, so a tampered outer state cannot slip past verification.

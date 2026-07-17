@@ -161,6 +161,42 @@ Structured output (JSON schema, tool calls) is the strongest output guardrail �
 
 Pair with [LLM constrained decoding grammars](https://blog.michaelsam94.com/llm-constrained-decoding-grammars/) for format-level output control.
 
+## Per-tenant and per-role policy packs
+
+Guardrails are not one global config. Enterprise tenants expect different PII rules, allowed tools, and content policies. Load a **policy pack** at request time keyed by `tenant_id` and agent role:
+
+```python
+@dataclass
+class GuardrailPolicy:
+    allowed_tools: frozenset[str]
+    max_input_tokens: int
+    pii_mode: Literal["block", "redact", "allow"]
+    competitor_blocklist: bool
+
+def load_policy(tenant_id: str, role: str) -> GuardrailPolicy:
+    return POLICY_REGISTRY[(tenant_id, role)] or DEFAULT_POLICY
+```
+
+Run the same guardrail functions with different thresholds — a internal admin agent may see full logs; a customer-facing agent redacts everything. Never hardcode policy strings in application code; store them in config the security team can audit without a deploy.
+
+## Guardrail metrics and feedback loops
+
+Every block, redaction, and action denial should emit a metric: `{reason, tenant, agent_type, latency_ms}`. Dashboard block rate by reason code; a spike in `injection_pattern` suggests an attack or a bad RAG document batch. A spike in `false_positive_pii` means your regex is too aggressive — users abandon the chat.
+
+Sample blocked requests into a weekly review queue (with PII stripped). Annotate true positives vs false positives and retrain classifiers or tune regex. Guardrails that never get measured become either disabled or hated. Tie metrics to [guardrail experiments](https://blog.michaelsam94.com/agent-guardrail-metrics-experiments/) when rolling policy changes — compare block rates and user completion before promoting stricter rules.
+
+## Tool argument validation as schema enforcement
+
+Action guardrails are strongest when tool schemas are strict JSON Schema with `additionalProperties: false`, enums for status fields, and numeric bounds on amounts. Validate *before* the tool runs and return structured errors the model can fix:
+
+```python
+def validate_args(tool_name: str, args: dict) -> None:
+    schema = TOOL_SCHEMAS[tool_name]
+    jsonschema.validate(args, schema)  # raises ValidationError with path
+```
+
+A model that sends `{"amount": -500}` should get a validation error in the tool result channel, not a silent clamp server-side. Explicit failures teach the orchestrator loop to retry with corrected args; silent fixes hide systematic prompt bugs.
+
 ## Common production mistakes
 
 Teams get guardrails input output wrong in predictable ways:

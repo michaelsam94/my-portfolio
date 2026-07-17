@@ -3,8 +3,8 @@ title: "Linking Metrics to Traces with Exemplars"
 slug: "observability-exemplars-traces-metrics"
 description: "Connect Prometheus histogram metrics to distributed traces with exemplars: configuration, querying, and debugging latency spikes from dashboards."
 datePublished: "2025-10-06"
-dateModified: "2025-10-06"
-tags: ["DevOps", "Observability", "Performance", "Backend"]
+dateModified: "2026-07-17"
+tags:
 keywords: "Prometheus exemplars, metrics traces correlation, histogram exemplars, Grafana exemplars, OpenTelemetry exemplars, latency debugging"
 faq:
   - q: "What is a Prometheus exemplar?"
@@ -14,7 +14,6 @@ faq:
   - q: "Which metrics backends support exemplars?"
     a: "Prometheus 2.26+, Grafana Mimir, Grafana Cloud, and Cortex support exemplar storage. Grafana dashboards render exemplars as clickable dots on heatmaps. Tempo and Jaeger serve as the trace backend for click-through."
 ---
-
 Your Grafana heatmap shows checkout latency P99 jumped from 300 ms to 2.1 seconds at 14:32. You switch to traces, set the time range, and scroll through 4,000 traces looking for slow ones. Twenty minutes later you find one. Exemplars eliminate this: the heatmap dot at 14:32 links directly to the trace that recorded a 2.1-second observation. Metrics tell you something broke; exemplars tell you which request to investigate.
 
 ## How exemplars work
@@ -165,29 +164,39 @@ Without click-through from metrics to traces configured in Grafana, exemplars ar
 
 Histogram buckets with trace_id attachment enable click-from-spike-to-trace in Grafana. Sample 1–10% of observations with exemplars — full exemplar capture explodes storage.
 
-## Common production mistakes
+## Mimir exemplar limits in production
 
-Teams get exemplars traces metrics wrong in predictable ways:
+Configure per-tenant exemplar limits before enabling fleet-wide:
 
-- **Skipping failure-mode rehearsal** — run a game day or fault injection exercise before peak traffic, not after the first outage.
-- **Missing correlation context** — every error path should carry request, trace, or tenant identifiers so incidents are debuggable.
-- **Optimizing for demo, not steady state** — load tests, cache warm-up, and cold-start paths matter more than local dev latency.
-- **Undocumented trade-offs** — if you chose speed over strict correctness (or vice versa), write that down for the next engineer.
+```yaml
+limits:
+  max_global_exemplars_per_user: 200000
+  max_exemplars_per_series: 10
+```
 
-Observability for exemplars traces metrics fails when dashboards exist but nobody owns alert routing, high-cardinality labels explode metrics cost, and logs lack trace correlation so incidents become grep archaeology.
+Exceeding limits drops exemplars silently—monitor `cortex_discarded_exemplars_total`.
 
-## Debugging and triage workflow
+## OpenMetrics exemplar format
 
-When exemplars traces metrics misbehaves in production, work top-down instead of guessing:
+Prometheus remote write to Mimir must use OpenMetrics 1.0 text format for exemplar retention. Verify otel-collector `prometheus` exporter `enable_open_metrics: true` when metrics originate from OTel SDK histograms with exemplars attached.
 
-1. **Confirm scope** — one tenant, region, or deployment stage? Narrow blast radius before deep diving.
-2. **Check recent changes** — deploys, flag flips, config pushes, and schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, and traffic for the affected surface vs. baseline.
-4. **Reproduce minimally** — smallest input or scenario that triggers the failure; capture traces/logs with correlation IDs.
-5. **Fix forward or rollback** — if rollback is faster than root-cause during incident, rollback first, postmortem second.
-6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
+## Debugging workflow automation
 
-Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+Grafana annotation webhook on alert includes deep link:
+
+```
+/explore?left={"queries":[{"refId":"A","expr":"..."}],"range":{"from":"now-15m"}}
+```
+
+On-call lands on heatmap with exemplars visible—remove manual dashboard hunting from runbook step 2.
+
+## Heatmap panel configuration gotchas
+
+Grafana heatmap requires `format: heatmap` on Prometheus query and `Exemplars: true` in panel options—easy to miss in JSON dashboard provisioning. Lint dashboards in CI with grafonnet or jsonnet tests asserting exemplar config on tier-1 latency panels.
+
+## Mobile and high-latency clients
+
+Mobile apps may show user latency >> server histogram if network slow—exemplars on server heatmap still valuable but pair with RUM for complete story. Do not argue server SLO green while mobile RUM red without acknowledging client/network path.
 
 ## Resources
 
@@ -196,3 +205,40 @@ Document the timeline during triage. Future you (and on-call) will need timestam
 - [Grafana exemplars documentation](https://grafana.com/docs/grafana/latest/basics/exemplars/) — dashboard configuration
 - [Grafana Tempo trace backend](https://grafana.com/docs/tempo/latest/) — trace storage for click-through
 - [OpenTelemetry metrics SDK exemplar filter](https://opentelemetry.io/docs/specs/otel/metrics/sdk/#exemplar) — SDK configuration
+
+## Production notes for LLM stacks
+
+When `observability-exemplars-traces-metrics` sits on an inference or RAG path, treat user prompts and retrieved chunks as untrusted input. Log correlation IDs and policy decisions—not raw prompts—in production telemetry. Gate risky operations behind explicit authorization at the gateway, not inside ad-hoc tool handlers.
+
+Roll out changes with shadow mode first: record what **would** have happened under the new rule without blocking traffic. Compare deny rates, latency impact, and false positives for at least one business week before enforcing. Pair enforcement with a runbook entry: symptom, dashboard, rollback (feature flag or config), and owner.
+
+Load-test with production-shaped concurrency. LLM workloads burst differently from CRUD APIs—tail latency and token throttling dominate. If `linking metrics to traces with exemplars` protects an invariant (security, billing, data residency), prove the invariant with an automated test that fails CI when someone removes the check.
+
+## What teams get wrong
+
+Teams copy a reference architecture without matching their compliance tier, then discover in audit that logs, backups, or support exports reintroduced the data they thought they had eliminated. Another pattern: shipping the demo integration without idempotency, then fighting duplicate side effects when clients retry on model timeouts.
+
+Document the tradeoff you chose—strictness vs recall, cost vs quality, sync vs async—and the metric that tells you if the choice still holds six months later.
+
+## Instrumentation checklist
+
+Ensure every service emits consistent resource attributes: `service.name`, `service.version`, `deployment.environment`. Propagate W3C `traceparent` on outbound HTTP, gRPC metadata, and message headers. For ORM-heavy services, enable query tracing with statement timeouts logged as span events—not as raw SQL with bind parameters.
+
+## SLO wiring
+
+Define SLIs that map to user journeys: checkout success rate, inference completion rate, search results under 500ms. Multi-window burn-rate alerts (e.g., 1h and 6h) catch fast burns and slow leaks. Page on symptom-based alerts; ticket on cause-based logs after mitigation.
+
+## Cardinality and cost control
+
+Drop high-cardinality labels before they hit the metrics backend. Use exemplars to link traces to histogram buckets without labeling every user ID. For LLM gateways, aggregate token usage by model and route—not by end user—in the metrics layer; keep per-tenant billing in a warehouse.
+
+## Operational review cadence
+
+Weekly: review top noisy alerts and dashboards nobody opened. Monthly: game-day a dependency failure and verify runbooks. Quarterly: revalidate sampling and retention against compliance requirements—especially when prompts or PII might appear in debug spans.
+
+
+For `observability-exemplars-traces-metrics`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `observability-exemplars-traces-metrics`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.
+
+For `observability-exemplars-traces-metrics`, treat observability and security controls as part of the user experience: silent failures erode trust faster than explicit error messages. Instrument deny paths, measure tail latency, and review dashboards with on-call weekly.

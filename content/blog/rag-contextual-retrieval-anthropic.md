@@ -3,7 +3,7 @@ title: "Contextual Retrieval for Better RAG"
 slug: "rag-contextual-retrieval-anthropic"
 description: "Implement Anthropic's contextual retrieval: prepend chunk-specific context before embedding to fix out-of-context chunks and improve retrieval recall."
 datePublished: "2024-12-03"
-dateModified: "2024-12-03"
+dateModified: "2026-07-17"
 tags: ["AI", "RAG", "Embeddings", "Anthropic"]
 keywords: "contextual retrieval, Anthropic RAG, chunk context, contextual embeddings, retrieval recall, document chunking"
 faq:
@@ -132,6 +132,24 @@ When contextual retrieval anthropic misbehaves in production, work top-down inst
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Chunk window sizing for context generation
+
+When documents exceed the context window of your indexing LLM, pass a sliding window centered on each chunk rather than the full document. A window of 4,000 tokens around the chunk captures section headings and neighboring paragraphs that disambiguate pronouns like "this service" or "the above threshold."
+
+Validate generated context blurbs with a lightweight classifier: reject blurbs longer than 120 tokens, blurbs that repeat the chunk verbatim, or blurbs that introduce facts not present in the source window. Rejected blurbs fall back to template context from metadata.
+
+## Re-index triggers after document edits
+
+Track content hashes per chunk. When a paragraph changes, regenerate context only for affected chunks — typically three to five neighbors when splits overlap. Store `context_model_version` alongside embeddings so you can bulk-regenerate when upgrading indexing models without re-embedding unchanged vectors.
+
+## Measuring contextual retrieval ROI
+
+Compare failed retrieval rate on a golden set before and after contextual prepend. Weight failures by query volume from production logs so high-traffic question types drive prioritization. Anthropic's published 35–49% reduction is a starting hypothesis — your corpus of API docs vs. legal contracts will differ materially.
+
+## Measuring success for contextual retrieval anthropic
+
+Define two or three metrics tied to user outcomes before tuning implementation details. Review them weekly in a short run review: median and p95 latency, error or block rates where applicable, and a quality sample from production logs or golden eval sets. Store dashboard links and threshold values in the runbook so on-call engineers know what "healthy" means without reading source code. When metrics drift after a deploy, roll back first and compare traces with correlation IDs second — speed matters more than root cause during customer-visible regressions.
 
 ## Resources
 

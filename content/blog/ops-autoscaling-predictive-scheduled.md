@@ -3,7 +3,7 @@ title: "Predictive and Scheduled Autoscaling"
 slug: "ops-autoscaling-predictive-scheduled"
 description: "Go beyond CPU-based HPA: scheduled scaling for known traffic patterns, predictive autoscaling with metrics pipelines, and Karpenter capacity planning."
 datePublished: "2025-12-26"
-dateModified: "2025-12-26"
+dateModified: "2026-07-17"
 tags: ["DevOps", "Kubernetes", "Autoscaling", "SRE"]
 keywords: "predictive autoscaling, scheduled scaling Kubernetes, HPA custom metrics, Karpenter scaling, capacity planning"
 faq:
@@ -172,6 +172,47 @@ When autoscaling predictive scheduled misbehaves in production, work top-down in
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Predictive scaling signals beyond CPU
+
+CPU lags traffic for JVM/.NET cold pools. Feed autoscaler custom metrics:
+
+- Request rate from ingress (requests/sec)
+- Kafka consumer lag
+- Scheduled events (Black Friday cron scales at T-60 min)
+
+```yaml
+# KEDA ScaledObject example pattern
+triggers:
+  - type: prometheus
+    metadata:
+      query: sum(rate(http_requests_total[2m]))
+      threshold: "500"
+  - type: cron
+    metadata:
+      timezone: America/New_York
+      start: 0 8 * * *
+      end: 0 22 * * *
+      desiredReplicas: "20"
+```
+
+Combine predictive (schedule) + reactive (Prometheus) — schedule sets floor, reactive handles spikes above forecast.
+
+## Over-provisioning cost guardrails
+
+Predictive scaling saves latency but can leave idle nodes. Set `scaleDown` stabilization windows (5–15 min) and max node caps per pool. FinOps reviews monthly: compare predicted schedule vs actual traffic — adjust cron windows when marketing campaign dates shift.
+
+## Cluster autoscaler interaction
+
+HPA scales pods; CA scales nodes — lag between them causes pending pods. Set HPA scale-up behavior `stabilizationWindowSeconds: 0` but CA priority expander ensures node pool pre-warmed before cron spike.
+
+## Idle scale-down guards
+
+Minimum replicas per AZ for zone spread — don't scale to one pod globally if topologySpreadConstraints require per-zone presence.
+
+## Load test validates cron schedule
+
+Before Black Friday, replay last year traffic shape against scaled environment — cron pre-warm at T-60 min useless if HPA max lower than peak need.
 
 ## Resources
 

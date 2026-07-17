@@ -3,8 +3,8 @@ title: "PagedAttention and KV Memory"
 slug: "llm-serving-paged-attention"
 description: "Understand PagedAttention and KV cache memory management in LLM serving: fragmentation, block tables, vLLM architecture, prefix caching, and throughput implications."
 datePublished: "2025-03-21"
-dateModified: "2025-03-21"
-tags: ["AI", "LLM", "Infrastructure", "Performance"]
+dateModified: "2026-07-17"
+tags:
 keywords: "PagedAttention, KV cache memory, vLLM PagedAttention, LLM inference memory, prefix caching LLM, KV cache fragmentation"
 faq:
   - q: "What problem does PagedAttention solve?"
@@ -14,7 +14,6 @@ faq:
   - q: "What is prefix caching and how does it relate to PagedAttention?"
     a: "Prefix caching reuses KV blocks for identical prompt prefixes across requests — system prompts, RAG document headers, few-shot examples. vLLM hashes block contents and reference-counts shared blocks. Combined with PagedAttention's block addressing, multiple requests share physical GPU memory for common prefixes, cutting prefill compute and memory for repeated context."
 ---
-
 We sized GPU memory for Llama-70B by model weights alone and wondered why inference OOM'd at batch size 4 with 512-token prompts. The KV cache — key and value tensors stored for every layer at every generated token — consumed more VRAM than the weights for long contexts, and our server's contiguous pre-allocation reserved max-length slots for requests that stopped at 200 tokens. PagedAttention, introduced in vLLM, treats KV cache like operating system paging: fixed blocks, non-contiguous layout, on-demand allocation. That design choice is why vLLM batches outperform naive HuggingFace generate loops by orders of magnitude.
 
 ## What the KV cache stores

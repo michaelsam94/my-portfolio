@@ -3,7 +3,7 @@ title: "Why You Should Track p99 Latency"
 slug: "performance-latency-percentiles"
 description: "Average latency hides user pain — track p50, p95, and p99 SLIs, set SLOs on tail latency, and fix the outliers that drive support tickets and churn."
 datePublished: "2026-02-09"
-dateModified: "2026-02-09"
+dateModified: "2026-07-17"
 tags: ["Performance", "SRE", "Observability", "Latency"]
 keywords: "p99 latency, latency percentiles, tail latency SLO, histogram metrics, Apdex performance"
 faq:
@@ -152,6 +152,30 @@ When latency percentiles misbehaves in production, work top-down instead of gues
 6. **Add a guard** — alert, integration test, or circuit breaker so the same class of failure is caught earlier next time.
 
 Document the timeline during triage. Future you (and on-call) will need timestamps, not just conclusions.
+
+## Histogram bucket selection
+
+Prometheus default buckets stop at 10s — useless for APIs targeting p99 under 500ms. Customize buckets: 5ms through 10s with density below 500ms. Too few buckets above your SLO flatten p99 curves.
+
+## Multi-window SLO burn alerts
+
+Single 5-minute p99 spike pages on noise. Use multi-burn-rate: fast burn (1h window) and slow burn (6h window) on same SLO. Checkout p99 SLO at 800ms — alert when 14.4x burn rate in 1h OR 6x in 6h.
+
+## User-centric SLIs beyond HTTP
+
+Mobile apps: time from tap to interactive content, not just API RTT. Include client-side queueing — analytics showed 400ms API p99 but 1.2s perceived latency from main-thread JSON parse.
+
+## Apdex as executive summary
+
+Apdex with T=500ms: satisfied if under 500ms, tolerating if under 2s. One number leadership understands while engineers drill p99 by route. Do not replace histograms with Apdex alone.
+
+## Saturation correlates with tail latency
+
+When p99 rises but p50 flat, check connection pool wait, thread pool queue depth, and disk IO saturation — tail often queueing not slow queries.
+
+## Field notes on performance latency percentiles
+
+Teams shipping this in production should baseline metrics before changing defaults, then validate under representative load — not empty staging databases. Document rollback paths alongside forward changes so on-call can revert without improvising. Review configuration quarterly even when dashboards look flat; schema drift and traffic growth change optimal settings silently until an incident exposes them. Pair automated checks with occasional game-day exercises that rehearse failure modes specific to this component rather than generic outage drills.
 
 ## Resources
 

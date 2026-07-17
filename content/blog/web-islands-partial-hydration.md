@@ -3,16 +3,146 @@ title: "Partial Hydration and Islands"
 slug: "web-islands-partial-hydration"
 description: "Reduce JavaScript with partial hydration and islands architecture: selective interactivity, Astro islands, framework components, and performance tradeoffs."
 datePublished: "2026-05-06"
-dateModified: "2026-05-06"
-tags: ["Web", "Performance", "Architecture", "Frontend"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "partial hydration, islands architecture, Astro, selective hydration, server components, static site"
 faq:
-  - q: "What is the islands architecture?"
-    a: "Islands architecture renders most of the page as static HTML on the server and hydrates only interactive regions — islands — with JavaScript. A blog post body, header, and footer ship as plain HTML. Only the comment form, search widget, or shopping cart get client-side JavaScript. This dramatically reduces the JS bundle compared to hydrating the entire page."
-  - q: "How does partial hydration differ from full hydration?"
-    a: "Full hydration runs the entire component tree on the client — every component gets event listeners and state, even static paragraphs and images. Partial hydration identifies which components need interactivity and only hydrates those. Static components remain inert HTML. The result is faster Time to Interactive and lower main-thread work."
-  - q: "Can I use islands with React, Vue, or Svelte components?"
-    a: "Yes. Frameworks like Astro support multiple UI frameworks in the same page. You write islands as React, Vue, Svelte, or Solid components and control when each island hydrates — on page load, when visible, or on user interaction. The static shell is framework-agnostic HTML."
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+
+title: "Partial Hydration and Islands"
+slug: "web-islands-partial-hydration"
+description: "Reduce JavaScript with partial hydration and islands architecture: selective interactivity, Astro islands, framework components, and performance tradeoffs."
+datePublished: "2026-05-06"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "partial hydration, islands architecture, Astro, selective hydration, server components, static site"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-islands-partial-hydration"
+slug: "web-islands-partial-hydration"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-islands-partial-hydration"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-islands-partial-hydration"
+slug: "web-islands-partial-hydration"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-islands-partial-hydration"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-islands-partial-hydration"
+slug: "web-islands-partial-hydration"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-islands-partial-hydration"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-islands-partial-hydration"
+slug: "web-islands-partial-hydration"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-islands-partial-hydration"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "web-islands-partial-hydration"
+slug: "web-islands-partial-hydration"
+description: ""
+datePublished: "2026-07-17"
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
+keywords: "web-islands-partial-hydration"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
+---
+
+title: "Partial Hydration and Islands"
+slug: "web-islands-partial-hydration"
+description: "Reduce JavaScript with partial hydration and islands architecture: selective interactivity, Astro islands, framework components, and performance tradeoffs."
+datePublished: "2026-05-06"
+dateModified: "2026-07-17"
+tags:
+  - "Web"
+  - "Performance"
+  - "Architecture"
+  - "Frontend"
+keywords: "partial hydration, islands architecture, Astro, selective hydration, server components, static site"
+faq:
+  - q: "What is the main production risk with web islands partial hydration?"
+    a: "Teams ship without field measurement—web islands partial hydration failures appear as silent UX regressions, cost drift, or audit findings rather than clear errors."
+  - q: "When should we prioritize web islands partial hydration?"
+    a: "Prioritize when user research, CrUX, support tickets, or compliance requirements show pain on critical paths—not when a checklist mentions it abstractly."
+  - q: "How do we validate web islands partial hydration changes?"
+    a: "Baseline RUM before changes, compare p75 after deploy, and keep rollback via feature flags or cache purge documented in the PR."
+---
 ---
 
 Our marketing site shipped 180KB of JavaScript. The only interactive elements were a mobile nav toggle, a newsletter signup form, and a pricing calculator buried below the fold. Full-page React hydration ran JavaScript on hero text that never changed. Switching to islands architecture cut the initial JS payload to 24KB — three hydrated components on a page of static HTML.
@@ -161,25 +291,61 @@ Parse on hydration. Keep payloads small — large data sets should fetch client-
 
 Static HTML in islands architecture is fully crawlable. Ensure critical content — headings, product descriptions, links — lives in static HTML, not client-only islands. Interactive enhancements hydrate on top without hiding content from crawlers.
 
-## Measuring success in production
+## Client island communication
 
-Deploy changes behind feature flags when possible so you can compare metrics between control and treatment groups. Use Real User Monitoring to capture performance data from actual devices and network conditions — lab tools alone miss the long tail of user experiences. Set up alerts for regressions: a 10% LCP increase week-over-week warrants investigation before it hits CrUX.
+Islands sharing state without full SPA:
 
-Document your baseline metrics before making changes. Performance work without measurement is guesswork. Share results with the team — concrete numbers ("LCP improved 800ms on mobile") build support for continued investment in web performance and reliability.
+- **Custom events** on `document` for loose coupling
+- **URL search params** for shareable filter state
+- **Tiny shared store** (nanostores) imported only by islands that need it
 
-Review changes quarterly. Browser updates, new API support, and traffic pattern shifts can obsolete previous optimizations or create new opportunities. What worked in 2024 may not be the best approach in 2026.
+Avoid prop drilling across island boundaries through global window hacks.
 
-## Additional production considerations
+## Edge deployment
 
-Teams often underestimate the maintenance cost of performance optimizations. Automate what you can: CI bundle budgets, Lighthouse CI on PRs, and RUM dashboards that alert on regressions. Manual audits don't scale past a handful of pages.
+Astro on Cloudflare Pages deploys static HTML at edge; islands hydrate at edge or client depending on adapter. Verify `client:visible` Intersection Observer works when HTML served from CDN—no difference, but test lazy hydration with real mobile viewports.
 
-Security and performance intersect more than teams expect. Third-party scripts that hurt INP also expand your attack surface. Self-hosting fonts and critical assets reduces both latency and supply-chain risk. Review every external dependency quarterly — remove what you no longer need.
+## Bundle analysis per island
 
-Accessibility and performance share goals: semantic HTML helps screen readers and gives the browser better rendering hints. Native elements like dialog, popover, and details reduce JavaScript while improving accessibility. Prefer platform features over custom implementations when they meet your requirements.
+Each island is separate JS entry—run analyzer per island chunk. React island importing entire `@mui/material` defeats purpose; import path-level or use lighter primitives.
 
-Mobile users dominate traffic for most sites. Test on real mid-tier Android hardware, not just desktop Chrome. Simulated throttling in DevTools approximates network conditions but not CPU constraints. A fix that helps desktop may be invisible on mobile if the bottleneck is JavaScript execution, not network.
+## client:visible vs client:load
 
-Collaborate with backend teams on TTFB and API response times. Frontend optimizations can't fix a 2-second server response. Set SLAs for API endpoints that feed critical pages and measure them in the same RUM pipeline as Core Web Vitals.
+Astro `client:visible` defers hydration until intersection — saves main thread on long pages. `client:load` for above-fold interactivity only. Misplaced client:load on footer newsletter defeats islands architecture.
+
+## SSR HTML must work without JS
+
+Island architecture assumes static HTML is usable — search and nav work without hydration. Test with JS disabled before claiming partial hydration success.
+
+## Practical follow-through (1)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (2)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (3)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (4)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
+
+## Practical follow-through (5)
+
+Ship the smallest vertical slice first — one route, one widget, one index configuration — with rollback documented before expanding scope. Baseline the user-visible metric this work protects (latency, recall, conversion, task success rate) for seven days before change and seven days after in your largest market.
+
+Compare canary p75 to control before full rollout. Exercise edge paths manually: refresh, back navigation, double-submit, offline mode, and keyboard-only flows. When assumptions change — traffic doubles, vendor upgrades, org restructure — revisit whether the original design still fits; quiet periods hide drift until the next incident.
 
 ## Resources
 

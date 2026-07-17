@@ -3,214 +3,158 @@ title: "Soft Delete: Patterns and Pitfalls"
 slug: "database-soft-delete-patterns"
 description: "Soft deletes mark rows deleted without removing them. deleted_at columns, unique constraints, query filters, GDPR tension, and when hard delete wins."
 datePublished: "2025-09-12"
-dateModified: "2025-09-12"
-tags: ["Backend", "Databases", "Architecture"]
+dateModified: "2026-07-17"
+tags:
+  - "Engineering"
 keywords: "soft delete, deleted_at, logical delete, paranoid deletion, GDPR hard delete, unique constraint soft delete"
 faq:
-  - q: "What is soft delete?"
-    a: "Soft delete marks records as deleted — typically deleted_at timestamp or is_deleted flag — without physically removing rows. Applications filter active rows with WHERE deleted_at IS NULL. Enables undelete, audit trails, and referential integrity without cascade removes."
-  - q: "What problems do soft deletes cause?"
-    a: "Forgotten query filters leak deleted data; unique constraints conflict when re-creating rows with same natural key; tables grow unbounded; joins slow without partial indexes; GDPR right-to-erasure requires hard delete or anonymization anyway."
-  - q: "When should I use hard delete instead?"
-    a: "Use hard delete for regulated erasure requests, high-churn ephemeral data, and tables where retention policy mandates physical removal. Use soft delete when undo windows, audit requirements, or foreign key preservation justify retained rows with strict access controls."
+  - q: "When should teams prioritize Soft Delete: Patterns and Pitfalls?"
+    a: "When Soft Delete sits on a critical path for reliability, security, or cost."
+  - q: "What is the most common mistake with Soft Delete?"
+    a: "Copying tutorial defaults for Soft Delete without ownership, tests, or rollback."
+  - q: "How do we know Soft Delete: Patterns and Pitfalls is working?"
+    a: "Define a leading metric tied to Soft Delete health and a lagging metric tied to incidents or audit findings. If only lagging metrics exist, you discover problems after customers do."
 ---
+Teams treat Soft Delete as finished after the first green deploy — production disagrees.
 
-Soft delete feels like free undo until production queries return competitor data from "deleted" accounts because one repository method forgot `deleted_at IS NULL`. The pattern is widespread; the discipline around it usually isn't.
+## The incident that forced a redesign
 
-## Basic implementation
 
-```sql
-CREATE TABLE customers (
-  id          BIGSERIAL PRIMARY KEY,
-  email       VARCHAR(255) NOT NULL,
-  deleted_at  TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+Teams treat Soft Delete as finished after the first green deploy — production disagrees.
 
-CREATE INDEX customers_active_email_idx
-  ON customers (email)
-  WHERE deleted_at IS NULL;
-```
+The post-mortem was not about Soft Delete being unknown — it was about Soft Delete sitting adjacent to the critical path. Soft deletes mark rows deleted without removing them. deleted_at columns, unique constraints, query filters, GDPR tension, and when hard delete wins. Teams had a green CI badge and a broken invariant in production.
 
-Delete becomes update:
+## Architecture that matches how data actually flows
 
-```sql
-UPDATE customers SET deleted_at = now() WHERE id = 42;
-```
 
-Application scope:
+A durable soft delete: patterns and pitfalls design names three boundaries: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits and replay).
 
-```python
-class CustomerQuery:
-    def active(self):
-        return self.filter(deleted_at__isnull=True)
-```
+For engineering workloads, keep enforcement as close to the write path as possible. Advisory checks that run only in notebooks do not count as gates.
 
-Centralize filtering — raw SQL and ORM bypasses leak deleted rows.
+## Implementation walkthrough
 
-## Unique constraint hell
 
-User soft-deletes `alice@corp.com`, tries re-register:
+Ship the smallest production slice of Soft Delete: Patterns and Pitfalls: one pipeline, one cluster, or one namespace — with rollback documented before widening scope.
 
-```sql
-UNIQUE (email)  -- fails: deleted row still holds email
-```
+Automate the boring steps so on-call never hand-edits Soft Delete settings during an incident. GitOps, versioned checkpoints, and pinned module versions beat runbook heroics.
 
-Fixes:
+## Day-two operations
 
-**Partial unique index:**
 
-```sql
-CREATE UNIQUE INDEX customers_email_active_uniq
-  ON customers (email)
-  WHERE deleted_at IS NULL;
-```
+Day-two soft delete: patterns and pitfalls work is ownership rotation, capacity headroom, and alert hygiene. Page on symptoms customers feel — SLA misses, queue age, failed reconciliations — not vanity pod counts.
 
-**Composite unique including deleted_at** — allows one active + historical tombstones (messy).
+Run quarterly drills: credential expiry, dependency slow-down, partial region loss. Update internal docs with what broke, not generic vendor copy.
 
-**Email mutation on delete** — append `+deleted_{id}` (audit unfriendly).
+## Failure modes worth rehearsing
 
-Partial indexes are the cleanest Postgres/MySQL 8+ approach.
 
-## ORM "paranoid" mode
+The recurring failure: Copying tutorial defaults for Soft Delete without ownership, tests, or rollback. Bake detection into CI, admission, or plan-time policy so the mistake fails before merge.
 
-Sequelize, TypeORM, GORM offer paranoid deletes — auto-filter and set deletedAt. Danger: raw queries, reporting DB connections, and admin tools bypass ORM.
+Secondary failures include retry storms, silent partial writes, and dashboards that stay green while downstream consumers read corrupt partitions.
 
-Global default scopes help; explicit `withDeleted()` for admin restores.
+## Metrics and alerts that catch regressions early
 
-## Undelete and retention
 
-```sql
-UPDATE customers SET deleted_at = NULL WHERE id = 42;
-```
+Track leading indicators for Soft Delete: validation pass rate, queue lag, reconciliation errors, error budget burn. Lagging indicators: incidents, audit findings, invoice surprises.
 
-Define retention — soft-deleted rows hard-purged after 90 days via scheduled job. Without purge, tables bloat and compliance erasure never completes.
+Slice metrics by environment and tenant during rollout — global averages hide bad canaries.
 
-## GDPR and soft delete tension
+## Reference configuration
 
-Soft delete ≠ erasure. DSAR requires anonymizing or hard-deleting PII columns:
-
-```sql
-UPDATE customers
-SET email = 'erased-' || id || '@invalid.local',
-    name = 'ERASED',
-    deleted_at = coalesce(deleted_at, now())
-WHERE id = 42;
-```
-
-Document which tables soft-delete vs anonymize vs hard-delete in privacy runbooks.
-
-## Foreign keys and cascades
-
-Soft-deleting parent while children active breaks logical consistency. Options:
-
-- Cascade soft-delete to children in application transaction
-- Keep FK hard deletes on child when parent soft-deleted (confusing)
-- `ON DELETE SET NULL` with nullable FK
-
-Prefer explicit cascade service over DB triggers hidden from developers.
-
-## Performance
-
-Full table scans ignoring partial indexes when queries omit `deleted_at IS NULL`. Every index should be partial where engine supports it.
-
-Archive cold soft-deleted rows to history table / cold storage — keeps hot table small.
-
-## Alternatives
-
-**Status enum** — `active | suspended | deleted` instead of timestamp.
-
-**Separate archive table** — move row on delete; active table stays clean.
-
-**Event sourcing** — delete is event; projections rebuild state.
-
-**Hard delete + audit log** — store deleted payload JSON in audit service, not OLTP table.
-
-Pick based on query patterns and compliance, not convention.
-
-## Testing checklist
-
-- Assert all public APIs exclude soft-deleted by default
-- Re-registration after delete works
-- Admin restore idempotent
-- Purge job respects retention
-- Analytics warehouse handles deletes (CDC tombstones or hard purge sync)
-
-## ORM bypass and the leak problem
-
-The most common soft-delete bug isn't the delete itself — it's reads that bypass the ORM filter:
 
 ```python
-# ORM path — filtered correctly
-Customer.objects.filter(email="alice@corp.com")  # excludes soft-deleted
-
-# Raw SQL in reporting — LEAKS deleted data
-db.execute("SELECT * FROM customers WHERE email = %s", ["alice@corp.com"])
-
-# Admin tool with direct DB connection — LEAKS
-# Analytics warehouse synced via CDC — INCLUDES deleted rows unless filtered
+# Operational hook for Soft Delete
+@task(retries=3, retry_delay=timedelta(minutes=5))
+def run_database_soft_delete_patterns():
+    validate_preconditions()
+    execute()
+    emit_lineage(run_id=ctx.run_id)
 ```
 
-Mitigations:
-- Database views: `CREATE VIEW active_customers AS SELECT * FROM customers WHERE deleted_at IS NULL`
-- Row-level security: `CREATE POLICY active_only ON customers USING (deleted_at IS NULL)`
-- Code review rule: any raw SQL on soft-deleted tables must include filter
-- CDC downstream: filter `op != 'd'` or `deleted_at IS NULL` in warehouse staging models
+## Operating Soft Delete at scale
 
-## Soft delete in event-driven architectures
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
 
-CDC streams soft deletes as update events (deleted_at set), not delete events:
+## Handoff to adjacent teams
 
-```json
-{
-  "op": "u",
-  "before": {"id": 42, "email": "alice@corp.com", "deleted_at": null},
-  "after": {"id": 42, "email": "alice@corp.com", "deleted_at": "2025-07-15T10:00:00Z"}
-}
-```
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
 
-Downstream consumers must handle this as a logical delete — remove from search index, invalidate cache, stop email campaigns. If they only process `op: "d"` hard deletes, soft-deleted records persist in derived systems forever.
+## Operating Soft Delete at scale
 
-## Archive table pattern
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
 
-For high-churn tables, move soft-deleted rows to archive instead of accumulating:
+## Handoff to adjacent teams
 
-```sql
--- Scheduled job: move rows deleted > 30 days ago
-INSERT INTO customers_archive SELECT * FROM customers
-WHERE deleted_at < now() - interval '30 days';
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
 
-DELETE FROM customers
-WHERE deleted_at < now() - interval '30 days';
-```
+## Operating Soft Delete at scale
 
-Active table stays small and fast. Archive table is read-only for audit/compliance. Hard delete from archive after retention period (1–7 years depending on regulation).
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
 
-## Failure modes
+## Handoff to adjacent teams
 
-- **Missing filter in one query path** — most common bug; one endpoint leaks deleted data
-- **Unique constraint without partial index** — re-registration after delete fails
-- **Unbounded table growth** — no purge job; soft-deleted rows accumulate forever
-- **GDPR request not handled** — soft delete doesn't satisfy erasure; need anonymization
-- **CDC downstream ignores soft deletes** — deleted records persist in search/cache/warehouse
-- **Cascade not implemented** — parent soft-deleted but children still active
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
 
-## Production checklist
+## Operating Soft Delete at scale
 
-- Partial unique indexes on active rows only
-- ORM default scope filters deleted_at IS NULL
-- Raw SQL and admin tools audited for filter compliance
-- CDC downstream handles soft delete as logical delete
-- Retention policy with scheduled purge or archive job
-- GDPR erasure procedure documented (anonymize vs hard delete)
-- Re-registration after delete tested in CI
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
 
-Add partial indexes on `WHERE deleted_at IS NULL` — soft-delete tables without them become full table scans on every query.
+## Handoff to adjacent teams
 
-## Resources
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
 
-- [PostgreSQL — Partial indexes](https://www.postgresql.org/docs/current/indexes-partial.html)
-- [Paranoid deletion in Sequelize](https://sequelize.org/docs/v6/core-concepts/paranoid/)
-- [GDPR — Right to erasure (ICO)](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/right-to-erasure/)
-- [Microsoft — Temporal tables (alternative pattern)](https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables)
-- [Use The Index, Luke — Partial indexes for soft delete](https://use-the-index-luke.com/)
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Handoff to adjacent teams
+
+engineering pipelines touch ingestion, serving, and finance. Document interfaces where Soft Delete gates hand off to downstream owners so failures are not bounced without context.
+
+## Operating Soft Delete at scale
+
+After the first successful deploy of soft delete: patterns and pitfalls, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of Soft Delete settings with the on-call rotation — not only the primary author.
+
+## Further reading
+
+- https://opentelemetry.io/docs/

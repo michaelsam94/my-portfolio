@@ -1,129 +1,269 @@
 ---
-title: "OIDC Pushed Authorization Requests PAR"
+title: "OIDC PAR Pushed Authorization"
 slug: "oidc-par-pushed-authorization"
-description: "Push authorization parameters to server — reduce front-channel tampering on public clients."
-datePublished: "2026-02-07"
-dateModified: "2026-02-07"
+description: "Push authorization request parameters to the server with PAR — shorter URLs, request integrity, and protection against request tampering in the browser."
+datePublished: "2026-02-04"
+dateModified: "2026-07-17"
 tags:
   - "Authentication"
   - "OIDC"
   - "Backend"
-keywords: "oidc par pushed authorization, production, backend"
+keywords: "PAR, pushed authorization request, oauth request_uri, authorization request integrity, FAPI"
 faq:
-  - q: "What problem does OIDC Pushed Authorization Requests PAR solve?"
-    a: "It addresses production gaps teams hit when scaling oidc par pushed authorization: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when oidc par pushed authorization appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "Why push authorization parameters instead of sending them in the browser URL?"
+    a: "Long authorization URLs exceed browser and proxy limits, expose sensitive parameters (acr_values, login_hint) to referrer headers and server logs, and allow parameter tampering in the browser before the redirect reaches the IdP. PAR sends parameters directly from your backend to the authorization server, returning a short request_uri reference the browser uses instead."
+  - q: "How long is a PAR request_uri valid?"
+    a: "The authorization server assigns expiry — typically 30 to 90 seconds, sometimes up to 600 seconds depending on configuration. The browser must reach /authorize with the request_uri before expiry. Your backend should push immediately before redirecting the user, not minutes ahead."
+  - q: "Does PAR replace PKCE or JARM?"
+    a: "No. PAR secures the outbound authorization request. PKCE still protects the authorization code exchange. JARM still secures the inbound authorization response. FAPI 2.0 profiles use all three together — they address different legs of the flow."
 ---
 
-## Production context
+OAuth authorization requests can grow unwieldy. A financial API client might send `scope`, `acr_values`, `claims`, `authorization_details`, PKCE challenge, nonce, state, and custom parameters — easily exceeding 2,000 characters. Browser URL limits, CDN query string caps, and corporate proxy rules truncate or reject these requests silently. Even when the URL fits, every parameter is visible in browser history, referrer headers, and web server access logs.
 
-A billing service lost duplicate events because oidc par pushed authorization was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+**Pushed Authorization Requests (PAR)**, standardized in [RFC 9126](https://datatracker.ietf.org/doc/html/rfc9126), inverts the delivery model. Your backend POSTs the full authorization request to the authorization server's PAR endpoint. The server stores it, returns a `request_uri` handle, and the browser opens a minimal `/authorize` URL referencing that handle.
 
-Senior backend work on oidc pushed authorization requests par is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+## Standard flow vs PAR flow
 
-## Architecture pattern
+**Standard flow** — parameters travel through the browser:
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
-
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
-
-
-```sql
--- Example: idempotent ingest skeleton for oidc workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+```
+Browser → GET /authorize?client_id=...&scope=...&code_challenge=...&[50 more params]
 ```
 
-## Implementation checklist
+**PAR flow** — parameters travel server-to-server:
 
-Validate inputs at the trust boundary with schema versioning.
+```
+Backend → POST /oauth/par (authenticated)
+       ← { "request_uri": "urn:ietf:params:oauth:request_uri:abc123", "expires_in": 60 }
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Browser → GET /authorize?client_id=...&request_uri=urn:ietf:params:oauth:request_uri:abc123
+```
 
-Store idempotency keys with TTL; return cached responses on replay.
+The browser never sees the full parameter set.
 
-Run migrations with lock_timeout and statement_timeout set.
+## PAR endpoint request
 
-Load test at 2× expected peak with production-like payload sizes.
+POST to the PAR endpoint (discovered via `pushed_authorization_request_endpoint` in OpenID Provider Metadata):
 
-## Observability
+```
+POST /oauth/par HTTP/1.1
+Host: idp.example.com
+Content-Type: application/x-www-form-urlencoded
+Authorization: [client authentication — private_key_jwt preferred]
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+response_type=code
+&client_id=billing-app
+&redirect_uri=https://app.example.com/callback
+&scope=openid%20profile%20payments:read
+&state=c7f8a9b2e1d04f6a8b3c2d1e0f9a8b7c
+&nonce=n-0S6_WzA2Mj
+&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+&code_challenge_method=S256
+&acr_values=urn:mace:incommon:iap:silver
+&claims={"userinfo":{"email":{"essential":true}}}
+```
 
-Dashboards for oidc par pushed authorization should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Successful response:
 
-## Security notes
+```json
+{
+  "request_uri": "urn:ietf:params:oauth:request_uri:bwc4JK-ESC0w8daf191hhrL20",
+  "expires_in": 60
+}
+```
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+The `request_uri` is single-use and short-lived. The authorization server rejects reuse and expired handles.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+## Client authentication requirement
 
-## Common production mistakes
+PAR endpoints require authenticated clients. Acceptable methods mirror the token endpoint: `private_key_jwt`, `tls_client_auth`, or `client_secret_basic`. Public clients cannot push requests — this is intentional. The push must originate from your backend where credentials are safe.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+Python example pushing a PAR request:
 
-## Debugging and triage workflow
+```python
+import httpx
+import secrets
 
-When production misbehaves, work top-down:
+async def push_authorization_request(client_assertion: str) -> str:
+    state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = pkce_challenge(code_verifier)
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+    # Store state and code_verifier in session before redirect
+    await session_store.set(state, {"code_verifier": code_verifier})
 
-## Operational checklist
+    resp = await httpx.AsyncClient().post(
+        f"{IDP_BASE}/oauth/par",
+        data={
+            "response_type": "code",
+            "client_id": CLIENT_ID,
+            "redirect_uri": REDIRECT_URI,
+            "scope": "openid profile",
+            "state": state,
+            "nonce": secrets.token_urlsafe(16),
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        },
+        headers={"Authorization": f"Bearer {client_assertion}"},
+        # Or use client_assertion in body for private_key_jwt
+    )
+    resp.raise_for_status()
+    return resp.json()["request_uri"]
+```
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Then redirect the browser:
 
-## Performance tuning notes
+```python
+request_uri = await push_authorization_request(assertion)
+redirect_url = f"{IDP_BASE}/authorize?client_id={CLIENT_ID}&request_uri={request_uri}"
+return RedirectResponse(redirect_url)
+```
 
-Measure before optimizing oidc par pushed authorization. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## Request object alternative
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+PAR accepts either form-encoded parameters or a signed **Request Object** JWT:
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+```
+POST /oauth/par
 
-## Rollout and migration
+request=eyJhbGciOiPS256...  (signed JWT containing all auth params)
+&client_id=billing-app
+&client_assertion=...
+```
 
-Ship oidc par pushed authorization changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+The Request Object JWT includes standard claims (`client_id`, `redirect_uri`, `scope`, etc.) plus `iss` (client_id) and `aud` (authorization server issuer). The AS verifies the client signature on the Request Object — providing end-to-end integrity from client backend to AS storage.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+Request Object payload example:
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+```json
+{
+  "iss": "billing-app",
+  "aud": "https://idp.example.com",
+  "response_type": "code",
+  "client_id": "billing-app",
+  "redirect_uri": "https://app.example.com/callback",
+  "scope": "openid payments:read",
+  "state": "c7f8a9b2...",
+  "nonce": "n-0S6_WzA2Mj",
+  "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+  "code_challenge_method": "S256"
+}
+```
 
-## Testing recommendations
+Signed Request Objects prevent the AS from accepting tampered parameters even if the PAR POST is somehow intercepted.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+## Authorization endpoint with request_uri
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+The browser-facing authorize call is deliberately minimal:
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+```
+GET /authorize?
+  client_id=billing-app
+  &request_uri=urn:ietf:params:oauth:request_uri:bwc4JK-ESC0w8daf191hhrL20
+```
 
-## Incident patterns we see
+The AS looks up stored parameters by `request_uri`. Additional query parameters in the browser request are ignored or cause errors — the stored request is authoritative. This prevents a user or attacker from modifying `scope` or `redirect_uri` in the browser address bar after your backend pushed the original request.
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+## Expiry and timing constraints
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+PAR handles expire quickly. Failure modes:
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `invalid_request_uri` | Handle expired | Push and redirect in same user action; no pre-staging |
+| `invalid_request_uri` | Handle already used | Browser back button re-submitted old URI |
+| Slow redirect | User paused on interstitial | Show loading page; push on button click, not page load |
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Do not cache `request_uri` values. Generate fresh on every login attempt.
 
-## Resources
+## Combining PAR with JARM
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+FAPI 2.0 Baseline profile requires both:
+
+1. Backend pushes authorization request (PAR)
+2. AS returns signed authorization response JWT (JARM)
+
+The push protects the outbound leg; JARM protects the inbound leg. Together they eliminate cleartext OAuth parameters from both directions of the front-channel redirect.
+
+Client metadata registration:
+
+```json
+{
+  "require_pushed_authorization_requests": true,
+  "authorization_signed_response_alg": "PS256",
+  "token_endpoint_auth_method": "private_key_jwt"
+}
+```
+
+When `require_pushed_authorization_requests` is true, the AS rejects direct `/authorize` calls with inline parameters for that client.
+
+## IdP support and discovery
+
+Verify AS capabilities:
+
+```bash
+curl -s https://idp.example.com/.well-known/openid-configuration | jq '{
+  par: .pushed_authorization_request_endpoint,
+  require_par: .require_pushed_authorization_requests
+}'
+```
+
+Keycloak enables PAR per client via advanced settings. Auth0 supports PAR for FAPI-compliant applications. If your IdP lacks PAR, a reverse proxy cannot fully substitute — the AS must store and resolve `request_uri` handles.
+
+## Operational monitoring
+
+Metrics to track:
+
+- PAR push latency (p95 should stay under 200ms — it blocks user redirect)
+- PAR push failure rate (client auth errors, AS downtime)
+- `invalid_request_uri` rate at authorize endpoint (expiry tuning signal)
+- Ratio of PAR pushes to successful token exchanges (drop-off detection)
+
+Log PAR pushes with `client_id`, parameter hash (not raw PII from `login_hint`), and `request_uri` prefix. Never log full authorization parameters containing PII.
+
+## BFF pattern integration
+
+Single-page applications should never hold client credentials. The Backend-for-Frontend handles PAR:
+
+```
+SPA click "Login"
+  → POST /api/auth/login (to your BFF)
+  → BFF pushes PAR, stores state in HttpOnly cookie
+  → BFF returns redirect URL to SPA
+  → SPA sets window.location
+  → Callback hits BFF /api/auth/callback
+  → BFF exchanges code with private_key_jwt
+  → BFF sets session cookie
+```
+
+The SPA never touches OAuth parameters, PAR credentials, or authorization codes.
+
+## Common implementation mistakes
+
+**Pushing too early**: Pre-generating `request_uri` on page load wastes handles and increases expiry failures when users hesitate before clicking login.
+
+**Missing client authentication**: PAR without auth is rejected — ensure `private_key_jwt` assertion accompanies every push.
+
+**Parameter mismatch**: `client_id` in the browser authorize URL must match the pushed request. Mismatch causes opaque AS errors.
+
+**Assuming PAR replaces server-side state validation**: Still validate `state` on callback. PAR protects request parameters, not your session binding.
+
+**Oversized pushed requests**: PAR removes URL length limits but AS storage may cap request size (typically 8KB–64KB). Split complex `authorization_details` across multiple flows if needed.
+
+## Enterprise rollout checklist
+
+Before enabling PAR in production, validate each item:
+
+1. Authorization server advertises `pushed_authorization_request_endpoint` in discovery metadata
+2. Client credentials for PAR push use `private_key_jwt` or mTLS — not embedded secrets in frontend code
+3. Push endpoint latency stays under 200ms p95 from all deployment regions
+4. `request_uri` expiry aligns with UX — push on button click, not page load
+5. Callback handler validates `state` independently of PAR (PAR secures outbound params, not session binding)
+6. Load test concurrent login bursts — PAR endpoint becomes synchronous dependency for every authentication
+7. Audit logs capture PAR push events with client_id and request hash (not raw PII from login_hint)
+
+Roll out behind a feature flag: percentage of login flows use PAR while others use standard authorize URLs. Compare error rates and latency before full cutover.
+
+## Summary
+
+Pushed Authorization Requests move OAuth authorization parameters off the browser wire and into authenticated server-to-server communication. The result is shorter redirect URLs, tamper-resistant request parameters, and cleaner separation between public frontends and confidential backends. Pair PAR with PKCE for code exchange protection and JARM for response integrity when building high-assurance OIDC integrations. Push immediately before redirect, authenticate every push, and treat `request_uri` handles as single-use, short-lived resources.

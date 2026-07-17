@@ -1,111 +1,208 @@
 ---
 title: "AI Agents: Patch Management Windows"
 slug: "agent-patch-management-windows"
-description: "Patch Management Windows: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Design Windows patch maintenance windows with ring deployments, reboot orchestration, WSUS/Intune integration, and exception workflows that survive Patch Tuesday and audit."
 datePublished: "2025-11-08"
 dateModified: "2025-11-08"
 tags: ["AI", "Agent", "Patch"]
-keywords: "agent, patch, management, windows, ai, production, engineering, architecture"
+keywords: "Windows patch management, maintenance windows, WSUS, Intune, Patch Tuesday, ring deployment, reboot orchestration"
 faq:
-  - q: "What is Patch Management Windows?"
-    a: "Patch Management Windows covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production LLM/RAG stack. It is not a single library call — it is how the pipeline behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Patch Management Windows?"
-    a: "Prioritize it when token cost, latency, and eval scores show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Patch Management Windows?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Patch Management Windows fit a modern AI stack?"
-    a: "Modern tooling (LLM/RAG stack) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Patch Management Windows should be observable in production and safe to change in small diffs."
+  - q: "How long should a standard Windows maintenance window be?"
+    a: "Four to six hours for servers with staged reboots; two to three hours for workstations if updates pre-download during business hours. Budget extra time on Patch Tuesday months with cumulative updates exceeding 500 MB or when .NET or SQL co-reboots are bundled."
+  - q: "Should critical out-of-band patches bypass the window?"
+    a: "Yes, but through a documented emergency lane: 24-hour change advisory, isolated ring install first, automated rollback snapshot for VMs, and post-install verification script—not ad-hoc manual installs on production without evidence."
+  - q: "WSUS vs Intune for hybrid fleets?"
+    a: "Use WSUS or Configuration Manager for on-prem domain-joined servers and legacy apps; Intune/WUfB for cloud-first laptops. Hybrid orgs sync approval metadata from one source of truth to avoid double-patching or conflicting deferrals."
+  - q: "How do you handle servers that must never reboot unplanned?"
+    a: "Cluster rolling updates, maintenance orchestration with pre/post hooks, and explicit reboot budgets per service tier. Machines without a defined reboot owner should not receive automatic forced restarts—treat that as a configuration defect."
 ---
-Most teams encounter patch management windows after the happy path is shipped — when retries stack up, costs climb, or a security review asks uncomfortable questions. That is the right time to treat it as engineering work with explicit tradeoffs, not a checklist item. This piece covers what I look for in design reviews and what I have seen fail in production ai stacks.
-## Problem framing
+Patch Tuesday arrives whether your change board is ready or not. The difference between teams that sleep through it and teams that page at 2 a.m. is not faster WSUS sync—it is maintenance windows engineered around reboot physics, application warm-up time, and the reality that a SQL cluster cannot tolerate three nodes rebooting because someone checked "auto approve critical."
 
-When patch management windows is underspecified, every pipeline team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually token cost, latency, and eval scores, but the root cause is missing shared patterns.
+This article focuses on Windows patch management windows: how to schedule them, how to deploy in rings, how to automate compliance evidence, and where exceptions belong.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## The anatomy of a maintenance window
 
-Solid AI engineering turns patch management windows from a recurring argument into a documented pattern with tests and an owner.
+A maintenance window is four coordinated intervals, not a single calendar invite:
 
-## Design principles that survive production
+1. **Pre-stage** — updates download, disk space verified, snapshot or backup confirmed, dependency owners notified.
+2. **Install** — packages apply; services may continue running until reboot.
+3. **Reboot** — OS and sometimes application restarts; this is where SLAs break.
+4. **Validate** — smoke tests, health checks, synthetic transactions, manual sign-off for tier-0 systems.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where agent patch management windows bugs hide.
+Skipping validation turns "patched" into "we hope patched." Compliance scanners report KB present; users report checkout down.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for patch management windows, you do not yet understand the behavior you shipped.
+Document each interval with owner, max duration, and rollback trigger. Example for a payment adjacency app server:
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+| Interval | Duration | Owner | Rollback trigger |
+|----------|----------|-------|------------------|
+| Pre-stage | T-24h to T-2h | Platform | Snapshot failure |
+| Install | 30 min | Automation | Install error >5% |
+| Reboot | 15 min / node | Orchestrator | Health check fail 3x |
+| Validate | 45 min | App on-call | Error rate > baseline +2σ |
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design agent patch management windows flows so duplicates are harmless or detectable.
+## Ring-based deployment model
 
-## Implementation patterns
+Rings contain risk, not just delay. A typical five-ring model:
 
-A practical baseline for patch management windows in ai stacks:
+- **Ring 0 — Patch lab** — VMs mirroring production roles; install everything first; run automated and manual test suites.
+- **Ring 1 — IT workstations** — diverse hardware; catches driver and VPN issues.
+- **Ring 2 — Non-critical servers** — internal tools, CI runners, staging mirrors.
+- **Ring 3 — Production cohort A** — 10–20% of each role, geographically spread.
+- **Ring 4 — Production cohort B** — remainder after 24–48h bake time with clean metrics.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Membership is dynamic via AD security groups or Intune device filters—never hard-code hostnames in scripts without a group backing them.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes agent patch management windows changes safer because business rules stay isolated from transport details.
+```powershell
+# Example: trigger install for Ring 2 during window; defer reboot until orchestrator
+$ringGroup = "Patch-Ring-2-Servers"
+$deadline  = (Get-Date).AddHours(4)
 
-```typescript
-// Patch Management Windows: typed boundary + structured errors
-export async function handlePatchManagementWindows(input: Input): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  const span = tracer.startSpan("agent-patch-management-windows");
-  try {
-    return await repo.execute(parsed.data);
-  } finally {
-    span.end();
-  }
-}
-
+Invoke-WUJob -ComputerName (Get-ADGroupMember $ringGroup | Select -Expand Name) `
+  -Download `
+  -Install `
+  -IgnoreReboot `
+  -Deadline $deadline `
+  -Verbose
 ```
 
+Use `-IgnoreReboot` during install phase so you control restart order. For clusters, orchestrate one node at a time with quorum checks between reboots.
 
-## Operational concerns
+## WSUS, Intune, and not both fighting
 
-Runbooks for patch management windows should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+**WSUS / Configuration Manager** excels at server approval workflows, third-party update catalogs, and air-gapped networks. Sync schedule should complete 48 hours before your window so approvals propagate to downstream replicas.
 
-Production agent patch management windows work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+**Windows Update for Business / Intune** excels at cloud-managed devices, delivery optimization, and user experience controls (active hours, restart grace).
 
-Rollouts for patch management windows benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+Hybrid pitfalls:
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+- Same machine receiving policy from SCCM and Intune with conflicting deferrals
+- Dual reboot prompts on laptops enrolled in both MDM and domain GPO
+- Server Core missing UI feedback—rely on event logs (`Microsoft-Windows-WindowsUpdateClient/Operational`)
 
-## Security and compliance angles
+Pick one authority per device class. Document it in CMDB. Auditors ask.
 
-Even when patch management windows is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Automating compliance and evidence
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for agent patch management windows so security reviews do not rely on tribal knowledge.
+Scanning tools report CVE exposure; patch windows prove remediation in time. Collect:
 
-## Testing strategy
+- `Get-HotFix` output or `systeminfo` before/after
+- Windows Update agent logs for error codes (`0x80240020` = still downloading)
+- Orchestrator run ID tied to change ticket
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that patch management windows depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+```powershell
+function Export-PatchComplianceReport {
+  param([string[]]$ComputerNames, [string]$ChangeTicket)
 
-For critical ai paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+  $results = foreach ($cn in $ComputerNames) {
+    $session = New-CimSession -ComputerName $cn -ErrorAction SilentlyContinue
+    if (-not $session) {
+      [pscustomobject]@{ Computer = $cn; Status = "Unreachable"; Ticket = $ChangeTicket }
+      continue
+    }
+    $hotfixes = Get-CimInstance -CimSession $session -ClassName Win32_QuickFixEngineering
+    [pscustomobject]@{
+      Computer     = $cn
+      Status       = "Reachable"
+      LatestKB     = ($hotfixes | Sort-Object InstalledOn -Descending | Select -First 1).HotFixID
+      InstalledOn  = ($hotfixes | Sort-Object InstalledOn -Descending | Select -First 1).InstalledOn
+      Ticket       = $ChangeTicket
+    }
+  }
+  $results | Export-Csv -Path "\\fileserver\patch-reports\$ChangeTicket.csv" -NoTypeInformation
+}
+```
 
-## Migration and evolution
+Attach CSV and dashboard screenshots to the change record. "We ran Windows Update" is not evidence.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle agent patch management windows functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Reboot orchestration and warm-up
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where patch management windows spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Applications lie about readiness. IIS may accept connections while app pools still spin up; SQL AG role may not be primary yet. Standardize post-reboot scripts per role:
 
-## Related concepts
+```powershell
+# Post-reboot validation hook — register as Scheduled Task run once at startup
+$checks = @(
+  { (Get-Service W3SVC).Status -eq 'Running' },
+  { (Invoke-WebRequest http://localhost/health -UseBasicParsing).StatusCode -eq 200 }
+)
 
-Patch Management Windows intersects with broader ai topics — see companion notes on [agent-patch patterns](https://blog.michaelsam94.com/agent-patch/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+foreach ($check in $checks) {
+  $ok = $false
+  for ($i = 0; $i -lt 12; $i++) {
+    if (& $check) { $ok = $true; break }
+    Start-Sleep -Seconds 10
+  }
+  if (-not $ok) {
+    Write-EventLog -LogName Application -Source PatchValidation -EventId 5001 -EntryType Error `
+      -Message "Post-reboot validation failed"
+    exit 1
+  }
+}
+```
 
-## The takeaway
+Failed validation should alert the orchestrator to halt the ring expansion—not proceed to the next node.
 
-Patch Management Windows rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how agent patch management windows becomes a maintainable asset instead of incident fuel.
+## Exception workflows that prevent shadow IT
+
+Some servers cannot patch on schedule: legacy app vendor certification lag, regulatory freeze, hardware too old for current kernel. Exceptions require:
+
+- Named business owner and expiry date (max 90 days)
+- Compensating controls (network segmentation, increased monitoring)
+- Entry in CMDB `patch_exception` field visible to scanners
+
+Expired exceptions auto-page; no silent renewals. Teams that skip this accumulate "permanent temporary" servers—the ones ransomware operators love.
+
+## Patch Tuesday game day
+
+Two weeks before: review Microsoft's preview notes and CVE priority. One week before: Ring 0 install dry run. Day of: change bridge with representatives from network, storage, DBA, and app teams—even if most months are quiet.
+
+Bridge runbook one-pager:
+
+1. Confirm Ring 0 success in last 7 days
+2. Start Ring 3 install at window open; monitor error rate dashboard
+3. Halt expansion if install failures >2% or critical synthetic fails
+4. Complete validation before closing change ticket
+5. Publish internal summary: KBs deployed, issues hit, carry-forward items
+
+Quiet months build the habit for loud months—when a zero-day drops on a Friday.
+
+## Workstation-specific UX
+
+Users tolerate restarts when updates finished downloading before they clicked "Restart now." Configure:
+
+- Automatic download during business hours
+- Active hours enforced via GPO/Intune
+- Restart grace period with clear deadline
+- BitLocker PIN prompts documented for FileVault-equivalent BitLocker scenarios
+
+VDI pools patch at logout or nightly refresh—never during peak login surge.
+
+## Coordinating with application owners
+
+Database patches are not OS patches, but reboots affect both. Maintain a **dependency calendar** shared with DBAs and app owners: SQL Server CU installs, .NET runtime updates, and kernel patches may each require different reboot ordering. A window that reboots OS before SQL failover completes leaves AG listeners offline.
+
+Send pre-window notifications with: expected reboot count, whether services will bounce without OS restart, and validation endpoints owners should watch. Silence breeds pages from teams who were not informed.
+
+For containers on Windows nodes, distinguish **node patching** from **image updates**. Patching the host still drains pods; coordinate with Kubernetes cordon/drain scripts:
+
+```powershell
+kubectl cordon $node
+kubectl drain $node --ignore-daemonsets --delete-emptydir-data --timeout=30m
+# Apply OS updates + reboot
+kubectl uncordon $node
+```
+
+Skipping cordon produces the classic failure mode: two replicas on the same node reboot simultaneously.
+
+## Measuring window success
+
+Track mean time to patch (MTTP) from Microsoft release to Ring 4 completion, percentage of fleet compliant at window close, and unplanned reboot rate outside windows. MTTP creeping upward usually means approval bottlenecks or fear after a bad month—not technical sync issues.
+
+Windows patch management is change management with binaries: rings contain blast radius, windows bound reboot chaos, automation produces evidence, and exceptions expire. Build those four pillars and Patch Tuesday becomes routine instead of ritual panic.
 
 ## Resources
 
-- [platform.openai.com/docs/](https://platform.openai.com/docs/)
-
-- [python.langchain.com/docs/](https://python.langchain.com/docs/)
-
-- [www.anthropic.com/research](https://www.anthropic.com/research)
-
-- [huggingface.co/docs](https://huggingface.co/docs)
-
-- [arxiv.org/list/cs.AI/recent](https://arxiv.org/list/cs.AI/recent)
+- [Microsoft Learn: Windows Update for Business deployment guide](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+- [Microsoft Learn: WSUS and Configuration Manager software updates](https://learn.microsoft.com/en-us/mem/configmgr/sum/)
+- [CIS Microsoft Windows Server Benchmark](https://www.cisecurity.org/benchmark/microsoft_windows_server)
+- [Microsoft Security Update Guide](https://msrc.microsoft.com/update-guide)
+- [NIST SP 800-40 Rev. 4: Guide to Enterprise Patch Management](https://csrc.nist.gov/publications/detail/sp/800-40/rev-4/final)
