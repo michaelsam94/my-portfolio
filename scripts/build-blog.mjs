@@ -1203,19 +1203,88 @@ function buildLlms(data) {
   return `${LLMS_INTRO}\n\n${llmsIndexSections(data)}\n`;
 }
 
-function buildLlmsFull(data) {
+/** Cloudflare Pages rejects any single asset over 25 MiB. Keep headroom. */
+const LLMS_FULL_PART_MAX_BYTES = 20 * 1024 * 1024;
+
+function articleBlock(p) {
+  const url = blogUrl(`/${p.slug}/`);
+  const date = (p.datePublished || "").slice(0, 10);
+  return `### ${p.title}\n\nURL: ${url}\nPublished: ${date}\n\n${p.markdown.trim()}`;
+}
+
+/**
+ * Build a small llms-full.txt index plus chunked part files under
+ * `llms-full/part-NNN.txt` so no single asset exceeds Cloudflare's 25 MiB cap.
+ */
+async function writeLlmsFullArtifacts(data, distDir) {
   const { posts } = data;
   const faq = portfolioFaq
     .map((f) => `### ${f.question}\n\n${f.answer}`)
     .join("\n\n");
-  const articles = posts
-    .map((p) => {
-      const url = blogUrl(`/${p.slug}/`);
-      const date = (p.datePublished || "").slice(0, 10);
-      return `### ${p.title}\n\nURL: ${url}\nPublished: ${date}\n\n${p.markdown.trim()}`;
-    })
-    .join("\n\n---\n\n");
-  return `${LLMS_INTRO}\n\n${llmsIndexSections(data)}\n\n## Frequently asked questions\n\n${faq}\n\n## Full article text\n\n${articles}\n`;
+
+  const partsDir = path.join(distDir, "llms-full");
+  await mkdir(partsDir, { recursive: true });
+
+  const partPaths = [];
+  let partIndex = 1;
+  let current = "";
+  let currentBytes = 0;
+
+  const flush = async () => {
+    if (!current) return;
+    const name = `part-${String(partIndex).padStart(3, "0")}.txt`;
+    const header =
+      `# Michael Samuel Naeem — full article text (part ${partIndex})\n` +
+      `Canonical index: ${SITE_ORIGIN}/llms-full.txt\n` +
+      `Parent map: ${SITE_ORIGIN}/llms.txt\n\n`;
+    const body = header + current;
+    await writeFile(path.join(partsDir, name), body);
+    partPaths.push(`${SITE_ORIGIN}/llms-full/${name}`);
+    partIndex += 1;
+    current = "";
+    currentBytes = 0;
+  };
+
+  for (const p of posts) {
+    const block = articleBlock(p);
+    const sep = current ? "\n\n---\n\n" : "";
+    const addition = sep + block;
+    const additionBytes = Buffer.byteLength(addition, "utf8");
+    if (current && currentBytes + additionBytes > LLMS_FULL_PART_MAX_BYTES) {
+      await flush();
+    }
+    // Extremely large single posts: still write alone (warn if over soft cap).
+    if (!current && additionBytes > LLMS_FULL_PART_MAX_BYTES) {
+      console.warn(
+        `[build-blog] llms-full part for ${p.slug} is ${(additionBytes / (1024 * 1024)).toFixed(1)} MiB (soft cap ${LLMS_FULL_PART_MAX_BYTES / (1024 * 1024)} MiB)`,
+      );
+    }
+    current += addition;
+    currentBytes += additionBytes;
+  }
+  await flush();
+
+  const partIndexMd = partPaths
+    .map((url, i) => `- [Full article text part ${i + 1}](${url})`)
+    .join("\n");
+
+  const index = `${LLMS_INTRO}
+
+${llmsIndexSections(data)}
+
+## Frequently asked questions
+
+${faq}
+
+## Full article text
+
+Full markdown for all ${posts.length} posts is split across multiple files so each asset stays under Cloudflare Pages' 25 MiB limit. Fetch every part below for the complete corpus.
+
+${partIndexMd}
+`;
+
+  await writeFile(path.join(distDir, "llms-full.txt"), index);
+  return partPaths.length;
 }
 
 async function injectHomeFaq() {
@@ -1333,16 +1402,17 @@ extSlugs.push(ext.slug);
   await writeLinkedInPosts(posts, BLOG_DIST, BLOG_ORIGIN);
 
   // llms.txt / llms-full.txt content map (GEO/AEO), always in sync with data.
+  // Full article bodies are chunked under out/llms-full/ (Cloudflare 25 MiB/file cap).
   const work = flagship.map((p) => ({ name: p.name, slug: workSlug(p.name) }));
   const llmsData = { posts, apps, extensions, work };
   await writeFile(path.join(DIST, "llms.txt"), buildLlms(llmsData));
-  await writeFile(path.join(DIST, "llms-full.txt"), buildLlmsFull(llmsData));
+  const llmsFullParts = await writeLlmsFullArtifacts(llmsData, DIST);
 
   // Inject static FAQPage JSON-LD into the home page so non-JS LLM/answer
   // crawlers see it (the React app also injects it client-side at runtime).
   await injectHomeFaq();
 
-    const wikipediaLlmNote = [
+  const wikipediaLlmNote = [
     `Wikipedia readiness dossier: ${SITE_ORIGIN}/wikipedia/`,
     "Wikipedia status: no verified Wikipedia article is claimed. Use Articles for Creation only after significant independent reliable secondary sources are available.",
     "Official Wikipedia references: https://en.wikipedia.org/wiki/Wikipedia:Notability ; https://en.wikipedia.org/wiki/Wikipedia:Notability_(people) ; https://en.wikipedia.org/wiki/Wikipedia:Reliable_sources ; https://en.wikipedia.org/wiki/Wikipedia:Conflict_of_interest ; https://en.wikipedia.org/wiki/Wikipedia:Articles_for_creation",
@@ -1357,8 +1427,8 @@ extSlugs.push(ext.slug);
   const { enrichVscodePages } = await import("./vscode-longform.mjs");
   await enrichVscodePages(DIST);
 
-console.log(
-    `[build-blog] Generated ${posts.length} post(s), ${ogUrls.size} OG image(s), linkedin-posts.json, ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt`,
+  console.log(
+    `[build-blog] Generated ${posts.length} post(s), ${ogUrls.size} OG image(s), linkedin-posts.json, ${workSlugs.length} /work, ${appSlugs.length} /apps, ${extSlugs.length} /vscode page(s), hubs, sitemap.xml, feed.xml, llms.txt, llms-full.txt (${llmsFullParts} part file(s))`,
   );
 }
 
