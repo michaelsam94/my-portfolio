@@ -127,8 +127,10 @@ function head({ title, description, canonical, ogImage, jsonLd, ogType = "articl
   <link rel="canonical" href="${canonical}" />
   <link rel="alternate" type="application/rss+xml" title="Michael Samuel Naeem — Engineering Blog" href="${BLOG_ORIGIN}/feed.xml" />
   <link rel="manifest" href="${SITE_ORIGIN}/site.webmanifest" />
-  <link rel="icon" type="image/png" sizes="48x48" href="${SITE_ORIGIN}/favicon-48.png" />
-  <link rel="icon" type="image/svg+xml" href="${SITE_ORIGIN}/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="shortcut icon" href="/favicon-48.png" />
   <meta name="theme-color" content="#0c0b0f" />
   <meta name="color-scheme" content="light dark" />
   <meta name="geo.region" content="EG-C" />
