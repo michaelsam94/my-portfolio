@@ -218,6 +218,9 @@ article { padding: 8px 0 40px; }
 .post-cta h3 { margin-top: 0; }
 
 .post-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin: 20px 0 28px;
 }
 .btn-linkedin {
@@ -231,6 +234,24 @@ article { padding: 8px 0 40px; }
   color: var(--text-h);
 }
 .btn-linkedin svg { flex-shrink: 0; }
+.btn-x {
+  text-decoration: none;
+  color: var(--text-h);
+  background: rgba(15, 20, 25, 0.08);
+  border-color: rgba(15, 20, 25, 0.28);
+}
+[data-theme="dark"] .btn-x {
+  background: rgba(231, 233, 234, 0.08);
+  border-color: rgba(231, 233, 234, 0.28);
+}
+.btn-x:hover {
+  background: rgba(15, 20, 25, 0.14);
+  color: var(--text-h);
+}
+[data-theme="dark"] .btn-x:hover {
+  background: rgba(231, 233, 234, 0.16);
+}
+.btn-x svg { flex-shrink: 0; }
 
 .btn {
   display: inline-flex;

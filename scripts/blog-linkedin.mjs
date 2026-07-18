@@ -94,3 +94,10 @@ export async function writeLinkedInPosts(posts, blogDist, blogOrigin) {
 export function linkedInShareUrl(articleUrl) {
   return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`;
 }
+
+/** X (Twitter) intent URL with article title + link. */
+export function xShareUrl(articleUrl, text = "") {
+  const params = new URLSearchParams({ url: articleUrl });
+  if (text) params.set("text", text);
+  return `https://twitter.com/intent/tweet?${params.toString()}`;
+}
