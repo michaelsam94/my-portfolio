@@ -101,3 +101,23 @@ export function xShareUrl(articleUrl, text = "") {
   if (text) params.set("text", text);
   return `https://twitter.com/intent/tweet?${params.toString()}`;
 }
+
+/** Reddit submit intent. */
+export function redditShareUrl(articleUrl, title = "") {
+  const params = new URLSearchParams({ url: articleUrl });
+  if (title) params.set("title", title);
+  return `https://www.reddit.com/submit?${params.toString()}`;
+}
+
+/** Hacker News submit-link intent. */
+export function hackerNewsShareUrl(articleUrl, title = "") {
+  const params = new URLSearchParams({ u: articleUrl });
+  if (title) params.set("t", title);
+  return `https://news.ycombinator.com/submitlink?${params.toString()}`;
+}
+
+/** Bluesky compose intent (URL + title in the post body). */
+export function blueskyShareUrl(articleUrl, title = "") {
+  const text = title ? `${title}\n\n${articleUrl}` : articleUrl;
+  return `https://bsky.app/intent/compose?text=${encodeURIComponent(text)}`;
+}

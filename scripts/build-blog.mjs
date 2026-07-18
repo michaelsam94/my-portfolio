@@ -18,7 +18,14 @@ import matter from "gray-matter";
 import { marked } from "marked";
 import { loadPortfolioData } from "./load-portfolio-data.mjs";
 import { generateOgImages } from "./blog-og-images.mjs";
-import { writeLinkedInPosts, linkedInShareUrl, xShareUrl } from "./blog-linkedin.mjs";
+import {
+  writeLinkedInPosts,
+  linkedInShareUrl,
+  xShareUrl,
+  redditShareUrl,
+  hackerNewsShareUrl,
+  blueskyShareUrl,
+} from "./blog-linkedin.mjs";
 
 const { projects, workSlug, portfolioFaq } = await loadPortfolioData();
 
@@ -236,6 +243,18 @@ function renderPost(p, related) {
     <a class="btn btn-x" href="${xShareUrl(url, p.title)}" target="_blank" rel="noopener noreferrer" aria-label="Share this article on X">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
       Share on X
+    </a>
+    <a class="btn btn-reddit" href="${redditShareUrl(url, p.title)}" target="_blank" rel="noopener noreferrer" aria-label="Share this article on Reddit">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248s1.249-.561 1.249-1.249c0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248s1.248-.561 1.248-1.249c0-.687-.561-1.249-1.249-1.249zm-5.038 3.795a.12.12 0 0 0-.09.038c-.477.507-1.485.743-2.622.743s-2.146-.236-2.623-.743a.127.127 0 0 0-.188 0 .13.13 0 0 0 0 .188c.6.638 1.79.997 2.81.997s2.21-.359 2.81-.997a.13.13 0 0 0 0-.188.13.13 0 0 0-.097-.038z"/></svg>
+      Share on Reddit
+    </a>
+    <a class="btn btn-hn" href="${hackerNewsShareUrl(url, p.title)}" target="_blank" rel="noopener noreferrer" aria-label="Share this article on Hacker News">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M0 24V0h24v24H0zM6.951 5.896l4.112 7.708v5.064h1.891v-5.064l4.159-7.708h-2.189l-2.698 5.381-2.675-5.381H6.951z"/></svg>
+      Share on HN
+    </a>
+    <a class="btn btn-bluesky" href="${blueskyShareUrl(url, p.title)}" target="_blank" rel="noopener noreferrer" aria-label="Share this article on Bluesky">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.043-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013.5 6.714-4.016 7.823-6.268 1.11 2.252 2.81 6.768 7.824 6.268 4.255-4.075 1.257-6.498-2.83-7.078a8.577 8.577 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 9.687 12 10.8Z"/></svg>
+      Share on Bluesky
     </a>
   </div>`;
   return `${head({
