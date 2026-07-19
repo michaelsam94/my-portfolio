@@ -356,8 +356,7 @@ a {
 
 .metric-grid,
 .question-grid,
-.skill-grid,
-.motion-grid {
+.skill-grid {
   display: grid;
   gap: 1px;
   grid-template-columns: 1fr;
@@ -396,16 +395,14 @@ a {
 
 .metric-card p,
 .plain-card p,
-.catalog-card p,
-.motion-card p {
+.catalog-card p {
   color: var(--fg-muted);
   margin: 0.8rem 0 0;
 }
 
 .plain-card h3,
 .plain-card-title,
-.catalog-title,
-.motion-card h3 {
+.catalog-title {
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1.18;
@@ -535,26 +532,6 @@ a {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
-}
-
-.motion-card video {
-  aspect-ratio: 16 / 9;
-  background: #09090b;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  display: block;
-  margin-bottom: 1rem;
-  width: 100%;
-}
-
-.motion-note {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-muted);
-  font-size: 1rem;
-  margin: 0 0 1rem;
-  max-width: 52rem;
-  padding: 1rem;
 }
 
 .cert-list,
@@ -997,7 +974,6 @@ a {
   .metric-grid,
   .question-grid,
   .skill-grid,
-  .motion-grid,
   .cert-list,
   .activity-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));

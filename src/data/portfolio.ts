@@ -178,21 +178,6 @@ export const certifications = [
   { name: "Google Play Publishing", org: "MichaelSam94 catalog", year: "2025-2026" },
 ] as const;
 
-export const motionVideos = [
-  {
-    title: "Samsung Galaxy Watch 8 | Cinematic Motion Design Reel",
-    description:
-      "Side product-storytelling study exploring launch pacing, wearable UI motion, material detail, and brand lockup discipline.",
-    src: "/motion/storyboard-motion-video.mp4",
-  },
-  {
-    title: "Khamrah by Lattafa | Motion Design",
-    description:
-"Side visual-direction study focused on premium pacing, material contrast, close-up composition, and concise product narrative.",
-    src: "/motion/luxury-performance-motion.mp4",
-  },
-] as const;
-
 export const openSourceHighlights = [
   {
     title: "GitHub Portfolio",

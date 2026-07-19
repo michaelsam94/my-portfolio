@@ -8,7 +8,6 @@ type IdleWindow = Window & {
 const About = lazy(() => import("./About"));
 const Experience = lazy(() => import("./Experience"));
 const Projects = lazy(() => import("./Projects"));
-const Motion = lazy(() => import("./Motion"));
 const PlayStore = lazy(() => import("./PlayStore"));
 const Impact = lazy(() => import("./Impact"));
 const OpenSource = lazy(() => import("./OpenSource"));
@@ -95,7 +94,6 @@ export default function DeferredPortfolioSections() {
       <About />
       <Experience />
       <Projects />
-      <Motion />
       <PlayStore />
       <Impact />
       <OpenSource />

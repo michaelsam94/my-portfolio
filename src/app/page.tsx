@@ -5,7 +5,6 @@ import SectionWrapper from "@/components/SectionWrapper";
 import CertificationList from "@/components/section-catalog/CertificationList";
 import GitHubActivity from "@/components/section-catalog/GitHubActivity";
 import ImpactGrid from "@/components/section-catalog/ImpactGrid";
-import MotionGrid from "@/components/section-catalog/MotionGrid";
 import OpenSourceGrid from "@/components/section-catalog/OpenSourceGrid";
 import ProductCatalog from "@/components/section-catalog/ProductCatalog";
 import ProfilePanel from "@/components/section-catalog/ProfilePanel";
@@ -59,9 +58,6 @@ export default async function Home() {
       </SectionWrapper>
       <SectionWrapper id="faq" heading="Frequently Asked Questions" headingId="faq-heading">
         <QuestionGrid items={portfolioFaq} />
-      </SectionWrapper>
-      <SectionWrapper id="motion" heading="Optional Side Creative Lab" headingId="motion-heading">
-        <MotionGrid />
       </SectionWrapper>
       <SectionWrapper id="contact" heading="Contact" headingId="contact-heading">
         <ContactLinks email={heroData.email} links={contactLinks} />
