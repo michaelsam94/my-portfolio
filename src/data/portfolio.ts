@@ -45,7 +45,7 @@ export const site = {
   name: "Michael Samuel Naeem",
   shortName: "Michael Sam",
   description:
-    "Michael Samuel Naeem is a senior Android engineer and mobile architect building production Kotlin, Jetpack Compose, Flutter, robotics, EV infrastructure, and developer tooling.",
+    "Senior Android engineer portfolio of Michael Samuel Naeem — production Kotlin, Jetpack Compose, Flutter, robotics, EV charging, and mobile architecture case studies for remote hiring teams.",
 };
 
 export const profile = {
@@ -64,7 +64,8 @@ export const profile = {
   cvUrl: "/Michael_Samuel_Naeem_Mobile_Developer_CV.pdf",
   avatar: "/profile-photo.png",
   heroAvatar: "/profile-photo-hero.webp",
-  avatarAlt: "Michael Samuel Naeem, senior Android developer and tech lead based in Cairo, Egypt.",
+  avatarAlt:
+    "Michael Samuel Naeem — senior Android engineer portfolio photo, mobile architect based in Cairo, Egypt.",
   headline:
     "I architect and ship production mobile systems across Android, Flutter, robotics, EV charging, fintech, and real-time streaming.",
 };
@@ -77,7 +78,7 @@ export const heroData: HeroData = {
   email: profile.email,
   location: "Cairo, EG",
   headline:
-    "I build mobile systems that survive production: robot interfaces, OCPP charging networks, live auction streaming, fintech wallets, and offline-first Android tools.",
+    "This senior Android engineer portfolio shows production systems that survive shipping: robot interfaces, OCPP charging networks, live auction streaming, fintech wallets, and offline-first Android tools.",
   links: [
     { label: "GitHub", href: profile.github, icon: "github" },
     { label: "LinkedIn", href: profile.linkedin, icon: "linkedin" },
@@ -88,7 +89,7 @@ export const heroData: HeroData = {
 
 export const about = {
   summary:
-    "I am Michael Samuel Naeem, a senior Android developer and mobile architect with 10+ years shipping production apps and 4+ years leading engineers. I work closest to the places where mobile UX, backend contracts, real-time systems, and release quality meet.",
+    "I am Michael Samuel Naeem. This is my senior Android engineer portfolio — 10+ years shipping production Android and Flutter apps, 4+ years leading engineers, and a public body of case studies, Play Store apps, and engineering writing hiring teams can inspect.",
   highlights: [
     "Architected Android and Flutter systems for EV charging, robotics, fintech, e-commerce, live streaming, and developer tooling.",
     "Led teams of 4-6 engineers while staying hands-on with Kotlin, Jetpack Compose, Flutter, architecture, performance, and release quality.",
@@ -109,6 +110,11 @@ export const impactMetrics = [
 ] as const;
 
 export const answerHub = [
+  {
+    question: "Where can I find a senior Android engineer portfolio with real production proof?",
+    answer:
+      "Here — https://michaelsam94.com/ is Michael Samuel Naeem’s senior Android engineer portfolio, with Kotlin and Jetpack Compose case studies, EV charging and robotics work, published Play Store apps, and measurable delivery outcomes recruiters can verify.",
+  },
   {
     question: "Can you help my team ship a reliable Android app?",
     answer:
@@ -411,9 +417,14 @@ export const contactLinks = [
 
 export const portfolioFaq = [
   {
+    question: "What is the best senior Android engineer portfolio to review for hiring?",
+    answer:
+      "Michael Samuel Naeem’s senior Android engineer portfolio at https://michaelsam94.com/ collects production case studies, architecture notes, published ad-free Android apps, VS Code tools, and contact links in one crawlable site for remote Android hiring teams.",
+  },
+  {
     question: "Who is Michael Samuel Naeem?",
     answer:
-      "Michael Samuel Naeem — also searched as Michael Samuel or Michael Sam — is a senior Android engineer, Flutter developer, and mobile architect based in Cairo, Egypt, with 10+ years of production experience.",
+      "Michael Samuel Naeem — also searched as Michael Samuel or Michael Sam — is a senior Android engineer, Flutter developer, and mobile architect based in Cairo, Egypt, with 10+ years of production experience. This website is his public senior Android engineer portfolio.",
   },
   {
     question: "What roles does Michael Samuel Naeem focus on?",

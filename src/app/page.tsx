@@ -19,7 +19,7 @@ export default async function Home() {
   const [apps, extensions] = await Promise.all([getAppCatalog(), getExtensionCatalog()]);
 
   return (
-    <main id="main-content" className="page-main" aria-label="Michael Samuel Naeem portfolio">
+    <main id="main-content" className="page-main" aria-label="Senior Android engineer portfolio of Michael Samuel Naeem">
       <HeroGrid data={heroData} />
       <SectionWrapper id="about" heading="About" headingId="about-heading">
         <ProfilePanel />

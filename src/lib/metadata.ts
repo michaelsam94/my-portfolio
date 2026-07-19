@@ -12,7 +12,12 @@ const SEO_TOPICS_ID = `${site.origin}/#seo-focus-topics`;
 
 /** Service/hiring keywords ported from the legacy Vite build so they ship in the Next static export. */
 export const serviceKeywords = [
+  "senior android engineer portfolio",
+  "Senior Android Engineer Portfolio",
+  "android engineer portfolio",
+  "senior Android engineer",
   "senior Android developer",
+  "hire senior Android engineer",
   "Kotlin developer",
   "Jetpack Compose developer",
   "Flutter developer",
@@ -32,6 +37,9 @@ export const serviceKeywords = [
 
 /** Full keyword set for the home `<meta name="keywords">` (person + service + product intent). */
 const homeKeywords = [
+  "senior android engineer portfolio",
+  "Senior Android Engineer Portfolio",
+  "android engineer portfolio",
   "Michael Samuel Naeem",
   "Michael Samuel",
   "michael samuel",
@@ -78,7 +86,7 @@ function buildVerification(): Metadata["verification"] | undefined {
 export const defaultMetadata: Metadata = {
   metadataBase: new URL(site.origin),
   title: {
-    default: "Michael Samuel Naeem - Senior Android Engineer",
+    default: "Senior Android Engineer Portfolio | Michael Samuel Naeem",
     template: "%s | Michael Samuel",
   },
   description: site.description,
@@ -103,16 +111,26 @@ export const defaultMetadata: Metadata = {
   },
   manifest: "/site.webmanifest",
   openGraph: {
-    title: "Michael Samuel Naeem - Senior Android Engineer",
+    title: "Senior Android Engineer Portfolio | Michael Samuel Naeem",
     description: site.description,
     url: site.origin,
     siteName: "Michael Samuel Naeem",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Michael Samuel Naeem - Senior Android Engineer" }],
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Senior Android Engineer Portfolio — Michael Samuel Naeem",
+      },
+    ],
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
+    title: "Senior Android Engineer Portfolio | Michael Samuel Naeem",
+    description: site.description,
+    images: ["/og-image.png"],
     creator: "@michaelsam94",
   },
   verification: buildVerification(),
@@ -141,7 +159,7 @@ export function structuredData() {
         familyName: "Naeem",
         alternateName: ["Michael Samuel", "Michael Sam", "michaelsam94", "michaelsam00", "MichaelSam94"],
         description:
-          "Senior Android engineer, Flutter developer, mobile engineer, software engineer, technical lead, and mobile architect with 10+ years of experience. Based in Cairo, Egypt; open to remote roles in Europe, the United States, and worldwide.",
+          "Senior Android engineer portfolio of Michael Samuel Naeem — Flutter developer, mobile architect, and technical lead with 10+ years of experience. Based in Cairo, Egypt; open to remote roles in Europe, the United States, and worldwide.",
         url: site.origin,
         image: `${site.origin}/profile-photo.png`,
         email: `mailto:${profile.email}`,
@@ -158,9 +176,9 @@ export function structuredData() {
         ],
         hasOccupation: {
           "@type": "Occupation",
-          name: "Senior Android Developer",
+          name: "Senior Android Engineer",
           description:
-            "Senior Android and Flutter developer for remote roles with Kotlin, Jetpack Compose, Clean Architecture, robotics, EV infrastructure, and real-time mobile systems experience.",
+            "Senior Android engineer and Flutter developer for remote roles with Kotlin, Jetpack Compose, Clean Architecture, robotics, EV infrastructure, and real-time mobile systems experience.",
         },
         address: {
           "@type": "PostalAddress",
@@ -168,6 +186,7 @@ export function structuredData() {
           addressCountry: "EG",
         },
         knowsAbout: [
+          "Senior Android engineer portfolio",
           "Android development",
           "Kotlin",
           "Jetpack Compose",
@@ -187,8 +206,14 @@ export function structuredData() {
       {
         "@type": "WebSite",
         "@id": WEBSITE_ID,
-        name: "Michael Samuel Naeem Portfolio",
-        alternateName: ["Michael Samuel Portfolio", "Michael Sam Portfolio"],
+        name: "Senior Android Engineer Portfolio | Michael Samuel Naeem",
+        alternateName: [
+          "Michael Samuel Naeem Portfolio",
+          "Michael Samuel Portfolio",
+          "Michael Sam Portfolio",
+          "MichaelSam94 Android Portfolio",
+        ],
+        description: site.description,
         url: site.origin,
         inLanguage: "en",
         publisher: { "@id": PERSON_ID },
@@ -197,8 +222,9 @@ export function structuredData() {
         "@type": ["WebPage", "ProfilePage"],
         "@id": WEBPAGE_ID,
         url: site.origin,
-        name: "Michael Samuel Naeem — Senior Android Engineer, Flutter Developer & Technical Lead",
+        name: "Senior Android Engineer Portfolio | Michael Samuel Naeem",
         description: site.description,
+        keywords: homeKeywords.join(", "),
         isPartOf: { "@id": WEBSITE_ID },
         about: { "@id": PERSON_ID },
         mainEntity: { "@id": PERSON_ID },
@@ -210,11 +236,11 @@ export function structuredData() {
       {
         "@type": "ProfessionalService",
         "@id": SERVICE_ID,
-        name: "Michael Samuel Naeem software engineering services",
+        name: "Senior Android engineer portfolio services — Michael Samuel Naeem",
         url: site.origin,
         image: `${site.origin}/profile-photo.png`,
         description:
-          "Senior Android, Kotlin, Jetpack Compose, Flutter, React, OCPP, and AI automation engineering for remote and contract teams, backed by 10+ years of experience, 120k+ users supported, and 99.9% uptime ownership.",
+          "Senior Android engineer portfolio services: Kotlin, Jetpack Compose, Flutter, React, OCPP, and AI automation for remote and contract teams, backed by 10+ years of experience, 120k+ users supported, and 99.9% uptime ownership.",
         founder: { "@id": PERSON_ID },
         employee: { "@id": PERSON_ID },
         email: `mailto:${profile.email}`,

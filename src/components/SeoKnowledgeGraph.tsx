@@ -8,6 +8,10 @@ const FAQ_ID = `${SITE_ORIGIN}/#portfolio-faq`;
 const BIBLIOGRAPHY_ID = `${SITE_ORIGIN}/#bibliography`;
 
 const serviceKeywords = [
+  "senior android engineer portfolio",
+  "Senior Android Engineer Portfolio",
+  "android engineer portfolio",
+  "senior Android engineer",
   "senior Android developer",
   "Kotlin developer",
   "Jetpack Compose developer",

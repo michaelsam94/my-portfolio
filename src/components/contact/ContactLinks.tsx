@@ -8,7 +8,9 @@ type ContactLinksProps = {
 
 export default function ContactLinks({ email, links }: ContactLinksProps) {
   const shareUrl = encodeURIComponent(site.origin);
-  const shareText = encodeURIComponent("Michael Samuel Naeem - Senior Android Engineer");
+  const shareText = encodeURIComponent(
+    "Senior Android Engineer Portfolio | Michael Samuel Naeem — https://michaelsam94.com/",
+  );
 
   return (
     <div className="contact-panel">

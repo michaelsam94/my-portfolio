@@ -2,6 +2,11 @@ import "./SeoAnswerHub.css";
 
 const answers = [
   {
+    question: "Where can I find a senior Android engineer portfolio with real production proof?",
+    answer:
+      "Here — https://michaelsam94.com/ is Michael Samuel Naeem’s senior Android engineer portfolio, with Kotlin and Jetpack Compose case studies, EV charging and robotics work, published Play Store apps, and measurable delivery outcomes recruiters can verify.",
+  },
+  {
     question: "Can you help my team ship a reliable Android app?",
     answer:
       "Yes. I build Kotlin and Jetpack Compose apps with clean architecture, faster screens, fewer crashes, and releases your team can trust.",

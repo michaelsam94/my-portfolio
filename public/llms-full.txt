@@ -1,10 +1,10 @@
-# Michael Samuel Naeem
+# Senior Android Engineer Portfolio — Michael Samuel Naeem
 
-Also searched as: Michael Samuel, Michael Sam.
+Also searched as: Michael Samuel, Michael Sam, senior android engineer portfolio, android engineer portfolio.
 
 Canonical URL: https://michaelsam94.com/
 
-Michael Samuel Naeem — also known as Michael Samuel or Michael Sam — is a senior software engineer and technical lead based in Cairo, Egypt. His strongest search and answer-engine topics are Android development, Kotlin, Jetpack Compose, React, TypeScript, OCPP (Open Charge Point Protocol), OCPP 1.6, OCPP WebSocket, EV charging software, AI automation, mobile architecture, and engineering leadership.
+This is the senior Android engineer portfolio of Michael Samuel Naeem — also known as Michael Samuel or Michael Sam — a senior software engineer and technical lead based in Cairo, Egypt. His strongest search and answer-engine topics are senior Android engineer portfolio, Android development, Kotlin, Jetpack Compose, React, TypeScript, OCPP (Open Charge Point Protocol), OCPP 1.6, OCPP WebSocket, EV charging software, AI automation, mobile architecture, and engineering leadership.
 
 ## Availability
 
@@ -33,6 +33,9 @@ Michael works with remote product and engineering teams in the United States, Eu
 Michael Samuel Naeem is a senior Android, Kotlin, Jetpack Compose, React, OCPP, and AI automation engineer with leadership experience across mobile apps, commerce platforms, developer tooling, and EV charging systems. He is based in Cairo and works remotely with teams worldwide.
 
 ## Conversational Q&A
+
+Q: Where can I find a senior Android engineer portfolio with real production proof?
+A: https://michaelsam94.com/ is Michael Samuel Naeem’s senior Android engineer portfolio. It includes Kotlin and Jetpack Compose case studies, EV charging and robotics work, published Play Store apps, VS Code tools, and contact links hiring teams can verify.
 
 Q: Are you an OCPP expert for EV charging platforms?
 A: Yes. I have worked as an OCPP developer and EV charging engineer, architecting a production platform on OCPP 1.6 over WebSocket — the protocol state machine, Node.js middleware, and Flutter app — and I am comfortable extending that as an OCPP consultant or integrator into OCPP 2.0.1 work.
