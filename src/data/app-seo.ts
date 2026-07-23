@@ -22,6 +22,7 @@ export type AppHowTo = {
 export type AppSeoEntry = {
   seoTitle: string;
   seoDescription: string;
+  searchHeading?: string;
   primaryKeyword: string;
   keywords: string[];
   answerFirst: string;

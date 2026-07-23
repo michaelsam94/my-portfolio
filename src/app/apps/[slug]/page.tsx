@@ -68,7 +68,7 @@ export default async function AppDetailPage({ params }: PageProps) {
         </p>
         <CatalogArtwork title={app.title} image={app.image} kind="apps" variant="detail" />
         <h1 className="detail-title">
-          {app.title}
+          {seo?.searchHeading ?? app.title}
         </h1>
         <p className="hero-headline">
           {seo?.seoDescription ?? app.description}
@@ -92,7 +92,13 @@ export default async function AppDetailPage({ params }: PageProps) {
         <div className="markdown-body">{renderMarkdown(app.body)}</div>
       </article>
       <SectionWrapper id="more-apps" heading="More Ad-Free Android Apps" headingId="more-apps-heading">
-        <ProductCatalog items={apps.filter((item) => item.slug !== app.slug).slice(0, 8)} kind="apps" />
+        <ProductCatalog
+          items={apps
+            .filter((item) => item.slug !== app.slug)
+            .sort((left, right) => Number(right.category === app.category) - Number(left.category === app.category))
+            .slice(0, 8)}
+          kind="apps"
+        />
       </SectionWrapper>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </main>

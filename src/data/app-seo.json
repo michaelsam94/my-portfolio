@@ -59,8 +59,9 @@
       }
     },
     "photo-optimizer": {
-      "seoTitle": "Photo Optimizer — Ad-Free Batch Photo Compress & EXIF Strip",
-      "seoDescription": "Ad-free Android photo compressor. Batch compress to WebP, JPEG, or PNG, strip EXIF/GPS metadata, and find duplicate photos offline — no ads, no cloud uploads.",
+      "seoTitle": "Photo Optimizer: Compress Photos & Remove EXIF on Android",
+      "seoDescription": "Compress Android photos in batches to WebP, JPEG, or PNG, remove EXIF and GPS data, and find duplicates offline. Free, ad-free, with no cloud uploads.",
+      "searchHeading": "Photo Optimizer: Offline Photo Compressor for Android",
       "primaryKeyword": "ad-free photo compressor Android",
       "keywords": [
         "ad-free photo compressor",
@@ -197,8 +198,9 @@
       ]
     },
     "wi-fi-drop": {
-      "seoTitle": "Wi-Fi Drop — Ad-Free Local File Transfer Over Wi-Fi",
-      "seoDescription": "Ad-free Android file transfer over local Wi-Fi. Send photos, videos, documents, and folders nearby with live progress or Web Share via QR — no ads, no cloud account.",
+      "seoTitle": "Wi-Fi Drop: Local Android File Transfer Without Cloud",
+      "seoDescription": "Transfer photos, videos, documents, and folders between nearby devices over local Wi-Fi. Use direct receive or QR Web Share with no cloud account or ads.",
+      "searchHeading": "Wi-Fi Drop: Local File Transfer for Android",
       "primaryKeyword": "ad-free Wi-Fi file transfer Android",
       "keywords": [
         "ad-free file transfer Android",
@@ -285,8 +287,9 @@
       ]
     },
     "todo-app": {
-      "seoTitle": "Todo App — Ad-Free Simple Task Manager for Android",
-      "seoDescription": "Ad-free Android todo list app. Capture, organize, and complete daily tasks with a clean Jetpack Compose UI and local Room storage — no ads, no sign-in required.",
+      "seoTitle": "Todo App: Simple Offline Task Manager for Android",
+      "seoDescription": "Capture, organize, and complete daily tasks in a simple Android todo list. Tasks stay in local Room storage with no sign-in, cloud dependency, or ads.",
+      "searchHeading": "Todo App: Simple Offline Task Manager for Android",
       "primaryKeyword": "ad-free todo list Android",
       "keywords": [
         "ad-free todo app",
@@ -323,8 +326,9 @@
       ]
     },
     "folderflow": {
-      "seoTitle": "FolderFlow — Ad-Free App Organizer & Idle App Cleaner",
-      "seoDescription": "Ad-free Android app organizer. Smart folders, custom tags, searchable app index, and idle-app scanner for decluttering your drawer — no ads, local-first organization.",
+      "seoTitle": "FolderFlow: Android App Organizer & Unused App Finder",
+      "seoDescription": "Organize Android apps with smart folders, custom tags, and a searchable app index. Find unused apps with a local idle scanner—free and completely ad-free.",
+      "searchHeading": "FolderFlow: App Organizer and Unused App Finder",
       "primaryKeyword": "ad-free app organizer Android",
       "keywords": [
         "ad-free app organizer",
@@ -440,8 +444,9 @@
       ]
     },
     "clearvoice-ai": {
-      "seoTitle": "ClearVoice AI — Ad-Free Offline Speech Enhancer & Noise Remover",
-      "seoDescription": "Ad-free on-device speech enhancer for Android. Isolate vocals, reduce echo and static, batch-process audio, and use live loopback — no ads, no cloud audio uploads.",
+      "seoTitle": "ClearVoice AI: Offline Speech Enhancement for Android",
+      "seoDescription": "Enhance speech and remove background noise on Android. Isolate vocals, reduce echo and static, batch-process audio, and use live loopback fully offline.",
+      "searchHeading": "ClearVoice AI: Offline Speech Enhancer for Android",
       "primaryKeyword": "ad-free noise reduction Android",
       "keywords": [
         "ad-free voice enhancer",
@@ -593,8 +598,9 @@
       ]
     },
     "insightlyspend": {
-      "seoTitle": "InsightlySpend — Ad-Free Personal Finance & Spending Insights",
-      "seoDescription": "Ad-free local-first finance app for Android. Track income and expenses, budgets, insights, receipt vault, CSV/PDF export, and biometric lock — no ads cluttering your money data.",
+      "seoTitle": "InsightlySpend: Offline Expense & Budget Tracker Android",
+      "seoDescription": "Track income, expenses, budgets, receipts, and spending insights locally on Android. Export CSV or PDF and protect data with biometric lock—without ads.",
+      "searchHeading": "InsightlySpend: Offline Expense and Budget Tracker",
       "primaryKeyword": "ad-free personal finance Android",
       "keywords": [
         "ad-free spending tracker",
@@ -794,8 +800,9 @@
       ]
     },
     "frozendroid": {
-      "seoTitle": "FrozenDroid — Ad-Free No-Root App Freezer for Android",
-      "seoDescription": "Ad-free no-root Android app freezer with Shizuku. Disable bloatware, restore packages, use freeze profiles and wake telemetry — no ads, offline safety guidance.",
+      "seoTitle": "FrozenDroid: Freeze Android Apps with Shizuku, No Root",
+      "seoDescription": "Freeze and restore Android apps without root using Shizuku. Review bloatware safety, create freeze profiles, and inspect wake activity offline and ad-free.",
+      "searchHeading": "FrozenDroid: No-Root Android App Freezer with Shizuku",
       "primaryKeyword": "ad-free app freezer Android Shizuku",
       "keywords": [
         "ad-free app freezer",

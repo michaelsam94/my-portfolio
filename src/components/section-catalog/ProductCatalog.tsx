@@ -20,7 +20,9 @@ export default function ProductCatalog({ items, kind }: ProductCatalogProps) {
 <p>{item.description}</p>
 <span className="catalog-id">{item.packageId ?? item.slug}</span>
 <div className="catalog-actions" aria-label={`${item.title} links`}>
-<a href={`${base}/${item.slug}/`}>{item.title} details</a>
+<a href={`${base}/${item.slug}/`}>
+  Explore {item.title} — {item.category} {kind === "apps" ? "Android app" : "VS Code extension"}
+</a>
 </div>
         </article>
       ))}
