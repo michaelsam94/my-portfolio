@@ -1,0 +1,225 @@
+.natega-page {
+  min-height: calc(100dvh - 64px);
+  padding: clamp(3rem, 8vw, 7rem) 1rem;
+}
+
+.natega-shell {
+  margin: 0 auto;
+  max-width: 64rem;
+}
+
+.natega-kicker {
+  color: var(--fg-muted);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 1rem;
+}
+
+.natega-shell > h1 {
+  font-size: clamp(3.25rem, 10vw, 6.75rem);
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.natega-intro {
+  color: var(--fg-muted);
+  font-size: clamp(1.05rem, 2.5vw, 1.3rem);
+  margin: 1.5rem 0 2.5rem;
+  max-width: 44rem;
+}
+
+.natega-form {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.natega-form label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.65rem;
+}
+
+.natega-input-wrap {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto 1fr auto;
+}
+
+.natega-input-wrap > svg {
+  color: var(--fg-muted);
+  margin-inline-start: 0.25rem;
+}
+
+.natega-input-wrap input {
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 1.05rem;
+  min-height: 52px;
+  min-width: 0;
+  outline: 0;
+}
+
+.natega-input-wrap button {
+  align-items: center;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 0.5rem;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0.7rem 1.25rem;
+}
+
+.natega-input-wrap button:hover,
+.natega-input-wrap button:focus-visible {
+  background: var(--accent-hover);
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.natega-input-wrap button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.natega-hint,
+.natega-dataset-note {
+  color: var(--fg-muted);
+  font-size: 0.82rem;
+  margin: 0.75rem 0 0;
+}
+
+.natega-message {
+  align-items: center;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+}
+
+.natega-error {
+  border-color: #ef4444;
+}
+
+.natega-results {
+  margin-top: 3rem;
+}
+
+.natega-results-heading {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.natega-results-heading h2 {
+  font-size: 1.75rem;
+  margin: 0;
+}
+
+.natega-results-heading span {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.natega-result-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.natega-result-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.natega-student {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.natega-student span,
+.natega-result-card dt {
+  color: var(--fg-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.natega-student h3 {
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  line-height: 1.35;
+  margin: 0.15rem 0 0;
+}
+
+.natega-result-card dl {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 1.25rem 0 0;
+  padding-top: 1.25rem;
+}
+
+.natega-result-card dl > div {
+  min-width: 0;
+}
+
+.natega-result-card dt {
+  align-items: center;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.natega-result-card dd {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.natega-spinner {
+  animation: natega-spin 0.8s linear infinite;
+}
+
+@keyframes natega-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .natega-input-wrap {
+    grid-template-columns: auto 1fr;
+  }
+
+  .natega-input-wrap button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .natega-result-card dl {
+    grid-template-columns: 1fr;
+  }
+}
