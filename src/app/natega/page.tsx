@@ -7,13 +7,18 @@ export const metadata: Metadata = {
   description: "نتيجة الثانوية العامة 2026 نظام حديث بالاسم أو رقم الجلوس. اعرف المجموع من 320 والنسبة المئوية وحالة الطالب فوراً.",
   keywords: ["نتيجة الثانوية العامة", "نتيجة الثانوية العامة 2026", "نتيجة الثانوية العامة بالاسم", "نتيجة الثانوية العامة برقم الجلوس", "نتيجة ثانوية عامة نظام حديث", "مجموع الثانوية العامة", "نسبة الثانوية العامة", "Natega"],
   alternates: {
-    canonical: "/natega/",
-    languages: { ar: "/natega/", en: "/en/natega/", "en-EG": "/franko/natega/", "x-default": "/natega/" },
+    canonical: "https://natega.michaelsam94.com/",
+    languages: {
+      ar: "https://natega.michaelsam94.com/",
+      en: "https://natega.michaelsam94.com/en/",
+      "en-EG": "https://natega.michaelsam94.com/franko/",
+      "x-default": "https://natega.michaelsam94.com/",
+    },
   },
   openGraph: {
     title: "نتيجة الثانوية العامة 2026 بالاسم ورقم الجلوس",
     description: "ابحث في نتيجة الثانوية العامة واعرف المجموع والنسبة المئوية فوراً.",
-    url: "/natega/",
+    url: "https://natega.michaelsam94.com/",
     locale: "ar_EG",
     type: "website",
   },

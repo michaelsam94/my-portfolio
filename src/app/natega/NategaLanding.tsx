@@ -24,7 +24,7 @@ function getManifest(): Manifest {
 export default function NategaLanding({ locale }: { locale: NategaLocale }) {
   const content = nategaContent[locale];
   const manifest = getManifest();
-  const canonical = `https://michaelsam94.com${content.path}`;
+  const canonical = `https://natega.michaelsam94.com${content.path}`;
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
@@ -53,9 +53,9 @@ export default function NategaLanding({ locale }: { locale: NategaLocale }) {
     <main className="natega-page" dir={content.dir} lang={content.lang}>
       <section className="natega-shell">
         <nav className="natega-language-nav" aria-label="Language">
-          <Link href="/natega/" hrefLang="ar">العربية</Link>
-          <Link href="/en/natega/" hrefLang="en">English</Link>
-          <Link href="/franko/natega/" hrefLang="en">Franco</Link>
+          <Link href="https://natega.michaelsam94.com/" hrefLang="ar">العربية</Link>
+          <Link href="https://natega.michaelsam94.com/en/" hrefLang="en">English</Link>
+          <Link href="https://natega.michaelsam94.com/franko/" hrefLang="en-EG">Franco</Link>
         </nav>
         <div className="natega-kicker">{content.kicker}</div>
         <h1>{content.title}</h1>

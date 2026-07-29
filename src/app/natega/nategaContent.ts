@@ -4,7 +4,7 @@ export const nategaContent = {
   ar: {
     lang: "ar",
     dir: "rtl",
-    path: "/natega/",
+    path: "/",
     kicker: "نتيجة الثانوية العامة · نظام حديث 2026",
     title: "نتيجة الثانوية العامة بالاسم ورقم الجلوس",
     intro: "ابحث الآن عن نتيجة الثانوية العامة 2026 بالاسم أو رقم الجلوس، واعرف المجموع من 320 والنسبة المئوية وحالة الطالب فوراً.",
@@ -28,7 +28,7 @@ export const nategaContent = {
   en: {
     lang: "en",
     dir: "ltr",
-    path: "/en/natega/",
+    path: "/en/",
     kicker: "Egypt Thanaweya Amma Results · Modern System 2026",
     title: "Thanaweya Amma Results by Name or Seat Number",
     intro: "Search the 2026 Egyptian high school results by Arabic student name or seat number. View the score out of 320, percentage and student status instantly.",
@@ -52,7 +52,7 @@ export const nategaContent = {
   franko: {
     lang: "en",
     dir: "ltr",
-    path: "/franko/natega/",
+    path: "/franko/",
     kicker: "Natiget El Thanaweya El 3ama · Nezam 7adeeth 2026",
     title: "Natiget El Thanaweya El 3ama Bel Esm Aw Rakam El Geloos",
     intro: "Dawar 3ala natiget el thanaweya el 3ama 2026 bel esm aw rakam el geloos, w e3raf el magmo3 men 320, el percentage, w 7alet el taleb.",

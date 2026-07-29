@@ -1,5 +1,8 @@
 const APEX_HOST = "michaelsam94.com";
 const BLOG_HOST = "blog.michaelsam94.com";
+const NATEGA_HOST = "natega.michaelsam94.com";
+const GOOGLE_VERIFICATION_PATH = "/google42b4c336817b4c5e.html";
+const GOOGLE_VERIFICATION_BODY = "google-site-verification: google42b4c336817b4c5e.html";
 
 // Match the static _headers HSTS policy. `Response.redirect()` produces a
 // response with no custom headers, so 301s (www→apex, apex/blog normalization)
@@ -41,6 +44,12 @@ export async function onRequest(context) {
   const url = new URL(context.request.url);
   const { hostname, pathname, search } = url;
 
+  // Keep Cloudflare's generated preview hostname out of the search index while
+  // allowing the three intentional custom hosts below to serve independently.
+  if (hostname.endsWith(".pages.dev")) {
+    return redirect(`https://${APEX_HOST}${pathname}${search}`);
+  }
+
   if (hostname === `www.${APEX_HOST}`) {
     if (isBlogPath(pathname)) {
       return redirect(`https://${BLOG_HOST}${blogCleanPath(pathname)}${search}`);
@@ -75,6 +84,31 @@ export async function onRequest(context) {
       assetUrl.pathname = pathname === "/" ? "/blog/" : `/blog${pathname}`;
       return context.env.ASSETS.fetch(new Request(assetUrl.toString(), context.request));
     }
+  }
+
+  if (hostname === NATEGA_HOST) {
+    // Verification must return 200 on the exact URL; redirects are not accepted
+    // reliably by Search Console's HTML-file verification method.
+    if (pathname === GOOGLE_VERIFICATION_PATH) {
+      return new Response(GOOGLE_VERIFICATION_BODY, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+          "Strict-Transport-Security": HSTS,
+        },
+      });
+    }
+
+    const assetUrl = new URL(context.request.url);
+    if (pathname === "/") assetUrl.pathname = "/natega/";
+    else if (pathname === "/en" || pathname === "/en/") assetUrl.pathname = "/en/natega/";
+    else if (pathname === "/franko" || pathname === "/franko/") assetUrl.pathname = "/franko/natega/";
+    else if (pathname === "/robots.txt") assetUrl.pathname = "/natega-robots.txt";
+    else if (pathname === "/sitemap.xml") assetUrl.pathname = "/natega-sitemap.xml";
+
+    // Serve the rewritten static asset directly. This preserves the Natega
+    // hostname in the browser and returns 200 instead of a redirect.
+    return context.env.ASSETS.fetch(new Request(assetUrl.toString(), context.request));
   }
 
   return context.next();

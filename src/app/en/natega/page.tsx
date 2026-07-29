@@ -7,13 +7,18 @@ export const metadata: Metadata = {
   description: "Search Egypt Thanaweya Amma results 2026 by Arabic student name or seat number. View the score out of 320, percentage and result status.",
   keywords: ["Thanaweya Amma results 2026", "Egypt high school results", "Thanaweya Amma by name", "Thanaweya Amma seat number", "Natega Egypt", "نتيجة الثانوية العامة"],
   alternates: {
-    canonical: "/en/natega/",
-    languages: { ar: "/natega/", en: "/en/natega/", "en-EG": "/franko/natega/", "x-default": "/natega/" },
+    canonical: "https://natega.michaelsam94.com/en/",
+    languages: {
+      ar: "https://natega.michaelsam94.com/",
+      en: "https://natega.michaelsam94.com/en/",
+      "en-EG": "https://natega.michaelsam94.com/franko/",
+      "x-default": "https://natega.michaelsam94.com/",
+    },
   },
   openGraph: {
     title: "Thanaweya Amma Results 2026 | Natega",
     description: "Search Egyptian high school results by name or seat number.",
-    url: "/en/natega/",
+    url: "https://natega.michaelsam94.com/en/",
     locale: "en_US",
     type: "website",
   },
