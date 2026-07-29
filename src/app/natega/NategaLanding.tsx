@@ -8,6 +8,11 @@ type Manifest = {
   count: number;
   nameShards: Record<string, string>;
   seatPrefixes: string[];
+  scoreStats: Record<string, {
+    rankWithRepetition: number;
+    rankWithoutRepetition: number;
+    sameScoreCount: number;
+  }>;
 };
 
 function getManifest(): Manifest {

@@ -8,6 +8,11 @@ type Manifest = {
   count: number;
   nameShards: Record<string, string>;
   seatPrefixes: string[];
+  scoreStats: Record<string, {
+    rankWithRepetition: number;
+    rankWithoutRepetition: number;
+    sameScoreCount: number;
+  }>;
 };
 
 const MAX_RESULTS = 25;
@@ -34,6 +39,9 @@ const copy = {
     seat: "رقم الجلوس",
     total: "المجموع",
     percentage: "النسبة المئوية",
+    rankWithRepetition: "الترتيب العام مكرر",
+    rankWithoutRepetition: "الترتيب العام بدون تكرار",
+    sameScoreCount: "عدد الطلاب بنفس المجموع",
     status: "الحالة",
     dataset: "قاعدة البيانات الحالية تشمل",
     students: "طالب وطالبة.",
@@ -56,6 +64,9 @@ const copy = {
     seat: "Seat number",
     total: "Total score",
     percentage: "Percentage",
+    rankWithRepetition: "Overall rank with ties",
+    rankWithoutRepetition: "Overall rank without gaps",
+    sameScoreCount: "Students with the same score",
     status: "Status",
     dataset: "The current database contains",
     students: "students.",
@@ -78,6 +89,9 @@ const copy = {
     seat: "Rakam el geloos",
     total: "El magmo3",
     percentage: "El nesba el me2aweya",
+    rankWithRepetition: "El tartib el 3am mokarar",
+    rankWithoutRepetition: "El tartib el 3am mn 8er tekrar",
+    sameScoreCount: "3adad el talaba benafs el magmo3",
     status: "El 7ala",
     dataset: "El database feha",
     students: "taleb w taleba.",
@@ -222,6 +236,18 @@ export default function NategaSearch({ manifest, locale = "ar" }: { manifest: Ma
                   <div>
                     <dt>{t.percentage}</dt>
                     <dd>{((Number(total) / MAX_TOTAL) * 100).toFixed(2)}%</dd>
+                  </div>
+                  <div>
+                    <dt>{t.rankWithRepetition}</dt>
+                    <dd>{manifest.scoreStats[total]?.rankWithRepetition.toLocaleString(locale === "ar" ? "ar-EG" : "en-US") ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t.rankWithoutRepetition}</dt>
+                    <dd>{manifest.scoreStats[total]?.rankWithoutRepetition.toLocaleString(locale === "ar" ? "ar-EG" : "en-US") ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t.sameScoreCount}</dt>
+                    <dd>{manifest.scoreStats[total]?.sameScoreCount.toLocaleString(locale === "ar" ? "ar-EG" : "en-US") ?? "—"}</dd>
                   </div>
                   <div>
                     <dt>{t.status}</dt>

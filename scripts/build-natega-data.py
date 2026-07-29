@@ -53,6 +53,7 @@ def build(source: Path, output: Path) -> None:
 
         name_shards: dict[str, list[list[str]]] = defaultdict(list)
         seat_shards: dict[str, list[list[str]]] = defaultdict(list)
+        score_counts: dict[str, int] = defaultdict(int)
         row_count = 0
 
         with archive.open("xl/worksheets/sheet1.xml") as stream:
@@ -77,6 +78,7 @@ def build(source: Path, output: Path) -> None:
                 record = [seat, name, total, status]
                 name_shards[normalized[0]].append(record)
                 seat_shards[seat[:3]].append(record)
+                score_counts[total] += 1
                 row_count += 1
 
     staging = output.with_name(f"{output.name}-staging")
@@ -98,10 +100,24 @@ def build(source: Path, output: Path) -> None:
             json.dumps(records, **compact), encoding="utf-8"
         )
 
+    score_stats = {}
+    higher_students = 0
+    for dense_index, (score, count) in enumerate(
+        sorted(score_counts.items(), key=lambda item: float(item[0]), reverse=True),
+        start=1,
+    ):
+        score_stats[score] = {
+            "rankWithRepetition": higher_students + 1,
+            "rankWithoutRepetition": dense_index,
+            "sameScoreCount": count,
+        }
+        higher_students += count
+
     manifest = {
         "count": row_count,
         "nameShards": {key: f"{ord(key):x}" for key in sorted(name_shards)},
         "seatPrefixes": sorted(seat_shards),
+        "scoreStats": score_stats,
     }
     (staging / "manifest.json").write_text(
         json.dumps(manifest, **compact), encoding="utf-8"

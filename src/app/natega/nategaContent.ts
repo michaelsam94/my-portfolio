@@ -12,16 +12,17 @@ export const nategaContent = {
     guide: [
       "اكتب رقم الجلوس كاملاً للحصول على نتيجة دقيقة ومباشرة.",
       "أو اكتب اسم الطالب باللغة العربية، ويمكن استخدام جزء من الاسم.",
-      "ستظهر بيانات الطالب والمجموع الكلي والنسبة المئوية والحالة.",
+      "ستظهر بيانات الطالب والمجموع والنسبة المئوية والترتيب العام وعدد الطلاب بنفس المجموع.",
     ],
     aboutTitle: "نتيجة الثانوية العامة 2026 نظام حديث",
-    about: "توفر صفحة Natega بحثاً سريعاً داخل قاعدة بيانات تضم أكثر من 919 ألف طالب وطالبة. المجموع الكلي للنظام الحديث هو 320 درجة، وتُحسب النسبة المئوية تلقائياً بقسمة مجموع الطالب على 320.",
+    about: "توفر صفحة Natega بحثاً سريعاً داخل قاعدة بيانات تضم أكثر من 919 ألف طالب وطالبة. المجموع الكلي للنظام الحديث هو 320 درجة، وتُحسب النسبة المئوية والترتيب العام المكرر والترتيب بدون تكرار تلقائياً من نتائج جميع الطلاب.",
     faqTitle: "أسئلة شائعة عن نتيجة الثانوية العامة",
     faqs: [
       ["كيف أبحث عن النتيجة برقم الجلوس؟", "اكتب رقم الجلوس كاملاً في مربع البحث واضغط عرض النتيجة."],
       ["هل يمكن البحث عن نتيجة الثانوية العامة بالاسم؟", "نعم، اكتب الاسم باللغة العربية كاملاً أو جزءاً منه، وستظهر النتائج المطابقة."],
       ["كيف يتم حساب النسبة المئوية؟", "تُحسب النسبة بقسمة مجموع الطالب على 320 ثم ضرب الناتج في 100."],
       ["ما هو المجموع الكلي للثانوية العامة نظام حديث؟", "المجموع الكلي لنتيجة الثانوية العامة بالنظام الحديث هو 320 درجة."],
+      ["ما الفرق بين الترتيب المكرر والترتيب بدون تكرار؟", "في الترتيب المكرر يشترك أصحاب المجموع نفسه في ترتيب واحد وتُحتسب أعدادهم قبل الترتيب التالي. أما الترتيب بدون تكرار فيرتب مستويات المجموع المختلفة بالتتابع دون فجوات."],
     ],
   },
   en: {
@@ -35,16 +36,17 @@ export const nategaContent = {
     guide: [
       "Enter the complete seat number for a precise result.",
       "Alternatively, enter the student's Arabic name or part of it.",
-      "The student name, score, percentage and result status will appear.",
+      "The student name, score, percentage, overall ranks and number of matching scores will appear.",
     ],
     aboutTitle: "Egyptian Thanaweya Amma Results 2026",
-    about: "Natega provides fast access to a database of more than 919,000 students. The modern Thanaweya Amma system has a maximum score of 320, and each percentage is calculated automatically from the recorded total.",
+    about: "Natega provides fast access to more than 919,000 student records. The modern Thanaweya Amma maximum is 320, and the percentage, competition rank, dense rank and same-score count are calculated from the complete dataset.",
     faqTitle: "Frequently asked questions",
     faqs: [
       ["How can I search using a seat number?", "Enter the complete seat number in the search field and select Show result."],
       ["Can I search the Thanaweya Amma result by name?", "Yes. Enter the student's Arabic full name or part of the name to see matching records."],
       ["How is the percentage calculated?", "The student's total is divided by 320 and multiplied by 100."],
       ["What is the maximum modern-system score?", "The maximum Thanaweya Amma modern-system score is 320."],
+      ["What is the difference between the two overall ranks?", "The rank with ties counts every higher-scoring student, so later positions can skip. The rank without gaps counts distinct score levels, so its positions remain consecutive."],
     ],
   },
   franko: {
@@ -58,16 +60,17 @@ export const nategaContent = {
     guide: [
       "Ekteb rakam el geloos kamel 3ashan tegeb natiga mazboota.",
       "Aw ekteb esm el taleb bel 3araby kamel aw goz2 meno.",
-      "Hatezhar el natiga, el magmo3, el nesba el me2aweya, w el 7ala.",
+      "Hatezhar el natiga, el magmo3, el percentage, el tartib el 3am, w 3adad el talaba benafs el magmo3.",
     ],
     aboutTitle: "Natiget Thanaweya Amma 2026 Nezam 7adeeth",
-    about: "Natega feha database le aktar men 919 alf taleb w taleba. El magmo3 el kolly lel nezam el 7adeeth howa 320, wel percentage betet7eseb automatic men magmo3 el taleb.",
+    about: "Natega feha aktar men 919 alf natiga. El magmo3 el kolly 320, wel percentage, el tartib el mokarar, el tartib mn 8er tekrar, w 3adad el talaba benafs el magmo3 beyethesbo automatic.",
     faqTitle: "As2ela sha2e3a 3an el natiga",
     faqs: [
       ["Ezay adawar be rakam el geloos?", "Ekteb rakam el geloos kamel fel search w ed8at E3red el natiga."],
       ["Momken adawar 3ala el natiga bel esm?", "Aywa, ekteb esm el taleb bel 3araby kamel aw goz2 meno."],
       ["El percentage betet7eseb ezay?", "Magmo3 el taleb beyete2sem 3ala 320 w yetdareb fe 100."],
       ["El magmo3 el kolly kam?", "El magmo3 el kolly lel thanaweya el 3ama nezam 7adeeth howa 320."],
+      ["Eh el far2 ben el tartib el mokarar w mn 8er tekrar?", "El mokarar bey7seb kol el talaba elly a3la w momken yesib arkam. El tartib mn 8er tekrar bey3od mostawayat el magmo3 wara ba3d."],
     ],
   },
 } as const;
