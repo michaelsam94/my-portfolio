@@ -1,0 +1,73 @@
+export type NategaLocale = "ar" | "en" | "franko";
+
+export const nategaContent = {
+  ar: {
+    lang: "ar",
+    dir: "rtl",
+    path: "/natega/",
+    kicker: "نتيجة الثانوية العامة · نظام حديث 2026",
+    title: "نتيجة الثانوية العامة بالاسم ورقم الجلوس",
+    intro: "ابحث الآن عن نتيجة الثانوية العامة 2026 بالاسم أو رقم الجلوس، واعرف المجموع من 320 والنسبة المئوية وحالة الطالب فوراً.",
+    guideTitle: "طريقة الاستعلام عن نتيجة الثانوية العامة",
+    guide: [
+      "اكتب رقم الجلوس كاملاً للحصول على نتيجة دقيقة ومباشرة.",
+      "أو اكتب اسم الطالب باللغة العربية، ويمكن استخدام جزء من الاسم.",
+      "ستظهر بيانات الطالب والمجموع الكلي والنسبة المئوية والحالة.",
+    ],
+    aboutTitle: "نتيجة الثانوية العامة 2026 نظام حديث",
+    about: "توفر صفحة Natega بحثاً سريعاً داخل قاعدة بيانات تضم أكثر من 919 ألف طالب وطالبة. المجموع الكلي للنظام الحديث هو 320 درجة، وتُحسب النسبة المئوية تلقائياً بقسمة مجموع الطالب على 320.",
+    faqTitle: "أسئلة شائعة عن نتيجة الثانوية العامة",
+    faqs: [
+      ["كيف أبحث عن النتيجة برقم الجلوس؟", "اكتب رقم الجلوس كاملاً في مربع البحث واضغط عرض النتيجة."],
+      ["هل يمكن البحث عن نتيجة الثانوية العامة بالاسم؟", "نعم، اكتب الاسم باللغة العربية كاملاً أو جزءاً منه، وستظهر النتائج المطابقة."],
+      ["كيف يتم حساب النسبة المئوية؟", "تُحسب النسبة بقسمة مجموع الطالب على 320 ثم ضرب الناتج في 100."],
+      ["ما هو المجموع الكلي للثانوية العامة نظام حديث؟", "المجموع الكلي لنتيجة الثانوية العامة بالنظام الحديث هو 320 درجة."],
+    ],
+  },
+  en: {
+    lang: "en",
+    dir: "ltr",
+    path: "/en/natega/",
+    kicker: "Egypt Thanaweya Amma Results · Modern System 2026",
+    title: "Thanaweya Amma Results by Name or Seat Number",
+    intro: "Search the 2026 Egyptian high school results by Arabic student name or seat number. View the score out of 320, percentage and student status instantly.",
+    guideTitle: "How to check the Thanaweya Amma result",
+    guide: [
+      "Enter the complete seat number for a precise result.",
+      "Alternatively, enter the student's Arabic name or part of it.",
+      "The student name, score, percentage and result status will appear.",
+    ],
+    aboutTitle: "Egyptian Thanaweya Amma Results 2026",
+    about: "Natega provides fast access to a database of more than 919,000 students. The modern Thanaweya Amma system has a maximum score of 320, and each percentage is calculated automatically from the recorded total.",
+    faqTitle: "Frequently asked questions",
+    faqs: [
+      ["How can I search using a seat number?", "Enter the complete seat number in the search field and select Show result."],
+      ["Can I search the Thanaweya Amma result by name?", "Yes. Enter the student's Arabic full name or part of the name to see matching records."],
+      ["How is the percentage calculated?", "The student's total is divided by 320 and multiplied by 100."],
+      ["What is the maximum modern-system score?", "The maximum Thanaweya Amma modern-system score is 320."],
+    ],
+  },
+  franko: {
+    lang: "en",
+    dir: "ltr",
+    path: "/franko/natega/",
+    kicker: "Natiget El Thanaweya El 3ama · Nezam 7adeeth 2026",
+    title: "Natiget El Thanaweya El 3ama Bel Esm Aw Rakam El Geloos",
+    intro: "Dawar 3ala natiget el thanaweya el 3ama 2026 bel esm aw rakam el geloos, w e3raf el magmo3 men 320, el percentage, w 7alet el taleb.",
+    guideTitle: "Ezay te3raf natiget el thanaweya el 3ama",
+    guide: [
+      "Ekteb rakam el geloos kamel 3ashan tegeb natiga mazboota.",
+      "Aw ekteb esm el taleb bel 3araby kamel aw goz2 meno.",
+      "Hatezhar el natiga, el magmo3, el nesba el me2aweya, w el 7ala.",
+    ],
+    aboutTitle: "Natiget Thanaweya Amma 2026 Nezam 7adeeth",
+    about: "Natega feha database le aktar men 919 alf taleb w taleba. El magmo3 el kolly lel nezam el 7adeeth howa 320, wel percentage betet7eseb automatic men magmo3 el taleb.",
+    faqTitle: "As2ela sha2e3a 3an el natiga",
+    faqs: [
+      ["Ezay adawar be rakam el geloos?", "Ekteb rakam el geloos kamel fel search w ed8at E3red el natiga."],
+      ["Momken adawar 3ala el natiga bel esm?", "Aywa, ekteb esm el taleb bel 3araby kamel aw goz2 meno."],
+      ["El percentage betet7eseb ezay?", "Magmo3 el taleb beyete2sem 3ala 320 w yetdareb fe 100."],
+      ["El magmo3 el kolly kam?", "El magmo3 el kolly lel thanaweya el 3ama nezam 7adeeth howa 320."],
+    ],
+  },
+} as const;

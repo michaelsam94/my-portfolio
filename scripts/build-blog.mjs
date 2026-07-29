@@ -1051,6 +1051,9 @@ function buildSitemap(workSlugs, appSlugs = [], extSlugs = []) {
   const urls = [
     { loc: `${SITE_ORIGIN}/wikipedia/`, lastmod: today, changefreq: "monthly", priority: "0.6" },
     { loc: `${SITE_ORIGIN}/`, lastmod: today, changefreq: "monthly", priority: "1.0" },
+    { loc: `${SITE_ORIGIN}/natega/`, lastmod: today, changefreq: "daily", priority: "0.9" },
+    { loc: `${SITE_ORIGIN}/en/natega/`, lastmod: today, changefreq: "daily", priority: "0.8" },
+    { loc: `${SITE_ORIGIN}/franko/natega/`, lastmod: today, changefreq: "daily", priority: "0.8" },
     ...workSlugs.map((slug) => ({
       loc: `${SITE_ORIGIN}/work/${slug}/`,
       lastmod: today,

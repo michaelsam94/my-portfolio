@@ -1,38 +1,29 @@
 import type { Metadata } from "next";
-import fs from "node:fs";
-import path from "node:path";
-import NategaSearch from "./NategaSearch";
+import NategaLanding from "./NategaLanding";
 import "./natega.css";
 
-type Manifest = {
-  count: number;
-  nameShards: Record<string, string>;
-  seatPrefixes: string[];
-};
-
 export const metadata: Metadata = {
-  title: "نتيجة الثانوية العامة | Natega",
-  description: "ابحث عن نتيجة الثانوية العامة بالاسم أو رقم الجلوس.",
+  title: "نتيجة الثانوية العامة 2026 بالاسم ورقم الجلوس",
+  description: "نتيجة الثانوية العامة 2026 نظام حديث بالاسم أو رقم الجلوس. اعرف المجموع من 320 والنسبة المئوية وحالة الطالب فوراً.",
+  keywords: ["نتيجة الثانوية العامة", "نتيجة الثانوية العامة 2026", "نتيجة الثانوية العامة بالاسم", "نتيجة الثانوية العامة برقم الجلوس", "نتيجة ثانوية عامة نظام حديث", "مجموع الثانوية العامة", "نسبة الثانوية العامة", "Natega"],
+  alternates: {
+    canonical: "/natega/",
+    languages: { ar: "/natega/", en: "/en/natega/", "en-EG": "/franko/natega/", "x-default": "/natega/" },
+  },
+  openGraph: {
+    title: "نتيجة الثانوية العامة 2026 بالاسم ورقم الجلوس",
+    description: "ابحث في نتيجة الثانوية العامة واعرف المجموع والنسبة المئوية فوراً.",
+    url: "/natega/",
+    locale: "ar_EG",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "نتيجة الثانوية العامة 2026 بالاسم ورقم الجلوس",
+    description: "ابحث عن النتيجة واعرف المجموع من 320 والنسبة المئوية فوراً.",
+  },
 };
-
-function getManifest(): Manifest {
-  const file = path.join(process.cwd(), "public", "natega-data", "manifest.json");
-  return JSON.parse(fs.readFileSync(file, "utf8")) as Manifest;
-}
 
 export default function NategaPage() {
-  const manifest = getManifest();
-
-  return (
-    <main className="natega-page" dir="rtl">
-      <section className="natega-shell">
-        <div className="natega-kicker">نتيجة الثانوية العامة · نظام حديث</div>
-        <h1>اعرف نتيجتك</h1>
-        <p className="natega-intro">
-          ابحث بسهولة باستخدام اسم الطالب أو رقم الجلوس، وستظهر النتيجة مباشرة.
-        </p>
-        <NategaSearch manifest={manifest} />
-      </section>
-    </main>
-  );
+  return <NategaLanding locale="ar" />;
 }
