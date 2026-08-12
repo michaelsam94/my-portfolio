@@ -4,7 +4,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Setup (read first)\n\n1. **Import:** n8n menu (⋯) → *Import from File* → select this JSON.\n2. **Activate** only after all credentials are connected.\n3. **LinkedIn credential:** OAuth2 → scopes `openid profile email w_member_social`.\n4. **Postgres credential:** `n8n Postgres Rotation` (table `linkedin_rotation`).\n5. **Feed URL:** `https://blog.michaelsam94.com/linkedin-posts.json` (~3004 posts, field `text`).\n6. **Reset rotation:** `UPDATE linkedin_rotation SET shared_slugs='[]', next_index=0 ...`\n\nOAuth must be completed by you in the n8n UI — secrets are not stored in this repo.\n",
+        "content": "## Setup (read first)\n\n1. **Import:** n8n menu (\u22ef) \u2192 *Import from File* \u2192 select this JSON.\n2. **Activate** only after all credentials are connected.\n3. **LinkedIn credential:** OAuth2 \u2192 scopes `openid profile email w_member_social`.\n4. **Postgres credential:** `n8n Postgres Rotation` (table `linkedin_rotation`).\n5. **Feed URL:** `https://blog.michaelsam94.com/linkedin-posts.json` (~4005 posts, field `text`).\n6. **Reset rotation:** `UPDATE linkedin_rotation SET shared_slugs='[]', next_index=0 ...`\n\nOAuth must be completed by you in the n8n UI \u2014 secrets are not stored in this repo.\n\n7. **Last 1000 queue:** Pick Next Post prioritizes the newest 1000 wave-3 slugs before the regular rotation.\n",
         "height": 420,
         "width": 480,
         "color": 4
@@ -13,11 +13,14 @@
       "name": "Setup Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-320, -80]
+      "position": [
+        -320,
+        -80
+      ]
     },
     {
       "parameters": {
-        "content": "## Schedule\n\n**Cron:** `0 * * * *` in **Africa/Cairo** (GMT+3)\n\nRuns at **:00** every hour → **24 posts/day**.",
+        "content": "## Schedule\n\n**Cron:** `0 * * * *` in **Africa/Cairo** (GMT+3)\n\nRuns at **:00** every hour \u2192 **24 posts/day**.",
         "height": 200,
         "width": 360,
         "color": 5
@@ -26,11 +29,14 @@
       "name": "Schedule Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-320, 480]
+      "position": [
+        -320,
+        480
+      ]
     },
     {
       "parameters": {
-        "content": "## Rotation (Postgres)\n\n**Source of truth:** table `linkedin_rotation` in n8n Postgres (NOT filesystem — JS task runners sandbox fs writes).\n\nFlow: Fetch → Read Rotation → Pick → LinkedIn → Mark → Write Rotation.\n\nDuplicates → Handle Result → Mark → Write.",
+        "content": "## Rotation (Postgres)\n\n**Source of truth:** table `linkedin_rotation` in n8n Postgres (NOT filesystem \u2014 JS task runners sandbox fs writes).\n\nFlow: Fetch \u2192 Read Rotation \u2192 Pick \u2192 LinkedIn \u2192 Mark \u2192 Write Rotation.\n\nDuplicates \u2192 Handle Result \u2192 Mark \u2192 Write.",
         "height": 260,
         "width": 400,
         "color": 6
@@ -39,7 +45,10 @@
       "name": "Rotation Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [640, -120]
+      "position": [
+        640,
+        -120
+      ]
     },
     {
       "parameters": {
@@ -59,7 +68,10 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 300]
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
@@ -90,7 +102,14 @@
       "name": "Fetch Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 300]
+      "position": [
+        220,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -102,7 +121,10 @@
       "name": "Read Rotation",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [440, 300],
+      "position": [
+        880,
+        300
+      ],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_PG_ROTATION",
@@ -112,13 +134,16 @@
     },
     {
       "parameters": {
-        "jsCode": "const rot = $input.first().json;\nconst feed = $('Fetch Posts').first().json;\n\nlet sharedSlugs = rot.shared_slugs;\nif (typeof sharedSlugs === 'string') {\n  sharedSlugs = JSON.parse(sharedSlugs);\n}\nif (!Array.isArray(sharedSlugs)) sharedSlugs = [];\n\nlet cursor = Number(rot.next_index);\nif (!Number.isFinite(cursor)) cursor = 0;\n\nconst posts = Array.isArray(feed.posts) ? feed.posts : [];\nif (!posts.length) {\n  throw new Error('linkedin-posts.json returned no posts');\n}\n\nconst sortedPosts = [...posts].sort((a, b) => {\n  const aKey = String(a.publishedAt ?? a.date ?? a.slug ?? '');\n  const bKey = String(b.publishedAt ?? b.date ?? b.slug ?? '');\n  const byDate = aKey.localeCompare(bKey);\n  if (byDate !== 0) return byDate;\n  return String(a.slug ?? '').localeCompare(String(b.slug ?? ''));\n});\n\nconst totalPosts = sortedPosts.length;\nconst sharedSet = new Set(sharedSlugs);\ncursor = ((cursor % totalPosts) + totalPosts) % totalPosts;\n\nlet picked = null;\nlet pickedIndex = -1;\n\nfor (let offset = 0; offset < totalPosts; offset += 1) {\n  const idx = (cursor + offset) % totalPosts;\n  const candidate = sortedPosts[idx];\n  if (candidate?.slug && !sharedSet.has(candidate.slug)) {\n    picked = candidate;\n    pickedIndex = idx;\n    break;\n  }\n}\n\nlet catalogReset = false;\nif (!picked) {\n  catalogReset = true;\n  picked = sortedPosts[0];\n  pickedIndex = 0;\n}\n\nconst nextIndex = (pickedIndex + 1) % totalPosts;\nconst postText = picked.text || picked.postText || '';\n\nreturn [{\n  json: {\n    slug: picked.slug,\n    title: picked.title,\n    url: picked.url,\n    description: postText.split('\\n\\n')[0]?.trim() || picked.title,\n    linkedinText: postText,\n    topicCluster: picked.topicCluster,\n    pickedIndex,\n    nextIndex,\n    totalPosts,\n    catalogReset,\n    feedGeneratedAt: feed.generatedAt,\n    sharedSlugsCount: sharedSlugs.length,\n    rotationSource: 'postgres',\n    priorSharedSlugs: sharedSlugs,\n  },\n}];\n"
+        "jsCode": "const rot = $input.first().json;\nconst feed = $('Resolve Feed').first().json;\n\nlet sharedSlugs = rot.shared_slugs;\nif (typeof sharedSlugs === 'string') {\n  sharedSlugs = JSON.parse(sharedSlugs);\n}\nif (!Array.isArray(sharedSlugs)) sharedSlugs = [];\n\nlet cursor = Number(rot.next_index);\nif (!Number.isFinite(cursor)) cursor = 0;\n\nconst posts = Array.isArray(feed.posts) ? feed.posts : [];\nif (!posts.length) {\n  throw new Error('linkedin-posts.json returned no posts');\n}\n\nconst sortedPosts = [...posts].sort((a, b) => {\n  const aKey = String(a.datePublished ?? a.publishedAt ?? a.date ?? a.slug ?? '');\n  const bKey = String(b.datePublished ?? b.publishedAt ?? b.date ?? b.slug ?? '');\n  const byDate = aKey.localeCompare(bKey);\n  if (byDate !== 0) return byDate;\n  return String(a.slug ?? '').localeCompare(String(b.slug ?? ''));\n});\n\nconst totalPosts = sortedPosts.length;\nconst sharedSet = new Set(sharedSlugs);\ncursor = ((cursor % totalPosts) + totalPosts) % totalPosts;\n\n// Prefer the last-1000 wave (newest catalog slice) so newly added articles post first.\nconst PRIORITY_SLUGS = new Set([\"ios-app-intents-shortcuts-production\", \"ios-swiftui-navigation-path-deep-links\", \"ios-swiftui-observation-framework-migration\", \"ios-background-tasks-bgprocessing\", \"ios-keychain-access-groups-share\", \"ios-widgetkit-timeline-reload-policy\", \"ios-core-data-cloudkit-conflict\", \"ios-push-notifications-mutable-content\", \"ios-storekit-2-transaction-listener\", \"ios-swift-structured-concurrency-cancellation\", \"ios-uitesting-accessibility-identifiers\", \"ios-ats-exceptions-https-only\", \"ios-camera-avfoundation-session-lifecycle\", \"ios-privacy-manifest-required-reasons\", \"ios-actor-isolated-network-client\", \"ios-mapkit-clustering-performance\", \"ios-swiftui-charts-accessibility\", \"ios-fileprovider-extension-sync\", \"ios-passkeys-authentication-services\", \"ios-realitykit-lightweight-ar\", \"ios-callkit-voip-push\", \"ios-swiftui-snapshot-testing\", \"ios-app-clips-invocation-ux\", \"ios-docc-documentation-spm\", \"ios-metal-performance-shaders-basics\", \"ios-live-activities-push\", \"ios-swift-macros-validation\", \"ios-tipkit-onboarding\", \"ios-app-shortcuts-phrases\", \"ios-swiftdata-migration-stages\", \"ios-swiftui-matched-geometry\", \"ios-network-framework-quic\", \"ios-swiftui-phase-animator\", \"ios-app-store-server-notifications-v2\", \"ios-photosui-limited-library\", \"ios-secure-enclave-key-ops\", \"ios-managed-app-config-mdm\", \"ios-nearby-interaction-uwb\", \"ios-shazamkit-offline-catalog\", \"ios-create-ml-on-device\", \"saas-seat-based-billing-proration\", \"saas-tenant-isolation-row-level-security\", \"saas-entitlements-feature-gate-service\", \"saas-usage-metering-idempotent-events\", \"saas-admin-impersonation-audit\", \"saas-trial-to-paid-conversion-hooks\", \"saas-workspace-invitation-security\", \"saas-data-export-gdpr-self-serve\", \"saas-rate-limits-per-plan-tier\", \"saas-soft-delete-tenant-offboarding\", \"saas-invoice-pdf-generation-pipeline\", \"saas-multi-region-tenant-pinning\", \"saas-scim-provisioning-okta\", \"saas-audit-log-hash-chain\", \"saas-custom-domains-ssl-automation\", \"saas-partner-marketplace-webhooks\", \"saas-quota-exhaustion-ux-api\", \"saas-sandbox-vs-production-tenants\", \"saas-annual-contract-true-ups\", \"saas-outbox-tenant-event-fanout\", \"saas-plan-migration-expand-contract\", \"saas-customer-health-score-pipeline\", \"saas-legal-hold-export-locks\", \"saas-metered-ai-feature-cost-controls\", \"saas-slash-commands-in-product\", \"saas-webhook-signing-secret-rotation\", \"saas-billing-credit-ledger\", \"saas-sso-jit-provisioning\", \"saas-tenant-aware-search-indexing\", \"saas-api-versioning-tenant-overrides\", \"saas-multi-currency-price-books\", \"saas-usage-based-alerting-spend\", \"saas-data-residency-migration-tenants\", \"saas-workspace-transfer-ownership\", \"saas-enterprise-contract-entitlement-sync\", \"saas-metering-backfill-corrections\", \"saas-plg-viral-loops-abuse-controls\", \"saas-feature-installment-rollouts\", \"saas-product-tours-permission-aware\", \"saas-support-macros-tenant-context\", \"playwright-trace-on-failure-only\", \"testcontainers-flyway-smoke\", \"vitest-workspace-project-references\", \"k6-abort-on-threshold-breach\", \"pact-broker-can-i-deploy\", \"axe-serious-only-ci-gate\", \"chromatic-turbo-snap-discipline\", \"schemathesis-negative-path-suite\", \"flaky-quarantine-with-expiry\", \"mutation-testing-critical-modules\", \"slo-multiwindow-burn-alerts\", \"otel-tail-sampling-policies\", \"pagerduty-service-graph-routing\", \"postmortem-action-item-sla\", \"grafana-as-code-alert-parity\", \"synthetic-multi-region-tls-probes\", \"datadog-monitor-terraform-modules\", \"queue-oldest-age-slos\", \"sentry-release-health-gate\", \"django-expand-contract-migrations\", \"error-budget-release-freeze\", \"fastapi-dependency-override-harness\", \"celery-visibility-heartbeat-jobs\", \"httpx-timeout-trinity-defaults\", \"sqlalchemy2-asyncio-session-scope\", \"pydantic-v2-model-validate-cutover\", \"structlog-contextvar-tenant-bind\", \"alembic-merge-heads-runbook\", \"arq-redis-typed-jobs\", \"gunicorn-uvicorn-worker-math\", \"dynamodb-transaction-item-limits\", \"mongodb-resume-token-checkpoints\", \"mysql-invisible-index-rehearsal\", \"clickhouse-replacing-merge-correctness\", \"duckdb-s3-inventory-globs\", \"cassandra-tombstone-storm-avoidance\", \"opensearch-ism-hot-warm-rollover\", \"redisjson-vs-hash-memory\", \"neo4j-keyset-pagination\", \"next-partial-prerender-holes\", \"sqlite-litestream-single-writer\", \"next-server-action-authz-checks\", \"react-use-effect-event-handlers\", \"trpc-precise-query-invalidation\", \"css-anchor-positioning-menus\", \"tailwind-token-css-variables\", \"scheduler-yield-inp-chunks\", \"trusted-types-dom-xss-sinks\", \"webtransport-datagram-selection\", \"cookie-store-async-sw-reads\", \"s3-conditional-put-races\", \"sqs-per-tenant-fair-queues\", \"cloud-run-min-instance-cost\", \"eventbridge-archive-replay-drills\", \"lambda-snapstart-uniqueness\", \"bigquery-slot-autoscale-caps\", \"pubsub-exactly-once-caveats\", \"cloudflare-tunnel-admin-apps\", \"durable-objects-edge-state\", \"r2-multipart-abort-hygiene\", \"oauth-dpop-proof-tokens\", \"oauth-par-authorize-hardening\", \"oidc-backchannel-logout-fanout\", \"csp-nonce-strict-dynamic-spa\", \"passkey-conditional-ui-finish-rates\", \"ssrf-metadata-ip-blocks\", \"cosign-admission-verify\", \"step-up-mfa-sensitive-exports\", \"fat-jwt-authz-staleness\", \"spiffe-workload-identity\", \"stripe-signature-dual-secret\", \"connect-express-requirements-due\", \"double-entry-wallet-ledger\", \"stripe-idempotency-key-windows\", \"ach-return-state-machine\", \"partial-refund-tax-allocation\", \"threeds-return-url-completion\", \"chargeback-evidence-automation\", \"dunning-smart-retry-states\", \"buildkit-cache-mount-deps\", \"gha-oidc-cloud-roles\", \"pci-saq-architecture-choice\", \"buf-protobuf-breaking-gate\", \"nx-affected-graph-ci\", \"spectral-openapi-pr-lint\", \"ephemeral-preview-env-caps\", \"renovate-grouped-safe-batches\", \"backstage-golden-path-templates\", \"camerax-multi-usecase-bind\", \"stale-flag-deletion-bot\", \"baseline-profile-ci-regen\", \"credential-manager-passkey-parity\", \"workmanager-expedited-quota\", \"paging3-remote-mediator-races\", \"play-integrity-server-verify\", \"room-automigration-limits\", \"health-connect-gradual-perms\", \"r8-fullmode-minimal-keeps\", \"errgroup-cancel-siblings\", \"pgx-pool-vs-pg-limits\", \"slog-json-sample-handlers\", \"go-fuzz-parser-corpus-ci\", \"singleflight-cache-coalesce\", \"sqlc-schema-regen-hook\", \"graceful-http-drain\", \"module-retract-public-go\", \"wire-vs-fx-di-choice\", \"axum-state-extractor-pools\", \"tower-timeout-retry-compose\", \"serde-untagged-ambiguity\", \"sqlx-offline-query-check\", \"tokio-select-fairness-loops\", \"cargo-deny-advisory-gate\", \"pyo3-gil-release-paths\", \"wasm-bindgen-size-budget\", \"dmarc-alignment-product-mail\", \"ses-config-set-reputation\", \"twilio-messaging-service-a2p\", \"apns-collapse-id-priority\", \"fcm-http-v1-cutover\", \"bounce-suppression-lists\", \"web-push-vapid-rotation\", \"whatsapp-template-categories\", \"amplitude-taxonomy-owners\", \"notification-pref-matrix\", \"posthog-replay-pii-masks\", \"cuped-preperiod-covariates\", \"experiment-srm-detector\", \"segment-protocols-ci\", \"consent-mode-tag-gating\", \"warehouse-event-dedupe-grain\", \"hexagonal-kotlin-ports\", \"modular-monolith-archunit\", \"reverse-etl-audience-sla\", \"bff-mobile-aggregation\", \"cqrs-read-lag-tokens\", \"outbox-vs-cdc-relay\", \"cell-architecture-tenants\", \"idempotency-ttl-store\", \"gdpr-erasure-cross-store\", \"gpc-do-not-sell-honor\", \"service-slice-by-volatility\", \"dsar-identity-proofing\", \"log-allowlist-redaction\", \"pii-vault-tokenization\", \"child-account-age-gates\", \"k-anonymity-export-gate\", \"purpose-tags-on-tables\", \"flutter-impeller-perf-budgets\", \"riverpod-codegen-testability\", \"dart-isolates-compute-bounds\", \"flutter-deferred-components\", \"flutter-platform-view-perf\", \"flutter-integration-test-firebase\", \"flutter-web-seo-render\", \"go-router-deep-link-restore\", \"dart-ffi-safe-buffers\", \"flutter-a11y-semantics-debugger\", \"zod-branded-money-types\", \"ts-satisfies-operator-apis\", \"typescript-project-references-ci\", \"effect-ts-boundary-errors\", \"node-test-runner-migration\", \"trpc-openapi-compat-layer\", \"strict-index-access-cleanup\", \"tsx-esm-loader-prod\", \"typescript-enums-vs-unions\", \"java-virtual-threads-pinning\", \"spring-modulith-boundaries\", \"ts-reset-dom-lib-hardening\", \"hibernate-stateless-session-batch\", \"junit5-testcontainers-extension\", \"graalvm-native-image-hints\", \"jackson-blackbird-afterburner\", \"spring-boot-structured-logging\", \"archunit-package-rules\", \"java-ffm-memory-segments\", \"micrometer-tracing-bridge\", \"airflow-dataset-scheduling\", \"dbt-unit-tests-models\", \"spark-aqe-skew-join-hints\", \"flink-exactly-once-sinks\", \"kafka-connect-smt-discipline\", \"delta-liquid-clustering\", \"great-expectations-ci-gates\", \"iceberg-partition-evolution\", \"data-contracts-producer-ci\", \"montecarlo-freshness-monitors\", \"sqlite-strict-typing-for-edge-apis\", \"cockroach-client-retry-loops\", \"planetscale-deploy-request-reverts\", \"meilisearch-tenant-token-filters\", \"supabase-rls-jwt-claim-debugging\", \"typesense-scoped-api-keys\", \"algolia-rule-collision-debugging\", \"elasticsearch-pit-search-after\", \"opensearch-hybrid-knn-filters\", \"bigtable-row-key-design-reviews\", \"clickhouse-projection-choice\", \"spanner-interleaved-tables\", \"cosmosdb-change-feed-processors\", \"neo4j-fabric-query-fanout\", \"mongodb-time-series-window\", \"mysql-histogram-skew-fixes\", \"postgres-brin-for-time-series\", \"postgres-logical-decoding-plugins\", \"redis-bloom-signup-abuse\", \"redis-streams-consumer-lag\", \"nats-jetstream-workqueues\", \"rabbitmq-quorum-queues-ops\", \"sqs-delayed-redrive-policies\", \"kafka-tiered-storage-ops\", \"pubsub-dead-letter-topics\", \"pulsar-key-shared-subscriptions\", \"redpanda-shadow-indexing\", \"temporal-continue-as-new\", \"bullmq-stalled-job-recovery\", \"cadence-worker-versioning\", \"sidekiq-ent-rate-limiting\", \"airflow-dynamic-task-mapping\", \"celery-chord-error-callbacks\", \"dagster-asset-checks\", \"mage-ai-block-retries\", \"prefect-deployment-concurrency\", \"dbt-clone-for-pr-schemas\", \"dbt-exposures-downstream-owners\", \"flink-watermark-alignment\", \"beam-runner-parity-tests\", \"hudi-compaction-strategies\", \"iceberg-row-lineage\", \"arrow-flight-sql-gateways\", \"delta-deletion-vectors\", \"parquet-bloom-filter-pushdown\", \"duckdb-wasm-in-browser-etl\", \"trino-resource-groups\", \"cube-preaggs-refresh-keys\", \"druid-compaction-supervisor\", \"pinot-upsert-realtime\", \"looker-pdt-governance\", \"metabase-sandboxing-tenants\", \"tableau-extract-refresh-slos\", \"amplitude-warehouse-native\", \"mixpanel-identity-merge-races\", \"fullstory-privacy-rules\", \"heap-autocapture-noise\", \"posthog-hogql-cost-guards\", \"hotjar-consent-wiring\", \"rudderstack-transformations\", \"segment-edge-sdk-batching\", \"ga4-bigquery-export-lag\", \"server-gtm-cloud-run-auth\", \"snowplow-bad-rows-triage\", \"braze-currents-event-shapes\", \"customerio-object-types\", \"firebase-inapp-messaging\", \"iterable-catalog-sync\", \"onesignal-frequency-caps\", \"clevertap-journey-limits\", \"mailgun-inbound-routes\", \"postmark-message-streams\", \"mailchimp-transactional-split\", \"sendgrid-event-webhook-signed\", \"ses-dedicated-ip-warmup\", \"messagebird-omnichannel\", \"twilio-verify-fraud-guards\", \"intercom-fin-handoff\", \"sinch-conversation-api\", \"vonage-number-insights\", \"freshdesk-automation-rules\", \"jira-webhooks-idempotent\", \"zendesk-sunshine-events\", \"asana-app-components\", \"linear-sdk-sync-cursors\", \"notion-api-rate-budgets\", \"confluence-forge-auth\", \"slack-bolt-rotating-secrets\", \"discord-interactions-verify\", \"teams-graph-change-notifs\", \"zoom-webhook-validation\", \"apple-eventkit-recurrence\", \"calendar-google-push-channels\", \"outlook-rich-notifications\", \"adyen-platform-onboarding\", \"stripe-tax-id-collection\", \"stripe-treasury-kyc-states\", \"braintree-local-payment-methods\", \"checkout-com-risk-engine\", \"paypal-vault-payment-tokens\", \"square-terminal-checkout\", \"worldpay-3ds-flex\", \"galileo-card-events\", \"marqeta-jit-funding\", \"plaid-signal-underwriting\", \"currencycloud-conversions\", \"lithic-auth-stream\", \"airwallex-linked-accounts\", \"modern-treasury-reconcile\", \"wise-business-webhooks\", \"column-bank-ach\", \"increase-account-numbers\", \"unit-banking-applications\", \"checkout-session-inventory-hold\", \"dwolla-beneficial-owners\", \"shopify-function-discount\", \"shopify-webhook-hmac-rotate\", \"woocommerce-hpos-orders\", \"bigcommerce-stencil-auth\", \"magento-async-indexing\", \"salesforce-platform-events\", \"hubspot-custom-objects\", \"hubspot-private-app-scopes\", \"salesforce-cdc-replay\", \"dynamics-plugin-timeouts\", \"netsuite-restlet-governance\", \"sap-odata-delta-tokens\", \"servicenow-flow-designer\", \"workday-raas-reports\", \"auth0-actions-post-login\", \"auth0-organization-mfa\", \"okta-hooks-inline-tokens\", \"clerk-organization-roles\", \"cognito-managed-login-brands\", \"keycloak-spi-extensions\", \"ory-hydra-consent\", \"ory-kratos-whoami\", \"supabase-auth-hooks\", \"firebase-auth-blocking-fns\", \"workos-directory-sync\", \"azure-ad-conditional-access\", \"entra-id-app-roles\", \"ping-federate-adapters\", \"cyberark-conjur-secrets\", \"forgerock-journey-nodes\", \"hashicorp-vault-namespaces\", \"aws-secrets-rotation-lambdas\", \"doppler-config-inheritance\", \"gcp-secret-manager-cmek\", \"infisical-self-host\", \"sops-age-multi-recipient\", \"cert-manager-dns01-route53\", \"external-secrets-generators\", \"sealed-secrets-rotation\", \"acme-account-key-rollover\", \"letsencrypt-eab-bindings\", \"mtls-spire-federation\", \"istio-peerauth-strict\", \"linkerd-server-policy\", \"consul-intentions-l7\", \"envoy-ext-authz-cache\", \"kong-opa-plugin\", \"apigee-shared-flows\", \"aws-api-gateway-mtls\", \"tyk-oas-policies\", \"cloudflare-api-shield\", \"fastly-compute-secrets\", \"varnish-grace-mode\", \"haproxy-stick-tables\", \"nginx-plus-jwt-auth\", \"caddy-ask-directive\", \"keda-prometheus-scalers\", \"traefik-plugin-wasm\", \"cluster-autoscaler-expander\", \"karpenter-disruption-budgets\", \"vpa-recommender-tuning\", \"helm-post-renderer-safety\", \"hpa-scale-down-stabilization\", \"kustomize-components\", \"argo-cd-app-of-apps\", \"argo-rollouts-analysis\", \"crossplane-composition-functions\", \"flux-image-automation\", \"terraform-test-mock-providers\", \"cdk-aspects-guardrails\", \"opentofu-state-encryption\", \"pulumi-esc-environments\", \"ansible-molecule-docker\", \"cloudformation-hooks\", \"packer-hcp-channels\", \"boundary-credential-stores\", \"nomad-csi-volumes\", \"authz-adapter\", \"authz-affinity\", \"authz-allowlist\", \"authz-analyzer\", \"authz-anchor\", \"authz-announcer\", \"authz-applier\", \"authz-arbiter\", \"authz-assembler\", \"authz-attester\", \"authz-auditor\", \"authz-autofix\", \"authz-backstop\", \"authz-balancer\", \"authz-baseline\", \"authz-beacon\", \"authz-binder\", \"authz-bootstrap\", \"authz-breaker\", \"authz-broker\", \"authz-buffer\", \"authz-builder\", \"authz-bundler\", \"authz-calibrator\", \"authz-capturer\", \"authz-cataloger\", \"authz-charger\", \"authz-checker\", \"authz-cipher\", \"authz-cleaner\", \"authz-coalescer\", \"authz-collector\", \"authz-compactor\", \"authz-compiler\", \"authz-composer\", \"authz-conduit\", \"authz-confirmer\", \"authz-connector\", \"authz-consolidator\", \"authz-container\", \"authz-controller\", \"authz-converter\", \"authz-coordinator\", \"authz-copier\", \"authz-corrector\", \"authz-courier\", \"authz-coverage\", \"authz-cradle\", \"authz-creator\", \"authz-curator\", \"authz-decoder\", \"authz-deflector\", \"authz-delegator\", \"authz-deliverer\", \"authz-demuxer\", \"authz-detector\", \"authz-diffuser\", \"authz-director\", \"authz-dispatcher\", \"authz-distributor\", \"authz-divider\", \"authz-drainer\", \"authz-emulator\", \"authz-enforcer\", \"authz-engine\", \"authz-enlarger\", \"authz-enroller\", \"authz-enumerator\", \"authz-escalator\", \"authz-estimator\", \"authz-evaluator\", \"authz-evictor\", \"authz-executor\", \"authz-expander\", \"authz-exporter\", \"authz-extractor\", \"authz-failover\", \"authz-feeder\", \"authz-fencer\", \"authz-fetcher\", \"authz-filter\", \"authz-finalizer\", \"authz-fixer\", \"authz-flusher\", \"authz-follower\", \"authz-forger\", \"authz-formatter\", \"authz-forwarder\", \"authz-freezer\", \"authz-fulfiller\", \"authz-fuzzer\", \"authz-gardener\", \"authz-generator\", \"authz-governor\", \"authz-grabber\", \"authz-grader\", \"authz-guardian\", \"authz-handler\", \"authz-hardener\", \"authz-harvester\", \"authz-hasher\", \"authz-healer\", \"authz-helper\", \"authz-highlighter\", \"authz-hopper\", \"authz-hoster\", \"authz-hydrater\", \"authz-importer\", \"authz-indexer\", \"authz-injector\", \"authz-inspector\", \"authz-installer\", \"authz-integrator\", \"authz-interceptor\", \"authz-interpreter\", \"authz-inventor\", \"authz-isolator\", \"authz-issuer\", \"authz-iterator\", \"authz-joiner\", \"authz-keeper\", \"authz-kernel\", \"authz-knitter\", \"authz-labeler\", \"authz-launcher\", \"authz-layer\", \"authz-leader\", \"authz-limiter\", \"authz-linker\", \"authz-listener\", \"authz-loader\", \"authz-locator\", \"authz-locker\", \"authz-logger\", \"authz-lookout\", \"authz-mailer\", \"authz-manager\", \"authz-mapper\", \"authz-marker\", \"authz-marshaller\", \"authz-matcher\", \"authz-maximizer\", \"authz-mediator\", \"authz-merger\", \"authz-meter\", \"authz-migrator\", \"authz-minimizer\", \"authz-mirror\", \"authz-mixer\", \"authz-moderator\", \"authz-monitor\", \"authz-mover\", \"authz-multiplexer\", \"authz-mutator\", \"authz-navigator\", \"authz-negotiator\", \"authz-normalizer\", \"authz-notifier\", \"authz-nurturer\", \"authz-observer\", \"authz-obtainer\", \"authz-offloader\", \"authz-opener\", \"authz-optimizer\", \"authz-orchestrator\", \"authz-organizer\", \"authz-outlier\", \"authz-packer\", \"authz-parser\", \"authz-partitioner\", \"authz-patcher\", \"authz-payer\", \"authz-persister\", \"authz-pinning\", \"authz-planner\", \"authz-player\", \"authz-plucker\", \"authz-pointer\", \"authz-poller\", \"authz-porter\", \"authz-poster\", \"authz-prefetcher\", \"authz-presenter\", \"authz-preserver\", \"authz-primer\", \"authz-printer\", \"authz-prioritizer\", \"authz-probe\", \"authz-processor\", \"authz-producer\", \"authz-profiler\", \"authz-promoter\", \"authz-propagator\", \"authz-protector\", \"authz-prover\", \"authz-provisioner\", \"authz-pruner\", \"authz-publisher\", \"authz-pumper\", \"authz-purger\", \"authz-pusher\", \"authz-qualifier\", \"authz-querier\", \"authz-racer\", \"authz-ranger\", \"authz-rater\", \"authz-reader\", \"authz-reaper\", \"authz-receiver\", \"authz-recorder\", \"authz-recruiter\", \"authz-recycler\", \"authz-reducer\", \"authz-refiner\", \"authz-reflector\", \"authz-refresher\", \"authz-registrar\", \"authz-regulator\", \"authz-rehearsal\", \"authz-reindexer\", \"authz-relayer\", \"authz-releaser\", \"authz-reloader\", \"authz-remapper\", \"authz-remover\", \"authz-renderer\", \"authz-repacker\", \"authz-replayer\", \"authz-reporter\", \"authz-repressor\", \"authz-requester\", \"authz-rescuer\", \"authz-resolver\", \"authz-responder\", \"authz-restorer\", \"authz-restricter\", \"authz-resumer\", \"authz-retainer\", \"authz-retrier\", \"authz-revelator\", \"authz-reverser\", \"authz-reviewer\", \"authz-revisor\", \"authz-rewriter\", \"authz-ringer\", \"authz-roamer\", \"authz-roller\", \"authz-rotator\", \"authz-router\", \"authz-runner\", \"authz-sampler\", \"authz-sanitizer\", \"authz-scaler\", \"authz-scanner\", \"authz-scheduler\", \"authz-scorer\", \"authz-scraper\", \"authz-screener\", \"authz-scripter\", \"authz-sealant\", \"authz-searcher\", \"authz-seeder\", \"authz-selector\", \"authz-sender\", \"authz-sentinel\", \"authz-sequencer\", \"authz-serializer\", \"authz-server\", \"authz-settler\", \"authz-shaper\", \"authz-sharer\", \"authz-shielder\", \"authz-shipper\", \"authz-shuffler\", \"authz-shutter\", \"authz-signer\", \"authz-simulator\", \"authz-sink\", \"authz-sizer\", \"authz-sketcher\", \"authz-slicer\", \"authz-smuggler\", \"authz-sorter\", \"authz-spawner\", \"authz-splicer\", \"authz-splitter\", \"authz-spoiler\", \"authz-stabilizer\", \"authz-stacker\", \"authz-stager\", \"authz-stamper\", \"authz-starter\", \"authz-stasher\", \"authz-steerer\", \"authz-stitcher\", \"authz-stock\", \"authz-stopper\", \"authz-storager\", \"authz-strainer\", \"authz-streamer\", \"authz-striper\", \"authz-stuffer\", \"authz-subscriber\", \"authz-summarizer\", \"authz-supervisor\", \"authz-supplier\", \"authz-supporter\", \"authz-surger\", \"authz-surveyor\", \"authz-swapper\", \"authz-sweeper\", \"authz-switcher\", \"authz-syncer\", \"authz-synthesizer\", \"authz-tagger\", \"authz-tailer\", \"authz-taker\", \"authz-tamper\", \"authz-tamer\", \"authz-taper\", \"authz-targeter\", \"authz-tasker\", \"authz-teller\", \"authz-temper\", \"authz-tender\", \"authz-tester\", \"authz-throttler\", \"authz-ticker\", \"authz-tier\", \"authz-tiler\", \"authz-timer\", \"authz-tinter\", \"authz-tipper\", \"authz-tokenizer\", \"authz-tombstone\", \"authz-toolbox\", \"authz-tracer\", \"authz-tracker\", \"authz-trader\", \"authz-trailer\", \"authz-trainer\", \"authz-transcoder\", \"authz-transferer\", \"authz-transformer\", \"authz-translator\", \"authz-transmitter\", \"authz-transporter\", \"authz-trapper\", \"authz-traverser\", \"authz-treasurer\", \"authz-trencher\", \"authz-triager\", \"authz-trimmer\", \"authz-tripwire\", \"authz-troubleshooter\", \"authz-truster\", \"authz-tuner\", \"authz-turner\", \"authz-tutor\", \"authz-twister\", \"authz-unbinder\", \"authz-unblocker\", \"authz-unifier\", \"authz-unpacker\", \"authz-updater\", \"authz-upgrader\", \"authz-uploader\", \"authz-upscaler\", \"authz-usher\", \"authz-utilizer\", \"authz-validator\", \"authz-valuer\", \"authz-vectorizer\", \"authz-verifier\", \"authz-versioner\", \"authz-viewer\", \"authz-vindicator\", \"authz-visitor\", \"authz-voucher\", \"authz-voyager\", \"authz-waiter\", \"authz-walker\", \"authz-warden\", \"authz-warmer\", \"authz-watcher\", \"authz-weaver\", \"authz-weighter\", \"authz-welder\", \"authz-whisperer\", \"authz-widener\", \"authz-wildcard\", \"authz-wiper\", \"authz-wiretap\", \"authz-witness\", \"authz-worker\", \"authz-wrapper\", \"authz-wrecker\", \"authz-writer\", \"authz-yielder\", \"authz-zipper\", \"authz-zoner\", \"billing-adapter\", \"billing-affinity\", \"billing-allowlist\", \"billing-analyzer\", \"billing-anchor\", \"billing-announcer\", \"billing-applier\", \"billing-arbiter\", \"billing-assembler\", \"billing-attester\", \"billing-auditor\", \"billing-autofix\", \"billing-backstop\", \"billing-balancer\", \"billing-baseline\", \"billing-beacon\", \"billing-binder\", \"billing-bootstrap\", \"billing-breaker\", \"billing-broker\", \"billing-buffer\", \"billing-builder\", \"billing-bundler\", \"billing-calibrator\", \"billing-capturer\", \"billing-cataloger\", \"billing-charger\", \"billing-checker\", \"billing-cipher\", \"billing-cleaner\", \"billing-coalescer\", \"billing-collector\", \"billing-compactor\", \"billing-compiler\", \"billing-composer\", \"billing-conduit\", \"billing-confirmer\", \"billing-connector\", \"billing-consolidator\", \"billing-container\", \"billing-controller\", \"billing-converter\", \"billing-coordinator\", \"billing-copier\", \"billing-corrector\", \"billing-courier\", \"billing-coverage\", \"billing-cradle\", \"billing-creator\", \"billing-curator\", \"billing-decoder\", \"billing-deflector\", \"billing-delegator\", \"billing-deliverer\", \"billing-demuxer\", \"billing-detector\", \"billing-diffuser\", \"billing-director\", \"billing-dispatcher\", \"billing-distributor\", \"billing-divider\", \"billing-drainer\", \"billing-emulator\", \"billing-enforcer\", \"billing-engine\", \"billing-enlarger\", \"billing-enroller\", \"billing-enumerator\", \"billing-escalator\", \"billing-estimator\", \"billing-evaluator\", \"billing-evictor\", \"billing-executor\", \"billing-expander\", \"billing-exporter\", \"billing-extractor\", \"billing-failover\", \"billing-feeder\", \"billing-fencer\", \"billing-fetcher\", \"billing-filter\", \"billing-finalizer\", \"billing-fixer\", \"billing-flusher\", \"billing-follower\", \"billing-forger\", \"billing-formatter\", \"billing-forwarder\", \"billing-freezer\", \"billing-fulfiller\", \"billing-fuzzer\", \"billing-gardener\", \"billing-generator\", \"billing-governor\", \"billing-grabber\", \"billing-grader\", \"billing-guardian\", \"billing-handler\", \"billing-hardener\", \"billing-harvester\", \"billing-hasher\", \"billing-healer\", \"billing-helper\", \"billing-highlighter\", \"billing-hopper\", \"billing-hoster\", \"billing-hydrater\", \"billing-importer\", \"billing-indexer\", \"billing-injector\", \"billing-inspector\", \"billing-installer\", \"billing-integrator\", \"billing-interceptor\", \"billing-interpreter\", \"billing-inventor\", \"billing-isolator\", \"billing-issuer\", \"billing-iterator\", \"billing-joiner\", \"billing-keeper\", \"billing-kernel\", \"billing-knitter\", \"billing-labeler\", \"billing-launcher\", \"billing-layer\", \"billing-leader\", \"billing-limiter\", \"billing-linker\", \"billing-listener\", \"billing-loader\", \"billing-locator\", \"billing-locker\", \"billing-logger\", \"billing-lookout\", \"billing-mailer\", \"billing-manager\", \"billing-mapper\", \"billing-marker\"]);\nconst priorityCandidates = [];\nfor (let i = 0; i < sortedPosts.length; i += 1) {\n  const candidate = sortedPosts[i];\n  if (candidate?.slug && PRIORITY_SLUGS.has(candidate.slug) && !sharedSet.has(candidate.slug)) {\n    priorityCandidates.push({ candidate, idx: i });\n  }\n}\n\nlet picked = null;\nlet pickedIndex = -1;\nlet fromPriorityQueue = false;\n\nif (priorityCandidates.length) {\n  // Keep stable order within the priority set (already date-sorted via sortedPosts).\n  picked = priorityCandidates[0].candidate;\n  pickedIndex = priorityCandidates[0].idx;\n  fromPriorityQueue = true;\n} else {\n  for (let offset = 0; offset < totalPosts; offset += 1) {\n    const idx = (cursor + offset) % totalPosts;\n    const candidate = sortedPosts[idx];\n    if (candidate?.slug && !sharedSet.has(candidate.slug)) {\n      picked = candidate;\n      pickedIndex = idx;\n      break;\n    }\n  }\n}\n\nlet catalogReset = false;\nif (!picked) {\n  catalogReset = true;\n  picked = sortedPosts[0];\n  pickedIndex = 0;\n}\n\nconst nextIndex = (pickedIndex + 1) % totalPosts;\nconst postText = picked.text || picked.postText || '';\n\nreturn [{\n  json: {\n    slug: picked.slug,\n    title: picked.title,\n    url: picked.url,\n    description: postText.split('\\n\\n')[0]?.trim() || picked.title,\n    linkedinText: postText,\n    topicCluster: picked.topicCluster,\n    pickedIndex,\n    nextIndex,\n    totalPosts,\n    catalogReset,\n    fromPriorityQueue,\n    priorityRemaining: priorityCandidates.length ? Math.max(priorityCandidates.length - 1, 0) : 0,\n    feedGeneratedAt: feed.generatedAt,\n    sharedSlugsCount: sharedSlugs.length,\n    rotationSource: 'postgres',\n    feedSource: feed.feedSource ?? 'unknown',\n    cacheAgeHours: feed.cacheAgeHours ?? null,\n    priorSharedSlugs: sharedSlugs,\n  },\n}];\n"
       },
       "id": "5437f3a3-6fa9-4086-9e1d-cdbdf46baf70",
       "name": "Pick Next Post",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 300]
+      "position": [
+        1100,
+        300
+      ]
     },
     {
       "parameters": {
@@ -137,7 +162,10 @@
       "name": "LinkedIn Post",
       "type": "n8n-nodes-base.linkedIn",
       "typeVersion": 1,
-      "position": [880, 300],
+      "position": [
+        1320,
+        300
+      ],
       "credentials": {
         "linkedInOAuth2Api": {
           "id": "CONFIGURE_LINKEDIN",
@@ -154,7 +182,10 @@
       "name": "Handle Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 500]
+      "position": [
+        1440,
+        500
+      ]
     },
     {
       "parameters": {
@@ -164,7 +195,10 @@
       "name": "Mark Posted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 300]
+      "position": [
+        1540,
+        300
+      ]
     },
     {
       "parameters": {
@@ -178,39 +212,200 @@
       "name": "Write Rotation",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [1320, 300],
+      "position": [
+        1760,
+        300
+      ],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_PG_ROTATION",
           "name": "n8n Postgres Rotation"
         }
       }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH incoming AS (\n  SELECT $1::jsonb AS feed, NULLIF($2, '') AS generated_at, $3::integer AS post_count\n),\nupsert AS (\n  INSERT INTO linkedin_feed_cache (id, feed, generated_at, post_count, fetched_at)\n  SELECT 1, feed, generated_at, post_count, NOW() FROM incoming WHERE post_count > 0\n  ON CONFLICT (id) DO UPDATE SET\n    feed         = EXCLUDED.feed,\n    generated_at = EXCLUDED.generated_at,\n    post_count   = EXCLUDED.post_count,\n    fetched_at   = NOW()\n  RETURNING feed, generated_at, post_count, fetched_at\n)\nSELECT feed, generated_at, post_count, fetched_at, 'live' AS feed_source FROM upsert\nUNION ALL\nSELECT c.feed, c.generated_at, c.post_count, c.fetched_at, 'cache-live-empty' AS feed_source\nFROM linkedin_feed_cache c\nWHERE c.id = 1 AND NOT EXISTS (SELECT 1 FROM upsert);",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json), $json.generatedAt ?? '', Array.isArray($json.posts) ? $json.posts.length : 0] }}"
+        }
+      },
+      "id": "d4e3f0a2-3b6c-4e4d-9c33-feedcache-write1",
+      "name": "Cache Feed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_PG_ROTATION",
+          "name": "n8n Postgres Rotation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT feed, generated_at, post_count, fetched_at, 'cache' AS feed_source\nFROM linkedin_feed_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "id": "e5f4a1b3-4c7d-4f5e-8d44-feedcache-read01",
+      "name": "Load Cached Feed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        440
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_PG_ROTATION",
+          "name": "n8n Postgres Rotation"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Emits the post feed regardless of whether it came from the live blog or the\n// Postgres cache, so a blog outage can no longer skip an hourly slot.\nconst row = $input.first()?.json ?? {};\n\nlet feed = row.feed;\nif (typeof feed === 'string') {\n  try { feed = JSON.parse(feed); } catch (err) { feed = null; }\n}\n\nconst posts = feed && Array.isArray(feed.posts) ? feed.posts : [];\nif (!posts.length) {\n  throw new Error(\n    'No usable feed: the live fetch failed and linkedin_feed_cache is empty or invalid. ' +\n    'Check https://blog.michaelsam94.com/linkedin-posts.json and SELECT * FROM linkedin_feed_cache.'\n  );\n}\n\nconst fetchedAt = row.fetched_at ? new Date(row.fetched_at) : null;\nconst ageHours = fetchedAt\n  ? Math.round(((Date.now() - fetchedAt.getTime()) / 3600000) * 10) / 10\n  : null;\n\nreturn [{\n  json: {\n    ...feed,\n    feedSource: row.feed_source ?? 'unknown',\n    cacheFetchedAt: row.fetched_at ?? null,\n    cacheAgeHours: ageHours,\n  },\n}];"
+      },
+      "id": "f6a5b2c4-5d8e-4a6f-9e55-feedresolve0001",
+      "name": "Resolve Feed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
     }
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [[{ "node": "Fetch Posts", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Fetch Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Fetch Posts": {
-      "main": [[{ "node": "Read Rotation", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Cache Feed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Cached Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Read Rotation": {
-      "main": [[{ "node": "Pick Next Post", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Pick Next Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Pick Next Post": {
-      "main": [[{ "node": "LinkedIn Post", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "LinkedIn Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "LinkedIn Post": {
       "main": [
-        [{ "node": "Mark Posted", "type": "main", "index": 0 }],
-        [{ "node": "Handle Result", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Mark Posted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Handle Result": {
-      "main": [[{ "node": "Mark Posted", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Mark Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Mark Posted": {
-      "main": [[{ "node": "Write Rotation", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Write Rotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Feed": {
+      "main": [
+        [
+          {
+            "node": "Resolve Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Cached Feed": {
+      "main": [
+        [
+          {
+            "node": "Resolve Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Feed": {
+      "main": [
+        [
+          {
+            "node": "Read Rotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -219,29 +414,5 @@
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "staticData": {
-    "global": {
-      "sharedSlugs": [
-        "android-datastore-migration-sharedpreferences",
-        "android-deeplink-attribution-install",
-        "compose-shared-element-transitions",
-        "android-dependency-injection-koin",
-        "android-desugaring-java-time",
-        "android-doze-app-standby-buckets",
-        "android-dynamic-color-material3",
-        "agent-chaos-monkey-game-days",
-        "agent-chargeback-dispute-automation"
-      ],
-      "nextIndex": 56,
-      "lastPostedSlug": "agent-chargeback-dispute-automation",
-      "lastPostedAt": "2026-07-17T11:00:00.000Z",
-      "note": "Legacy mirror only — source of truth is linkedin_rotation table"
-    }
-  },
-  "pinData": {},
-  "meta": {
-    "description": "Shares one blog article every hour (24/day, Africa/Cairo) to LinkedIn. Rotates via Postgres linkedin_rotation table (task-runner-safe)."
-  },
-  "active": true,
-  "versionId": "f1a2b3c4-d5e6-7890-abcd-ef1234567890"
+  "active": false
 }
