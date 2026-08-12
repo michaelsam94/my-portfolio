@@ -1,129 +1,158 @@
 ---
-title: "Cloudformation Hooks"
+title: "Cloudformation hooks patterns that survive production"
 slug: "cloudformation-hooks"
-description: "Cloudformation Hooks: how to make retries and timeouts intentional in production analytics systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Cloudformation hooks patterns that survive production: how to operationalize cloudformation hooks with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-25"
 dateModified: "2026-08-12"
 tags:
-  - "Data"
-  - "Product"
-keywords: "cloudformation, hooks, analytics, production, engineering"
+  - "Engineering"
+  - "Cloudformation"
+keywords: "cloudformation, hooks, production, engineering"
 faq:
-  - q: "What is Cloudformation Hooks?"
-    a: "Cloudformation Hooks is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Cloudformation Hooks?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Cloudformation Hooks?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Cloudformation hooks patterns that survive production?"
+    a: "Cloudformation hooks patterns that survive production is the production approach to operationalize cloudformation hooks with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Cloudformation hooks patterns that survive production?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with cloudformation hooks, prioritize it."
+  - q: "What is the most common mistake with Cloudformation hooks patterns that survive production?"
+    a: "The usual failure is treating cloudformation hooks as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Cloudformation Hooks** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Cloudformation hooks patterns that survive production** means you operationalize cloudformation hooks with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating cloudformation hooks as a pure library problem start paging people.
 
-Below is how I implement and operate it in Analytics systems using dbt, Segment: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `cloudformation-hooks` in a product context, using OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Building Cloudformation Hooks into an existing system
+## Fitting Cloudformation hooks patterns that survive production into an existing system
 
-If you only remember one thing about Cloudformation Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Teams usually discover Cloudformation hooks patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Cloudformation hooks patterns that survive production without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on cloudformation hooks.
 
-## Contracts and ownership
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
-Most write-ups on Cloudformation Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Contracts and ownership boundaries
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Cloudformation hooks patterns that survive production as an operations problem first. The goal is to operationalize cloudformation hooks with clear ownership, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Cloudformation Hooks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating cloudformation hooks as a pure library problem.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
 
-```sql
--- Cloudformation Hooks
-INSERT INTO example_events (tenant_id, event_id, payload)
-VALUES ($1, $2, $3)
-ON CONFLICT (tenant_id, event_id) DO NOTHING;
+Concretely, being able to operationalize cloudformation hooks with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
+
+```typescript
+// Cloudformation hooks patterns that survive production
+export async function handle_cloudformation_hooks(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("cloudformation-hooks");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Data and state implications
+## State, storage, and retention
 
-Most write-ups on Cloudformation Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For cloudformation hooks, that means making failure visible early.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Cloudformation hooks patterns that survive production without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Cloudformation Hooks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Cloudformation Hooks error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for cloudformation hooks: treating cloudformation hooks as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating cloudformation hooks as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Security notes that are not optional
+## Security defaults that are non-negotiable
 
-If you only remember one thing about Cloudformation Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat Cloudformation hooks patterns that survive production as an operations problem first. The goal is to operationalize cloudformation hooks with clear ownership, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Cloudformation hooks patterns that survive production without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Cloudformation Hooks designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Cloudformation hooks patterns that survive production cannot answer, it is not production-ready.
 
-## Observability and SLOs
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
-If you only remember one thing about Cloudformation Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## SLOs and dashboards
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Cloudformation hooks patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating cloudformation hooks as a pure library problem.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
+
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
 Related reading:
 
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Week-one validation plan
+## First-week validation plan
 
-I have watched teams under-specify Cloudformation Hooks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Teams usually discover Cloudformation hooks patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of cloudformation hooks before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for cloudformation hooks from one dashboard and one runbook page.
 
-## Practical defaults I use for Cloudformation Hooks
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
-I have watched teams under-specify Cloudformation Hooks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Practical defaults for Cloudformation hooks patterns that survive production
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For cloudformation hooks, that means making failure visible early.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of cloudformation hooks before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-A month in, prune unused paths. Cloudformation Hooks accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
 
-## Review questions before merging Cloudformation Hooks work
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
-I have watched teams under-specify Cloudformation Hooks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+In review, require a short failure note covering retry, partial deploy, and treating cloudformation hooks as a pure library problem. Missing that note blocks merge.
 
-Make Cloudformation Hooks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Cloudformation Hooks — you only deployed it.
+## Review questions before merging cloudformation hooks work
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Teams usually discover Cloudformation hooks patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Cloudformation Hooks error rate. Expand only when the metric says you must.
+Put a metric on the user-visible effect of cloudformation hooks before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Field notes after the first month of Cloudformation Hooks
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
 
-If you only remember one thing about Cloudformation Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Default deny, explicit timeouts, and one dashboard row for cloudformation hooks. Expand only when the metric demands it.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of cloudformation hooks
 
-A month in, prune unused paths. Cloudformation Hooks accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Production systems punish vague ownership and unmeasured happy paths. For cloudformation hooks, that means making failure visible early.
+
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating cloudformation hooks as a pure library problem.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cloudformation hooks patterns that survive production that needs a hero is not done.
+
+Slug-specific note (cloudformation-hooks): prioritize hooks behavior under load and verify with a fixture named `cloudformation-hooks-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating cloudformation hooks as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `cloudformation-hooks`
 - https://12factor.net/
+- https://martinfowler.com/

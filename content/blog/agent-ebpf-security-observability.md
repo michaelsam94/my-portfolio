@@ -1,265 +1,160 @@
 ---
-title: "AI Agents: Ebpf Security Observability"
+title: "Agent systems: ebpf security observability"
 slug: "agent-ebpf-security-observability"
-description: "Deploy eBPF probes for syscall, network, and file integrity observability around agent runtimes—kernel visibility without sidecar tax or log volume explosions."
+description: "Agent systems: ebpf security observability: how to keep agent side effects idempotent around ebpf security observability — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-15"
-dateModified: "2025-11-15"
-tags: ["AI", "Agent", "Ebpf"]
-keywords: "eBPF security, Tetragon, Falco, Cilium observability, agent sandbox, syscall tracing, kernel runtime security"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+  - "Security"
+keywords: "agent, ebpf, security, observability, production, engineering"
 faq:
-  - q: "Why use eBPF for agent security observability instead of application logs?"
-    a: "Agents invoke tools, subprocesses, and network calls that application code does not always instrument—especially third-party MCP servers and shell plugins. eBPF sees syscalls and socket connects at the kernel boundary, giving ground truth even when user-space logging is disabled, tampered with, or never implemented."
-  - q: "Does eBPF replace Falco or Tetragon?"
-    a: "No—it is the mechanism they build on. Falco provides a rule language for threat detection; Tetragon focuses on Kubernetes-aware enforcement and tracing. You choose the toolchain; eBPF is the shared substrate. Many teams run Tetragon for policy plus export events to their SIEM alongside application traces."
-  - q: "What agent workloads are poor fits for syscall-level monitoring?"
-    a: "Windows agent hosts (eBPF is Linux-first), unprivileged local dev laptops without CAP_BPF, and ultra-low-memory edge devices where probe maps compete with model weights. For those, rely on application-level audit logs and OS-specific controls; deploy eBPF where agents run in your Linux K8s fleet."
-  - q: "How do you prevent eBPF observability from drowning the SIEM?"
-    a: "Aggregate in-kernel with BPF maps—count connects per dst/port before exporting. Sample high-volume syscalls (read/write) and always emit full detail on policy violations. Tag events with Kubernetes workload identity (namespace, pod, container) at collection time so downstream routing filters agent pools separately from batch ETL."
+  - q: "What is Agent systems: ebpf security observability?"
+    a: "Agent systems: ebpf security observability is the production approach to keep agent side effects idempotent around ebpf security observability. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: ebpf security observability?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent ebpf security observability, prioritize it."
+  - q: "What is the most common mistake with Agent systems: ebpf security observability?"
+    a: "The usual failure is treating agent ebpf security observability as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An agent tool chain executed `curl` against an internal metadata endpoint nobody remembered exposing. Application logs showed a successful tool response; the agent framework never logged subprocess argv. A **eBPF execve probe** on the node caught `/bin/curl http://169.254.169.254/...` with the pod UID tied to the compromised MCP sidecar. eBPF security observability is how you see what agent runtimes actually do at the kernel boundary—not what they claim in structured JSON.
+**Agent systems: ebpf security observability** means you keep agent side effects idempotent around ebpf security observability — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating agent ebpf security observability as a pure library problem start paging people.
 
-## Why agents widen the attack surface
+This write-up is specific to `agent-ebpf-security-observability` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-Agent architectures blend:
+## What Agent systems: ebpf security observability changes in day-two ops
 
-- LLM-orchestrated **tool calls** (HTTP, SQL, shell)
-- **MCP servers** and plugins with variable quality bars
-- **Sandbox escapes** via misconfigured containers
-- **Egress** to model APIs and customer data planes
+I treat Agent systems: ebpf security observability as an operations problem first. The goal is to keep agent side effects idempotent around ebpf security observability, not to collect frameworks.
 
-Traditional APM traces HTTP from your service mesh. It misses `execve`, `connect` to unexpected IPs, `ptrace` attempts, and writes to `/etc/passwd` inside the container mount namespace. eBPF attaches at the kernel hook point—before return to user space completes—so observations are harder for malicious code to suppress than log4j-style appender disables.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ebpf security observability as a pure library problem.
 
-## eBPF concepts for platform engineers
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ebpf security observability.
 
-| Concept | Role in security observability |
-|---------|-------------------------------|
-| **Program** | Logic attached to kprobes/tracepoints/cgroup hooks |
-| **Map** | Kernel-side hash tables for counts, allowlists, PID sets |
-| **CO-RE** | Compile Once — Run Everywhere across kernel versions |
-| **BTF** | Type information enabling portable programs |
-| **Ring buffer** | Efficient event export to user space |
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-You rarely write raw BPF C unless maintaining custom probes. Production teams typically deploy **Tetragon**, **Falco (modern BPF backend)**, **Cilium Tetragon policies**, or **Pixie**—this article focuses on patterns those tools implement.
+## Designing so you can keep agent side effects idempotent around ebpf security observability
 
-## Threat detection map for agent pods
+Teams usually discover Agent systems: ebpf security observability after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Prioritize signals by agent risk:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ebpf security observability as a pure library problem.
 
-```yaml
-# Example Tetragon-like policy sketch (conceptual)
-apiVersion: cilium.io/v1alpha1
-kind: TracingPolicy
-metadata:
-  name: agent-runtime-guard
-spec:
-  kprobes:
-    - call: sys_execve
-      selectors:
-        - matchNamespaces:
-            - namespace: agent-workers
-          matchArgs:
-            - index: 0
-              operator: Prefix
-              values: ["/bin/bash", "/bin/sh", "/usr/bin/curl", "/usr/bin/wget"]
-    - call: tcp_connect
-      selectors:
-        - matchNamespaces:
-            - namespace: agent-workers
-          matchArgs:
-            - operator: NotIn
-              values: ["10.0.0.0/8", "api.openai.com:443"]
-```
+Acceptance check: an on-call engineer can explain system state for agent ebpf security observability from one dashboard and one runbook page.
 
-Alerts fire on **shell execution** in namespaces that should only run your hardened worker binary, and on **egress** outside allowlisted CIDRs and model API domains.
+Concretely, being able to keep agent side effects idempotent around ebpf security observability forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## Custom aggregation to control cardinality
-
-Raw `read()` syscalls generate millions of events per minute. Aggregate before export:
-
-```c
-// Simplified BPF map pattern — count connects per dst IP
-struct {
-  __uint(type, BPF_MAP_TYPE_HASH);
-  __uint(max_entries, 65536);
-  __type(key, struct ipv4_key);
-  __type(value, __u64);
-} connect_counts SEC(".maps");
-
-SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(tcp_connect, struct sock *sk) {
-  struct ipv4_key key = {}; // populate from sk
-  __u64 *count = bpf_map_lookup_elem(&connect_counts, &key);
-  if (count)
-    __sync_fetch_and_add(count, 1);
-  else {
-    __u64 init = 1;
-    bpf_map_update_elem(&connect_counts, &key, &init, BPF_NOEXIST);
-  }
-  return 0;
-}
-```
-
-User-space exporter flushes map counters every 30s and emits **anomaly events** when a pod connects to a new destination not in its 7-day baseline—rather than logging every SYN.
-
-## Correlating kernel events with agent traces
-
-Security findings without agent context are noisy. Enrich eBPF events with:
-
-- `k8s.namespace`, `k8s.pod`, `k8s.container`
-- `trace_id` / `session_id` if you inject cgroup annotations from the agent scheduler at pod create
-- `tenant_id` from pod labels
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
 ```python
-def enrich_ebpf_event(raw: dict, k8s_meta: dict) -> dict:
-    return {
-        **raw,
-        "workload": {
-            "namespace": k8s_meta["namespace"],
-            "pod": k8s_meta["pod"],
-            "labels": k8s_meta["labels"],
-        },
-        "agent_session": k8s_meta["labels"].get("agent.session_id"),
-        "tenant_id": k8s_meta["labels"].get("tenant.id"),
-    }
+# Agent systems: ebpf security observability
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentEbpfSecurityRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_ebpf_security_obse(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-ebpf-security-observability"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Join in your SIEM: eBPF execve event + OpenTelemetry span sharing `agent.session_id` → precise tool invocation postmortem.
+## Failure modes specific to agent ebpf security observability
 
-## Enforcement vs observe-only
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ebpf security observability, that means making failure visible early.
 
-eBPF supports **observe-only** (log) and **enforce** (`SIGKILL`, return `-EPERM`):
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ebpf security observability as a pure library problem.
 
-| Mode | Use when | Risk |
-|------|----------|------|
-| Observe | Baseline building, new rule rollout | Alert fatigue if unaggregated |
-| Rate-limit enforce | Block obvious egress violations | False positive kills legit traffic |
-| Kill on match | Confirmed malware signatures in agent sandbox | Highest blast radius |
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ebpf security observability.
 
-Roll out observe-only for two weeks; measure false positive rate against known-good agent regression suites. Promote to enforce on namespaces running untrusted MCP plugins first, not on core API gateways.
+My never-again list for agent ebpf security observability: treating agent ebpf security observability as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Agent sandbox hardening with cgroup hooks
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-Attach programs at **cgroup** level so probes follow agent worker containers even if PIDs recycle:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent ebpf security observability as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```bash
-# Illustrative: attach Tetragon to agent-worker namespace
-kubectl annotate namespace agent-workers \
-  io.cilium.tetragon.enable=enabled
-```
+## Signals worth paging on
 
-Combine with **seccomp** and **Landlock** profiles; eBPF sees violations seccomp returns as killed syscalls—useful for tuning profiles without silent failures.
+I treat Agent systems: ebpf security observability as an operations problem first. The goal is to keep agent side effects idempotent around ebpf security observability, not to collect frameworks.
 
-Detect **privilege escalation** attempts:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ebpf security observability as a pure library problem.
 
-- `setuid` binaries executed from world-writable paths
-- `mount` / `unshare` syscalls from non-init PIDs
-- `ptrace` attaching across container boundaries
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ebpf security observability that needs a hero is not done.
 
-## Performance overhead budgets
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: ebpf security observability cannot answer, it is not production-ready.
 
-Well-written CO-RE programs add low single-digit CPU overhead at moderate probe counts. Budget per agent node pool:
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-- **CPU**: <3% p95 increase vs uninstrumented baseline
-- **Memory**: BPF maps capped—evict LRU for per-IP counters
-- **Event lag**: <2s from syscall to SIEM for enforce decisions
+## Rollout sequence with Temporal
 
-Profile with `bpftool prog show` and disable probes that fire on hot paths (per-byte `read`) unless investigating active incidents.
+Teams usually discover Agent systems: ebpf security observability after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Deployment architecture
+Put a metric on the user-visible effect of agent ebpf security observability before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```text
-┌─────────────────┐     ring buffer      ┌──────────────────┐
-│ Agent worker    │ ───────────────────► │ Tetragon agent   │
-│ pods (cgroup)   │                        │ (DaemonSet)      │
-└─────────────────┘                        └────────┬─────────┘
-                                                  │ gRPC
-                                                  ▼
-                                         ┌──────────────────┐
-                                         │ Event exporter   │
-                                         │ (filter/enrich)  │
-                                         └────────┬─────────┘
-                                                  │
-                    ┌─────────────────────────────┼─────────────────────────────┐
-                    ▼                             ▼                             ▼
-             ┌────────────┐               ┌────────────┐               ┌────────────┐
-             │ SIEM       │               │ Prometheus │               │ S3 archive │
-             │ (alerts)   │               │ (metrics)  │               │ (forensics)│
-             └────────────┘               └────────────┘               └────────────┘
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ebpf security observability.
 
-Run the collector as a **DaemonSet** on agent nodes only—do not pay probe overhead on unrelated batch clusters. Separate Kafka topics for `ebpf.enforce` (page) vs `ebpf.audit` (ticket).
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-## Runbooks and alert routing
+Related reading:
 
-Page-worthy:
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-- Shell spawned in `agent-workers` namespace from non-allowlisted binary
-- Egress to RFC1918 metadata IPs from tool sandbox pods
-- BPF program load failure on >10% of daemonset pods (blind spot)
+## What I would delete after month one
 
-Ticket-worthy:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ebpf security observability, that means making failure visible early.
 
-- New destination domain first seen (after baseline period)
-- Elevated `connect_counts` to model API (capacity planning signal)
+Put a metric on the user-visible effect of agent ebpf security observability before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Runbook steps: cordon pod → snapshot eBPF event bundle from S3 archive → correlate `agent.session_id` → revoke tenant API keys if exfil suspected → patch MCP allowlist.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ebpf security observability that needs a hero is not done.
 
-## Compliance and data handling
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-eBPF events may contain **argv strings** with PII if agents pass user content to shell tools. Redact in the exporter:
+## Practical defaults for Agent systems: ebpf security observability
 
-```python
-REDACT_PATTERNS = [
-    (re.compile(r"email=[^&\s]+"), "email=[REDACTED]"),
-    (re.compile(r"Bearer\s+\S+"), "Bearer [REDACTED]"),
-]
+Teams usually discover Agent systems: ebpf security observability after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-def redact_argv(argv: str) -> str:
-    for pattern, repl in REDACT_PATTERNS:
-        argv = pattern.sub(repl, argv)
-    return argv
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: ebpf security observability without retry semantics is a future incident write-up.
 
-Document kernel-level collection in your DPIA. Retention: hot SIEM 30 days, cold archive 1 year for incident investigations unless regulation mandates less.
+Acceptance check: an on-call engineer can explain system state for agent ebpf security observability from one dashboard and one runbook page.
 
-## Testing before production
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-- **Regression agent suite** — Run golden tool paths; assert zero enforce events.
-- **Red team fixtures** — Deliberate `curl` metadata, reverse shell attempts in staging; assert detect within SLA.
-- **Kernel upgrade canary** — CO-RE programs survive most upgrades; still canary new node images with `bpftool` verification job in CI.
+Default deny, explicit timeouts, and one dashboard row for agent ebpf security observability. Expand only when the metric demands it.
 
-```bash
-# CI smoke: verify critical programs attached
-bpftool prog list | grep -E 'tcp_connect|sys_execve'
-tetragon getpolicy agent-runtime-guard -o json | jq '.spec.kprobes | length'
-```
+## Review questions before merging agent ebpf security observability work
 
-## The takeaway
+Teams usually discover Agent systems: ebpf security observability after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-eBPF security observability closes the gap between what agent frameworks log and what runtimes actually execute. Deploy cgroup-scoped probes on Linux agent worker pools, aggregate before SIEM export, enrich with Kubernetes and session labels, and graduate rules from observe to enforce with measured false positive budgets. Kernel visibility is not a replacement for secure tool design—but it is how you catch the subprocess your application never logged.
+Put a metric on the user-visible effect of agent ebpf security observability before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## FAQ
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ebpf security observability that needs a hero is not done.
 
-### Why use eBPF for agent security observability instead of application logs?
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-Agents invoke tools, subprocesses, and network calls that application code does not always instrument—especially third-party MCP servers and shell plugins. eBPF sees syscalls and socket connects at the kernel boundary, giving ground truth even when user-space logging is disabled, tampered with, or never implemented.
+In review, require a short failure note covering retry, partial deploy, and treating agent ebpf security observability as a pure library problem. Missing that note blocks merge.
 
-### Does eBPF replace Falco or Tetragon?
+## Field notes after thirty days of agent ebpf security observability
 
-No—it is the mechanism they build on. Falco provides a rule language for threat detection; Tetragon focuses on Kubernetes-aware enforcement and tracing. You choose the toolchain; eBPF is the shared substrate. Many teams run Tetragon for policy plus export events to their SIEM alongside application traces.
+Teams usually discover Agent systems: ebpf security observability after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-### What agent workloads are poor fits for syscall-level monitoring?
+Put a metric on the user-visible effect of agent ebpf security observability before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Windows agent hosts (eBPF is Linux-first), unprivileged local dev laptops without CAP_BPF, and ultra-low-memory edge devices where probe maps compete with model weights. For those, rely on application-level audit logs and OS-specific controls; deploy eBPF where agents run in your Linux K8s fleet.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ebpf security observability.
 
-### How do you prevent eBPF observability from drowning the SIEM?
+Slug-specific note (agent-ebpf-security-observability): prioritize observability behavior under load and verify with a fixture named `agent-ebpf-security-observability-smoke`.
 
-Aggregate in-kernel with BPF maps—count connects per dst/port before exporting. Sample high-volume syscalls (read/write) and always emit full detail on policy violations. Tag events with Kubernetes workload identity (namespace, pod, container) at collection time so downstream routing filters agent pools separately from batch ETL.
+In review, require a short failure note covering retry, partial deploy, and treating agent ebpf security observability as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- [ebpf.io](https://ebpf.io/) — eBPF overview and documentation
-- [github.com/cilium/tetragon](https://github.com/cilium/tetragon) — Tetragon eBPF security observability
-- [falco.org/docs](https://falco.org/docs/) — Falco cloud-native runtime security
-- [docs.cilium.io/en/stable/observability](https://docs.cilium.io/en/stable/observability/) — Cilium observability guides
-- [www.kernel.org/doc/html/latest/bpf/index.html](https://www.kernel.org/doc/html/latest/bpf/index.html) — Linux kernel BPF documentation
+- Internal runbook seed: `agent-ebpf-security-observability`
+- https://12factor.net/
+- https://martinfowler.com/

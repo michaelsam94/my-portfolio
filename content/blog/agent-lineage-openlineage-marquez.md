@@ -1,247 +1,159 @@
 ---
-title: "AI Agents: Lineage Openlineage Marquez"
+title: "Lineage Openlineage Marquez for production agents"
 slug: "agent-lineage-openlineage-marquez"
-description: "Lineage Openlineage Marquez: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Lineage Openlineage Marquez for production agents: how to make agent lineage openlineage marquez observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-06"
-dateModified: "2025-03-06"
-tags: ["AI", "Agent", "Lineage"]
-keywords: "agent, lineage, openlineage, marquez, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, lineage, openlineage, marquez, production, engineering"
 faq:
-  - q: "What is the difference between OpenLineage and Marquez?"
-    a: "OpenLineage is the event specification and client libraries that emit lineage — who read which dataset, ran which job, wrote what output. Marquez is an open-source metadata service that collects those events, stores them, and exposes a UI and API for graph queries. You can emit OpenLineage to Marquez, DataHub, or a custom backend."
-  - q: "Should agent RAG pipelines emit lineage per chunk or per document?"
-    a: "Emit at document and job level for catalog clarity — source URI, embedding model version, chunk policy. Optionally attach chunk IDs as facets on the output dataset, not as separate nodes, or graphs become unreadable at billion-chunk scale."
-  - q: "How do you lineage-track ephemeral LLM calls?"
-    a: "Model inference is a job facet on the transformation that consumes prompts and produces structured outputs — not every token stream needs a dataset node. Record model name, prompt template hash, and tool schema version as run facets for audit without exploding graph size."
-  - q: "When does lineage block a production deploy?"
-    a: "Use lineage in CI to verify expected upstream datasets exist and downstream consumers are notified — not as a hard gate until coverage exceeds 80% of critical paths. Missing lineage on a new agent tool should warn in PR checks, not page on-call at 2 a.m."
+  - q: "What is Lineage Openlineage Marquez for production agents?"
+    a: "Lineage Openlineage Marquez for production agents is the production approach to make agent lineage openlineage marquez observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Lineage Openlineage Marquez for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent lineage openlineage marquez, prioritize it."
+  - q: "What is the most common mistake with Lineage Openlineage Marquez for production agents?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An auditor asks which training documents fed the embedding index serving customer support agents. Engineering opens three spreadsheets, a Notion page, and a Slack thread from six months ago. Nobody can prove the retrieval corpus at inference time matches what compliance approved — because the RAG pipeline never emitted structured lineage, only unstructured logs.
+**Lineage Openlineage Marquez for production agents** means you make agent lineage openlineage marquez observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-OpenLineage standardizes how data jobs describe inputs, outputs, and run metadata. Marquez collects those events into a queryable graph: datasets, jobs, runs, and the edges between them. Together they give AI platform teams something batch ETL has had for years — a map of how raw documents become vectors, how agent tools write back to warehouses, and which model version touched which table on every run.
+This write-up is specific to `agent-lineage-openlineage-marquez` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-This article covers designing lineage for agent and RAG stacks, instrumenting emitters, operating Marquez in production, and avoiding graphs so noisy that nobody trusts them.
+## Incident pattern involving agent lineage openlineage marquez
 
-## The lineage model for agent pipelines
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent lineage openlineage marquez, that means making failure visible early.
 
-OpenLineage events are JSON documents with three core objects:
+Put a metric on the user-visible effect of agent lineage openlineage marquez before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-| Object | Represents | Agent/RAG example |
-|--------|------------|-------------------|
-| **Dataset** | Named data asset with namespace | `s3://corp-docs/support/` or `postgres://rag.public.chunks` |
-| **Job** | Transformation logic | `embed-documents`, `sync-confluence`, `agent-tool-write-crm` |
-| **Run** | Single execution of a job | Nightly embed job `run_id=8f3a…` with START/COMPLETE/FAIL |
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent lineage openlineage marquez.
 
-Each run lists `inputs` and `outputs` dataset references. Facets extend the schema — SQL query text, column lineage, model parameters, custom tags — without breaking consumers.
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-For RAG, think in layers:
+## Root cause in plain language
 
-```
-[Source docs] → [Ingest job] → [Raw staging]
-     → [Chunk + embed job] → [Vector index dataset]
-     → [Retrieval job at query time] → [Agent context facet]
-     → [Tool side-effect jobs] → [CRM / ticket updates]
-```
+I treat Lineage Openlineage Marquez for production agents as an operations problem first. The goal is to make agent lineage openlineage marquez observable and interruptible, not to collect frameworks.
 
-Query-time retrieval is lineage-sensitive: you need to record which index snapshot and filter policy were active, not just that "the agent answered." Attach retrieval config as run facets on the inference job rather than creating a new dataset per user question.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-## Emitting OpenLineage from Python ETL
+Acceptance check: an on-call engineer can explain system state for agent lineage openlineage marquez from one dashboard and one runbook page.
 
-Use the official Python client or HTTP emitter. Example nightly embedding job:
+Concretely, being able to make agent lineage openlineage marquez observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
 ```python
-from openlineage.client.run import RunEvent, RunState, Run, Job, Dataset
-from openlineage.client.serde import Serde
-from openlineage.client.transport.http import HttpTransport
-import os
-import uuid
+# Lineage Openlineage Marquez for production agents
+from dataclasses import dataclass
 
-transport = HttpTransport(
-    url=os.environ["MARQUEZ_URL"],
-    endpoint="api/v1/lineage",
-)
+@dataclass(frozen=True)
+class AgentLineageOpenliRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def emit(state: RunState, run_id: str, rows_written: int):
-    event = RunEvent(
-        eventType=state,
-        eventTime=datetime.utcnow().isoformat() + "Z",
-        run=Run(runId=run_id),
-        job=Job(
-            namespace="rag.platform",
-            name="embed-support-docs",
-        ),
-        inputs=[
-            Dataset(
-                namespace="s3",
-                name="corp-docs/support/raw",
-                facets={
-                    "documentation": {"description": "Approved support KB exports"}
-                },
-            )
-        ],
-        outputs=[
-            Dataset(
-                namespace="postgres",
-                name="rag.public.document_chunks",
-                facets={
-                    "schema": {
-                        "fields": [
-                            {"name": "chunk_id", "type": "uuid"},
-                            {"name": "embedding", "type": "vector(1536)"},
-                        ]
-                    },
-                    "dataSource": {"uri": os.environ["DATABASE_URL"]},
-                },
-            )
-        ],
-        producer="https://github.com/your-org/rag-ingest",
-    )
-    transport.emit(event)
-
-run_id = str(uuid.uuid4())
-emit(RunState.START, run_id, 0)
-try:
-    rows = run_embedding_pipeline()
-    emit(RunState.COMPLETE, run_id, rows)
-except Exception:
-    emit(RunState.FAIL, run_id, 0)
-    raise
+async def run_agent_lineage_openlineag(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-lineage-openlineage-marquez"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Wrap every batch job, CDC consumer, and agent tool that mutates durable state. Streaming micro-batches can emit one COMPLETE per checkpoint with row counts in a custom facet.
+## The fix that held under load
 
-## Marquez deployment and API usage
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent lineage openlineage marquez, that means making failure visible early.
 
-Marquez stores events in PostgreSQL and serves a React UI plus REST API. A minimal Kubernetes layout: Marquez API + UI deployment, Postgres StatefulSet, ingress with SSO.
+Keep side effects at the edges and make every write idempotent. Lineage Openlineage Marquez for production agents without retry semantics is a future incident write-up.
 
-Query lineage for a dataset:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Lineage Openlineage Marquez for production agents that needs a hero is not done.
 
-```bash
-curl -s "https://marquez.internal/api/v1/namespaces/postgres/datasets/rag.public.document_chunks" \
-  | jq '.facets, .lastModifiedAt'
-```
+My never-again list for agent lineage openlineage marquez: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Trace upstream dependencies for impact analysis before dropping a column:
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-```bash
-curl -s "https://marquez.internal/api/v1/lineage?nodeId=dataset:postgres:rag.public.document_chunks&depth=5"
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Configure retention and compaction — run metadata accumulates fast when agent tools emit per-invocation events. Tier policies:
+## Tests and probes that catch regressions
 
-- **Batch jobs:** keep all runs 90 days, aggregate older into daily summaries.
-- **High-frequency tools:** emit START/COMPLETE only on writes, sample reads at 1% with exemplar trace IDs linked in logs.
+I treat Lineage Openlineage Marquez for production agents as an operations problem first. The goal is to make agent lineage openlineage marquez observable and interruptible, not to collect frameworks.
 
-## Agent-specific facets worth standardizing
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Define an internal facet schema so dashboards stay consistent:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Lineage Openlineage Marquez for production agents that needs a hero is not done.
 
-```json
-{
-  "embeddingModel": {
-    "name": "text-embedding-3-large",
-    "dimensions": 1536,
-    "version": "2025-01-15"
-  },
-  "chunkPolicy": {
-    "maxTokens": 512,
-    "overlap": 64,
-    "splitter": "recursive-markdown"
-  },
-  "agentContext": {
-    "retrievalTopK": 8,
-    "indexSnapshot": "2025-03-05T04:00:00Z",
-    "filterTags": ["support", "prod"]
-  }
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Lineage Openlineage Marquez for production agents cannot answer, it is not production-ready.
 
-Record **prompt template hash** and **tool JSON schema version** on inference runs. When compliance asks what changed between March 1 and March 5, you diff facets — not raw prompts stored in lineage (avoid PII in the graph).
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-## Integrating with Airflow, Dagster, and dbt
+## Runbook lines that save minutes
 
-Most orchestrators have OpenLineage adapters. Prefer adapter-maintained emitters over hand-rolled HTTP in every task — adapters handle run ID propagation and parent/child job nesting.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent lineage openlineage marquez, that means making failure visible early.
 
-For dbt, enable OpenLineage in `dbt_project.yml`:
+Put a metric on the user-visible effect of agent lineage openlineage marquez before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```yaml
-models:
-  +openlineage:
-    namespace: "dbt.rag"
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Lineage Openlineage Marquez for production agents that needs a hero is not done.
 
-dbt emits column-level lineage for warehouse models that feed agent analytics. Combine with custom Python jobs for vector stores adapters do not cover.
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-## DataHub vs Marquez
+Related reading:
 
-Teams often ask whether to use Marquez or DataHub. Practical split:
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-- **Marquez** — lighter weight, purpose-built for OpenLineage graph visualization, quick to self-host.
-- **DataHub** — broader catalog (ownership, glossary, quality assertions) with OpenLineage ingestion.
+## Platform guardrails afterward
 
-You can emit once to Kafka and fan out to both. Do not double-instrument jobs with separate custom trackers — one emitter, many consumers.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent lineage openlineage marquez, that means making failure visible early.
 
-## Security, PII, and access control
+Keep side effects at the edges and make every write idempotent. Lineage Openlineage Marquez for production agents without retry semantics is a future incident write-up.
 
-Lineage graphs contain dataset names, URIs, and sometimes SQL — treat Marquez as **internal confidential**:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Lineage Openlineage Marquez for production agents that needs a hero is not done.
 
-- SSO on UI and API; namespace-level RBAC for tenant isolation.
-- Redact connection strings in facets; use logical names (`postgres://rag/chunks`) not credentials.
-- Never attach raw user prompts or retrieved chunk text to events — store retrieval IDs referenceable from a secured audit store.
-- Encrypt Postgres at rest; backup with same policy as warehouse metadata.
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-For GDPR erasure, lineage must not become an immutable PII ledger. Emit document IDs that can be tombstoned; when a user deletes data, run a compensating job that emits a `DatasetVersionDeleted` facet or your org's equivalent policy event.
+## Practical defaults for Lineage Openlineage Marquez for production agents
 
-## Testing lineage coverage
+Teams usually discover Lineage Openlineage Marquez for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Add CI checks that fail when critical jobs lack emitters:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```python
-# tests/test_lineage_coverage.py
-CRITICAL_JOBS = [
-    "rag.platform/embed-support-docs",
-    "rag.platform/sync-tickets",
-]
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Lineage Openlineage Marquez for production agents that needs a hero is not done.
 
-def test_emitter_registered():
-    from ingest.registry import registered_jobs
-    for job in CRITICAL_JOBS:
-        assert job in registered_jobs, f"missing lineage for {job}"
-```
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-In staging, run a full ingest and assert Marquez shows expected edges within 60 seconds. Contract-test event JSON against OpenLineage JSON Schema on each client upgrade.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-## Operating Marquez in production
+## Review questions before merging agent lineage openlineage marquez work
 
-Monitor:
+I treat Lineage Openlineage Marquez for production agents as an operations problem first. The goal is to make agent lineage openlineage marquez observable and interruptible, not to collect frameworks.
 
-- **Emitter error rate** — HTTP 4xx/5xx from agents and batch workers.
-- **Kafka consumer lag** if using async ingestion.
-- **Postgres disk** — run table bloat and partition by month.
-- **API p95** — impact analysis queries spike during incident response.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Runbooks should include "break glass" SQL to find all jobs downstream of a compromised S3 prefix — the query product managers actually need during incidents.
+Acceptance check: an on-call engineer can explain system state for agent lineage openlineage marquez from one dashboard and one runbook page.
 
-Game-day: disable an upstream export bucket and verify on-call can trace which agent tools and indexes depend on it within five minutes using Marquez UI or API.
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-## Common mistakes
+After a month, delete unused flags and dual paths. `agent-lineage-openlineage-marquez` accumulates temporary bridges faster than teams expect.
 
-**One node per chunk.** Billion-node graphs choke browsers. Aggregate at document or partition level.
+## Field notes after thirty days of agent lineage openlineage marquez
 
-**Lineage only in batch.** Agent tools that write CRM notes without emitters create blind spots — the highest-risk path for audit failure.
+Teams usually discover Lineage Openlineage Marquez for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-**Stale namespace conventions.** Mixed `s3://` and `aws:s3` namespaces duplicate datasets; enforce lint in CI.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-**No run failure events.** Only emitting COMPLETE hides broken pipelines that silently stop — always emit FAIL with error facet.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent lineage openlineage marquez.
 
-## The takeaway
+Slug-specific note (agent-lineage-openlineage-marquez): prioritize marquez behavior under load and verify with a fixture named `agent-lineage-openlineage-marquez-smoke`.
 
-OpenLineage gives agent and RAG platforms a portable vocabulary for "what touched what." Marquez turns that stream into an operational graph for impact analysis, compliance, and onboarding. Start with batch ingest and vector index jobs, standardize facets for models and chunk policies, keep PII out of events, and expand coverage to agent tools that mutate production data. Lineage earns trust when it is complete on critical paths and readable at a glance — not when every token has a node.
+Default deny, explicit timeouts, and one dashboard row for agent lineage openlineage marquez. Expand only when the metric demands it.
 
 ## Resources
 
-- [OpenLineage specification](https://openlineage.io/docs/) — event schema, facets, and integration guides
-- [Marquez GitHub repository](https://github.com/MarquezProject/marquez) — server, UI, and Docker compose quickstart
-- [OpenLineage Python client](https://github.com/OpenLineage/OpenLineage/tree/main/client/python) — emitters and transports
-- [dbt OpenLineage integration](https://docs.getdbt.com/docs/collaborate/govern/model-contracts) — warehouse model lineage
-- [DataHub OpenLineage ingestion](https://datahubproject.io/docs/metadata-ingestion/integration_docs/openlineage/) — fan-out to enterprise catalog
+- Internal runbook seed: `agent-lineage-openlineage-marquez`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,131 +1,158 @@
 ---
-title: "Authz Prioritizer"
+title: "Authz-prioritizer engineering checklist"
 slug: "authz-prioritizer"
-description: "Authz Prioritizer: how to keep failure modes explicit and tested in production platform systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-prioritizer engineering checklist: how to ship authz prioritizer behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-04-05"
 dateModified: "2026-08-12"
 tags:
-  - "Platform"
-  - "DX"
-keywords: "authz, prioritizer, platform, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, prioritizer, production, engineering"
 faq:
-  - q: "What is Authz Prioritizer?"
-    a: "Authz Prioritizer is a production approach to keep failure modes explicit and tested. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Prioritizer?"
-    a: "Invest when traffic or tenants are about to scale. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Prioritizer?"
-    a: "The usual failure is skipping metrics until after launch. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-prioritizer engineering checklist?"
+    a: "Authz-prioritizer engineering checklist is the production approach to ship authz prioritizer behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-prioritizer engineering checklist?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with authz prioritizer, prioritize it."
+  - q: "What is the most common mistake with Authz-prioritizer engineering checklist?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Prioritizer** means you keep failure modes explicit and tested — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when traffic or tenants are about to scale; that is usually also when shortcuts like skipping metrics until after launch start paging people.
+**Authz-prioritizer engineering checklist** means you ship authz prioritizer behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in Platform systems using GitHub Actions, Docker: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-prioritizer` in a product context, using Postgres, Redis for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Prioritizer
+## Decision guide for Authz-prioritizer engineering checklist
 
-If you only remember one thing about Authz Prioritizer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+Teams usually discover Authz-prioritizer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Authz-prioritizer engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
 
-## When this is the wrong tool
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
-If you only remember one thing about Authz Prioritizer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+## When to refuse this approach
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Production systems punish vague ownership and unmeasured happy paths. For authz prioritizer, that means making failure visible early.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Authz-prioritizer engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to keep failure modes explicit and tested means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz prioritizer from one dashboard and one runbook page.
+
+Concretely, being able to ship authz prioritizer behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Authz-prioritizer engineering checklist
+export async function handle_authz_prioritizer(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Prioritizer
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-prioritizer");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-I have watched teams under-specify Authz Prioritizer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+I treat Authz-prioritizer engineering checklist as an operations problem first. The goal is to ship authz prioritizer behind flags with a rollback, not to collect frameworks.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+With Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Prefer small diffs with a kill switch. Authz Prioritizer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz prioritizer from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: skipping metrics until after launch; skipping Authz Prioritizer error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz prioritizer: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; skipping metrics until after launch |
-| Durable path | traffic or tenants are about to scale | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-I have watched teams under-specify Authz Prioritizer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Teams usually discover Authz-prioritizer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Authz-prioritizer engineering checklist without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Prioritizer designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-prioritizer engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
-If you only remember one thing about Authz Prioritizer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+## Migration without dual-running forever
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Production systems punish vague ownership and unmeasured happy paths. For authz prioritizer, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Authz Prioritizer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz prioritizer before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
+
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
 Related reading:
 
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-Most write-ups on Authz Prioritizer stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For authz prioritizer, that means making failure visible early.
 
-Make Authz Prioritizer error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Prioritizer — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz-prioritizer engineering checklist without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Authz Prioritizer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
 
-## Practical defaults I use for Authz Prioritizer
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
-If you only remember one thing about Authz Prioritizer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+## Practical defaults for Authz-prioritizer engineering checklist
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Production systems punish vague ownership and unmeasured happy paths. For authz prioritizer, that means making failure visible early.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-A month in, prune unused paths. Authz Prioritizer accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
 
-## Review questions before merging Authz Prioritizer work
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
-Most write-ups on Authz Prioritizer stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+After a month, delete unused flags and dual paths. `authz-prioritizer` accumulates temporary bridges faster than teams expect.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+## Review questions before merging authz prioritizer work
 
-Prefer small diffs with a kill switch. Authz Prioritizer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Teams usually discover Authz-prioritizer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-A month in, prune unused paths. Authz Prioritizer accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Put a metric on the user-visible effect of authz prioritizer before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Field notes after the first month of Authz Prioritizer
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prioritizer.
 
-I have watched teams under-specify Authz Prioritizer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `authz-prioritizer` accumulates temporary bridges faster than teams expect.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of authz prioritizer
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Prioritizer error rate. Expand only when the metric says you must.
+Teams usually discover Authz-prioritizer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+With Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Acceptance check: an on-call engineer can explain system state for authz prioritizer from one dashboard and one runbook page.
+
+Slug-specific note (authz-prioritizer): prioritize prioritizer behavior under load and verify with a fixture named `authz-prioritizer-smoke`.
+
+After a month, delete unused flags and dual paths. `authz-prioritizer` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-prioritizer`
 - https://12factor.net/
+- https://martinfowler.com/

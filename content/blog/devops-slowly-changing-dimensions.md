@@ -1,172 +1,159 @@
 ---
-title: "Slowly Changing Dimensions Type 1 vs Type 2"
+title: "DevOps practice: slowly changing dimensions"
 slug: "devops-slowly-changing-dimensions"
-description: "Implement SCD patterns with effective dating and surrogate keys."
+description: "DevOps practice: slowly changing dimensions: how to automate safe delivery around slowly changing dimensions — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-09-22"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "DevOps"
-  - "Warehouse"
-  - "Data Engineering"
-keywords: "SCD Type 2"
+  - "Platform"
+  - "Engineering"
+keywords: "devops, slowly, changing, dimensions, production, engineering"
 faq:
-  - q: "When should teams prioritize Slowly Changing Dimensions Type 1 vs Type 2?"
-    a: "Dimensions where history matters for reporting or compliance."
-  - q: "What is the most common mistake with SCD patterns?"
-    a: "Type 2 without end-date maintenance—multiple current rows."
-  - q: "Who owns cost vs correctness tradeoffs?"
-    a: "Data platform owns defaults and guardrails; domain teams own business SLAs. Document who approves skewed joins, spot nodes, or warehouse upsizes."
-  - q: "How do you roll back a bad transform?"
-    a: "Versioned tables, idempotent writes, and replay from known-good watermark. Never overwrite production partitions without snapshot or time travel."
+  - q: "What is DevOps practice: slowly changing dimensions?"
+    a: "DevOps practice: slowly changing dimensions is the production approach to automate safe delivery around slowly changing dimensions. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in DevOps practice: slowly changing dimensions?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with devops slowly changing dimensions, prioritize it."
+  - q: "What is the most common mistake with DevOps practice: slowly changing dimensions?"
+    a: "The usual failure is treating devops slowly changing dimensions as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Customer address history lost—Type 1 overwrite on dimension.
+**DevOps practice: slowly changing dimensions** means you automate safe delivery around slowly changing dimensions — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like treating devops slowly changing dimensions as a pure library problem start paging people.
 
-## Scenario worth designing for
+This write-up is specific to `devops-slowly-changing-dimensions` in a devops context, using Kubernetes, Terraform, Prometheus for the mechanics while keeping ownership human.
 
+## Fitting DevOps practice: slowly changing dimensions into an existing system
 
-Customer address history lost—Type 1 overwrite on dimension.
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-## Hard constraints
+Keep side effects at the edges and make every write idempotent. DevOps practice: slowly changing dimensions without retry semantics is a future incident write-up.
 
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. DevOps practice: slowly changing dimensions that needs a hero is not done.
 
-Compliance, latency, and cost caps are constraints — not afterthoughts. Design for rollback and audit evidence from day one.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Implementation walkthrough
+## Contracts and ownership boundaries
 
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-Ship the smallest production slice of Slowly Changing Dimensions Type 1 vs Type 2: one pipeline, one cluster, or one namespace — with rollback documented before widening scope.
+Keep side effects at the edges and make every write idempotent. DevOps practice: slowly changing dimensions without retry semantics is a future incident write-up.
 
-Automate the boring steps so on-call never hand-edits SCD patterns settings during an incident. GitOps, versioned checkpoints, and pinned module versions beat runbook heroics.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops slowly changing dimensions.
 
-## How we validate before promote
+Concretely, being able to automate safe delivery around slowly changing dimensions forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-Integration tests with production-shaped data volumes. Chaos or fault injection for dependency timeouts.
-
-Replay one bad day of production traffic in staging before declaring SCD patterns done.
-
-## Production hardening
-
-
-Pin versions, restrict break-glass access, and align client timeouts with server queue delays.
-
-Review on-call pages tied to this topic after every incident — even minor ones.
-
-## Closing thought
-
-
-Good slowly changing dimensions type 1 vs type 2 work is invisible until it saves you from an outage, an audit finding, or a line item on the cloud bill.
-
-## Reference configuration
-
-
-```python
-# Operational hook for SCD patterns
-@task(retries=3, retry_delay=timedelta(minutes=5))
-def run_slowly_changing_dimensions():
-    validate_preconditions()
-    execute()
-    emit_lineage(run_id=ctx.run_id)
+```typescript
+// DevOps practice: slowly changing dimensions
+export async function handle_devops_slowly_changing_dimensions(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("devops-slowly-changing-dimensions");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Skew, spill, and warehouse economics
+## State, storage, and retention
 
-Data jobs fail quietly on skew before they fail loudly on OOM. Watch shuffle bytes, task duration variance, and slot/warehouse credit burn. Right-size executors and distribution keys from production stats — not from notebook samples.
+I treat DevOps practice: slowly changing dimensions as an operations problem first. The goal is to automate safe delivery around slowly changing dimensions, not to collect frameworks.
 
-## Operating SCD patterns at scale
+Keep side effects at the edges and make every write idempotent. DevOps practice: slowly changing dimensions without retry semantics is a future incident write-up.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Acceptance check: an on-call engineer can explain system state for devops slowly changing dimensions from one dashboard and one runbook page.
 
-## Handoff to adjacent teams
+My never-again list for devops slowly changing dimensions: treating devops slowly changing dimensions as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Operating SCD patterns at scale
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating devops slowly changing dimensions as a pure library problem |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+## Security defaults that are non-negotiable
 
-## Handoff to adjacent teams
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+With Kubernetes, Terraform, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating devops slowly changing dimensions as a pure library problem.
 
-## Operating SCD patterns at scale
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops slowly changing dimensions.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Review prompts I use: what happens twice, what happens never, what happens partially? If DevOps practice: slowly changing dimensions cannot answer, it is not production-ready.
 
-## Handoff to adjacent teams
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+## SLOs and dashboards
 
-## Operating SCD patterns at scale
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Put a metric on the user-visible effect of devops slowly changing dimensions before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Handoff to adjacent teams
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops slowly changing dimensions.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Operating SCD patterns at scale
+Related reading:
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Handoff to adjacent teams
+## First-week validation plan
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+I treat DevOps practice: slowly changing dimensions as an operations problem first. The goal is to automate safe delivery around slowly changing dimensions, not to collect frameworks.
 
-## Operating SCD patterns at scale
+With Kubernetes, Terraform, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating devops slowly changing dimensions as a pure library problem.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops slowly changing dimensions.
 
-## Handoff to adjacent teams
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+## Practical defaults for DevOps practice: slowly changing dimensions
 
-## Operating SCD patterns at scale
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Put a metric on the user-visible effect of devops slowly changing dimensions before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Handoff to adjacent teams
+Acceptance check: an on-call engineer can explain system state for devops slowly changing dimensions from one dashboard and one runbook page.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Operating SCD patterns at scale
+In review, require a short failure note covering retry, partial deploy, and treating devops slowly changing dimensions as a pure library problem. Missing that note blocks merge.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+## Review questions before merging devops slowly changing dimensions work
 
-## Handoff to adjacent teams
+I treat DevOps practice: slowly changing dimensions as an operations problem first. The goal is to automate safe delivery around slowly changing dimensions, not to collect frameworks.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+Put a metric on the user-visible effect of devops slowly changing dimensions before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Operating SCD patterns at scale
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. DevOps practice: slowly changing dimensions that needs a hero is not done.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Handoff to adjacent teams
+In review, require a short failure note covering retry, partial deploy, and treating devops slowly changing dimensions as a pure library problem. Missing that note blocks merge.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+## Field notes after thirty days of devops slowly changing dimensions
 
-## Operating SCD patterns at scale
+Delivery changes are only safe when they are observable, reversible, and owned. For devops slowly changing dimensions, that means making failure visible early.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+Put a metric on the user-visible effect of devops slowly changing dimensions before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Handoff to adjacent teams
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops slowly changing dimensions.
 
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
+Slug-specific note (devops-slowly-changing-dimensions): prioritize dimensions behavior under load and verify with a fixture named `devops-slowly-changing-dimensions-smoke`.
 
-## Operating SCD patterns at scale
+Default deny, explicit timeouts, and one dashboard row for devops slowly changing dimensions. Expand only when the metric demands it.
 
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
+## Resources
 
-## Handoff to adjacent teams
-
-Warehouse Modeling pipelines touch ingestion, serving, and finance. Document interfaces where SCD patterns gates hand off to downstream owners so failures are not bounced without context.
-
-## Operating SCD patterns at scale
-
-After the first successful deploy of slowly changing dimensions type 1 vs type 2, most incidents trace to assumptions that stopped being true: traffic doubled, schemas drifted, or credentials rotated without updating consumers. Schedule a quarterly review of SCD patterns settings with the on-call rotation — not only the primary author.
-
-## Further reading
-
-- https://spark.apache.org/docs/latest/
-- https://docs.delta.io/
-- https://docs.snowflake.com/
+- Internal runbook seed: `devops-slowly-changing-dimensions`
+- https://12factor.net/
+- https://martinfowler.com/

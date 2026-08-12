@@ -1,131 +1,158 @@
 ---
-title: "Authz Searcher"
+title: "Authz-searcher engineering checklist"
 slug: "authz-searcher"
-description: "Authz Searcher: how to ship it with clear ownership and rollback in production flutter systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-searcher engineering checklist: how to ship authz searcher behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-02"
 dateModified: "2026-08-12"
 tags:
-  - "Flutter"
-  - "Mobile"
-keywords: "authz, searcher, flutter, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, searcher, production, engineering"
 faq:
-  - q: "What is Authz Searcher?"
-    a: "Authz Searcher is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Searcher?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Searcher?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-searcher engineering checklist?"
+    a: "Authz-searcher engineering checklist is the production approach to ship authz searcher behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-searcher engineering checklist?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with authz searcher, prioritize it."
+  - q: "What is the most common mistake with Authz-searcher engineering checklist?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Searcher** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Authz-searcher engineering checklist** means you ship authz searcher behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in Flutter systems using Flutter, Dart: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-searcher` in a product context, using Prometheus, Redis for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Searcher
+## Decision guide for Authz-searcher engineering checklist
 
-Most write-ups on Authz Searcher stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+I treat Authz-searcher engineering checklist as an operations problem first. The goal is to ship authz searcher behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-searcher engineering checklist that needs a hero is not done.
 
-## When this is the wrong tool
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
-I have watched teams under-specify Authz Searcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## When to refuse this approach
 
-Make Authz Searcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Searcher — you only deployed it.
+I treat Authz-searcher engineering checklist as an operations problem first. The goal is to ship authz searcher behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz searcher before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-searcher engineering checklist that needs a hero is not done.
 
-```dart
-class FlutterRepository {
-  Future<Result> run(Request req) async {
-    // Authz Searcher
-    return Result.ok(await _client.post('/v1/action', body: req.toJson()));
+Concretely, being able to ship authz searcher behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
+
+```typescript
+// Authz-searcher engineering checklist
+export async function handle_authz_searcher(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("authz-searcher");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-If you only remember one thing about Authz Searcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+I treat Authz-searcher engineering checklist as an operations problem first. The goal is to ship authz searcher behind flags with a rollback, not to collect frameworks.
 
-Make Authz Searcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Searcher — you only deployed it.
+With Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Prefer small diffs with a kill switch. Authz Searcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-searcher engineering checklist that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Authz Searcher error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz searcher: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-If you only remember one thing about Authz Searcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For authz searcher, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Prefer small diffs with a kill switch. Authz Searcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz searcher from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Searcher designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-searcher engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
-If you only remember one thing about Authz Searcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+## Migration without dual-running forever
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For authz searcher, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Authz Searcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz searcher before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for authz searcher from one dashboard and one runbook page.
+
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
 Related reading:
 
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-I have watched teams under-specify Authz Searcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For authz searcher, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Authz-searcher engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz searcher.
 
-## Practical defaults I use for Authz Searcher
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
-If you only remember one thing about Authz Searcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+## Practical defaults for Authz-searcher engineering checklist
 
-Make Authz Searcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Searcher — you only deployed it.
+I treat Authz-searcher engineering checklist as an operations problem first. The goal is to ship authz searcher behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Authz Searcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Authz-searcher engineering checklist without retry semantics is a future incident write-up.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Searcher error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for authz searcher from one dashboard and one runbook page.
 
-## Review questions before merging Authz Searcher work
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
-I have watched teams under-specify Authz Searcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Default deny, explicit timeouts, and one dashboard row for authz searcher. Expand only when the metric demands it.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging authz searcher work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Production systems punish vague ownership and unmeasured happy paths. For authz searcher, that means making failure visible early.
 
-A month in, prune unused paths. Authz Searcher accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Authz-searcher engineering checklist without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Searcher
+Acceptance check: an on-call engineer can explain system state for authz searcher from one dashboard and one runbook page.
 
-I have watched teams under-specify Authz Searcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+After a month, delete unused flags and dual paths. `authz-searcher` accumulates temporary bridges faster than teams expect.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of authz searcher
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Production systems punish vague ownership and unmeasured happy paths. For authz searcher, that means making failure visible early.
+
+Put a metric on the user-visible effect of authz searcher before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz searcher.
+
+Slug-specific note (authz-searcher): prioritize searcher behavior under load and verify with a fixture named `authz-searcher-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for authz searcher. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-searcher`
 - https://12factor.net/
+- https://martinfowler.com/

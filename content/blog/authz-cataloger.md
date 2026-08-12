@@ -1,131 +1,158 @@
 ---
-title: "Authz Cataloger"
+title: "How teams operationalize authz cataloger"
 slug: "authz-cataloger"
-description: "Authz Cataloger: how to ship it with clear ownership and rollback in production sre systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "How teams operationalize authz cataloger: how to measure authz cataloger before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-05"
 dateModified: "2026-08-12"
 tags:
-  - "SRE"
-  - "Observability"
-keywords: "authz, cataloger, sre, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, cataloger, production, engineering"
 faq:
-  - q: "What is Authz Cataloger?"
-    a: "Authz Cataloger is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Cataloger?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Cataloger?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is How teams operationalize authz cataloger?"
+    a: "How teams operationalize authz cataloger is the production approach to measure authz cataloger before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in How teams operationalize authz cataloger?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with authz cataloger, prioritize it."
+  - q: "What is the most common mistake with How teams operationalize authz cataloger?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Cataloger** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**How teams operationalize authz cataloger** means you measure authz cataloger before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Below is how I implement and operate it in SRE systems using Prometheus, Grafana: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-cataloger` in a product context, using Postgres, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Authz Cataloger: production checklist
+## How teams operationalize authz cataloger: production checklist
 
-I have watched teams under-specify Authz Cataloger and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Put a metric on the user-visible effect of authz cataloger before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz cataloger that needs a hero is not done.
 
-## Inputs, outputs, and invariants
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
-I have watched teams under-specify Authz Cataloger and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## Inputs, outputs, invariants
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of authz cataloger before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz cataloger.
+
+Concretely, being able to measure authz cataloger before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// How teams operationalize authz cataloger
+export async function handle_authz_cataloger(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Cataloger
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-cataloger");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Concurrency and retry behavior
+## Concurrency, retries, and timeouts
 
-I have watched teams under-specify Authz Cataloger and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Teams usually discover How teams operationalize authz cataloger after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Make Authz Cataloger error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Cataloger — you only deployed it.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz cataloger without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Authz Cataloger changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz cataloger from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Authz Cataloger error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz cataloger: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Human workflows (support, ops, audit)
+## Support and audit workflows
 
-I have watched teams under-specify Authz Cataloger and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Put a metric on the user-visible effect of authz cataloger before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Cataloger changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz cataloger that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Cataloger designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If How teams operationalize authz cataloger cannot answer, it is not production-ready.
 
-## Load and capacity notes
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
-I have watched teams under-specify Authz Cataloger and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## Capacity and load notes
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover How teams operationalize authz cataloger after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz cataloger without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz cataloger that needs a hero is not done.
+
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
 Related reading:
 
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Definition of done
+## Ship gate
 
-Most write-ups on Authz Cataloger stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For authz cataloger, that means making failure visible early.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz cataloger without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz cataloger that needs a hero is not done.
 
-## Practical defaults I use for Authz Cataloger
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
-If you only remember one thing about Authz Cataloger: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+## Practical defaults for How teams operationalize authz cataloger
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of authz cataloger before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz cataloger.
 
-## Review questions before merging Authz Cataloger work
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
-If you only remember one thing about Authz Cataloger: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+## Review questions before merging authz cataloger work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz cataloger without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Cataloger
+Acceptance check: an on-call engineer can explain system state for authz cataloger from one dashboard and one runbook page.
 
-Most write-ups on Authz Cataloger stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of authz cataloger
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Cataloger error rate. Expand only when the metric says you must.
+I treat How teams operationalize authz cataloger as an operations problem first. The goal is to measure authz cataloger before optimizing it, not to collect frameworks.
+
+Put a metric on the user-visible effect of authz cataloger before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz cataloger.
+
+Slug-specific note (authz-cataloger): prioritize cataloger behavior under load and verify with a fixture named `authz-cataloger-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-cataloger`
 - https://12factor.net/
+- https://martinfowler.com/

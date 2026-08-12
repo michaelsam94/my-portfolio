@@ -1,235 +1,157 @@
 ---
-title: "AI Agents: Cdc Debezium Postgres"
+title: "Agent reliability via cdc debezium postgres"
 slug: "agent-cdc-debezium-postgres"
-description: "Change Data Capture with Debezium and PostgreSQL for agent systems — logical replication slots, outbox patterns, schema evolution, and exactly-once semantics for RAG index sync."
+description: "Agent reliability via cdc debezium postgres: how to ship agent cdc debezium postgres with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-02-16"
-dateModified: "2025-02-16"
-tags: ["AI", "Agent", "Cdc"]
-keywords: "Debezium PostgreSQL CDC, logical replication, agent event sync, outbox pattern, WAL, Kafka Connect, RAG index updates, change data capture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, cdc, debezium, postgres, production, engineering"
 faq:
-  - q: "Why use Debezium CDC instead of polling Postgres for agent state sync?"
-    a: "Polling adds latency proportional to your interval and loads the database with repeated full-table or indexed scans. Debezium reads the WAL via logical replication, capturing row-level changes in near real time with minimal read amplification. For agent session stores and knowledge-base tables, CDC keeps downstream vector indexes and analytics pipelines within seconds of OLTP truth."
-  - q: "What PostgreSQL settings are required for Debezium logical replication?"
-    a: "Set wal_level=logical, max_replication_slots and max_wal_senders high enough for your connectors (typically 4–10 each), and ensure the Debezium user has REPLICATION privilege plus SELECT on captured tables. On managed RDS/Aurora/Cloud SQL, enable logical replication at the parameter group level and restart if required."
-  - q: "How do you handle schema migrations without breaking CDC consumers?"
-    a: "Prefer additive changes: new nullable columns, new tables. Debezium emits schema-change events when configured with a schema history topic. For breaking changes (column rename, type change), use expand-contract: add new column, dual-write, migrate consumers, drop old column. Never ALTER TYPE on a hot table without a consumer compatibility plan."
-  - q: "Can Debezium guarantee exactly-once delivery to a vector index?"
-    a: "Debezium delivers at-least-once from Postgres to Kafka. Exactly-once end-to-end requires idempotent consumers: upsert by primary key, tombstone deletes, and deduplication by LSN or event sequence. Vector pipelines should treat CDC events as upsert/delete operations keyed on document_id, not blind re-embed of every change."
+  - q: "What is Agent reliability via cdc debezium postgres?"
+    a: "Agent reliability via cdc debezium postgres is the production approach to ship agent cdc debezium postgres with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via cdc debezium postgres?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent cdc debezium postgres, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via cdc debezium postgres?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The first time I wired an agent's knowledge base to PostgreSQL CDC, the demo worked in ten minutes and production broke in ten days. A schema migration added a `NOT NULL` column, the replication slot fell behind, WAL segments piled up until disk filled, and the search index served stale chunks for six hours before anyone noticed the lag alert was misconfigured. CDC with Debezium and Postgres is not a Kafka tutorial — it is an operational contract between your OLTP database, your event bus, and every downstream system that assumes the agent's world matches what's in the row store.
+**Agent reliability via cdc debezium postgres** means you ship agent cdc debezium postgres with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Agent platforms accumulate state in Postgres: conversation threads, tool invocation logs, tenant-scoped document metadata, feature-flag overrides, and approval queues. Batch ETL nightly is too slow when a user deletes a document and expects it gone from retrieval immediately. Polling `updated_at` columns works until you miss soft deletes, lose concurrent update ordering, or hammer the primary with index scans. **Change Data Capture** through logical replication gives you ordered, row-level events without rewriting application queries.
+This write-up is specific to `agent-cdc-debezium-postgres` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## How logical replication feeds Debezium
+## Decision guide for Agent reliability via cdc debezium postgres
 
-PostgreSQL writes every change to the Write-Ahead Log (WAL). With `wal_level=logical`, the server can decode WAL records into logical change events — inserts, updates, deletes — for subscribed tables. Debezium's PostgreSQL connector acts as a logical replication client: it creates a replication slot, streams decoded changes, and publishes them to Kafka (or other sinks) with envelope metadata.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cdc debezium postgres, that means making failure visible early.
 
-The envelope matters for agents. A raw row snapshot is not enough; you need `op` (c, u, d, r for create/update/delete/read), `before` and `after` payloads, `source` metadata (LSN, transaction id, timestamp), and schema identifiers. Downstream indexers use LSN ordering to detect gaps and replays.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```
-┌─────────────┐     WAL / logical slot      ┌──────────────┐     Kafka topics     ┌─────────────────┐
-│  Postgres   │ ──────────────────────────► │   Debezium   │ ───────────────────► │ Agent indexers  │
-│ (agent DB)  │                             │  Connector   │                      │ analytics, audit│
-└─────────────┘                             └──────────────┘                      └─────────────────┘
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via cdc debezium postgres that needs a hero is not done.
 
-Replication slots are the sharp edge. Postgres retains WAL until the slot consumer confirms progress. If Debezium stops or cannot keep pace, **WAL bloat** consumes disk and can halt writes to the primary. Monitor `pg_replication_slots` for `active`, `restart_lsn`, and lag bytes. Alert on lag, not just connector health.
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-## Table selection and publication design
+## When to refuse this approach
 
-Do not replicate every table. Agent CDC scope should mirror **downstream consumers**:
+I treat Agent reliability via cdc debezium postgres as an operations problem first. The goal is to ship agent cdc debezium postgres with human override paths, not to collect frameworks.
 
-| Table class | Replicate? | Typical consumer |
-|-------------|------------|------------------|
-| `documents`, `chunks`, `embeddings_meta` | Yes | Vector index sync |
-| `agent_sessions`, `messages` | Yes | Analytics, compliance archive |
-| `users`, `tenants` | Often | Cache invalidation, entitlements |
-| `job_queue`, `idempotency_keys` | Rarely | Ephemeral; high churn noise |
-| Materialized views | No | Not in publications |
+Keep side effects at the edges and make every write idempotent. Agent reliability via cdc debezium postgres without retry semantics is a future incident write-up.
 
-Use Postgres publications to limit scope:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via cdc debezium postgres that needs a hero is not done.
+
+Concretely, being able to ship agent cdc debezium postgres with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
 ```sql
--- Minimal publication for RAG document sync
-CREATE PUBLICATION agent_doc_cdc FOR TABLE
-  documents,
-  document_chunks
-  WITH (publish = 'insert, update, delete');
-
--- Debezium user (run as superuser or rds_superuser)
-CREATE ROLE debezium_replication WITH REPLICATION LOGIN PASSWORD '...';
-GRANT SELECT ON documents, document_chunks TO debezium_replication;
-GRANT USAGE ON SCHEMA public TO debezium_replication;
-```
-
-For row-level filtering (multi-tenant isolation on shared topics), prefer **downstream filtering** by `tenant_id` in consumers rather than complex publication predicates — unless compliance mandates topic-level separation per tenant.
-
-## Debezium connector configuration that survives production
-
-A connector config tuned for agent workloads balances snapshot behavior, heartbeat, and slot management:
-
-```json
-{
-  "name": "agent-postgres-cdc",
-  "config": {
-    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "database.hostname": "pg-primary.internal",
-    "database.port": "5432",
-    "database.user": "debezium_replication",
-    "database.password": "${secrets:debezium/db_password}",
-    "database.dbname": "agent_platform",
-    "topic.prefix": "agent",
-    "table.include.list": "public.documents,public.document_chunks",
-    "plugin.name": "pgoutput",
-    "publication.name": "agent_doc_cdc",
-    "slot.name": "debezium_agent_doc",
-    "snapshot.mode": "initial",
-    "heartbeat.interval.ms": "10000",
-    "heartbeat.action.query": "INSERT INTO debezium_heartbeat (ts) VALUES (NOW());",
-    "tombstones.on.delete": "true",
-    "decimal.handling.mode": "string",
-    "time.precision.mode": "adaptive_time_microseconds"
-  }
-}
-```
-
-Key decisions:
-
-- **`pgoutput`** — native Postgres plugin; prefer over `decoderbufs` on supported versions.
-- **Heartbeat table** — advances LSN during idle periods so slots don't stall when no agent writes occur overnight.
-- **`tombstones.on.delete`** — emits Kafka tombstones on DELETE so compacted topics and vector indexers remove stale vectors.
-- **`snapshot.mode=initial`** — full consistent snapshot on first start; use `no_data` for append-only tables where history is irrelevant.
-
-After connector start, verify slot lag:
-
-```sql
-SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS lag
-FROM pg_replication_slots
-WHERE slot_name = 'debezium_agent_doc';
-```
-
-## The outbox pattern for agent side effects
-
-Application code that writes Postgres **and** publishes to Kafka in one request creates dual-write races: DB commits, message never sends, or message sends, DB rolls back. For agent tool calls that persist state and notify indexers, use the **transactional outbox**.
-
-```sql
-CREATE TABLE outbox_events (
-  id            BIGSERIAL PRIMARY KEY,
-  aggregate_id  UUID NOT NULL,
-  event_type    TEXT NOT NULL,
-  payload       JSONB NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Agent reliability via cdc debezium postgres
+CREATE TABLE IF NOT EXISTS agent_cdc_debezium_postgres_events (
+  tenant_id uuid NOT NULL,
+  event_id text NOT NULL,
+  payload jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, event_id)
 );
 
--- Inside same transaction as business write
-INSERT INTO documents (id, tenant_id, title, body) VALUES (...);
-INSERT INTO outbox_events (aggregate_id, event_type, payload)
-VALUES ($doc_id, 'DocumentCreated', jsonb_build_object('tenant_id', $tid, 'title', $title));
+INSERT INTO agent_cdc_debezium_postgres_events (tenant_id, event_id, payload)
+VALUES ($1, $2, $3)
+ON CONFLICT (tenant_id, event_id) DO NOTHING;
 ```
 
-Debezium captures `outbox_events`; a separate router (or Debezium Outbox Event Router SMT) maps rows to domain topics. Consumers see one ordered stream per aggregate — critical when agent session updates must not arrive out of order.
+## Minimal production setup
 
-## Consumer design for vector and cache pipelines
+Teams usually discover Agent reliability via cdc debezium postgres after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Index sync consumers should be **idempotent** and **keyed**:
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-```python
-# kafka_consumer/embeddings_sync.py
-from dataclasses import dataclass
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cdc debezium postgres.
 
-@dataclass
-class DocChange:
-    op: str          # "c" | "u" | "d"
-    doc_id: str
-    tenant_id: str
-    lsn: int
+My never-again list for agent cdc debezium postgres: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-def handle_event(envelope: dict, indexer: "VectorIndexer") -> None:
-    change = parse_debezium(envelope)
-    dedupe_key = f"{change.tenant_id}:{change.doc_id}:{change.lsn}"
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-    if dedupe_store.seen(dedupe_key):
-        return  # at-least-once replay
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-    if change.op == "d":
-        indexer.delete(tenant_id=change.tenant_id, doc_id=change.doc_id)
-    else:
-        doc = fetch_document(change.doc_id)  # or use envelope.after
-        chunks = chunk_document(doc)
-        indexer.upsert(tenant_id=change.tenant_id, doc_id=change.doc_id, chunks=chunks)
+## Cost, complexity, and ownership
 
-    dedupe_store.mark(dedupe_key)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cdc debezium postgres, that means making failure visible early.
 
-Avoid re-embedding on every `UPDATE` to a `view_count` column. Use **column include lists** in Debezium or filter in consumer: only react when content-bearing columns change. Debezium 2.x supports `column.include.list` per table to reduce noise.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-For read-your-writes consistency in the agent UI, CDC lag is user-visible. Track **end-to-end latency** from commit timestamp to index searchable. SLO example: p95 under 30 seconds. If lag spikes, prefer throttling ingest over serving wrong answers.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via cdc debezium postgres that needs a hero is not done.
 
-## Schema evolution and operational failure modes
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via cdc debezium postgres cannot answer, it is not production-ready.
 
-Common production failures:
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-1. **Long-running migration locks** — `ALTER TABLE` blocks replication decoding; plan migrations in maintenance windows or use online schema tools.
-2. **Connector offset corruption** — restoring Kafka without schema history topic breaks deserialization; backup `schema-changes.agent` topic with retention aligned to recovery needs.
-3. **Slot duplication** — never run two connectors against the same slot name; second connector stalls or duplicates events.
-4. **TOAST columns** — large JSONB in agent transcripts may appear as partial updates; consumers must handle `toast` placeholders and refetch when needed.
+## Migration without dual-running forever
 
-Expand-contract rename example: add `content_v2`, backfill, switch writers, replicate both columns briefly, update consumer, drop `content_v1`.
+I treat Agent reliability via cdc debezium postgres as an operations problem first. The goal is to ship agent cdc debezium postgres with human override paths, not to collect frameworks.
 
-## Security, compliance, and PII
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-CDC streams are a **data exfiltration surface**. Kafka ACLs must restrict topic read to indexer and audit services. Mask PII at source or via Debezium SMTs (`ReplaceField`, custom transforms) before events leave the compliance zone. Agent message tables often contain user prompts — classify topics accordingly and encrypt at rest.
+Acceptance check: an on-call engineer can explain system state for agent cdc debezium postgres from one dashboard and one runbook page.
 
-Retention policies differ: OLTP may purge messages after 90 days while Kafka retains 7 days for replay. Document the gap for GDPR erasure requests — deleting a row emits a delete event, but compacted topics and index replicas need explicit tombstone propagation.
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-## Testing CDC paths before launch
+Related reading:
 
-Integration tests with Testcontainers (Postgres + Kafka + Debezium) validate:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-- Insert → event → consumer upsert round trip
-- Delete → tombstone → index removal
-- Connector restart resumes from LSN without full snapshot
-- Simulated lag recovery after consumer pause
+## Definition of done
 
-Load test with production-shaped write rates. Agent bulk imports (ingesting 100k documents) spike WAL generation — ensure indexers scale horizontally and slot lag alerts fire early.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cdc debezium postgres, that means making failure visible early.
 
-## Multi-region and failover considerations
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Agent platforms running Postgres with cross-region read replicas must decide whether CDC attaches to the **primary only** or follows a promoted standby after failover. Debezium should always consume the write leader — logical replication slots do not automatically migrate on Patroni/etcd failover unless you automate slot recreation or use managed services that preserve slots.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cdc debezium postgres.
 
-During planned switchover:
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-1. Pause Debezium connector gracefully (commit final offsets)
-2. Promote replica or fail over managed primary
-3. Verify replication slot exists on new primary (recreate from `pg_replication_slots` backup metadata if needed)
-4. Resume connector; expect a brief burst of catch-up events
+## Practical defaults for Agent reliability via cdc debezium postgres
 
-For globally distributed agents, consider **region-scoped publications** — EU tenant data in `eu-west` Postgres should not stream to US indexers without compliance review. Row filters in consumers or separate connectors per region keep data residency boundaries enforceable.
+I treat Agent reliability via cdc debezium postgres as an operations problem first. The goal is to ship agent cdc debezium postgres with human override paths, not to collect frameworks.
 
-Kafka topic partitioning strategy affects ordering: partition by `tenant_id` or `document_id` so all changes for one aggregate land in one partition. Agent session updates keyed only by random UUID lose per-session ordering if spread across partitions.
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Observability dashboard essentials
+Acceptance check: an on-call engineer can explain system state for agent cdc debezium postgres from one dashboard and one runbook page.
 
-Wire these metrics before declaring CDC production-ready:
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
 
-| Metric | Source | Alert threshold |
-|--------|--------|-----------------|
-| `debezium_postgres_connector_metrics_millisecondsbehindsource` | JMX / Prometheus | > 60s for 5 min |
-| `pg_replication_slots_confirmed_flush_lsn` lag bytes | Postgres exporter | > 1 GB |
-| Consumer lag per partition | Kafka | > 10k messages |
-| End-to-end index freshness | Custom (commit ts → searchable) | p95 > 30s |
-| Outbox table depth | Postgres | > 1000 rows for 10 min |
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Correlate spikes with agent bulk import jobs — schedule imports with backpressure or temporarily scale consumers. A dashboard that only shows "connector RUNNING" green hides the six-hour index drift that triggers user trust incidents.
+## Review questions before merging agent cdc debezium postgres work
 
-## Closing
+I treat Agent reliability via cdc debezium postgres as an operations problem first. The goal is to ship agent cdc debezium postgres with human override paths, not to collect frameworks.
 
-Debezium on Postgres turns your agent database into the system of record **and** the event source, but only if you treat replication slots, schema migrations, and idempotent consumers as first-class concerns. Start with a narrow publication, heartbeat-enabled connector, outbox for dual writes, and end-to-end lag metrics. Expand table coverage as consumers prove stable — not before.
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent cdc debezium postgres from one dashboard and one runbook page.
+
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-cdc-debezium-postgres` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent cdc debezium postgres
+
+I treat Agent reliability via cdc debezium postgres as an operations problem first. The goal is to ship agent cdc debezium postgres with human override paths, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent cdc debezium postgres before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cdc debezium postgres.
+
+Slug-specific note (agent-cdc-debezium-postgres): prioritize postgres behavior under load and verify with a fixture named `agent-cdc-debezium-postgres-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- [Debezium PostgreSQL Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
-- [PostgreSQL Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)
-- [Debezium Outbox Event Router](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)
-- [Kafka Connect Production Deployment Guide](https://docs.confluent.io/platform/current/connect/index.html)
-- [pgvector + CDC patterns for RAG](https://github.com/pgvector/pgvector)
+- Internal runbook seed: `agent-cdc-debezium-postgres`
+- https://12factor.net/
+- https://martinfowler.com/

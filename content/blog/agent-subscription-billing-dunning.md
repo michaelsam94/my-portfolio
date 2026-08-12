@@ -1,151 +1,159 @@
 ---
-title: "AI Agents: Subscription Billing and Dunning for AI Products"
+title: "Subscription Billing Dunning for production agents"
 slug: "agent-subscription-billing-dunning"
-description: "Retry schedules, grace periods, and feature degradation when LLM subscription payments fail — without data loss."
+description: "Subscription Billing Dunning for production agents: how to make agent subscription billing dunning observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-08-26"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "Billing"
-  - "Subscriptions"
-  - "SaaS"
-keywords: "subscription dunning, payment retry, AI SaaS billing"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, subscription, billing, dunning, production, engineering"
 faq:
-  - q: "When should teams prioritize Subscription Billing and Dunning for AI Products?"
-    a: "When LLM products bill monthly with usage caps."
-  - q: "What is the most common mistake with subscription dunning flows?"
-    a: "Hard-cutting API access on first payment failure without grace or customer comms."
-  - q: "Who owns reconciliation when meters disagree?"
-    a: "Finance owns invoice truth; platform owns meter correctness. Weekly automated reconcile jobs with explicit variance thresholds before dunning triggers."
-  - q: "Idempotency for usage events?"
-    a: "Every billable event needs a stable idempotency key — provider request ID, or hash of (tenant, window, sku, quantity). Store dedup state with TTL exceeding retry horizon."
+  - q: "What is Subscription Billing Dunning for production agents?"
+    a: "Subscription Billing Dunning for production agents is the production approach to make agent subscription billing dunning observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Subscription Billing Dunning for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent subscription billing dunning, prioritize it."
+  - q: "What is the most common mistake with Subscription Billing Dunning for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Failed cards silently downgraded users to free tier mid-conversation — no email, no export window.
+**Subscription Billing Dunning for production agents** means you make agent subscription billing dunning observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Retry schedules, grace periods, and feature degradation when LLM subscription payments fail — without data loss.
+This write-up is specific to `agent-subscription-billing-dunning` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## The production story behind subscription dunning flows
+## Subscription Billing Dunning for production agents: production checklist
 
-Hard-cutting API access on first payment failure without grace or customer comms. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Subscription Billing and Dunning for AI Products is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+I treat Subscription Billing Dunning for production agents as an operations problem first. The goal is to make agent subscription billing dunning observable and interruptible, not to collect frameworks.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Subscription Dunning Flows is how you convert that chaos into an invariant someone can operate.
+Put a metric on the user-visible effect of agent subscription billing dunning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Designing subscription billing and dunning for ai products for real constraints
+Acceptance check: an on-call engineer can explain system state for agent subscription billing dunning from one dashboard and one runbook page.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For subscription dunning flows, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## Inputs, outputs, invariants
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subscription billing dunning, that means making failure visible early.
 
-## Implementation walkthrough
+Keep side effects at the edges and make every write idempotent. Subscription Billing Dunning for production agents without retry semantics is a future incident write-up.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits subscription dunning flows during an incident.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Subscription Billing Dunning for production agents that needs a hero is not done.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to make agent subscription billing dunning observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
 ```python
-# Operational hook — subscription dunning flows
-def apply_subscription_billing_dunning(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+# Subscription Billing Dunning for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentSubscriptionBRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_subscription_billi(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-subscription-billing-dunning"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Billing depth
+## Concurrency, retries, and timeouts
 
-Align event timestamps with finance settlement windows — document timezone and cutoff rules in code constants, not wiki tables.
-Idempotent meters with dedup store; reconcile provider usage vs internal aggregates weekly.
-Dunning should degrade features gracefully with customer-visible notices and export windows — never silent hard cutoffs mid-task.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subscription billing dunning, that means making failure visible early.
 
-## Failure modes worth rehearsing
+Keep side effects at the edges and make every write idempotent. Subscription Billing Dunning for production agents without retry semantics is a future incident write-up.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Acceptance check: an on-call engineer can explain system state for agent subscription billing dunning from one dashboard and one runbook page.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent subscription billing dunning: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Leading indicators: error rate on subscription dunning flows, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Support and audit workflows
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; subscription dunning flows regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+I treat Subscription Billing Dunning for production agents as an operations problem first. The goal is to make agent subscription billing dunning observable and interruptible, not to collect frameworks.
 
-## Production hardening
+Keep side effects at the edges and make every write idempotent. Subscription Billing Dunning for production agents without retry semantics is a future incident write-up.
 
-Pin versions affecting subscription dunning flows. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Subscription Billing Dunning for production agents that needs a hero is not done.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Subscription Billing Dunning for production agents cannot answer, it is not production-ready.
 
-Subscription Billing and Dunning for AI Products touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-## Further reading
+## Capacity and load notes
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subscription billing dunning, that means making failure visible early.
 
-## Operating subscription dunning flows after scale events (review 1)
+Keep side effects at the edges and make every write idempotent. Subscription Billing Dunning for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subscription billing dunning.
 
-When subscription billing and dunning for ai products touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
+## Ship gate
 
-## Operating subscription dunning flows after scale events (review 2)
+I treat Subscription Billing Dunning for production agents as an operations problem first. The goal is to make agent subscription billing dunning observable and interruptible, not to collect frameworks.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-When subscription billing and dunning for ai products touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subscription billing dunning.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Subscription Billing Dunning for production agents
 
+I treat Subscription Billing Dunning for production agents as an operations problem first. The goal is to make agent subscription billing dunning observable and interruptible, not to collect frameworks.
 
-## Operating subscription dunning flows after scale events (review 3)
+Put a metric on the user-visible effect of agent subscription billing dunning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subscription billing dunning.
 
-When subscription billing and dunning for ai products touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent subscription billing dunning. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent subscription billing dunning work
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subscription billing dunning, that means making failure visible early.
 
-## Operating subscription dunning flows after scale events (review 4)
+Put a metric on the user-visible effect of agent subscription billing dunning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Acceptance check: an on-call engineer can explain system state for agent subscription billing dunning from one dashboard and one runbook page.
 
-When subscription billing and dunning for ai products touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+After a month, delete unused flags and dual paths. `agent-subscription-billing-dunning` accumulates temporary bridges faster than teams expect.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent subscription billing dunning
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subscription billing dunning, that means making failure visible early.
 
-## Operating subscription dunning flows after scale events (review 5)
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Acceptance check: an on-call engineer can explain system state for agent subscription billing dunning from one dashboard and one runbook page.
 
-When subscription billing and dunning for ai products touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subscription-billing-dunning): prioritize dunning behavior under load and verify with a fixture named `agent-subscription-billing-dunning-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
+Default deny, explicit timeouts, and one dashboard row for agent subscription billing dunning. Expand only when the metric demands it.
 
 ## Resources
 
-- [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests)
-- [FinOps Foundation](https://www.finops.org/)
+- Internal runbook seed: `agent-subscription-billing-dunning`
+- https://12factor.net/
+- https://martinfowler.com/

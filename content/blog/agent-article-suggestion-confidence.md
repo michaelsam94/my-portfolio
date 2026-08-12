@@ -1,259 +1,159 @@
 ---
-title: "AI Agents: Article Suggestion Confidence"
+title: "Article Suggestion Confidence for production agents"
 slug: "agent-article-suggestion-confidence"
-description: "Calibrate and surface confidence for agent-driven article suggestions—combining retrieval scores, LLM self-assessment, and UX thresholds so editors trust what they see."
+description: "Article Suggestion Confidence for production agents: how to make agent article suggestion confidence observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-02"
-dateModified: "2025-05-02"
-tags: ["AI", "Agent", "Article"]
-keywords: "article suggestion confidence, RAG confidence scoring, recommendation calibration, LLM uncertainty, editorial AI, suggestion ranking"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, article, suggestion, confidence, production, engineering"
 faq:
-  - q: "Should article suggestion confidence come from the retriever or the LLM?"
-    a: "Both, blended. Retriever scores measure lexical/semantic similarity to the query; they miscalibrate across corpora. LLM self-reported confidence is useful for reasoning fit but overconfident on hallucinated citations. Combine with a learned calibrator trained on editor accept/reject labels."
-  - q: "What confidence threshold should auto-surface suggestions?"
-    a: "There is no universal number—calibrate per product. Start with 0.85 calibrated probability for auto-pin in CMS sidebars, 0.65–0.85 for 'suggested' chips requiring one click, below 0.65 hide unless the editor explicitly asks for exploratory mode."
-  - q: "How do you prevent confident-but-wrong article suggestions?"
-    a: "Require citation grounding: every suggestion above the display threshold must link retrieved chunks with overlap checks. Down-rank or block suggestions where the LLM summary diverges from source text beyond an edit-distance threshold."
-  - q: "How should confidence change across a multi-turn agent session?"
-    a: "Decay stale suggestions when the conversation topic shifts—recompute retrieval with the latest user intent summary, not the first message. Surface 'confidence dropped' when new context contradicts earlier picks."
+  - q: "What is Article Suggestion Confidence for production agents?"
+    a: "Article Suggestion Confidence for production agents is the production approach to make agent article suggestion confidence observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Article Suggestion Confidence for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent article suggestion confidence, prioritize it."
+  - q: "What is the most common mistake with Article Suggestion Confidence for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The editor clicked "Accept" on three article suggestions in a row, then rejected the fourth with a note: "Confident tone, completely wrong topic." Our agent had ranked it first because the retriever loved overlapping keywords—"kubernetes," "scaling," "pods"—while the user's actual question was about **billing disputes**. The model's prose sounded sure. **Confidence without calibration is UX malpractice.**
+**Article Suggestion Confidence for production agents** means you make agent article suggestion confidence observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Article suggestion confidence is the bridge between retrieval plumbing and editorial trust. Get it wrong and editors disable the feature; get it right and suggestions feel like a sharp research assistant. This deep dive covers scoring architecture, calibration, grounding checks, and the UI patterns that make confidence numbers honest.
+This write-up is specific to `agent-article-suggestion-confidence` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## What "confidence" means in a suggestion pipeline
+## Incident pattern involving agent article suggestion confidence
 
-A suggestion is not a single score—it is a bundle:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent article suggestion confidence, that means making failure visible early.
 
-```
-User intent (summarized)
-    → Candidate articles (retriever top-k)
-    → Relevance features per candidate
-    → Calibrated confidence P(accept | features)
-    → Grounding verification
-    → Display tier (auto / suggest / hide)
-```
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Define confidence operationally: **the estimated probability that a domain expert would accept this suggestion given current context.** That definition gives you a label for offline training (editor clicks) and keeps product and ML aligned.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent article suggestion confidence.
 
-Raw cosine similarity from your vector store is not a probability. A score of 0.82 on Monday means something different than 0.82 after you re-embed the corpus on Tuesday. Calibrate.
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-## Feature stack for ranking
+## Root cause in plain language
 
-Build a feature vector per (query, article) pair:
+Teams usually discover Article Suggestion Confidence for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-| Feature | Source | Notes |
-|---------|--------|-------|
-| `dense_sim` | Embedding cosine | Top retriever signal |
-| `bm25_norm` | Lexical search | Catches proper nouns embeddings miss |
-| `recency_days` | Article metadata | Decay stale news |
-| `authority_score` | Internal PageRank or manual tier | Prefer canonical docs |
-| `click_through_hist` | Past editor accepts | Cold-start carefully |
-| `llm_match_grade` | Structured LLM rating 1–5 | Cheap cross-encoder substitute |
-| `topic_overlap` | NER entity intersection | Penalize keyword collisions |
-| `contradiction_flag` | NLI model | Down-rank conflicting claims |
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Keep feature extraction deterministic and logged. When an editor rejects a 0.91 suggestion, you need to replay features—not guess.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Article Suggestion Confidence for production agents that needs a hero is not done.
+
+Concretely, being able to make agent article suggestion confidence observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
 ```python
+# Article Suggestion Confidence for production agents
 from dataclasses import dataclass
-import numpy as np
 
-@dataclass
-class SuggestionFeatures:
-    dense_sim: float
-    bm25_norm: float
-    recency_days: float
-    llm_match_grade: float
-    topic_overlap: float
-    contradiction_flag: float
+@dataclass(frozen=True)
+class AgentArticleSuggesRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def featurize(query: str, article_id: str, ctx: dict) -> SuggestionFeatures:
-    chunks = ctx["retriever"].get_chunks(article_id, query)
-    return SuggestionFeatures(
-        dense_sim=chunks[0].score,
-        bm25_norm=ctx["bm25"].score(query, article_id),
-        recency_days=(ctx["now"] - ctx["articles"][article_id].published).days,
-        llm_match_grade=ctx["grader"].grade(query, chunks[:3]),
-        topic_overlap=entity_overlap(query, chunks),
-        contradiction_flag=nli_contradiction(query, chunks),
-    )
+async def run_agent_article_suggestion(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-article-suggestion-confidence"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Calibrating scores to probabilities
+## The fix that held under load
 
-Train a lightweight model—logistic regression or gradient boosted trees—on historical `(features, accepted_bool)` rows. Evaluate with **calibration curves**, not just AUC. Editors experience probabilities, not ranking metrics.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent article suggestion confidence, that means making failure visible early.
 
-```python
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.linear_model import LogisticRegression
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-base = LogisticRegression(max_iter=1000)
-clf = CalibratedClassifierCV(base, method="isotonic", cv=5)
-clf.fit(X_train, y_train)
+Acceptance check: an on-call engineer can explain system state for agent article suggestion confidence from one dashboard and one runbook page.
 
-def confidence(features: SuggestionFeatures) -> float:
-    x = np.array([[
-        features.dense_sim,
-        features.bm25_norm,
-        features.recency_days,
-        features.llm_match_grade,
-        features.topic_overlap,
-        features.contradiction_flag,
-    ]])
-    return float(clf.predict_proba(x)[0, 1])
-```
+My never-again list for agent article suggestion confidence: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Re-calibrate monthly or when you change embedding models. Version calibrators (`calibrator_v2025_05`) and shadow-deploy new ones before switching production thresholds.
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-## LLM grading without overconfidence
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Asking an LLM "how confident are you?" returns bloated numbers. Instead, use **structured rubric grading**:
+## Tests and probes that catch regressions
 
-```typescript
-const gradeSchema = z.object({
-  relevance: z.number().min(1).max(5),
-  specificity: z.number().min(1).max(5),
-  citation_support: z.number().min(1).max(5),
-  reasoning: z.string().max(500),
-});
+Teams usually discover Article Suggestion Confidence for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-async function gradeMatch(
-  userIntent: string,
-  articleExcerpt: string
-): Promise<z.infer<typeof gradeSchema>> {
-  const response = await llm.complete({
-    model: "gpt-4o-mini",
-    response_format: gradeSchema,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Grade how well the excerpt helps answer the intent. " +
-          "citation_support=1 if excerpt does not contain evidence for claims.",
-      },
-      {
-        role: "user",
-        content: `Intent: ${userIntent}\n\nExcerpt:\n${articleExcerpt}`,
-      },
-    ],
-  });
-  return gradeSchema.parse(JSON.parse(response));
-}
-```
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Map rubric grades to features, not directly to UI percentages. The calibrator learns how much to trust the grader on your corpus.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Article Suggestion Confidence for production agents that needs a hero is not done.
 
-## Grounding gate before display
+Review prompts I use: what happens twice, what happens never, what happens partially? If Article Suggestion Confidence for production agents cannot answer, it is not production-ready.
 
-High confidence with ungrounded text is worse than moderate confidence with citations. Before surfacing:
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-1. Retrieve top chunks for the suggested article.
-2. Check that the suggestion blurb's factual claims appear in chunk text (token overlap + entailment).
-3. If grounding fails, cap displayed confidence at 0.5 regardless of model score.
+## Runbook lines that save minutes
 
-```python
-def grounding_penalty(suggestion_text: str, chunks: list[str]) -> float:
-    claims = extract_claims(suggestion_text)  # sentence split + filter
-    supported = 0
-    for claim in claims:
-        if any(entails(chunk, claim) for chunk in chunks):
-            supported += 1
-    if not claims:
-        return 1.0
-    ratio = supported / len(claims)
-    return ratio  # multiply into final confidence
-```
+Teams usually discover Article Suggestion Confidence for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Log grounding failures separately—they often indicate summarization drift, not retrieval failure.
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## UX tiers editors actually understand
+Acceptance check: an on-call engineer can explain system state for agent article suggestion confidence from one dashboard and one runbook page.
 
-Do not show raw floats like `0.847`. Map to three tiers with honest copy:
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-| Calibrated P(accept) | UI tier | Copy |
-|---------------------|---------|------|
-| ≥ 0.85 | Strong match | "Highly relevant — verified against source" |
-| 0.65 – 0.84 | Possible match | "Related — review before inserting" |
-| < 0.65 | Hidden (default) | Shown only in "Explore more" drawer |
+Related reading:
 
-Optional: show **why** in a collapsible panel—top matching entities, recency, excerpt highlight—not the raw feature vector.
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-When confidence drops between turns, animate stale suggestions gray and label "Context changed — refresh suggestions." Editors forgive machine uncertainty; they do not forgive silent wrongness.
+## Platform guardrails afterward
 
-## Multi-turn intent tracking
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent article suggestion confidence, that means making failure visible early.
 
-Article suggestions tied to message one become wrong by message five. Maintain a rolling **intent summary** updated each turn:
+Keep side effects at the edges and make every write idempotent. Article Suggestion Confidence for production agents without retry semantics is a future incident write-up.
 
-```typescript
-async function updateIntentSummary(
-  prior: string,
-  latestUserMessage: string
-): Promise<string> {
-  const { summary, shift_detected } = await llm.complete({
-    schema: z.object({
-      summary: z.string(),
-      shift_detected: z.boolean(),
-    }),
-    messages: [
-      {
-        role: "system",
-        content:
-          "Merge the prior intent with the new message. " +
-          "Set shift_detected if topic materially changed.",
-      },
-      { role: "user", content: `Prior: ${prior}\nNew: ${latestUserMessage}` },
-    ],
-  });
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Article Suggestion Confidence for production agents that needs a hero is not done.
 
-  if (shift_detected) {
-    metrics.increment("suggestion.intent_shift");
-  }
-  return summary;
-}
-```
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-Re-run retrieval against the summary, not the full transcript, to keep latency bounded. Invalidate cached suggestions when `shift_detected` is true.
+## Practical defaults for Article Suggestion Confidence for production agents
 
-## Evaluation harness
+I treat Article Suggestion Confidence for production agents as an operations problem first. The goal is to make agent article suggestion confidence observable and interruptible, not to collect frameworks.
 
-Weekly offline eval notebook is not enough. Automate:
+Keep side effects at the edges and make every write idempotent. Article Suggestion Confidence for production agents without retry semantics is a future incident write-up.
 
-**Ranking metrics:** NDCG@5 against held-out editor sessions.
+Acceptance check: an on-call engineer can explain system state for agent article suggestion confidence from one dashboard and one runbook page.
 
-**Calibration error:** Expected Calibration Error (ECE) binned by 0.1 probability buckets.
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-**Slice analysis:** Confidence accuracy on low-traffic topics, non-English queries, breaking news.
+After a month, delete unused flags and dual paths. `agent-article-suggestion-confidence` accumulates temporary bridges faster than teams expect.
 
-**Online A/B:** Accept rate, time-to-insert, downstream article corrections within 24h (proxy for silent wrongness).
+## Review questions before merging agent article suggestion confidence work
 
-Alert when ECE exceeds 0.08 or when accept rate drops 15% WoW on the same traffic slice.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent article suggestion confidence, that means making failure visible early.
 
-## Failure modes we have seen
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-**Keyword collision:** "Apple" the company vs fruit. Fix with entity linking in features, not bigger embeddings alone.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Article Suggestion Confidence for production agents that needs a hero is not done.
 
-**Popularity bias:** Calibrator learns "always suggest top 10 articles." Penalize candidates with excessive historical impressions without accepts.
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
 
-**Stale calibrator after model swap:** Embedding model upgrade shifts score distribution. Shadow calibrator for two weeks minimum.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-**Over-filtering exploratory mode:** Power users want low-confidence tangents. Offer explicit "wide search" that disables the 0.65 floor with a warning banner.
+## Field notes after thirty days of agent article suggestion confidence
 
-## Operational checklist
+Teams usually discover Article Suggestion Confidence for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-- [ ] Calibrator version pinned in config; rollback documented
-- [ ] Grounding penalty logged with rejection reason codes
-- [ ] Dashboard: accept rate by confidence tier
-- [ ] Editor feedback button feeds label store within 5 minutes
-- [ ] Intent shift metric on-call runbook entry
+Put a metric on the user-visible effect of agent article suggestion confidence before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Confidence is a product surface, not an ML vanity metric. When editors trust the tier labels, they move faster. When they do not, they bypass your agent entirely—and no retrieval tweak fixes that.
+Acceptance check: an on-call engineer can explain system state for agent article suggestion confidence from one dashboard and one runbook page.
 
-Ship a weekly "confidence report" email to editorial leads: top rejected high-confidence suggestions, emerging topic gaps, and calibration drift by section. That loop closes the gap between model metrics and newsroom reality faster than any offline benchmark refresh.
+Slug-specific note (agent-article-suggestion-confidence): prioritize confidence behavior under load and verify with a fixture named `agent-article-suggestion-confidence-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- [Guo et al. — On Calibration of Modern Neural Networks](https://arxiv.org/abs/1706.04599)
-- [PyTorch Temperature Scaling for calibration](https://github.com/gpleiss/temperature_scaling)
-- [Google PAIR — People + AI Guidebook (confidence in UX)](https://pair.withgoogle.com/guidebook/chapters/mental-models/)
-- [BEIR benchmark — retrieval evaluation across domains](https://github.com/beir-cellar/beir)
-- [Anthropic — Constitutional AI and uncertainty (research context)](https://www.anthropic.com/research)
+- Internal runbook seed: `agent-article-suggestion-confidence`
+- https://12factor.net/
+- https://martinfowler.com/

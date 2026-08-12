@@ -1,226 +1,159 @@
 ---
-title: "Container Image Scanning Gates in CI/CD"
+title: "RAG pipelines: container image scanning gate"
 slug: "rag-container-image-scanning-gate"
-description: "Gate agent deployments with container image scanning—CVE policy tiers, SBOM-aware exceptions, admission control, and CI pipelines that block bad images without blocking model iteration."
+description: "RAG pipelines: container image scanning gate: how to improve retrieval precision for container image scanning gate — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-10"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Container"]
-keywords: "container image scanning, CVE gate, admission controller, Trivy, agent Docker security, SBOM policy, supply chain"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, container, image, scanning, gate, production, engineering"
 faq:
-  - q: "Where should image scanning run for agent workloads—CI, registry, or cluster admission?"
-    a: "All three, with different jobs. CI fails builds on critical CVEs in base layers you control. Registry scanning catches images promoted from untrusted paths and rescan when vulnerability databases update. Admission control is the last line—it blocks pull even if someone bypasses CI with a manual tag push."
-  - q: "How do scanning gates handle ML base images with many transitive CVEs?"
-    a: "Use tiered policies: block critical and high with known fixes in your base image lineage; ticket medium on SLA; allowlist only with expiry, owner, and compensating controls. Scan the full filesystem including Python wheels and CUDA libs—agent images are fatter than typical microservices and accumulate silent debt."
-  - q: "Should agent images be rebuilt when only the vulnerability DB changes?"
-    a: "Yes for production promotion paths. A clean scan yesterday does not mean clean today. Rescan on deploy and nightly; trigger rebuilds when upstream base images publish patches. Pin digests in manifests, not mutable latest tags."
+  - q: "What is RAG pipelines: container image scanning gate?"
+    a: "RAG pipelines: container image scanning gate is the production approach to improve retrieval precision for container image scanning gate. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in RAG pipelines: container image scanning gate?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with rag container image scanning gate, prioritize it."
+  - q: "What is the most common mistake with RAG pipelines: container image scanning gate?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The security review asked a reasonable question: "How do you know the agent inference image running in production does not contain a critical OpenSSL CVE?" Engineering answered "we use Docker." That was not an answer—it was a category error. Building a container and scanning a container are different controls. Agent teams ship large images fast; without a scanning gate, every deploy is a supply-chain bet.
+**RAG pipelines: container image scanning gate** means you improve retrieval precision for container image scanning gate — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Container image scanning gates turn "trust me, I ran apt upgrade" into an enforceable policy: no workload schedules unless the image digest passes vulnerability thresholds, provenance checks, and optional SBOM attestation. For AI agent platforms—where images bundle orchestration code, tool runtimes, and sometimes local model weights—the gate is as important as network policy.
+This write-up is specific to `rag-container-image-scanning-gate` in a rag context, using pgvector, OpenSearch, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Defense in depth: three enforcement points
+## What RAG pipelines: container image scanning gate changes in day-two ops
 
-```
-Developer push → CI scan (build fail) → Registry scan (quarantine) → Deploy → Admission webhook (reject)
-```
+Teams usually discover RAG pipelines: container image scanning gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-| Stage | Catches | Agent-specific note |
-|-------|---------|---------------------|
-| CI | Bad Dockerfile layers before merge | Cache-heavy builds may skip rescan without explicit step |
-| Registry | Re-scan on DB update, rogue tags | Model-serving images re-tagged across envs |
-| Admission | Manual bypass, stale promotions | Last chance before GPU nodes pull |
+Put a metric on the user-visible effect of rag container image scanning gate before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Each stage should emit the same **policy result schema** so teams do not reconcile three different severities for the same CVE.
+Acceptance check: an on-call engineer can explain system state for rag container image scanning gate from one dashboard and one runbook page.
 
-## Policy design that teams can live with
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-Naive "zero CVEs" policies fail on day one. Agent images inherit CUDA, PyTorch, and distro packages with hundreds of findings. Effective policies combine:
+## Designing so you can improve retrieval precision for container image scanning gate
 
-**Severity thresholds** — block `CRITICAL` with fix available; warn on `HIGH`; track `MEDIUM` with 30-day SLA.
+I treat RAG pipelines: container image scanning gate as an operations problem first. The goal is to improve retrieval precision for container image scanning gate, not to collect frameworks.
 
-**Fix availability** — ignore unfixed upstream issues only with documented risk acceptance, not silent suppression.
+With pgvector, OpenSearch, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-**Scope by image class** — stricter on `agent-worker` (network egress, tool access) than on offline batch eval images.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: container image scanning gate that needs a hero is not done.
 
-**Time-bounded exceptions** — exception records include CVE id, owner, expiry, compensating control (WAF rule, network deny).
+Concretely, being able to improve retrieval precision for container image scanning gate forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```yaml
-# policy/agent-images.rego (OPA-style example)
-deny[msg] {
-  input.image.class == "agent-worker"
-  some vuln in input.scan.vulnerabilities
-  vuln.severity == "CRITICAL"
-  vuln.fix_available == true
-  not exception_valid(vuln.id, input.image.digest)
-  msg := sprintf("critical fixed CVE %s in %s", [vuln.id, input.image.name])
-}
-```
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-Review exceptions weekly; agents change fast and yesterday's compensating control may no longer apply.
+```python
+# RAG pipelines: container image scanning gate
+from dataclasses import dataclass
 
-## CI integration with Trivy or Grype
+@dataclass(frozen=True)
+class RagContainerImageRequest:
+    tenant_id: str
+    idempotency_key: str
 
-Scan in the pipeline after `docker build` and before push:
-
-```yaml
-# .github/workflows/agent-image.yml (excerpt)
-- name: Build agent worker
-  run: docker build -t ghcr.io/acme/agent-worker:${{ github.sha }} .
-
-- name: Scan image
-  uses: aquasecurity/trivy-action@master
-  with:
-    image-ref: ghcr.io/acme/agent-worker:${{ github.sha }}
-    format: sarif
-    severity: CRITICAL,HIGH
-    exit-code: 1
-    ignore-unfixed: true
-
-- name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: trivy-results.sarif
+async def run_rag_container_image_scan(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("rag-container-image-scanning-gate"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Pin scanner versions. Vulnerability matching changes between Trivy releases; unpinned scanners create flaky CI.
+## Failure modes specific to rag container image scanning gate
 
-Generate SBOM alongside scan:
+I treat RAG pipelines: container image scanning gate as an operations problem first. The goal is to improve retrieval precision for container image scanning gate, not to collect frameworks.
 
-```bash
-trivy image --format spdx-json -o sbom.spdx.json ghcr.io/acme/agent-worker:${SHA}
-cosign attest --predicate sbom.spdx.json --type spdx ghcr.io/acme/agent-worker:${SHA}
-```
+Put a metric on the user-visible effect of rag container image scanning gate before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Attach SBOM attestations so admission can verify package inventory matches scan subject.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
 
-## Registry scanning and digest promotion
+My never-again list for rag container image scanning gate: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Tags lie; digests do not. Promotion flow:
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-1. CI pushes `agent-worker:sha-abc123` and scan passes.
-2. Staging deploy references digest `sha256:def...`.
-3. Production promotion copies digest, not retag of `latest`.
-4. Registry webhook rescan on CVE DB bump; if policy fails, mark digest quarantined and alert.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Quarantined digests still run until replaced—that is intentional. Gates stop **new** schedules; rolling replacement is a deploy concern, not a scanner toggle.
+## Signals worth paging on
 
-For agent platforms with frequent hotfixes, maintain a **fast lane** with tighter scope (single-service patch) but identical scan rigor—no lane skips scanning.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag container image scanning gate, that means making failure visible early.
 
-## Kubernetes admission control
+Keep side effects at the edges and make every write idempotent. RAG pipelines: container image scanning gate without retry semantics is a future incident write-up.
 
-Deploy a validating webhook (Kyverno, OPA Gatekeeper, or cloud-native policy) that rejects pods whose image digest lacks a passing scan record:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
 
-```yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: require-agent-image-scan
-spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: check-scan-annotation
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              selector:
-                matchLabels:
-                  app.kubernetes.io/component: agent-worker
-      validate:
-        message: "Image missing valid scan attestation"
-        pattern:
-          metadata:
-            annotations:
-              scan.acme.com/result: "pass"
-              scan.acme.com/digest: "?*"
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If RAG pipelines: container image scanning gate cannot answer, it is not production-ready.
 
-Your CI/CD pipeline writes annotations or signs images with Cosign predicates consumed by policy. Manual `kubectl run` with unscanned images should fail closed.
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-## Agent image composition risks
+## Rollout sequence with pgvector
 
-Agent Dockerfiles often:
+I treat RAG pipelines: container image scanning gate as an operations problem first. The goal is to improve retrieval precision for container image scanning gate, not to collect frameworks.
 
-- `pip install` fifty packages from PyPI without hash pinning
-- Copy local tool binaries from unverified sources
-- Bundle Hugging Face weights via curl without checksum verify
-- Run as root for convenience
+With pgvector, OpenSearch, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Scanning gates surface CVEs, but **preventive Dockerfile review** reduces noise:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
 
-```dockerfile
-FROM python:3.12-slim-bookworm@sha256:...
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-RUN pip install --no-cache-dir -r requirements.txt \
-    --require-hashes
+Related reading:
 
-USER 65532:65532
-COPY --chown=65532:65532 agent/ /app/agent/
-```
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Multi-stage builds drop compiler toolchains from runtime layers—fewer packages, smaller attack surface, faster scans.
+## What I would delete after month one
 
-## Handling false positives and scanner disagreement
+Teams usually discover RAG pipelines: container image scanning gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Different scanners disagree on severity and fix status. Pick a **primary scanner** for gating and ingest others as advisory. When developers dispute findings:
+Put a metric on the user-visible effect of rag container image scanning gate before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-1. Verify CVE applies to actually installed version (not phantom DB match).
-2. Check if vulnerable code path is reachable in runtime.
-3. If false positive, file upstream scanner issue and add time-boxed ignore with CVE justification.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: container image scanning gate that needs a hero is not done.
 
-Document ignores in version-controlled policy files—never only in SaaS UI.
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-## Operational metrics
+## Practical defaults for RAG pipelines: container image scanning gate
 
-Track:
+I treat RAG pipelines: container image scanning gate as an operations problem first. The goal is to improve retrieval precision for container image scanning gate, not to collect frameworks.
 
-- `scan_fail_rate` by image class
-- `mean_time_to_remediate` critical CVEs
-- `exception_count` and `exception_expired`
-- `admission_reject_rate`
-- `deployments_blocked` (should correlate with scan failures, not webhook outages)
+Put a metric on the user-visible effect of rag container image scanning gate before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Alert on webhook availability—if admission is down, clusters often fail open or halt all deploys. Both are bad; prefer fail closed for production workers with egress.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
 
-## Incident response when a critical CVE lands mid-week
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-1. Registry rescan flags running digests.
-2. Identify workloads via image digest index, not tag.
-3. Build patched image from updated base; emergency scan lane.
-4. Roll workers with surge capacity; drain long agent runs gracefully.
-5. Postmortem: why was package in image—direct dep or transitive bloat?
+After a month, delete unused flags and dual paths. `rag-container-image-scanning-gate` accumulates temporary bridges faster than teams expect.
 
-Keep a runbook that names who can grant exceptions and maximum exception duration without VP approval.
+## Review questions before merging rag container image scanning gate work
 
-## Signing, provenance, and trusted base images
+Teams usually discover RAG pipelines: container image scanning gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Scanning answers "what vulnerabilities exist?" Provenance answers "who built this and from what sources?" For agent images, chain both:
+Put a metric on the user-visible effect of rag container image scanning gate before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-- Build in CI from tagged Dockerfiles in your org repo—no manual `docker commit`.
-- Sign images with Cosign or Notary v2; admission verifies signature before scan annotation check.
-- Prefer hardened base images (distroless, slim LTS) maintained by your platform team over ad-hoc `python:latest`.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
 
-```bash
-# Verify before deploy
-cosign verify --certificate-identity-regexp '.*@acme.com' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/acme/agent-worker@${DIGEST}
-```
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
 
-Distroless reduces CVE surface but complicates debugging—maintain a debug variant tagged separately and blocked from production admission. Agent on-call engineers need a documented path to shell into troubleshooting images without bypassing scan gates in prod.
+After a month, delete unused flags and dual paths. `rag-container-image-scanning-gate` accumulates temporary bridges faster than teams expect.
 
-## Related concepts
+## Field notes after thirty days of rag container image scanning gate
 
-Image scanning connects to [SBOM generation in CI](https://blog.michaelsam94.com/agent-sbom-generation-ci/) and [pod security standards](https://blog.michaelsam94.com/agent-pod-security-standards/). Gates enforce what those practices produce.
+I treat RAG pipelines: container image scanning gate as an operations problem first. The goal is to improve retrieval precision for container image scanning gate, not to collect frameworks.
 
-## The takeaway
+Keep side effects at the edges and make every write idempotent. RAG pipelines: container image scanning gate without retry semantics is a future incident write-up.
 
-A container image scanning gate is enforceable supply-chain hygiene—not a checkbox scan in CI that everyone ignores when deadlines loom. Layer CI, registry, and admission enforcement; use severity-plus-fix-available policies suited to fat agent images; pin digests and SBOM attestations. When security asks how you know the image is safe, you show policy results tied to the digest running on the cluster—not a Dockerfile from last quarter.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag container image scanning gate.
+
+Slug-specific note (rag-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `rag-container-image-scanning-gate-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for rag container image scanning gate. Expand only when the metric demands it.
 
 ## Resources
 
-- [Trivy documentation](https://aquasecurity.github.io/trivy/) — filesystem and image scanning
-- [Anchore Grype](https://github.com/anchore/grype) — alternative vulnerability matcher
-- [Sigstore Cosign](https://docs.sigstore.dev/cosign/overview/) — sign and verify scan attestations
-- [Kyverno verifyImages policies](https://kyverno.io/docs/writing-policies/verify-images/) — admission based on signatures
-- [NSA Kubernetes Hardening Guidance](https://www.nsa.gov/Press-Room/News-Highlights/Article/Article/2716980/nsa-cisa-release-kubernetes-hardening-guidance/) — container supply chain context
+- Internal runbook seed: `rag-container-image-scanning-gate`
+- https://12factor.net/
+- https://martinfowler.com/

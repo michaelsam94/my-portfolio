@@ -1,215 +1,159 @@
 ---
-title: "AI Agents: Poison Message Detection"
+title: "Poison Message Detection for production agents"
 slug: "agent-poison-message-detection"
-description: "Detect and isolate poison messages in agent job queues: retry budgets, DLQ routing, failure classification, and recovery workflows that stop one bad payload from stalling the fleet."
+description: "Poison Message Detection for production agents: how to make agent poison message detection observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-11-13"
-dateModified: "2024-11-13"
-tags: ["AI", "Agent", "Poison"]
-keywords: "poison message detection, dead letter queue, agent job queue, retry budget, message failure classification, SQS DLQ Kafka poison pill"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, poison, message, detection, production, engineering"
 faq:
-  - q: "What makes a message poison in an agent pipeline?"
-    a: "Any message that fails processing every time it is consumed—malformed tool args, references to deleted tenant config, prompt templates that trigger unhandled exceptions, or payloads that exceed context limits after retries. Poison messages are deterministic failures masquerading as transient errors, causing infinite redelivery until the queue backs up."
-  - q: "How many retries before quarantining a message?"
-    a: "Use receive-count thresholds aligned with idempotency: 3–5 attempts for LLM tool invocation jobs with exponential backoff, fewer (2–3) for fast-fail validation errors detected on first parse. Combine absolute receive count with a retry budget per correlation ID so variant failures of the same root cause share fate."
-  - q: "Should poison messages ever re-enter the main queue automatically?"
-    a: "Only after explicit replay from a DLQ with a fixed payload or schema version bump—not via automatic redrive without human or automated triage passing classification rules. Auto-redrive without root-cause fix recreates the incident within minutes."
-  - q: "How do agent-specific failures differ from generic microservice poison pills?"
-    a: "Agent jobs fail on model 429s (transient), token limit exceeded (often permanent for that payload), tool sandbox timeouts (maybe transient), and embedding dimension mismatches after deploy (permanent until model version aligned). Classifiers must inspect error types, not only HTTP status codes."
+  - q: "What is Poison Message Detection for production agents?"
+    a: "Poison Message Detection for production agents is the production approach to make agent poison message detection observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Poison Message Detection for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent poison message detection, prioritize it."
+  - q: "What is the most common mistake with Poison Message Detection for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-One malformed tool-call payload—an `order_id` field containing a nested JSON blob instead of a string—sat in the agent work queue for eleven hours. Every consumer crashed in the deserialization hook, nacked the message, and moved on. With visibility timeout set to 30 seconds and four workers, the same message consumed roughly 5,000 CPU minutes before someone noticed queue age p99 spiking while error rate dashboards looked "fine" because each worker logged and moved on.
+**Poison Message Detection for production agents** means you make agent poison message detection observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Poison message detection is how agent platforms distinguish **retry tomorrow** from **never going to work**. Without it, a single bad job cycles forever, starving legitimate agent tasks and burning LLM budget on doomed retries. This post covers classification, quarantine architecture, and recovery for agent-specific failure modes.
+This write-up is specific to `agent-poison-message-detection` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Anatomy of a retry storm
+## Poison Message Detection for production agents: production checklist
 
-```
-Producer ──▶ [ Main queue ] ──▶ Worker pool ──▶ LLM / tools
-                  ▲                    │
-                  │         fail + nack (no DLQ)
-                  └────────────────────┘
-                         same message forever
-```
+Teams usually discover Poison Message Detection for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Symptoms:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-- Queue depth grows linearly while worker CPU stays high.
-- Per-message age exceeds p99 SLA by orders of magnitude.
-- Error logs show identical stack traces; trace IDs differ.
-- LLM spend rises with zero successful task completions.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Poison Message Detection for production agents that needs a hero is not done.
 
-Generic alerting on error rate misses this—each attempt is a "handled" failure.
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-## Failure taxonomy for agent jobs
+## Inputs, outputs, invariants
 
-Classify before retry policy:
+I treat Poison Message Detection for production agents as an operations problem first. The goal is to make agent poison message detection observable and interruptible, not to collect frameworks.
 
-| Class | Examples | Retry? | Action |
-|-------|----------|--------|--------|
-| Transient | 429, 503, network blip | Yes, backoff | Leave in main queue |
-| Permanent input | Schema validation, unknown tool | No | DLQ immediately |
-| Permanent config | Missing tenant secret, deprecated model | No | DLQ + page tenant owner |
-| Poison content | Prompt bomb, decompression zip slip | No | DLQ + security review |
-| Ambiguous | Tool timeout | Limited retry | DLQ after budget exhausted |
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Agent workers should attach `failure_class` to structured logs on every catch block—not only `error.message`.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Poison Message Detection for production agents that needs a hero is not done.
+
+Concretely, being able to make agent poison message detection observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
 ```python
-from enum import Enum
+# Poison Message Detection for production agents
 from dataclasses import dataclass
-import traceback
 
-class FailureClass(str, Enum):
-    TRANSIENT = "transient"
-    PERMANENT_INPUT = "permanent_input"
-    PERMANENT_CONFIG = "permanent_config"
-    POISON_CONTENT = "poison_content"
-    UNKNOWN = "unknown"
+@dataclass(frozen=True)
+class AgentPoisonMessageRequest:
+    tenant_id: str
+    idempotency_key: str
 
-
-@dataclass
-class ProcessingOutcome:
-    success: bool
-    failure_class: FailureClass | None = None
-    retryable: bool = False
-    detail: str = ""
-
-
-def classify_exception(exc: Exception) -> ProcessingOutcome:
-    name = type(exc).__name__
-    if name in ("RateLimitError", "ServiceUnavailable", "TimeoutError"):
-        return ProcessingOutcome(False, FailureClass.TRANSIENT, retryable=True, detail=name)
-    if name in ("ValidationError", "JsonDecodeError", "KeyError"):
-        return ProcessingOutcome(False, FailureClass.PERMANENT_INPUT, retryable=False, detail=name)
-    if name in ("TenantConfigError", "ModelNotFoundError"):
-        return ProcessingOutcome(False, FailureClass.PERMANENT_CONFIG, retryable=False, detail=name)
-    if name in ("ContextLengthExceededError", "PromptInjectionBlocked"):
-        return ProcessingOutcome(False, FailureClass.POISON_CONTENT, retryable=False, detail=name)
-    return ProcessingOutcome(False, FailureClass.UNKNOWN, retryable=True, detail=name)
+async def run_agent_poison_message_det(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-poison-message-detection"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Start with exception type mapping; evolve to a small rules engine inspecting payload hash + error combo for UNKNOWN reduction.
+## Concurrency, retries, and timeouts
 
-## Retry budget and receive count
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent poison message detection, that means making failure visible early.
 
-Two limits work together:
+Put a metric on the user-visible effect of agent poison message detection before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-1. **Per-message receive count** — SQS `ApproximateReceiveCount`, Kafka consumer retry headers, or Redis stream delivery counter.
-2. **Per-correlation retry budget** — same `job_id` or `session_id` should not consume more than N total attempts across requeues.
+Acceptance check: an on-call engineer can explain system state for agent poison message detection from one dashboard and one runbook page.
 
-```typescript
-interface RetryState {
-  receiveCount: number;
-  firstSeenAt: string;
-  lastErrorClass: string;
-  payloadHash: string;
-}
+My never-again list for agent poison message detection: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-const MAX_RECEIVES = 5;
-const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour wall clock cap
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-function shouldQuarantine(state: RetryState, outcome: ProcessingOutcome): boolean {
-  if (!outcome.retryable) return true;
-  if (state.receiveCount >= MAX_RECEIVES) return true;
-  if (Date.now() - Date.parse(state.firstSeenAt) > MAX_AGE_MS) return true;
-  if (state.lastErrorClass === outcome.detail && state.receiveCount >= 3) return true;
-  return false;
-}
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Wall-clock cap catches messages with long backoff that still never succeed.
+## Support and audit workflows
 
-## Dead letter queue design
+I treat Poison Message Detection for production agents as an operations problem first. The goal is to make agent poison message detection observable and interruptible, not to collect frameworks.
 
-DLQ messages need **more context** than main queue messages:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-```json
-{
-  "original_payload_ref": "s3://agent-dlq/payloads/abc123.json",
-  "failure_class": "permanent_input",
-  "receive_count": 7,
-  "last_error": "ValidationError: order_id must be string",
-  "worker_version": "agent-worker-2.8.1",
-  "model_version": "gpt-4o-2024-08-06",
-  "correlation_id": "sess_9f2c",
-  "quarantined_at": "2024-11-13T14:22:01Z",
-  "payload_hash": "sha256:…"
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Poison Message Detection for production agents that needs a hero is not done.
 
-Store fat payloads in object storage; DLQ carries pointer—SQS 256 KB limit bites agent jobs with embedded document chunks.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Poison Message Detection for production agents cannot answer, it is not production-ready.
 
-Encrypt DLQ at rest; payloads may contain user PII even when "poison."
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-Restrict DLQ consume IAM to break-glass roles. Replay tooling uses a separate `dlq-replayer` service account audited per message.
+## Capacity and load notes
 
-## Detection heuristics beyond receive count
+Teams usually discover Poison Message Detection for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-**Stack trace fingerprinting** — hash top three frames; if one fingerprint exceeds 50% of failures in 10 minutes while queue depth rises, likely poison or bad deploy.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-**Payload hash clustering** — same `payload_hash`, 100% failure rate, zero successes globally → auto-quarantine on next receive without waiting for MAX_RECEIVES.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent poison message detection.
 
-**Canary consumer** — low-priority worker that processes suspected poison messages with extended logging; isolate to single-threaded pool so poison does not block main fleet.
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-**Schema version gate** — reject messages with `schema_version < minimum_supported` to DLQ at enqueue time, not dequeue—cheap poison prevention at producer.
+Related reading:
 
-## Agent-specific poison patterns
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-**Context length bombs** — user uploads 400 pages; chunker emits 2,000 fragments each enqueued separately. Detection: preflight token estimate in producer; reject over budget before queue insert.
+## Ship gate
 
-**Tool schema drift** — deploy changes JSON schema; old messages fail validation. Detection: spike in `PERMANENT_INPUT` after deploy; pause consumer, flush DLQ to fixed schema or reprocess with migration.
+I treat Poison Message Detection for production agents as an operations problem first. The goal is to make agent poison message detection observable and interruptible, not to collect frameworks.
 
-**Circular plan messages** — orchestrator re-enqueues same plan step with identical args after tool "soft failure." Detection: DAG cycle detection on `plan_hash` in correlation store; quarantine with `POISON_CONTENT` class.
+Keep side effects at the edges and make every write idempotent. Poison Message Detection for production agents without retry semantics is a future incident write-up.
 
-**Model 404** — wrong model string after rename. Permanent config; alert tenant-scoped, not global page.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent poison message detection.
 
-## Recovery and replay workflow
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-1. **Triage dashboard** — DLQ depth by `failure_class`, top `payload_hash`, link to object storage viewer (redacted).
-2. **Fix root cause** — deploy schema fix, restore tenant config, patch validation.
-3. **Replay ticket** — engineer selects DLQ IDs, replay service transforms payload if needed, inserts to main queue with `replay_generation` incremented.
-4. **Verify** — replay jobs go to canary workers first; promote on success rate.
+## Practical defaults for Poison Message Detection for production agents
 
-Never bulk redrive entire DLQ without filter—one unpatched poison message recreates storm.
+I treat Poison Message Detection for production agents as an operations problem first. The goal is to make agent poison message detection observable and interruptible, not to collect frameworks.
 
-```bash
-# Example: replay single message after fix (conceptual CLI)
-agent-dlq replay \
-  --id msg_01HF... \
-  --transform fix-order-id-string \
-  --target-queue agent-jobs \
-  --canary-percent 10
-```
+Keep side effects at the edges and make every write idempotent. Poison Message Detection for production agents without retry semantics is a future incident write-up.
 
-## Metrics and alerts
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent poison message detection.
 
-| Metric | Alert when |
-|--------|------------|
-| `queue_oldest_message_age_seconds` | > SLA × 3 for 15 min |
-| `dlq_inflow_rate` | > baseline × 5 |
-| `receive_count_max` | any message > MAX_RECEIVES still in main queue |
-| `failure_fingerprint_top1_ratio` | > 0.5 for 10 min |
-| `retry_budget_exhausted_total` | any increase post-deploy |
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-Dashboard panel: messages grouped by `payload_hash` with success/fail ratio—poison shows 0% success bar.
+Default deny, explicit timeouts, and one dashboard row for agent poison message detection. Expand only when the metric demands it.
 
-## Testing poison paths
+## Review questions before merging agent poison message detection work
 
-Chaos tests:
+I treat Poison Message Detection for production agents as an operations problem first. The goal is to make agent poison message detection observable and interruptible, not to collect frameworks.
 
-- Inject permanently failing message; assert reaches DLQ within MAX_RECEIVES.
-- Inject transient failures (mock 503 twice, succeed third)—assert never DLQ.
-- Flood queue with poison + legit mix; assert legit p95 latency within SLO (poison isolation works).
+Put a metric on the user-visible effect of agent poison message detection before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Contract test producer validation rejects oversize payloads before publish.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent poison message detection.
 
-## Closing thought
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
 
-Poison message detection is operational hygiene for any agent platform using async jobs. Classify failures honestly, cap retries with wall-clock budgets, enrich DLQ entries for triage, and treat automatic redrive as guilty until proven innocent. The queue that looks healthy while one message eats the fleet is a failure mode you only hit once—unless you build detection on purpose.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
+
+## Field notes after thirty days of agent poison message detection
+
+Teams usually discover Poison Message Detection for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Put a metric on the user-visible effect of agent poison message detection before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent poison message detection.
+
+Slug-specific note (agent-poison-message-detection): prioritize detection behavior under load and verify with a fixture named `agent-poison-message-detection-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent poison message detection. Expand only when the metric demands it.
 
 ## Resources
 
-- [AWS SQS Dead-Letter Queues](https://docs.aws.amazon.com/AWSSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html) — receive count redrive patterns.
-- [Azure Service Bus dead-lettering](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues) — subqueue semantics and monitoring.
-- [Apache Kafka: handling poison pills](https://kafka.apache.org/documentation/#design_concepts_compaction) — log compaction vs DLQ topic patterns.
-- [Google Cloud Pub/Sub dead-letter topics](https://cloud.google.com/pubsub/docs/dead-letter-topics) — delivery attempt thresholds.
-- [Enterprise Integration Patterns: Dead Letter Channel](https://www.enterpriseintegrationpatterns.com/DeadLetterChannel.html) — foundational messaging pattern reference.
+- Internal runbook seed: `agent-poison-message-detection`
+- https://12factor.net/
+- https://martinfowler.com/

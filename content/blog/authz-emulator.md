@@ -1,131 +1,158 @@
 ---
-title: "Authz Emulator"
+title: "Authz-emulator engineering checklist"
 slug: "authz-emulator"
-description: "Authz Emulator: how to measure the user-visible signal first in production flutter systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-emulator engineering checklist: how to ship authz emulator behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-18"
 dateModified: "2026-08-12"
 tags:
-  - "Flutter"
-  - "Mobile"
-keywords: "authz, emulator, flutter, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, emulator, production, engineering"
 faq:
-  - q: "What is Authz Emulator?"
-    a: "Authz Emulator is a production approach to measure the user-visible signal first. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Emulator?"
-    a: "Invest when auditors or enterprise buyers ask how you know it works. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Emulator?"
-    a: "The usual failure is treating edge cases as follow-ups. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-emulator engineering checklist?"
+    a: "Authz-emulator engineering checklist is the production approach to ship authz emulator behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-emulator engineering checklist?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with authz emulator, prioritize it."
+  - q: "What is the most common mistake with Authz-emulator engineering checklist?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Emulator** means you measure the user-visible signal first — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when auditors or enterprise buyers ask how you know it works; that is usually also when shortcuts like treating edge cases as follow-ups start paging people.
+**Authz-emulator engineering checklist** means you ship authz emulator behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in Flutter systems using Flutter, Dart: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-emulator` in a product context, using Redis, Prometheus, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Emulator
+## Decision guide for Authz-emulator engineering checklist
 
-I have watched teams under-specify Authz Emulator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+Teams usually discover Authz-emulator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Authz-emulator engineering checklist without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Authz Emulator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
 
-## When this is the wrong tool
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
-I have watched teams under-specify Authz Emulator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+## When to refuse this approach
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Authz-emulator engineering checklist as an operations problem first. The goal is to ship authz emulator behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Authz Emulator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz emulator before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Practically, being able to measure the user-visible signal first means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz emulator from one dashboard and one runbook page.
 
-```dart
-class FlutterRepository {
-  Future<Result> run(Request req) async {
-    // Authz Emulator
-    return Result.ok(await _client.post('/v1/action', body: req.toJson()));
+Concretely, being able to ship authz emulator behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
+
+```typescript
+// Authz-emulator engineering checklist
+export async function handle_authz_emulator(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("authz-emulator");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Authz Emulator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+I treat Authz-emulator engineering checklist as an operations problem first. The goal is to ship authz emulator behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of authz emulator before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-emulator engineering checklist that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: treating edge cases as follow-ups; skipping Authz Emulator error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz emulator: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; treating edge cases as follow-ups |
-| Durable path | auditors or enterprise buyers ask how you know it works | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-If you only remember one thing about Authz Emulator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Teams usually discover Authz-emulator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+With Redis, Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Emulator designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-emulator engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
-I have watched teams under-specify Authz Emulator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+## Migration without dual-running forever
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Teams usually discover Authz-emulator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With Redis, Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-emulator engineering checklist that needs a hero is not done.
+
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-Most write-ups on Authz Emulator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For authz emulator, that means making failure visible early.
 
-Make Authz Emulator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Emulator — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz-emulator engineering checklist without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Authz Emulator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
 
-## Practical defaults I use for Authz Emulator
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
-Most write-ups on Authz Emulator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Authz-emulator engineering checklist
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Authz-emulator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With Redis, Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Emulator error rate. Expand only when the metric says you must.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
 
-## Review questions before merging Authz Emulator work
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
-If you only remember one thing about Authz Emulator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-Make Authz Emulator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Emulator — you only deployed it.
+## Review questions before merging authz emulator work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+I treat Authz-emulator engineering checklist as an operations problem first. The goal is to ship authz emulator behind flags with a rollback, not to collect frameworks.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Emulator error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Authz-emulator engineering checklist without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Emulator
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
 
-If you only remember one thing about Authz Emulator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
 
-Make Authz Emulator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Emulator — you only deployed it.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of authz emulator
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Emulator error rate. Expand only when the metric says you must.
+I treat Authz-emulator engineering checklist as an operations problem first. The goal is to ship authz emulator behind flags with a rollback, not to collect frameworks.
+
+With Redis, Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz emulator.
+
+Slug-specific note (authz-emulator): prioritize emulator behavior under load and verify with a fixture named `authz-emulator-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for authz emulator. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-emulator`
 - https://12factor.net/
+- https://martinfowler.com/

@@ -1,129 +1,158 @@
 ---
-title: "Authz Tasker"
+title: "Authz-tasker engineering checklist"
 slug: "authz-tasker"
-description: "Authz Tasker: how to keep failure modes explicit and tested in production rust systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-tasker engineering checklist: how to ship authz tasker behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-24"
 dateModified: "2026-08-12"
 tags:
-  - "Rust"
-  - "Systems"
-keywords: "authz, tasker, rust, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, tasker, production, engineering"
 faq:
-  - q: "What is Authz Tasker?"
-    a: "Authz Tasker is a production approach to keep failure modes explicit and tested. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Tasker?"
-    a: "Invest when traffic or tenants are about to scale. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Tasker?"
-    a: "The usual failure is skipping metrics until after launch. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-tasker engineering checklist?"
+    a: "Authz-tasker engineering checklist is the production approach to ship authz tasker behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-tasker engineering checklist?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with authz tasker, prioritize it."
+  - q: "What is the most common mistake with Authz-tasker engineering checklist?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Tasker** means you keep failure modes explicit and tested — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when traffic or tenants are about to scale; that is usually also when shortcuts like skipping metrics until after launch start paging people.
+**Authz-tasker engineering checklist** means you ship authz tasker behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in Rust systems using Axum, Tokio: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-tasker` in a product context, using Prometheus, Postgres for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Tasker
+## Decision guide for Authz-tasker engineering checklist
 
-I have watched teams under-specify Authz Tasker and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Teams usually discover Authz-tasker engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Make Authz Tasker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Tasker — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz-tasker engineering checklist without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-tasker engineering checklist that needs a hero is not done.
 
-## When this is the wrong tool
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
-If you only remember one thing about Authz Tasker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+## When to refuse this approach
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For authz tasker, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Authz Tasker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz tasker before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Practically, being able to keep failure modes explicit and tested means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz tasker.
 
-```rust
-pub async fn handle(state: &State, input: Input) -> Result<Output, AppError> {
-  // Authz Tasker
-  state.repo.execute(input.validate()?).await.map_err(AppError::from)
+Concretely, being able to ship authz tasker behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
+
+```typescript
+// Authz-tasker engineering checklist
+export async function handle_authz_tasker(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("authz-tasker");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Authz Tasker stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz-tasker engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Prefer small diffs with a kill switch. Authz Tasker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz tasker.
 
-I also keep a short 'never again' list beside the code: skipping metrics until after launch; skipping Authz Tasker error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz tasker: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; skipping metrics until after launch |
-| Durable path | traffic or tenants are about to scale | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-I have watched teams under-specify Authz Tasker and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+I treat Authz-tasker engineering checklist as an operations problem first. The goal is to ship authz tasker behind flags with a rollback, not to collect frameworks.
 
-Make Authz Tasker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Tasker — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz-tasker engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for authz tasker from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Tasker designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-tasker engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
-If you only remember one thing about Authz Tasker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+## Migration without dual-running forever
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For authz tasker, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz tasker before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-tasker engineering checklist that needs a hero is not done.
+
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
 Related reading:
 
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-Most write-ups on Authz Tasker stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz-tasker engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of authz tasker before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Tasker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz tasker.
 
-## Practical defaults I use for Authz Tasker
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
-I have watched teams under-specify Authz Tasker and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+## Practical defaults for Authz-tasker engineering checklist
 
-Make Authz Tasker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Tasker — you only deployed it.
+I treat Authz-tasker engineering checklist as an operations problem first. The goal is to ship authz tasker behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Authz Tasker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on skipping metrics until after launch. If it is missing, the PR is incomplete.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-tasker engineering checklist that needs a hero is not done.
 
-## Review questions before merging Authz Tasker work
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
-If you only remember one thing about Authz Tasker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-Make Authz Tasker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Tasker — you only deployed it.
+## Review questions before merging authz tasker work
 
-Prefer small diffs with a kill switch. Authz Tasker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Production systems punish vague ownership and unmeasured happy paths. For authz tasker, that means making failure visible early.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Tasker error rate. Expand only when the metric says you must.
+Put a metric on the user-visible effect of authz tasker before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Field notes after the first month of Authz Tasker
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz tasker.
 
-Most write-ups on Authz Tasker stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `authz-tasker` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of authz tasker
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Tasker error rate. Expand only when the metric says you must.
+I treat Authz-tasker engineering checklist as an operations problem first. The goal is to ship authz tasker behind flags with a rollback, not to collect frameworks.
+
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for authz tasker from one dashboard and one runbook page.
+
+Slug-specific note (authz-tasker): prioritize tasker behavior under load and verify with a fixture named `authz-tasker-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-tasker`
 - https://12factor.net/
+- https://martinfowler.com/

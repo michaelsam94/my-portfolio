@@ -1,129 +1,158 @@
 ---
-title: "Onesignal Frequency Caps"
+title: "A practical guide to onesignal frequency caps"
 slug: "onesignal-frequency-caps"
-description: "Onesignal Frequency Caps: how to make retries and timeouts intentional in production datastores systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "A practical guide to onesignal frequency caps: how to keep onesignal frequency correct under retries and partial failure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-12"
 dateModified: "2026-08-12"
 tags:
-  - "Database"
-  - "Backend"
-keywords: "onesignal, frequency, caps, datastores, production, engineering"
+  - "Engineering"
+  - "Onesignal"
+keywords: "onesignal, frequency, caps, production, engineering"
 faq:
-  - q: "What is Onesignal Frequency Caps?"
-    a: "Onesignal Frequency Caps is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Onesignal Frequency Caps?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Onesignal Frequency Caps?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is A practical guide to onesignal frequency caps?"
+    a: "A practical guide to onesignal frequency caps is the production approach to keep onesignal frequency correct under retries and partial failure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in A practical guide to onesignal frequency caps?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with onesignal frequency caps, prioritize it."
+  - q: "What is the most common mistake with A practical guide to onesignal frequency caps?"
+    a: "The usual failure is treating onesignal frequency caps as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Onesignal Frequency Caps** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**A practical guide to onesignal frequency caps** means you keep onesignal frequency correct under retries and partial failure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like treating onesignal frequency caps as a pure library problem start paging people.
 
-Below is how I implement and operate it in DataStores systems using Postgres, Redis: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `onesignal-frequency-caps` in a product context, using OpenTelemetry, Postgres, Prometheus for the mechanics while keeping ownership human.
 
-## How I explain Onesignal Frequency Caps to a skeptical teammate
+## Explaining A practical guide to onesignal frequency caps to a skeptical teammate
 
-I have watched teams under-specify Onesignal Frequency Caps and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+I treat A practical guide to onesignal frequency caps as an operations problem first. The goal is to keep onesignal frequency correct under retries and partial failure, not to collect frameworks.
 
-In DataStores stacks I lean on Postgres, Redis for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+With OpenTelemetry, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating onesignal frequency caps as a pure library problem.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for onesignal frequency caps from one dashboard and one runbook page.
 
-## Doing work to make retries and timeouts intentional
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
-Most write-ups on Onesignal Frequency Caps stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Making it routine to keep onesignal frequency correct under retries and partial failure
 
-Make Onesignal Frequency Caps error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Onesignal Frequency Caps — you only deployed it.
+I treat A practical guide to onesignal frequency caps as an operations problem first. The goal is to keep onesignal frequency correct under retries and partial failure, not to collect frameworks.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of onesignal frequency caps before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on onesignal frequency caps.
 
-```sql
--- Onesignal Frequency Caps
-INSERT INTO example_events (tenant_id, event_id, payload)
-VALUES ($1, $2, $3)
-ON CONFLICT (tenant_id, event_id) DO NOTHING;
+Concretely, being able to keep onesignal frequency correct under retries and partial failure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
+
+```typescript
+// A practical guide to onesignal frequency caps
+export async function handle_onesignal_frequency_caps(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("onesignal-frequency-caps");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Code boundaries that keep refactors cheap
+## Code seams that keep refactors cheap
 
-I have watched teams under-specify Onesignal Frequency Caps and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For onesignal frequency caps, that means making failure visible early.
 
-In DataStores stacks I lean on Postgres, Redis for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Put a metric on the user-visible effect of onesignal frequency caps before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on onesignal frequency caps.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Onesignal Frequency Caps error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for onesignal frequency caps: treating onesignal frequency caps as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating onesignal frequency caps as a pure library problem |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Table stakes vs nice-to-haves
+## Table stakes vs later polish
 
-Most write-ups on Onesignal Frequency Caps stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For onesignal frequency caps, that means making failure visible early.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With OpenTelemetry, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating onesignal frequency caps as a pure library problem.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to onesignal frequency caps that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Onesignal Frequency Caps designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If A practical guide to onesignal frequency caps cannot answer, it is not production-ready.
 
-## Common regressions after launch
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
-I have watched teams under-specify Onesignal Frequency Caps and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Regressions that show up after launch
 
-Make Onesignal Frequency Caps error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Onesignal Frequency Caps — you only deployed it.
+Teams usually discover A practical guide to onesignal frequency caps after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Prefer small diffs with a kill switch. Onesignal Frequency Caps changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. A practical guide to onesignal frequency caps without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to onesignal frequency caps that needs a hero is not done.
+
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Maintenance burden over 12 months
+## Twelve-month maintenance load
 
-If you only remember one thing about Onesignal Frequency Caps: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat A practical guide to onesignal frequency caps as an operations problem first. The goal is to keep onesignal frequency correct under retries and partial failure, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. A practical guide to onesignal frequency caps without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for onesignal frequency caps from one dashboard and one runbook page.
 
-## Practical defaults I use for Onesignal Frequency Caps
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
-Most write-ups on Onesignal Frequency Caps stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for A practical guide to onesignal frequency caps
 
-Make Onesignal Frequency Caps error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Onesignal Frequency Caps — you only deployed it.
+I treat A practical guide to onesignal frequency caps as an operations problem first. The goal is to keep onesignal frequency correct under retries and partial failure, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With OpenTelemetry, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating onesignal frequency caps as a pure library problem.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Onesignal Frequency Caps error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to onesignal frequency caps that needs a hero is not done.
 
-## Review questions before merging Onesignal Frequency Caps work
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
-I have watched teams under-specify Onesignal Frequency Caps and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+After a month, delete unused flags and dual paths. `onesignal-frequency-caps` accumulates temporary bridges faster than teams expect.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging onesignal frequency caps work
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Teams usually discover A practical guide to onesignal frequency caps after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-A month in, prune unused paths. Onesignal Frequency Caps accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Put a metric on the user-visible effect of onesignal frequency caps before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Field notes after the first month of Onesignal Frequency Caps
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to onesignal frequency caps that needs a hero is not done.
 
-If you only remember one thing about Onesignal Frequency Caps: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
 
-Make Onesignal Frequency Caps error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Onesignal Frequency Caps — you only deployed it.
+In review, require a short failure note covering retry, partial deploy, and treating onesignal frequency caps as a pure library problem. Missing that note blocks merge.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of onesignal frequency caps
 
-A month in, prune unused paths. Onesignal Frequency Caps accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat A practical guide to onesignal frequency caps as an operations problem first. The goal is to keep onesignal frequency correct under retries and partial failure, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. A practical guide to onesignal frequency caps without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for onesignal frequency caps from one dashboard and one runbook page.
+
+Slug-specific note (onesignal-frequency-caps): prioritize caps behavior under load and verify with a fixture named `onesignal-frequency-caps-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating onesignal frequency caps as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `onesignal-frequency-caps`
 - https://12factor.net/
+- https://martinfowler.com/

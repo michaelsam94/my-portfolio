@@ -1,157 +1,159 @@
 ---
-title: "AI Agents: Secrets Scanning in Pre-Commit for Agent Repos"
+title: "Agent reliability via secrets scanning precommit"
 slug: "agent-secrets-scanning-precommit"
-description: "Block sk- keys and webhook tokens before push — gitleaks staged diff, detect-secrets baselines, custom Hugging Face token rules."
+description: "Agent reliability via secrets scanning precommit: how to ship agent secrets scanning precommit with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-21"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "Agent"
-  - "Security"
-  - "DevOps"
-keywords: "secrets scanning, pre-commit, gitleaks, agent API keys"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, secrets, scanning, precommit, production, engineering"
 faq:
-  - q: "When should teams prioritize Secrets Scanning in Pre-Commit for Agent Repos?"
-    a: "Before any agent repo accepts prompts, notebooks, or tool YAML from multiple contributors."
-  - q: "What is the most common mistake with pre-commit secrets scanning?"
-    a: "CI-only scanning that lets secrets enter git history before the first pipeline run."
-  - q: "How do we know Secrets Scanning in Pre-Commit for Agent Repos is working?"
-    a: "Define a leading metric for pre-commit secrets scanning (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
-  - q: "Should MCP configs be scanned for secrets?"
-    a: "Yes — scan mcp.json, tool YAML, and agent prompt files for sk- keys and webhook tokens embedded in URLs."
+  - q: "What is Agent reliability via secrets scanning precommit?"
+    a: "Agent reliability via secrets scanning precommit is the production approach to ship agent secrets scanning precommit with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via secrets scanning precommit?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent secrets scanning precommit, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via secrets scanning precommit?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An OpenAI key committed in eval_runner.py rotated three staging environments when GitHub secret scanning fired.
+**Agent reliability via secrets scanning precommit** means you ship agent secrets scanning precommit with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Block sk- keys and webhook tokens before push — gitleaks staged diff, detect-secrets baselines, custom Hugging Face token rules.
+This write-up is specific to `agent-secrets-scanning-precommit` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## The production story behind pre-commit secrets scanning
+## A pragmatic path to Agent reliability via secrets scanning precommit
 
-CI-only scanning that lets secrets enter git history before the first pipeline run. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Secrets Scanning in Pre-Commit for Agent Repos is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent secrets scanning precommit, that means making failure visible early.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Pre-Commit Secrets Scanning is how you convert that chaos into an invariant someone can operate.
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Designing secrets scanning in pre-commit for agent repos for real constraints
+Acceptance check: an on-call engineer can explain system state for agent secrets scanning precommit from one dashboard and one runbook page.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For pre-commit secrets scanning, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## Start from the user-visible symptom
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+Teams usually discover Agent reliability via secrets scanning precommit after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-## Implementation walkthrough
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits pre-commit secrets scanning during an incident.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via secrets scanning precommit that needs a hero is not done.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to ship agent secrets scanning precommit with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```python
-# Operational hook — pre-commit secrets scanning
-def apply_secrets_scanning_precommit(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
+
+```typescript
+// Agent reliability via secrets scanning precommit
+export async function handle_agent_secrets_scanning_precommit(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-secrets-scanning-precommit");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Platform depth
+## Implementation details for agent secrets scanning precommit
 
-Platform teams own defaults and libraries; product teams own domain config. Document interfaces where pre-commit secrets scanning gates handoffs to downstream owners.
-Review after every magnitude change in traffic or model swap — assumptions drift silently.
+I treat Agent reliability via secrets scanning precommit as an operations problem first. The goal is to ship agent secrets scanning precommit with human override paths, not to collect frameworks.
 
-## Failure modes worth rehearsing
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent secrets scanning precommit.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent secrets scanning precommit: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Leading indicators: error rate on pre-commit secrets scanning, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Flags, canaries, and kill switches
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; pre-commit secrets scanning regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+Teams usually discover Agent reliability via secrets scanning precommit after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-## Production hardening
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Pin versions affecting pre-commit secrets scanning. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via secrets scanning precommit that needs a hero is not done.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via secrets scanning precommit cannot answer, it is not production-ready.
 
-Secrets Scanning in Pre-Commit for Agent Repos touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-## Further reading
+## Proving it worked
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Teams usually discover Agent reliability via secrets scanning precommit after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-## Operating pre-commit secrets scanning after scale events (review 1)
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via secrets scanning precommit that needs a hero is not done.
 
-When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
+## Follow-ups teams usually skip
 
-## Operating pre-commit secrets scanning after scale events (review 2)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent secrets scanning precommit, that means making failure visible early.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Acceptance check: an on-call engineer can explain system state for agent secrets scanning precommit from one dashboard and one runbook page.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Agent reliability via secrets scanning precommit
 
+I treat Agent reliability via secrets scanning precommit as an operations problem first. The goal is to ship agent secrets scanning precommit with human override paths, not to collect frameworks.
 
-## Operating pre-commit secrets scanning after scale events (review 3)
+Keep side effects at the edges and make every write idempotent. Agent reliability via secrets scanning precommit without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent secrets scanning precommit.
 
-When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent secrets scanning precommit work
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent secrets scanning precommit, that means making failure visible early.
 
-## Operating pre-commit secrets scanning after scale events (review 4)
+Keep side effects at the edges and make every write idempotent. Agent reliability via secrets scanning precommit without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent secrets scanning precommit.
 
-When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent secrets scanning precommit
 
+I treat Agent reliability via secrets scanning precommit as an operations problem first. The goal is to ship agent secrets scanning precommit with human override paths, not to collect frameworks.
 
-## Operating pre-commit secrets scanning after scale events (review 5)
+Put a metric on the user-visible effect of agent secrets scanning precommit before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via secrets scanning precommit that needs a hero is not done.
 
-When secrets scanning in pre-commit for agent repos touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-secrets-scanning-precommit): prioritize precommit behavior under load and verify with a fixture named `agent-secrets-scanning-precommit-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
-
-## Reference table
-
-| Scope | Duration |
-|---|---|
-| Staged | 0.5–2s |
-| Full repo | 2–15 min |
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [AWS documentation](https://docs.aws.amazon.com/)
+- Internal runbook seed: `agent-secrets-scanning-precommit`
+- https://12factor.net/
+- https://martinfowler.com/

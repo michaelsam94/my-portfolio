@@ -1,131 +1,158 @@
 ---
-title: "Authz Mediator"
+title: "Authz-mediator engineering checklist"
 slug: "authz-mediator"
-description: "Authz Mediator: how to measure the user-visible signal first in production platform systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-mediator engineering checklist: how to ship authz mediator behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-03-19"
 dateModified: "2026-08-12"
 tags:
-  - "Platform"
-  - "DX"
-keywords: "authz, mediator, platform, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, mediator, production, engineering"
 faq:
-  - q: "What is Authz Mediator?"
-    a: "Authz Mediator is a production approach to measure the user-visible signal first. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Mediator?"
-    a: "Invest when auditors or enterprise buyers ask how you know it works. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Mediator?"
-    a: "The usual failure is treating edge cases as follow-ups. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-mediator engineering checklist?"
+    a: "Authz-mediator engineering checklist is the production approach to ship authz mediator behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-mediator engineering checklist?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with authz mediator, prioritize it."
+  - q: "What is the most common mistake with Authz-mediator engineering checklist?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Mediator** means you measure the user-visible signal first — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when auditors or enterprise buyers ask how you know it works; that is usually also when shortcuts like treating edge cases as follow-ups start paging people.
+**Authz-mediator engineering checklist** means you ship authz mediator behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Below is how I implement and operate it in Platform systems using GitHub Actions, Docker: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-mediator` in a product context, using OpenTelemetry, Prometheus for the mechanics while keeping ownership human.
 
-## A pragmatic path to Authz Mediator
+## A pragmatic path to Authz-mediator engineering checklist
 
-Most write-ups on Authz Mediator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz-mediator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Put a metric on the user-visible effect of authz mediator before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-mediator engineering checklist that needs a hero is not done.
 
-## Start with the user-visible symptom
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
-If you only remember one thing about Authz Mediator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+## Start from the user-visible symptom
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For authz mediator, that means making failure visible early.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Authz-mediator engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to measure the user-visible signal first means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz mediator.
+
+Concretely, being able to ship authz mediator behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Authz-mediator engineering checklist
+export async function handle_authz_mediator(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Mediator
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-mediator");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Implementing ways to measure the user-visible signal first
+## Implementation details for authz mediator
 
-I have watched teams under-specify Authz Mediator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+Production systems punish vague ownership and unmeasured happy paths. For authz mediator, that means making failure visible early.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Keep side effects at the edges and make every write idempotent. Authz-mediator engineering checklist without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Authz Mediator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz mediator from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: treating edge cases as follow-ups; skipping Authz Mediator error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz mediator: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; treating edge cases as follow-ups |
-| Durable path | auditors or enterprise buyers ask how you know it works | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Guardrails and feature flags
+## Flags, canaries, and kill switches
 
-I have watched teams under-specify Authz Mediator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+Production systems punish vague ownership and unmeasured happy paths. For authz mediator, that means making failure visible early.
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+Put a metric on the user-visible effect of authz mediator before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Mediator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz mediator from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Mediator designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-mediator engineering checklist cannot answer, it is not production-ready.
 
-## Measuring whether it worked
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
-I have watched teams under-specify Authz Mediator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+## Proving it worked
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+Teams usually discover Authz-mediator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of authz mediator before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for authz mediator from one dashboard and one runbook page.
+
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Follow-ups that usually get skipped
+## Follow-ups teams usually skip
 
-Most write-ups on Authz Mediator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz-mediator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Keep side effects at the edges and make every write idempotent. Authz-mediator engineering checklist without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for authz mediator from one dashboard and one runbook page.
 
-## Practical defaults I use for Authz Mediator
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
-Most write-ups on Authz Mediator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Authz-mediator engineering checklist
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For authz mediator, that means making failure visible early.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Mediator error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for authz mediator from one dashboard and one runbook page.
 
-## Review questions before merging Authz Mediator work
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
-Most write-ups on Authz Mediator stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+## Review questions before merging authz mediator work
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Teams usually discover Authz-mediator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-A month in, prune unused paths. Authz Mediator accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+With OpenTelemetry, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-## Field notes after the first month of Authz Mediator
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz mediator.
 
-If you only remember one thing about Authz Mediator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
 
-Make Authz Mediator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Mediator — you only deployed it.
+Default deny, explicit timeouts, and one dashboard row for authz mediator. Expand only when the metric demands it.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of authz mediator
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Mediator error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For authz mediator, that means making failure visible early.
+
+Put a metric on the user-visible effect of authz mediator before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-mediator engineering checklist that needs a hero is not done.
+
+Slug-specific note (authz-mediator): prioritize mediator behavior under load and verify with a fixture named `authz-mediator-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for authz mediator. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-mediator`
 - https://12factor.net/
+- https://martinfowler.com/

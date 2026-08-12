@@ -1,131 +1,158 @@
 ---
-title: "Serde Untagged Ambiguity"
+title: "A practical guide to serde untagged ambiguity"
 slug: "serde-untagged-ambiguity"
-description: "Serde Untagged Ambiguity: how to keep failure modes explicit and tested in production sre systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "A practical guide to serde untagged ambiguity: how to ship serde untagged behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-20"
 dateModified: "2026-08-12"
 tags:
-  - "SRE"
-  - "Observability"
-keywords: "serde, untagged, ambiguity, sre, production, engineering"
+  - "Engineering"
+  - "Serde"
+keywords: "serde, untagged, ambiguity, production, engineering"
 faq:
-  - q: "What is Serde Untagged Ambiguity?"
-    a: "Serde Untagged Ambiguity is a production approach to keep failure modes explicit and tested. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Serde Untagged Ambiguity?"
-    a: "Invest when traffic or tenants are about to scale. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Serde Untagged Ambiguity?"
-    a: "The usual failure is skipping metrics until after launch. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is A practical guide to serde untagged ambiguity?"
+    a: "A practical guide to serde untagged ambiguity is the production approach to ship serde untagged behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in A practical guide to serde untagged ambiguity?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with serde untagged ambiguity, prioritize it."
+  - q: "What is the most common mistake with A practical guide to serde untagged ambiguity?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Serde Untagged Ambiguity** means you keep failure modes explicit and tested — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when traffic or tenants are about to scale; that is usually also when shortcuts like skipping metrics until after launch start paging people.
+**A practical guide to serde untagged ambiguity** means you ship serde untagged behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Below is how I implement and operate it in SRE systems using Prometheus, Grafana: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `serde-untagged-ambiguity` in a product context, using Postgres, Prometheus for the mechanics while keeping ownership human.
 
-## A pragmatic path to Serde Untagged Ambiguity
+## A pragmatic path to A practical guide to serde untagged ambiguity
 
-I have watched teams under-specify Serde Untagged Ambiguity and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Production systems punish vague ownership and unmeasured happy paths. For serde untagged ambiguity, that means making failure visible early.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of serde untagged ambiguity before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for serde untagged ambiguity from one dashboard and one runbook page.
 
-## Start with the user-visible symptom
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
-I have watched teams under-specify Serde Untagged Ambiguity and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+## Start from the user-visible symptom
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat A practical guide to serde untagged ambiguity as an operations problem first. The goal is to ship serde untagged behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. A practical guide to serde untagged ambiguity without retry semantics is a future incident write-up.
 
-Practically, being able to keep failure modes explicit and tested means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for serde untagged ambiguity from one dashboard and one runbook page.
+
+Concretely, being able to ship serde untagged behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// A practical guide to serde untagged ambiguity
+export async function handle_serde_untagged_ambiguity(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Serde Untagged Ambiguity
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("serde-untagged-ambiguity");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Implementing ways to keep failure modes explicit and tested
+## Implementation details for serde untagged ambiguity
 
-Most write-ups on Serde Untagged Ambiguity stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For serde untagged ambiguity, that means making failure visible early.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Keep side effects at the edges and make every write idempotent. A practical guide to serde untagged ambiguity without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to serde untagged ambiguity that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: skipping metrics until after launch; skipping Serde Untagged Ambiguity error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for serde untagged ambiguity: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; skipping metrics until after launch |
-| Durable path | traffic or tenants are about to scale | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Guardrails and feature flags
+## Flags, canaries, and kill switches
 
-I have watched teams under-specify Serde Untagged Ambiguity and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Production systems punish vague ownership and unmeasured happy paths. For serde untagged ambiguity, that means making failure visible early.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to serde untagged ambiguity that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Serde Untagged Ambiguity designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If A practical guide to serde untagged ambiguity cannot answer, it is not production-ready.
 
-## Measuring whether it worked
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
-Most write-ups on Serde Untagged Ambiguity stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+## Proving it worked
 
-Make Serde Untagged Ambiguity error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Serde Untagged Ambiguity — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For serde untagged ambiguity, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of serde untagged ambiguity before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to serde untagged ambiguity that needs a hero is not done.
+
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Follow-ups that usually get skipped
+## Follow-ups teams usually skip
 
-Most write-ups on Serde Untagged Ambiguity stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+I treat A practical guide to serde untagged ambiguity as an operations problem first. The goal is to ship serde untagged behind flags with a rollback, not to collect frameworks.
 
-Make Serde Untagged Ambiguity error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Serde Untagged Ambiguity — you only deployed it.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to serde untagged ambiguity that needs a hero is not done.
 
-## Practical defaults I use for Serde Untagged Ambiguity
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
-Most write-ups on Serde Untagged Ambiguity stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for A practical guide to serde untagged ambiguity
 
-Make Serde Untagged Ambiguity error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Serde Untagged Ambiguity — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For serde untagged ambiguity, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. A practical guide to serde untagged ambiguity without retry semantics is a future incident write-up.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Serde Untagged Ambiguity error rate. Expand only when the metric says you must.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on serde untagged ambiguity.
 
-## Review questions before merging Serde Untagged Ambiguity work
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
-Most write-ups on Serde Untagged Ambiguity stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging serde untagged ambiguity work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Teams usually discover A practical guide to serde untagged ambiguity after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-A month in, prune unused paths. Serde Untagged Ambiguity accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Put a metric on the user-visible effect of serde untagged ambiguity before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Field notes after the first month of Serde Untagged Ambiguity
+Acceptance check: an on-call engineer can explain system state for serde untagged ambiguity from one dashboard and one runbook page.
 
-I have watched teams under-specify Serde Untagged Ambiguity and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Default deny, explicit timeouts, and one dashboard row for serde untagged ambiguity. Expand only when the metric demands it.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of serde untagged ambiguity
 
-A month in, prune unused paths. Serde Untagged Ambiguity accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat A practical guide to serde untagged ambiguity as an operations problem first. The goal is to ship serde untagged behind flags with a rollback, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. A practical guide to serde untagged ambiguity without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to serde untagged ambiguity that needs a hero is not done.
+
+Slug-specific note (serde-untagged-ambiguity): prioritize ambiguity behavior under load and verify with a fixture named `serde-untagged-ambiguity-smoke`.
+
+After a month, delete unused flags and dual paths. `serde-untagged-ambiguity` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `serde-untagged-ambiguity`
 - https://12factor.net/
+- https://martinfowler.com/

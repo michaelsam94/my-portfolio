@@ -1,268 +1,159 @@
 ---
-title: "AI Agents: Bfcache Navigation Restore"
+title: "Bfcache Navigation Restore for production agents"
 slug: "agent-bfcache-navigation-restore"
-description: "Back-forward cache restores agent chat pages instantly—but frozen WebSockets, stale SSE streams, and lost session state break streaming UIs unless you handle pageshow and pagehide correctly."
+description: "Bfcache Navigation Restore for production agents: how to make agent bfcache navigation restore observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-27"
-dateModified: "2026-05-27"
-tags: ["AI", "Agent", "Bfcache"]
-keywords: "bfcache, back-forward cache, pageshow persisted, pagehide, agent UI, WebSocket restore, SSE streaming, navigation API, SPA session recovery"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, bfcache, navigation, restore, production, engineering"
 faq:
-  - q: "What breaks in agent UIs when bfcache restores a page?"
-    a: "WebSocket and EventSource connections are frozen or closed while the document is cached. In-flight streaming tokens stop updating, typing indicators hang, and tool-call status may show stale 'running' states. JavaScript timers and requestAnimationFrame pause until restore."
-  - q: "How do I detect a bfcache restore versus a normal page load?"
-    a: "Listen for the pageshow event and check event.persisted === true. Normal loads have persisted false. The Navigation API navigation.type === 'back_forward' corroborates in supporting browsers."
-  - q: "Should agent apps disable bfcache to avoid complexity?"
-    a: "Avoid blanket disable—it hurts Core Web Vitals and mobile UX. Instead, close unbufferable resources on pagehide, reconnect on pageshow persisted, and resync conversation state from the server. Use unload listeners sparingly; they can prevent bfcache eligibility."
-  - q: "How do I measure bfcache impact on agent sessions?"
-    a: "Use PerformanceNavigationTiming.type, Chrome's notRestoredReasons API, and custom RUM beacons on pageshow persisted. Track reconnect latency and duplicate-message rate after back navigation."
+  - q: "What is Bfcache Navigation Restore for production agents?"
+    a: "Bfcache Navigation Restore for production agents is the production approach to make agent bfcache navigation restore observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Bfcache Navigation Restore for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent bfcache navigation restore, prioritize it."
+  - q: "What is the most common mistake with Bfcache Navigation Restore for production agents?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Users treat the browser back button as undo. In agent chat UIs, back navigation should return to the exact conversation—scroll position, partial assistant reply, tool status chips. Modern browsers deliver that via the **back-forward cache (bfcache)**: a frozen snapshot of the page in memory, restored in milliseconds without a network round trip.
+**Bfcache Navigation Restore for production agents** means you make agent bfcache navigation restore observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-For static content, bfcache is magic. For agent interfaces with open SSE streams, WebSocket heartbeats, and optimistic tool-call UI, bfcache is a **lifecycle edge** that breaks silently. The page looks correct; the stream died three navigations ago.
+This write-up is specific to `agent-bfcache-navigation-restore` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Why agent pages fight bfcache eligibility
+## Incident pattern involving agent bfcache navigation restore
 
-Browsers exclude pages from bfcache when they detect state that cannot be frozen—open IndexedDB transactions, active WebRTC, certain cache headers, or **`unload` handlers** (historically the biggest footgun).
+Teams usually discover Bfcache Navigation Restore for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Agent stacks commonly block eligibility accidentally:
+Put a metric on the user-visible effect of agent bfcache navigation restore before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-- `beforeunload` prompts ("Leave chat?")
-- `unload` closing WebSockets
-- `Cache-Control: no-store` on HTML shell
-- Service workers intercepting navigation without bfcache-aware logic
-- Open `BroadcastChannel` without cleanup
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Bfcache Navigation Restore for production agents that needs a hero is not done.
 
-Chrome exposes **`performance.getEntriesByType('navigation')[0].notRestoredReasons`** (origin trial / shipping in Chromium) listing why restore failed. Run this in RUM before deciding to disable bfcache globally.
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-## The lifecycle: pagehide, freeze, pageshow
+## Root cause in plain language
 
-When user navigates away, the browser may enter **pagehide** with `event.persisted === true`—the document might enter bfcache. While cached:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent bfcache navigation restore, that means making failure visible early.
 
-- Main thread JavaScript is paused
-- Network connections may be suspended or terminated
-- Timers do not fire
+Keep side effects at the edges and make every write idempotent. Bfcache Navigation Restore for production agents without retry semantics is a future incident write-up.
 
-When user returns, **pageshow** fires with `event.persisted === true`. This is not a reload. `DOMContentLoaded` does not repeat. Your init code from first load does not re-run unless you branch on `persisted`.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Bfcache Navigation Restore for production agents that needs a hero is not done.
 
-```typescript
-// app/bfcacheLifecycle.ts
-type AgentSessionHandle = {
-  reconnect(): Promise<void>;
-  resyncFromServer(conversationId: string): Promise<void>;
-};
+Concretely, being able to make agent bfcache navigation restore observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-let session: AgentSessionHandle | null = null;
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-window.addEventListener("pageshow", (event: PageTransitionEvent) => {
-  if (!event.persisted) return;
+```python
+# Bfcache Navigation Restore for production agents
+from dataclasses import dataclass
 
-  metrics.increment("agent.bfcache.restore");
+@dataclass(frozen=True)
+class AgentBfcacheNavigaRequest:
+    tenant_id: str
+    idempotency_key: str
 
-  const conversationId = getConversationIdFromUrl();
-  session?.reconnect().then(() => {
-    return session?.resyncFromServer(conversationId);
-  }).catch((err) => {
-    metrics.increment("agent.bfcache.resync_failed");
-    showReconnectBanner();
-  });
-});
-
-window.addEventListener("pagehide", (event: PageTransitionEvent) => {
-  if (!event.persisted) {
-    // Document is actually unloading — tear down cleanly
-    session?.closePermanently();
-    return;
-  }
-  // Entering bfcache — close resources browsers won't freeze reliably
-  session?.suspendForBfcache();
-});
+async def run_agent_bfcache_navigation(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-bfcache-navigation-restore"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Never use `unload` for cleanup. Prefer `pagehide` and distinguish `persisted`.
+## The fix that held under load
 
-## Streaming SSE: close on hide, resync on show
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent bfcache navigation restore, that means making failure visible early.
 
-Server-sent event streams for LLM tokens rarely survive bfcache. Pattern:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-1. On **pagehide persisted** — `eventSource.close()`; mark UI as disconnected
-2. On **pageshow persisted** — open new EventSource from last known `message_id` cursor
-3. Server supports **resume** query param — replays missed deltas or sends snapshot
+Acceptance check: an on-call engineer can explain system state for agent bfcache navigation restore from one dashboard and one runbook page.
 
-```typescript
-// streaming/sseClient.ts
-export class AgentSSE {
-  private es: EventSource | null = null;
-  private lastEventId = "";
+My never-again list for agent bfcache navigation restore: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-  suspendForBfcache(): void {
-    this.es?.close();
-    this.es = null;
-  }
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-  async reconnect(conversationId: string): Promise<void> {
-    const url = new URL(`/api/chat/${conversationId}/stream`, window.location.origin);
-    if (this.lastEventId) url.searchParams.set("after", this.lastEventId);
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-    this.es = new EventSource(url.toString());
-    this.es.onmessage = (ev) => {
-      this.lastEventId = ev.lastEventId || this.lastEventId;
-      applyTokenDelta(ev.data);
-    };
-    this.es.onerror = () => {
-      this.es?.close();
-      throw new Error("SSE reconnect failed");
-    };
-  }
-}
-```
+## Tests and probes that catch regressions
 
-Server must idempotent-resume: if `after` points to completed message, send full message body once, not duplicate tokens client already rendered. Include `message_version` hash in stream events for client deduplication.
+I treat Bfcache Navigation Restore for production agents as an operations problem first. The goal is to make agent bfcache navigation restore observable and interruptible, not to collect frameworks.
 
-## WebSocket agent channels
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Bidirectional agent UIs (voice, collaborative editing, live tool progress) often use WebSockets. Same rule: **close before cache, reconnect after restore**.
+Acceptance check: an on-call engineer can explain system state for agent bfcache navigation restore from one dashboard and one runbook page.
 
-```typescript
-export class AgentSocket {
-  private ws: WebSocket | null = null;
-  private heartbeatTimer: number | null = null;
+Review prompts I use: what happens twice, what happens never, what happens partially? If Bfcache Navigation Restore for production agents cannot answer, it is not production-ready.
 
-  suspendForBfcache(): void {
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    this.ws?.close(1000, "bfcache");
-    this.ws = null;
-  }
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-  async reconnect(token: string): Promise<void> {
-    this.ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
-    await new Promise<void>((resolve, reject) => {
-      this.ws!.onopen = () => resolve();
-      this.ws!.onerror = () => reject(new Error("ws failed"));
-    });
-    this.ws.send(JSON.stringify({ type: "resync", since: this.lastSeq }));
-    this.startHeartbeat();
-  }
+## Runbook lines that save minutes
 
-  private startHeartbeat(): void {
-    this.heartbeatTimer = window.setInterval(() => {
-      this.ws?.send(JSON.stringify({ type: "ping" }));
-    }, 25_000);
-  }
-}
-```
+I treat Bfcache Navigation Restore for production agents as an operations problem first. The goal is to make agent bfcache navigation restore observable and interruptible, not to collect frameworks.
 
-Use sequence numbers on server events so resync replays from `lastSeq + 1`. Clear stale "tool running" spinners when resync shows terminal state.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-## Resolving stale UI state after restore
+Acceptance check: an on-call engineer can explain system state for agent bfcache navigation restore from one dashboard and one runbook page.
 
-Visual DOM from bfcache may show:
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-- Half-typed assistant response (stream stopped mid-token)
-- "Connecting…" from pre-navigation
-- Optimistic user message not yet ACK'd
+Related reading:
 
-On resync, prefer **server authoritative state**:
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-```typescript
-async function resyncFromServer(conversationId: string): Promise<void> {
-  const resp = await fetch(`/api/chat/${conversationId}/snapshot`);
-  const snapshot: ConversationSnapshot = await resp.json();
+## Platform guardrails afterward
 
-  reconcileMessages(snapshot.messages); // merge by id, fix ordering
-  reconcileToolCalls(snapshot.toolCalls); // terminal states win
-  setStreamCursor(snapshot.lastStreamCursor);
-  clearTransientUI(); // remove stale typing indicators
-}
-```
+I treat Bfcache Navigation Restore for production agents as an operations problem first. The goal is to make agent bfcache navigation restore observable and interruptible, not to collect frameworks.
 
-Diff merge avoids flicker: update text nodes only when snapshot differs from frozen DOM.
+Keep side effects at the edges and make every write idempotent. Bfcache Navigation Restore for production agents without retry semantics is a future incident write-up.
 
-## Framework pitfalls: React, Next.js, Vue
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Bfcache Navigation Restore for production agents that needs a hero is not done.
 
-SPAs often assume mount-on-load semantics. bfcache restore skips remount.
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-**React 18+**: effects with empty deps do not re-run on persisted pageshow. Register bfcache handlers outside React or in a module-level singleton; expose `useBfcacheRestore(callback)`.
+## Practical defaults for Bfcache Navigation Restore for production agents
 
-**Next.js App Router**: client components hydrating once may hold dead closures over WebSocket refs. Store connection handles in refs cleared on `pagehide`.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent bfcache navigation restore, that means making failure visible early.
 
-**Vue**: `onMounted` won't repeat; use `document.addEventListener('pageshow', ...)` in root setup.
+Put a metric on the user-visible effect of agent bfcache navigation restore before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Avoid `beforeunload` unless legally required—Safari and Chrome penalize bfcache. Use in-app navigation guards instead for internal routing.
+Acceptance check: an on-call engineer can explain system state for agent bfcache navigation restore from one dashboard and one runbook page.
 
-## Navigation API for typed back/forward
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-The **`navigation`** API (Chromium) exposes `navigation.type` and intercepts transitions. Useful for agent apps using client-side routing without full reload:
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-```typescript
-if ("navigation" in window) {
-  (window as any).navigation.addEventListener("navigate", (e: NavigateEvent) => {
-    if (e.navigationType === "traverse" && e.destination.index < e.from?.index!) {
-      // back forward — prefetch snapshot early
-      prefetchConversationSnapshot(getConversationIdFromUrl(e.destination.url));
-    }
-  });
-}
-```
+## Review questions before merging agent bfcache navigation restore work
 
-Prefetching snapshot during navigation reduces visible stale window after restore.
+I treat Bfcache Navigation Restore for production agents as an operations problem first. The goal is to make agent bfcache navigation restore observable and interruptible, not to collect frameworks.
 
-## Measuring bfcache in production RUM
+Put a metric on the user-visible effect of agent bfcache navigation restore before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Instrument:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Bfcache Navigation Restore for production agents that needs a hero is not done.
 
-```typescript
-function reportBfcacheMetrics(): void {
-  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
-  if (nav?.type === "back_forward") {
-    metrics.timing("agent.nav.back_forward_ms", nav.loadEventEnd - nav.startTime);
-  }
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-  if ("notRestoredReasons" in nav) {
-    const reasons = (nav as any).notRestoredReasons;
-    if (reasons?.length) {
-      metrics.increment("agent.bfcache.blocked", { reasons: reasons.join(",") });
-    }
-  }
-}
+Default deny, explicit timeouts, and one dashboard row for agent bfcache navigation restore. Expand only when the metric demands it.
 
-window.addEventListener("pageshow", (e) => {
-  if (e.persisted) metrics.increment("agent.bfcache.hit");
-});
-```
+## Field notes after thirty days of agent bfcache navigation restore
 
-Target: bfcache hit rate > 50% on mobile back navigations for chat routes. If blocked, top reasons guide fixes (remove unload, relax no-store on shell).
+Teams usually discover Bfcache Navigation Restore for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Testing bfcache behavior
+Keep side effects at the edges and make every write idempotent. Bfcache Navigation Restore for production agents without retry semantics is a future incident write-up.
 
-Manual test sequence:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Bfcache Navigation Restore for production agents that needs a hero is not done.
 
-1. Open agent chat; start streaming response
-2. Navigate to settings (same tab)
-3. Press back — response should complete or resync within 2s
-4. Repeat with DevTools **Application → Back-forward cache** diagnostics (Chrome)
+Slug-specific note (agent-bfcache-navigation-restore): prioritize restore behavior under load and verify with a fixture named `agent-bfcache-navigation-restore-smoke`.
 
-Automate with Playwright where supported—navigate away, `page.goBack()`, assert reconnect beacon fired. Flaky tests often mean missing `pagehide` cleanup leaving zombie listeners.
-
-## Security considerations on restore
-
-Frozen pages retain in-memory auth tokens. bfcache is same-origin isolated—other sites cannot read it. Risk: shared device, user navigates back to agent tab hours later with active session.
-
-Mitigations:
-
-- Short access token TTL with silent refresh only on visible document (`document.visibilityState`)
-- On **pageshow persisted** after > N minutes, require visibility-triggered re-auth check
-- Clear sensitive message content from bfcache on **pagehide** for high-security tenants (forces full reload—trade UX for policy)
-
-Do not store PCI or secrets in DOM attributes that survive restore without policy review.
-
-## Closing
-
-bfcache makes agent chat feel native-fast on back navigation, but streaming architectures must treat restore as a **reconnection event**, not a no-op. Close SSE and WebSockets on `pagehide` when `persisted`, resync from server snapshot on `pageshow`, dedupe stream cursors, and measure hit rates plus reconnect latency. The back button should not resurrect a beautiful corpse of a dead WebSocket.
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
 ## Resources
 
-- [MDN: Back-forward cache (bfcache)](https://developer.mozilla.org/en-US/docs/Glossary/bfcache) — eligibility rules and lifecycle overview
-- [Chrome Developers: bfcache article](https://developer.chrome.com/docs/web-platform/back-forward-cache) — notRestoredReasons and best practices
-- [WebKit: Page Cache (Safari)](https://webkit.org/blog/516/webkit-page-cache-i-the-basics/) — Safari-specific behavior differences
-- [HTML spec: pageshow and pagehide](https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-pageshowevent-interface) — normative persisted semantics
-- [PerformanceNavigationTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceNavigationTiming) — detecting back_forward navigations in RUM
+- Internal runbook seed: `agent-bfcache-navigation-restore`
+- https://12factor.net/
+- https://martinfowler.com/

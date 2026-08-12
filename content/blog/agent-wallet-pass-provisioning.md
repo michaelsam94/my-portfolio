@@ -1,240 +1,159 @@
 ---
-title: "Wallet Pass Provisioning from Agent Workflows"
+title: "Wallet Pass Provisioning for production agents"
 slug: "agent-wallet-pass-provisioning"
-description: "Issue Apple Wallet and Google Wallet passes via agent tools: boarding passes, event tickets, loyalty cards — signing certificates, pass updates, and PCI-adjacent data boundaries."
+description: "Wallet Pass Provisioning for production agents: how to make agent wallet pass provisioning observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-17"
-dateModified: "2026-07-17"
-tags: ["AI Agents", "Mobile", "Wallet", "Integration"]
-keywords: "wallet pass provisioning agent, Apple Wallet API agent tool, Google Wallet pass agent tool, PKPass generation"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, wallet, pass, provisioning, production, engineering"
 faq:
-  - q: "Should agents generate PKPass files directly or call a wallet service?"
-    a: "Call a dedicated wallet microservice with narrow tools — never embed Apple signing certificates in the agent runtime. Agents pass structured intent (flight, seat, gate); the service signs, stores pass serial, and returns a add-to-wallet URL."
-  - q: "How do pass updates work when an agent changes booking details?"
-    a: "Apple Push Notification service (APNs) with passTypeIdentifier triggers device fetch from your webServiceURL. Google Wallet uses PATCH on pass object JWT. Agent tool `update_pass` must be idempotent on serial number."
-  - q: "What data must stay out of LLM context for wallet flows?"
-    a: "Signing keys, team identifiers, full barcode payloads with PII, payment tokens. Agent context gets: pass_type, serial, last4 confirmation, add_link_token — not PEM files or HMAC secrets."
-  - q: "Are wallet passes in PCI scope?"
-    a: "Passes displaying payment barcodes can be PCI-adjacent — treat barcode value as sensitive, log redaction, short TTL on links. Payment card provisioning to Apple Pay is full PCI; event tickets usually are not."
+  - q: "What is Wallet Pass Provisioning for production agents?"
+    a: "Wallet Pass Provisioning for production agents is the production approach to make agent wallet pass provisioning observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Wallet Pass Provisioning for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent wallet pass provisioning, prioritize it."
+  - q: "What is the most common mistake with Wallet Pass Provisioning for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Wallet Pass Provisioning for production agents** means you make agent wallet pass provisioning observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Travel agents that rebook flights need to push an updated boarding pass before the user reaches TSA — not email a PDF. **Wallet pass provisioning** from agent workflows means your orchestrator calls signing infrastructure, mints Apple `PKPass` bundles or Google Wallet objects, and returns an Add to Wallet link — while the LLM never touches private keys or raw barcode secrets.
+This write-up is specific to `agent-wallet-pass-provisioning` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Architecture boundary
+## Wallet Pass Provisioning for production agents: production checklist
 
-```
-User: "Move me to the 6pm flight"
-         │
-         ▼
-   Agent orchestrator ──tool──► WalletPassService
-         │                           │
-         │                           ├── Apple Pass Type ID cert (HSM)
-         │                           ├── Google service account
-         │                           └── Pass registry DB
-         ▼
-   User message: "Updated — tap to add boarding pass"
-         │
-         └── HTTPS link / wallet deep link (short-lived token)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent wallet pass provisioning, that means making failure visible early.
 
-Agent tools are CRUD on **pass intents**, not cryptographic operations.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-## Agent tool definitions
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent wallet pass provisioning.
 
-```yaml
-tools:
-  - name: create_boarding_pass
-    parameters:
-      booking_id: string
-      passenger_name: string  # validated against PNR server-side
-      flight_number: string
-      departure_iso: string
-      seat: string
-      gate: string
-    returns:
-      pass_serial: string
-      add_to_wallet_url: string
-      expires_at: string
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
 
-  - name: update_wallet_pass
-    parameters:
-      pass_serial: string
-      fields: object  # gate, seat, boarding_time
-    returns:
-      update_status: enum[ pushed, queued, not_found ]
-```
+## Inputs, outputs, invariants
 
-Server validates `booking_id` against GDS/booking API — agent cannot forge passenger on arbitrary PNR.
+Teams usually discover Wallet Pass Provisioning for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Apple Wallet — PKPass generation
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Signing happens in wallet service:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Wallet Pass Provisioning for production agents that needs a hero is not done.
+
+Concretely, being able to make agent wallet pass provisioning observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
 
 ```python
-import json
-import zipfile
-from pathlib import Path
+# Wallet Pass Provisioning for production agents
+from dataclasses import dataclass
 
-def build_pkpass(pass_json: dict, manifest_hashes: dict, signature: bytes) -> bytes:
-    # pass.json + manifest.json + signature + assets → zip
-    ...
+@dataclass(frozen=True)
+class AgentWalletPassPrRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def create_boarding_pass(booking: Booking) -> PassResult:
-    pass_data = {
-        "formatVersion": 1,
-        "passTypeIdentifier": "pass.com.example.travel",
-        "serialNumber": f"BRD-{booking.id}",
-        "teamIdentifier": TEAM_ID,
-        "organizationName": "Example Travel",
-        "boardingPass": {
-            "primaryFields": [{"key": "origin", "label": "SAN", "value": booking.origin}],
-            "secondaryFields": [{"key": "gate", "label": "GATE", "value": booking.gate}],
-            "auxiliaryFields": [{"key": "seat", "label": "SEAT", "value": booking.seat}],
-        },
-        "barcode": {
-            "format": "PKBarcodeFormatAztec",
-            "message": booking.barcode_payload,  # never log
-            "messageEncoding": "iso-8859-1",
-        },
-        "webServiceURL": "https://wallet.example.com/v1/passes/",
-        "authenticationToken": generate_auth_token(booking.id),
-    }
-    signed = sign_with_apple_cert(pass_data)
-    store_pass_record(pass_data["serialNumber"], booking.id)
-    url = issue_add_pass_url(signed, ttl_minutes=15)
-    return PassResult(serial=pass_data["serialNumber"], url=url)
+async def run_agent_wallet_pass_provis(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-wallet-pass-provisioning"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Certificates live in HSM or cloud KMS — rotation runbook separate from agent deploys.
+## Concurrency, retries, and timeouts
 
-## Google Wallet — JWT object pattern
+I treat Wallet Pass Provisioning for production agents as an operations problem first. The goal is to make agent wallet pass provisioning observable and interruptible, not to collect frameworks.
 
-```python
-from google.oauth2 import service_account
-import jwt
-import time
+Put a metric on the user-visible effect of agent wallet pass provisioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-def create_google_boarding_pass(booking: Booking) -> str:
-    object_id = f"{ISSUER_ID}.boarding_{booking.id}"
-    payload = {
-        "iss": SERVICE_ACCOUNT_EMAIL,
-        "aud": "google",
-        "typ": "savetowallet",
-        "iat": int(time.time()),
-        "payload": {
-            "flightObjects": [{
-                "id": object_id,
-                "classId": f"{ISSUER_ID}.boarding_class",
-                "boardingAndSeatingInfo": {
-                    "seatNumber": booking.seat,
-                    "boardingGroup": booking.group,
-                },
-                "reservationInfo": {"confirmationCode": booking.pnr},
-            }]
-        },
-    }
-    token = jwt.encode(payload, credentials.signer, algorithm="RS256")
-    return f"https://pay.google.com/gp/v/save/{token}"
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent wallet pass provisioning.
 
-## Push updates on agent-driven changes
+My never-again list for agent wallet pass provisioning: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-When agent tool `update_wallet_pass` fires after gate change:
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
 
-**Apple:**
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```python
-def push_pass_update(serial: str):
-    record = pass_registry.get(serial)
-    apns_send(
-        topic=f"pass.{PASS_TYPE_ID}",
-        device_tokens=record.registered_devices,
-        payload={},  # empty → device pulls update
-    )
-```
+## Support and audit workflows
 
-Device GETs `webServiceURL/v1/devices/.../registrations/...` → returns fresh pass.json.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent wallet pass provisioning, that means making failure visible early.
 
-**Google:** PATCH object via REST API; no APNs equivalent.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Agent receives `update_status: pushed` — not raw APNs diagnostics.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent wallet pass provisioning.
 
-## Idempotency and concurrency
+Review prompts I use: what happens twice, what happens never, what happens partially? If Wallet Pass Provisioning for production agents cannot answer, it is not production-ready.
 
-Same booking change retried twice:
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
 
-```python
-def update_pass(serial: str, fields: dict, idempotency_key: str):
-    if dedupe.exists(idempotency_key):
-        return dedupe.result(idempotency_key)
-    merged = pass_registry.merge_fields(serial, fields)
-    push_pass_update(serial)
-    dedupe.store(idempotency_key, {"update_status": "pushed"})
-    return {"update_status": "pushed"}
-```
+## Capacity and load notes
 
-## Security and redaction
+Teams usually discover Wallet Pass Provisioning for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-| Field | In LLM context? | Storage |
-|-------|-----------------|---------|
-| Apple signing cert | Never | HSM |
-| barcode_payload | Never | Encrypted at rest |
-| add_to_wallet_url | Token only, short TTL | Audit log |
-| passenger_name | Yes if user-owned session | Pass registry |
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Rotate `authenticationToken` on suspicious agent session revoke.
+Acceptance check: an on-call engineer can explain system state for agent wallet pass provisioning from one dashboard and one runbook page.
 
-## Testing without production certs
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
 
-- Apple PassKit test environment with sandbox certs
-- Google Wallet demo issuer mode
-- Stub tools in agent evals returning fixture URLs
+Related reading:
+
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+
+## Ship gate
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent wallet pass provisioning, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Wallet Pass Provisioning for production agents without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent wallet pass provisioning from one dashboard and one runbook page.
+
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
+
+## Practical defaults for Wallet Pass Provisioning for production agents
+
+I treat Wallet Pass Provisioning for production agents as an operations problem first. The goal is to make agent wallet pass provisioning observable and interruptible, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent wallet pass provisioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent wallet pass provisioning.
+
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-wallet-pass-provisioning` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent wallet pass provisioning work
+
+I treat Wallet Pass Provisioning for production agents as an operations problem first. The goal is to make agent wallet pass provisioning observable and interruptible, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Wallet Pass Provisioning for production agents without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent wallet pass provisioning from one dashboard and one runbook page.
+
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent wallet pass provisioning. Expand only when the metric demands it.
+
+## Field notes after thirty days of agent wallet pass provisioning
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent wallet pass provisioning, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent wallet pass provisioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent wallet pass provisioning from one dashboard and one runbook page.
+
+Slug-specific note (agent-wallet-pass-provisioning): prioritize provisioning behavior under load and verify with a fixture named `agent-wallet-pass-provisioning-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Apple — Wallet Passes documentation](https://developer.apple.com/documentation/walletpasses)
-- [Apple — PassKit Web Service Reference](https://developer.apple.com/library/archive/documentation/PassKit/Reference/PassKit_WebService/WebService.html)
-- [Google Wallet — REST API](https://developers.google.com/wallet)
-- [Passkit.io — open PKPass tooling reference](https://github.com/passkit/passkit-generator)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
+- Internal runbook seed: `agent-wallet-pass-provisioning`
+- https://12factor.net/
+- https://martinfowler.com/

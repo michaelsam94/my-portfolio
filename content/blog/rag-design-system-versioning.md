@@ -1,175 +1,159 @@
 ---
-title: "RAG: Design System Versioning"
+title: "Grounded generation with design system versioning"
 slug: "rag-design-system-versioning"
-description: "Versioning design systems consumed by AI-generated UI — semver for tokens and components, migration guides, and compatibility contracts for copilot output."
+description: "Grounded generation with design system versioning: how to operate chunking/indexing for design system versioning — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-16"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Design"]
-keywords: "rag, design, system, versioning, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, design, system, versioning, production, engineering"
 faq:
-  - q: "Why does semver matter when LLMs generate UI from a design system?"
-    a: "Copilots and RAG-over-docs retrieve component examples and token names from indexed design system documentation. Breaking renames without semver bumps cause generated code to import deprecated APIs, use removed tokens, or mix v1 and v2 patterns in the same file—failures that compile in isolation but break in production apps pinned to specific design system versions."
-  - q: "Should design tokens and React components share one version number?"
-    a: "Publish from a monorepo with aligned major versions when tokens and components ship together, but expose separate changelogs and deprecation paths. Token renames can break CSS-in-JS and Tailwind mappings even when component JSX APIs stay stable—document both in release notes."
-  - q: "How do you index design system docs for RAG without stale examples?"
-    a: "Version-tag every indexed doc chunk with design_system_version. Retrieval filters by the consuming app's pinned version in package.json. CI fails when examples in docs reference unreleased or deprecated APIs without migration notes."
+  - q: "What is Grounded generation with design system versioning?"
+    a: "Grounded generation with design system versioning is the production approach to operate chunking/indexing for design system versioning. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Grounded generation with design system versioning?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with rag design system versioning, prioritize it."
+  - q: "What is the most common mistake with Grounded generation with design system versioning?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An internal UI copilot generated a settings page using `Button variant="primary"` and spacing token `space-4`—APIs retired two releases ago when the design system moved to semantic tokens and consolidated button variants. The developer pasted the output, CI passed lint because eslint-plugin-design-system was outdated, and the page shipped with inaccessible contrast ratios the new token system would have blocked at build time. The RAG corpus indexed "latest" Storybook docs without version metadata; every answer sounded authoritative and was silently wrong.
+**Grounded generation with design system versioning** means you operate chunking/indexing for design system versioning — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Design systems are libraries. **Versioning** them with semver discipline—breaking changes in major bumps, migration guides, deprecation windows—is standard for npm packages. AI-assisted UI generation makes versioning load-bearing: retrieval returns code-shaped snippets, and models treat indexed docs as ground truth unless you explicitly scope retrieval to the version the app actually installs.
+This write-up is specific to `rag-design-system-versioning` in a rag context, using Postgres, pgvector, OpenSearch for the mechanics while keeping ownership human.
 
-## Semver semantics for design systems
+## A pragmatic path to Grounded generation with design system versioning
 
-Apply semantic versioning rigorously:
+I treat Grounded generation with design system versioning as an operations problem first. The goal is to operate chunking/indexing for design system versioning, not to collect frameworks.
 
-| Change type | Version bump | Examples |
-|-------------|--------------|----------|
-| Breaking | MAJOR | Removed component, renamed token, changed prop types, altered focus ring behavior required for a11y |
-| Additive | MINOR | New component, new optional prop, new token alias |
-| Fix | PATCH | Visual bug fix matching spec, doc correction, non-breaking a11y improvement |
+Keep side effects at the edges and make every write idempotent. Grounded generation with design system versioning without retry semantics is a future incident write-up.
 
-**Breaking** includes changes that break *generated* code, not only published TypeScript APIs:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with design system versioning that needs a hero is not done.
 
-- Renaming `color-text-secondary` → `color-fg-muted`
-- Splitting `Card` into `Card` + `CardHeader` with different import paths
-- Changing default `size` prop changing layout in existing compositions
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-Document breaking changes in machine-readable **`codemods`** where possible—LLMs and humans both benefit from `npx @acme/ds-migrate v2`.
+## Start from the user-visible symptom
 
-## Monorepo release strategy
+I treat Grounded generation with design system versioning as an operations problem first. The goal is to operate chunking/indexing for design system versioning, not to collect frameworks.
 
-Most design systems live in monorepos (`@acme/tokens`, `@acme/react`, `@acme/icons`). Options:
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-**Lockstep major versions** (recommended for small teams): all packages `@acme/*` share `2.4.1`. Simple mental model for RAG: one version dimension.
+Acceptance check: an on-call engineer can explain system state for rag design system versioning from one dashboard and one runbook page.
 
-**Independent versioning** (large systems): icons may patch frequently while react major bumps rarely. RAG retrieval must filter on *package* version tuples, not a single number—more accurate, harder for copilots unless you expose a **compatibility matrix** in docs.
+Concretely, being able to operate chunking/indexing for design system versioning forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Release train: monthly minors, quarterly majors with 90-day deprecation notices. Emergency patch for accessibility regressions bypasses train but never sneaks breaking renames into patch.
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-## Deprecation policy that retrieval can encode
-
-Each deprecated API entry in docs should include structured frontmatter RAG indexes:
-
-```yaml
-# docs/components/Button.mdx
-component: Button
-design_system_version: "3.2.0"
-status: deprecated
-deprecated_in: "3.0.0"
-removed_in: "4.0.0"
-replacement: "Button variant='brand'"
-```
-
-Retrieval prompt augmentation:
-
-```text
-App pins @acme/react@3.2.0. Exclude docs where removed_in <= 3.2.0.
-Prefer status: stable. Surface deprecated APIs only when user asks about migration.
-```
-
-Without `removed_in`, models confidently cite removed APIs because the chunk text still reads like current guidance.
-
-## RAG corpus structure for versioned design systems
-
-Partition indexed content:
-
-```
-/design-system/
-  v3/
-    components/Button.mdx
-    tokens/color.mdx
-    migrations/v2-to-v3.md
-  v4/  (beta, flagged)
-    ...
-```
-
-**Never** index only `/latest/` symlinks without duplicating version in chunk metadata. Symlinks change; embeddings go stale silently.
-
-At query time, pass consumer context:
-
-```json
-{
-  "retrieval_filter": {
-    "design_system_major": 3,
-    "min_doc_version": "3.0.0",
-    "max_doc_version": "3.99.99"
+```typescript
+// Grounded generation with design system versioning
+export async function handle_rag_design_system_versioning(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("rag-design-system-versioning");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-For apps on `3.2.0`, include beta v4 docs only when `include_beta: true` in developer settings.
+## Implementation details for rag design system versioning
 
-## CI coupling between apps and design system
+I treat Grounded generation with design system versioning as an operations problem first. The goal is to operate chunking/indexing for design system versioning, not to collect frameworks.
 
-Consumer apps declare `@acme/react: "^3.2.0"`. CI checks:
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-1. **Peer dependency range** satisfied by published design system.
-2. **Visual regression** against Storybook snapshots for pinned version.
-3. **eslint-plugin-design-system** ruleset matching major version.
-4. **Copilot eval**: sample prompts generate imports that resolve against pinned package.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag design system versioning.
 
-When design system ships v4, provide **`peerDependencies` migration CLI** that updates app pins and runs codemods before docs retrieval defaults switch.
+My never-again list for rag design system versioning: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Communication surfaces beyond changelogs
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-Humans read changelogs; models read whatever you index. Ship:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-- **Migration guides** with before/after diffs per component
-- **Storybook version switcher** baked into static export per major
-- **RSS/JSON feed** of breaking changes for automated corpus re-index jobs
-- **Slack bot** posting release notes to `#design-system` with `@channel` on major bumps only
+## Flags, canaries, and kill switches
 
-Schedule RAG re-index within 24 hours of doc publish—stale embeddings cause more incidents than missing new components.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag design system versioning, that means making failure visible early.
 
-## Testing generated UI against version contracts
+Put a metric on the user-visible effect of rag design system versioning before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Add eval cases to copilot pipelines:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with design system versioning that needs a hero is not done.
 
-```yaml
-prompt: "Settings page with save button using design system"
-assertions:
-  - imports_from: "@acme/react@^3"
-  - uses_token_prefix: "color-"  # not legacy bare names
-  - no_deprecated: ["variant=\"primary\"", "space-4"]
-  - a11y: axe_core_zero_violations
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Grounded generation with design system versioning cannot answer, it is not production-ready.
 
-Track **deprecated API usage rate** in accepted copilot suggestions over time—should drop after migration campaigns.
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-## Governance and ownership
+## Proving it worked
 
-Design system team owns semver policy and release tooling. Platform team owns RAG index filters and copilot system prompts referencing version rules. App teams own pin bumps—do not force major upgrades via unpinned `latest` docs.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag design system versioning, that means making failure visible early.
 
-Major releases require: migration guide, codemod or clear manual steps, 90-day dual-publish of deprecated APIs where feasible, and indexed vN+1 docs clearly labeled beta until GA.
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Design system versioning is how AI-generated UI stays compatible with the apps it ships into. Semver without version-scoped retrieval is documentation theater—the copilot will keep generating `primary` buttons until your index knows those docs were deprecated in 3.0.0 and removed entirely in 4.0.0.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with design system versioning that needs a hero is not done.
 
-## Coordinating design system releases with app train
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-Align design system majors with **app release trains** so consuming teams budget migration sprints. Publish a six-month roadmap: deprecated APIs in month one, codemod available month two, removal in month six. Copilot RAG indexes each milestone doc separately so retrieval never mixes migration phases.
+Related reading:
 
-**Visual regression baselines** per design system version stored in Percy/Chromatic—when copilot output fails visual diff, trace whether wrong version docs or model ignore version filter caused drift.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Measuring version-scoped retrieval quality
+## Follow-ups teams usually skip
 
-Run eval harness: same UI generation prompts against v3-only vs v4-only indexes; track deprecated API rate in generated code. Product metric: **version-correct generation rate** should exceed 95% before declaring copilot GA on new major. Design system team owns the metric jointly with AI platform—shared on-call when releases collide.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag design system versioning, that means making failure visible early.
 
-## Breaking change communication channels
+Keep side effects at the edges and make every write idempotent. Grounded generation with design system versioning without retry semantics is a future incident write-up.
 
-Ship major versions with **embedded migration widget** in Storybook and Figma library description linking to RAG-indexed migration guide URL with version hash. Designers and engineers discover breaking changes at point of use, not from Slack message drowned in channel noise.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with design system versioning that needs a hero is not done.
 
-Record **office hours** first two weeks post-major—questions feed FAQ chunks back into copilot index within 48 hours. Recurring questions indicate docs gap, not user error.
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-## Long-term deprecation of legacy major versions
+## Practical defaults for Grounded generation with design system versioning
 
-Enterprises lag majors by 18 months. Support **extended maintenance** window for N-1 major with security patches only—copilot RAG index retains N-1 docs read-only with banner "upgrade recommended." Contract phase for N-2 removal requires customer comms 90 days ahead.
+Teams usually discover Grounded generation with design system versioning after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Telemetry on deprecated API usage in consuming apps: `@acme/react` import analysis in CI of customer-facing apps shows who blocks major removal—target outreach before forced upgrade deadlines create fire drills.
+Keep side effects at the edges and make every write idempotent. Grounded generation with design system versioning without retry semantics is a future incident write-up.
 
-Versioning succeeds when design, engineering, and technical writing share one release calendar. If docs lag code by a sprint, copilot RAG indexes always lose—users generate against yesterday's APIs while Storybook shows today's. Block design system npm publish until docs platform build green and version-tagged chunks indexed in staging retrieval sandbox.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with design system versioning that needs a hero is not done.
 
-Treat copilot-indexed design docs as release artifacts with the same rigor as npm tarballs: if it is not version-tagged and indexed, it does not exist for AI-assisted UI generation.
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
 
-## Common regressions around design system versioning
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-Teams often pass a demo and then regress under load: retries without jitter, missing idempotency keys, or caches that never invalidate. Write a short regression list specific to design system versioning and turn each item into an automated check or a game-day step. Prefer failing CI on the regression over discovering it from customer tickets. When you change defaults, update alerts in the same pull request so observability stays coupled to behavior.
+## Review questions before merging rag design system versioning work
+
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag design system versioning, that means making failure visible early.
+
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag design system versioning.
+
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for rag design system versioning. Expand only when the metric demands it.
+
+## Field notes after thirty days of rag design system versioning
+
+Teams usually discover Grounded generation with design system versioning after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Put a metric on the user-visible effect of rag design system versioning before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag design system versioning.
+
+Slug-specific note (rag-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `rag-design-system-versioning-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for rag design system versioning. Expand only when the metric demands it.
+
+## Resources
+
+- Internal runbook seed: `rag-design-system-versioning`
+- https://12factor.net/
+- https://martinfowler.com/

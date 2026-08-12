@@ -1,200 +1,159 @@
 ---
-title: "AI Agents: Spot Instance Interruption Handling"
+title: "Spot Instance Interruption Handling for production agents"
 slug: "agent-spot-instance-interruption-handling"
-description: "Gracefully drain agent workers on AWS Spot termination — IMDS notice, checkpointed tool jobs, and mixing on-demand baseline for streaming sessions."
+description: "Spot Instance Interruption Handling for production agents: how to make agent spot instance interruption handling observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-04"
-dateModified: "2026-07-17"
-tags: ["AI", "Agent", "Infrastructure", "AWS"]
-keywords: "spot instance interruption, EC2 rebalance recommendation, agent worker drain, checkpoint, Karpenter"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, spot, instance, interruption, handling, production, engineering"
 faq:
-  - q: "Which agent workloads are safe on spot instances?"
-    a: "Batch eval jobs, embedding index rebuilds, offline fine-tuning data prep, log aggregation — fault-tolerant with checkpoints. Not safe without redundancy: real-time tool executor, streaming chat orchestrator, single-replica retrieval index serving live traffic."
-  - q: "How much notice before spot termination?"
-    a: "AWS typically 2 minutes via instance metadata and EventBridge. GCP preemptible ~30s. Design agent batch workers to checkpoint every 60–90 seconds and respect SIGTERM immediately."
-  - q: "Spot vs on-demand mix for agent platforms?"
-    a: "80/20 spot/on-demand for batch queues is common. Maintain on-demand baseline for queue depth SLA — when spot capacity evaporates, on-demand absorbs backlog. Never 100% spot on single-AZ critical path."
-  - q: "Kubernetes spot for agent namespaces?"
-    a: "Use node pools with taints agent-batch=spot:NoSchedule, PodDisruptionBudgets, and Karpenter capacity-type spot with on-demand fallback. Label agent realtime pods to require on-demand nodes."
+  - q: "What is Spot Instance Interruption Handling for production agents?"
+    a: "Spot Instance Interruption Handling for production agents is the production approach to make agent spot instance interruption handling observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Spot Instance Interruption Handling for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent spot instance interruption handling, prioritize it."
+  - q: "What is the most common mistake with Spot Instance Interruption Handling for production agents?"
+    a: "The usual failure is treating agent spot instance interruption handling as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Nightly agent eval suite processed 40,000 tool-calling scenarios on spot GPU instances. AWS reclaimed capacity at 3:12 AM — job died at 67% with no checkpoint. Morning release gate blocked on missing eval report. Re-run cost three hours and delayed ship. Checkpoint every 90 seconds plus spot interruption handler fixed the next week — interruptions became four-minute delays, not failed nights.
+**Spot Instance Interruption Handling for production agents** means you make agent spot instance interruption handling observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating agent spot instance interruption handling as a pure library problem start paging people.
 
-Spot and preemptible instances cut agent infrastructure cost 60–90% for fault-tolerant batch work: eval harnesses, embedding regeneration, corpus reindexing, synthetic data generation. Interruptions are expected weather — code must handle them.
+This write-up is specific to `agent-spot-instance-interruption-handling` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Interruption signal flow (AWS)
+## Incident pattern involving agent spot instance interruption handling
 
-```
-Spot reclaim decision
-  → IMDS /metadata/spot/instance-action (2 min notice)
-  → EventBridge EC2 Spot Instance Interruption Warning
-  → SIGTERM to instance → SIGKILL after grace
-```
+I treat Spot Instance Interruption Handling for production agents as an operations problem first. The goal is to make agent spot instance interruption handling observable and interruptible, not to collect frameworks.
 
-Poll metadata from agent worker:
+Put a metric on the user-visible effect of agent spot instance interruption handling before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```python
-import requests
+Acceptance check: an on-call engineer can explain system state for agent spot instance interruption handling from one dashboard and one runbook page.
 
-def spot_interruption_pending() -> bool:
-    try:
-        r = requests.get(
-            "http://169.254.169.254/latest/meta-data/spot/instance-action",
-            timeout=1,
-        )
-        return r.status_code == 200
-    except requests.RequestException:
-        return False
-```
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-Run aws-node-termination-handler as DaemonSet on spot pools — cordons node and triggers drain before SIGTERM. Wire handler to flush checkpoints or send SIGUSR1 to batch worker.
+## Root cause in plain language
 
-## Checkpoint loop
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent spot instance interruption handling, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent spot instance interruption handling as a pure library problem.
+
+Acceptance check: an on-call engineer can explain system state for agent spot instance interruption handling from one dashboard and one runbook page.
+
+Concretely, being able to make agent spot instance interruption handling observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
 ```python
-def run_eval_shard(shard_id: int, cases: list):
-    start = load_checkpoint(shard_id) or 0
-    for i, case in enumerate(cases[start:], start=start):
-        result = evaluate(case)
-        write_result(result)
-        if i % 10 == 0 or spot_interruption_pending():
-            save_checkpoint(shard_id, i + 1)
-        if spot_interruption_pending():
-            graceful_exit(shard_id, i + 1)
-            return
-    mark_shard_complete(shard_id)
+# Spot Instance Interruption Handling for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentSpotInstanceRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_spot_instance_inte(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-spot-instance-interruption-handling"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Checkpoint to S3/DynamoDB — not local disk alone. Use conditional writes so concurrent resume does not regress progress.
+## The fix that held under load
 
-## SIGTERM and Karpenter consolidation
+I treat Spot Instance Interruption Handling for production agents as an operations problem first. The goal is to make agent spot instance interruption handling observable and interruptible, not to collect frameworks.
 
-```python
-signal.signal(signal.SIGTERM, handle_term)
-```
+Keep side effects at the edges and make every write idempotent. Spot Instance Interruption Handling for production agents without retry semantics is a future incident write-up.
 
-Kubernetes terminationGracePeriodSeconds ≥ 120. Karpenter consolidation may SIGTERM without spot warning — treat every SIGTERM as capacity loss and checkpoint immediately.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent spot instance interruption handling.
 
-## Queue-based batch architecture
+My never-again list for agent spot instance interruption handling: treating agent spot instance interruption handling as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```
-SQS/Kafka queue → spot worker pool → results store
-                      ↓ interrupt
-                 checkpoint + requeue invisible messages
-```
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-| Component | Spot-safe? |
-|---|---|
-| Eval worker | Yes with checkpoint |
-| Embedding batch | Yes, idempotent chunks |
-| Live retrieval API | No — on-demand min 2 |
-| Tool executor | No |
-| Index builder | Yes; swap alias atomically at end |
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent spot instance interruption handling as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Set SQS visibility timeout to 2x p99 chunk duration. Heartbeat change_message_visibility every 60s during long embed batches.
+## Tests and probes that catch regressions
 
-## Karpenter mixed capacity
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent spot instance interruption handling, that means making failure visible early.
 
-```yaml
-apiVersion: karpenter.sh/v1
-kind: NodePool
-metadata:
-  name: agent-batch-spot
-spec:
-  template:
-    spec:
-      requirements:
-        - key: karpenter.sh/capacity-type
-          operator: In
-          values: ["spot", "on-demand"]
-      taints:
-        - key: agent-batch
-          value: spot
-          effect: NoSchedule
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent spot instance interruption handling as a pure library problem.
 
-Agent eval pods tolerate taint; orchestrator pods require on-demand nodeSelector. Enforce in CI with policy-as-code — mislabeled Deployments schedule chat gateway on spot.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Spot Instance Interruption Handling for production agents that needs a hero is not done.
 
-## Diversification and GPU batches
+Review prompts I use: what happens twice, what happens never, what happens partially? If Spot Instance Interruption Handling for production agents cannot answer, it is not production-ready.
 
-Spread across m6i, m5, m5a and three AZs. capacity-optimized-pool reduces reclaim vs lowest-price-only. GPU embedding jobs reclaim frequently — checkpoint parquet partition offset; use on-demand floor for final 10% when SLA deadline near.
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-## Idempotent work units
+## Runbook lines that save minutes
 
-```sql
-INSERT INTO eval_results (case_id, score, run_id)
-VALUES ($1, $2, $3)
-ON CONFLICT (case_id, run_id) DO NOTHING;
-```
+Teams usually discover Spot Instance Interruption Handling for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## On-demand surge policy
+Keep side effects at the edges and make every write idempotent. Spot Instance Interruption Handling for production agents without retry semantics is a future incident write-up.
 
-SQS depth threshold triggers on-demand scale-up when spot interruption rate exceeds 5/minute in a region. Maintain minimum two on-demand workers during release week when eval gate blocks deploy.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent spot instance interruption handling.
 
-## Monitoring and game day
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-Metrics: spot_interruption_total, eval_shard_resume_count, batch_job_wall_time, effective_cost including retry overhead. Alert when interruption rate >30%/hour or nightly eval coverage <100% at 06:00 UTC.
+Related reading:
 
-Quarterly game day: terminate 30% of spot nodes during active eval. Success: zero unrecoverable failures, resume within 2x chunk duration, no duplicate billable side effects.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## EventBridge-driven orchestration
+## Platform guardrails afterward
 
-Wire `EC2 Spot Instance Interruption Warning` to Step Functions or Lambda that: marks shard `paused` in DynamoDB, publishes requeue message to SQS with same `run_id`, and increments CloudWatch `spot_interruption_total`. Orchestrator picks paused shards on on-demand pool without human intervention — critical when interruption happens at 3 AM during release-week eval gate.
+Teams usually discover Spot Instance Interruption Handling for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-```python
-def on_interruption_event(event, context):
-    instance_id = event["detail"]["instance-id"]
-    for shard in shards_on_instance(instance_id):
-        save_checkpoint(shard.id, shard.progress)
-        sqs.send_message(QueueUrl=REQUEUE_URL, MessageBody=shard.to_json())
-        mark_paused(shard.id)
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent spot instance interruption handling as a pure library problem.
 
-## Comparison: spot vs on-demand for agent batches
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Spot Instance Interruption Handling for production agents that needs a hero is not done.
 
-| Factor | Spot | On-demand |
-|---|---|---|
-| Cost | 60–90% lower | Baseline |
-| Interruption | Expected | Rare |
-| Agent eval fit | Excellent | Fallback queue |
-| Live chat gateway | Never | Always |
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-## Release gate integration
+## Practical defaults for Spot Instance Interruption Handling for production agents
 
-Block promote to production if nightly eval shard coverage <100% at 06:00 UTC. Checkpoint metadata in S3 proves percentage complete — partial eval from spot interrupt without resume must fail CI, not ship with missing tool safety cases. Product and security sign release checklist only when eval artifact hash matches expected full-run fingerprint.
+Teams usually discover Spot Instance Interruption Handling for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Retry overhead math
+Put a metric on the user-visible effect of agent spot instance interruption handling before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```
-effective_cost = spot_cost + (retry_overhead_hours * hourly_rate)
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Spot Instance Interruption Handling for production agents that needs a hero is not done.
 
-If retry overhead exceeds 15% of spot savings, increase checkpoint frequency from 90s to 45s or raise on-demand floor from 2 to 4 workers during business days. FinOps review monthly — spot without checkpoint discipline costs more than on-demand through duplicated GPU hours.
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-Real-time tool executor and streaming chat belong on on-demand — spot is for batch agent work with checkpoints.
+After a month, delete unused flags and dual paths. `agent-spot-instance-interruption-handling` accumulates temporary bridges faster than teams expect.
 
-## EventBridge-driven checkpoint flush
+## Review questions before merging agent spot instance interruption handling work
 
-Subscribe Lambda or SQS worker to EC2 Spot Instance Interruption Warning. On event, publish `pause_shard` message keyed by instance ID so eval workers stop dequeuing new cases within seconds — before IMDS poll loop wakes up. Pair with DynamoDB conditional update marking instance `draining=true` so autoscaler does not schedule duplicate shard work on replacement node until checkpoint confirms last_case_index persisted. This pattern cut duplicate eval case execution from 3% to zero during spot storms in us-east-1 spring capacity crunches.
+Teams usually discover Spot Instance Interruption Handling for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Release gate integration
+Keep side effects at the edges and make every write idempotent. Spot Instance Interruption Handling for production agents without retry semantics is a future incident write-up.
 
-CI promote pipeline should query eval coverage table: `SELECT COUNT(DISTINCT case_id) FROM eval_results WHERE run_id=$1` compared against expected corpus size. Partial spot interrupt without resume must fail gate loudly — not silently ship with 94% coverage. Document expected spot interrupt rate in SRE handbook so on-call does not page for normal 2 AM reclaim during cost-optimized batch windows.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent spot instance interruption handling.
 
-## Regional capacity planning
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
 
-Maintain spot pool diversification across us-east-1a/b/c and secondary region DR batch queue. When entire AZ empties of spot GPU, cross-AZ shard reassignment via Step Functions avoids single-region release blockage. Finance model includes on-demand surge ceiling dollars per release week — pre-approved spend avoids 4 AM finance pager when ops scales on-demand eval workers during Black Friday prep.
+In review, require a short failure note covering retry, partial deploy, and treating agent spot instance interruption handling as a pure library problem. Missing that note blocks merge.
 
-## Comparison with reserved instances
+## Field notes after thirty days of agent spot instance interruption handling
 
-Reserved instances suit flat baseline embedding clusters running 24/7. Spot plus checkpoint suits bursty nightly eval and reindex. Hybrid: reserved baseline for minimum daily embed throughput, spot burst for catch-up after corpus import spikes. Agent platform cost reviews should segment batch vs realtime — consolidating both into one ASG drives wrong capacity type choices.
-## Operational checklist before production cutover
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent spot instance interruption handling, that means making failure visible early.
 
-Document owners, rollback steps, and metric dashboards before enabling changes for enterprise tenants. Run staged rollout at five percent traffic for one business week when touching authentication, billing, or batch infrastructure — agent platforms amplify partial failures across every tenant workflow simultaneously. Keep runbook section updated after each game day or incident retrospective so the next engineer does not rediscover the same spot reclaim or SAML metadata gap under pager pressure.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent spot instance interruption handling as a pure library problem.
 
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent spot instance interruption handling.
+
+Slug-specific note (agent-spot-instance-interruption-handling): prioritize handling behavior under load and verify with a fixture named `agent-spot-instance-interruption-handling-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating agent spot instance interruption handling as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- [AWS Spot Instance best practices](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-best-practices.html)
-- [Spot Instance interruption notice](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-interruptions.html)
-- [AWS Node Termination Handler](https://github.com/aws/aws-node-termination-handler)
-- [Karpenter disruption controls](https://karpenter.sh/docs/concepts/disruption/)
-- [GCP preemptible VM documentation](https://cloud.google.com/compute/docs/instances/preemptible)
+- Internal runbook seed: `agent-spot-instance-interruption-handling`
+- https://12factor.net/
+- https://martinfowler.com/

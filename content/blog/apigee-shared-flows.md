@@ -1,129 +1,158 @@
 ---
-title: "APIgee Shared Flows"
+title: "Apigee Shared Flows: production notes"
 slug: "apigee-shared-flows"
-description: "APIgee Shared Flows: how to ship it with clear ownership and rollback in production rust systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Apigee Shared Flows: production notes: how to operationalize apigee shared with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-16"
 dateModified: "2026-08-12"
 tags:
-  - "Rust"
-  - "Systems"
-keywords: "apigee, shared, flows, rust, production, engineering"
+  - "Engineering"
+  - "Apigee"
+keywords: "apigee, shared, flows, production, engineering"
 faq:
-  - q: "What is APIgee Shared Flows?"
-    a: "APIgee Shared Flows is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in APIgee Shared Flows?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with APIgee Shared Flows?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Apigee Shared Flows: production notes?"
+    a: "Apigee Shared Flows: production notes is the production approach to operationalize apigee shared with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Apigee Shared Flows: production notes?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with apigee shared flows, prioritize it."
+  - q: "What is the most common mistake with Apigee Shared Flows: production notes?"
+    a: "The usual failure is treating apigee shared flows as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**APIgee Shared Flows** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Apigee Shared Flows: production notes** means you operationalize apigee shared with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like treating apigee shared flows as a pure library problem start paging people.
 
-Below is how I implement and operate it in Rust systems using Axum, Tokio: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `apigee-shared-flows` in a product context, using OpenTelemetry, Prometheus, Postgres for the mechanics while keeping ownership human.
 
-## Building APIgee Shared Flows into an existing system
+## Fitting Apigee Shared Flows: production notes into an existing system
 
-Most write-ups on APIgee Shared Flows stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For apigee shared flows, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of apigee shared flows before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on apigee shared flows.
 
-## Contracts and ownership
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
-I have watched teams under-specify APIgee Shared Flows and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## Contracts and ownership boundaries
 
-Make APIgee Shared Flows error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate APIgee Shared Flows — you only deployed it.
+I treat Apigee Shared Flows: production notes as an operations problem first. The goal is to operationalize apigee shared with clear ownership, not to collect frameworks.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Apigee Shared Flows: production notes without retry semantics is a future incident write-up.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on apigee shared flows.
 
-```rust
-pub async fn handle(state: &State, input: Input) -> Result<Output, AppError> {
-  // APIgee Shared Flows
-  state.repo.execute(input.validate()?).await.map_err(AppError::from)
+Concretely, being able to operationalize apigee shared with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
+
+```typescript
+// Apigee Shared Flows: production notes
+export async function handle_apigee_shared_flows(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("apigee-shared-flows");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Data and state implications
+## State, storage, and retention
 
-I have watched teams under-specify APIgee Shared Flows and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For apigee shared flows, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With OpenTelemetry, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating apigee shared flows as a pure library problem.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on apigee shared flows.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping APIgee Shared Flows error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for apigee shared flows: treating apigee shared flows as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating apigee shared flows as a pure library problem |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Security notes that are not optional
+## Security defaults that are non-negotiable
 
-Most write-ups on APIgee Shared Flows stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+I treat Apigee Shared Flows: production notes as an operations problem first. The goal is to operationalize apigee shared with clear ownership, not to collect frameworks.
 
-Make APIgee Shared Flows error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate APIgee Shared Flows — you only deployed it.
+Put a metric on the user-visible effect of apigee shared flows before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Prefer small diffs with a kill switch. APIgee Shared Flows changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? APIgee Shared Flows designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Apigee Shared Flows: production notes cannot answer, it is not production-ready.
 
-## Observability and SLOs
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
-I have watched teams under-specify APIgee Shared Flows and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## SLOs and dashboards
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+I treat Apigee Shared Flows: production notes as an operations problem first. The goal is to operationalize apigee shared with clear ownership, not to collect frameworks.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating apigee shared flows as a pure library problem.
+
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
+
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Week-one validation plan
+## First-week validation plan
 
-Most write-ups on APIgee Shared Flows stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Apigee Shared Flows: production notes after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+With OpenTelemetry, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating apigee shared flows as a pure library problem.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
 
-## Practical defaults I use for APIgee Shared Flows
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
-If you only remember one thing about APIgee Shared Flows: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+## Practical defaults for Apigee Shared Flows: production notes
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+I treat Apigee Shared Flows: production notes as an operations problem first. The goal is to operationalize apigee shared with clear ownership, not to collect frameworks.
 
-Prefer small diffs with a kill switch. APIgee Shared Flows changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of apigee shared flows before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
 
-## Review questions before merging APIgee Shared Flows work
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
-I have watched teams under-specify APIgee Shared Flows and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+In review, require a short failure note covering retry, partial deploy, and treating apigee shared flows as a pure library problem. Missing that note blocks merge.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging apigee shared flows work
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+I treat Apigee Shared Flows: production notes as an operations problem first. The goal is to operationalize apigee shared with clear ownership, not to collect frameworks.
 
-A month in, prune unused paths. APIgee Shared Flows accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Apigee Shared Flows: production notes without retry semantics is a future incident write-up.
 
-## Field notes after the first month of APIgee Shared Flows
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
 
-Most write-ups on APIgee Shared Flows stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
 
-Make APIgee Shared Flows error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate APIgee Shared Flows — you only deployed it.
+In review, require a short failure note covering retry, partial deploy, and treating apigee shared flows as a pure library problem. Missing that note blocks merge.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of apigee shared flows
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for APIgee Shared Flows error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For apigee shared flows, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Apigee Shared Flows: production notes without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for apigee shared flows from one dashboard and one runbook page.
+
+Slug-specific note (apigee-shared-flows): prioritize flows behavior under load and verify with a fixture named `apigee-shared-flows-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating apigee shared flows as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `apigee-shared-flows`
 - https://12factor.net/
+- https://martinfowler.com/

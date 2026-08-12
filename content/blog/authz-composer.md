@@ -1,131 +1,158 @@
 ---
-title: "Authz Composer"
+title: "Authz-composer engineering checklist"
 slug: "authz-composer"
-description: "Authz Composer: how to make retries and timeouts intentional in production go systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-composer engineering checklist: how to ship authz composer behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-08"
 dateModified: "2026-08-12"
 tags:
-  - "Go"
-  - "Backend"
-keywords: "authz, composer, go, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, composer, production, engineering"
 faq:
-  - q: "What is Authz Composer?"
-    a: "Authz Composer is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Composer?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Composer?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-composer engineering checklist?"
+    a: "Authz-composer engineering checklist is the production approach to ship authz composer behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-composer engineering checklist?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with authz composer, prioritize it."
+  - q: "What is the most common mistake with Authz-composer engineering checklist?"
+    a: "The usual failure is treating authz composer as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Composer** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Authz-composer engineering checklist** means you ship authz composer behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like treating authz composer as a pure library problem start paging people.
 
-Below is how I implement and operate it in Go systems using Go, pgx: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-composer` in a product context, using Postgres for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Composer
+## Decision guide for Authz-composer engineering checklist
 
-I have watched teams under-specify Authz Composer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Teams usually discover Authz-composer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Make Authz Composer error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Composer — you only deployed it.
+With Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz composer as a pure library problem.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz composer from one dashboard and one runbook page.
 
-## When this is the wrong tool
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
-I have watched teams under-specify Authz Composer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## When to refuse this approach
 
-Make Authz Composer error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Composer — you only deployed it.
+Teams usually discover Authz-composer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Authz-composer engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-composer engineering checklist that needs a hero is not done.
 
-```go
-func (s *Service) Handle(ctx context.Context, req Request) error {
-  ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-  defer cancel()
-  // Authz Composer
-  return s.repo.Save(ctx, req)
+Concretely, being able to ship authz composer behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
+
+```kotlin
+// Authz-composer engineering checklist
+interface Gateway_authz_composer {
+  suspend fun execute(input: Request): Result<Response>
+}
+
+class DefaultGateway(
+  private val client: HttpClient,
+  private val metrics: Metrics,
+) : Gateway_authz_composer {
+  override suspend fun execute(input: Request) = runCatching {
+    metrics.count("authz-composer.attempt")
+    client.post(input)
+  }.onFailure { metrics.count("authz-composer.error") }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-If you only remember one thing about Authz Composer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For authz composer, that means making failure visible early.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+With Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz composer as a pure library problem.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz composer from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Authz Composer error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz composer: treating authz composer as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating authz composer as a pure library problem |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-If you only remember one thing about Authz Composer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat Authz-composer engineering checklist as an operations problem first. The goal is to ship authz composer behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz composer as a pure library problem.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-composer engineering checklist that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Composer designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-composer engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
-Most write-ups on Authz Composer stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Migration without dual-running forever
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For authz composer, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Authz-composer engineering checklist without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz composer.
+
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-If you only remember one thing about Authz Composer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For authz composer, that means making failure visible early.
 
-Make Authz Composer error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Composer — you only deployed it.
+Put a metric on the user-visible effect of authz composer before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-composer engineering checklist that needs a hero is not done.
 
-## Practical defaults I use for Authz Composer
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
-If you only remember one thing about Authz Composer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## Practical defaults for Authz-composer engineering checklist
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Teams usually discover Authz-composer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz composer before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Composer error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-composer engineering checklist that needs a hero is not done.
 
-## Review questions before merging Authz Composer work
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
-I have watched teams under-specify Authz Composer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+After a month, delete unused flags and dual paths. `authz-composer` accumulates temporary bridges faster than teams expect.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging authz composer work
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Teams usually discover Authz-composer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Composer error rate. Expand only when the metric says you must.
+Put a metric on the user-visible effect of authz composer before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-## Field notes after the first month of Authz Composer
+Acceptance check: an on-call engineer can explain system state for authz composer from one dashboard and one runbook page.
 
-If you only remember one thing about Authz Composer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+In review, require a short failure note covering retry, partial deploy, and treating authz composer as a pure library problem. Missing that note blocks merge.
 
-Prefer small diffs with a kill switch. Authz Composer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of authz composer
 
-A month in, prune unused paths. Authz Composer accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat Authz-composer engineering checklist as an operations problem first. The goal is to ship authz composer behind flags with a rollback, not to collect frameworks.
+
+With Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz composer as a pure library problem.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz composer.
+
+Slug-specific note (authz-composer): prioritize composer behavior under load and verify with a fixture named `authz-composer-smoke`.
+
+After a month, delete unused flags and dual paths. `authz-composer` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-composer`
 - https://12factor.net/
+- https://martinfowler.com/

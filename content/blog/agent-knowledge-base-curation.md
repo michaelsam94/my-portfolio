@@ -1,264 +1,159 @@
 ---
-title: "AI Agents: Knowledge Base Curation"
+title: "Agent systems: knowledge base curation"
 slug: "agent-knowledge-base-curation"
-description: "How to curate agent knowledge bases for RAG—source ingestion, chunk quality gates, freshness SLAs, eval harnesses, and governance workflows that keep answers accurate under change."
+description: "Agent systems: knowledge base curation: how to keep agent side effects idempotent around knowledge base curation — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-04-30"
-dateModified: "2025-04-30"
-tags: ["AI", "Agent", "Knowledge"]
-keywords: "knowledge base curation, RAG pipeline, chunk quality, document freshness, agent knowledge, embedding versioning, content governance"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, knowledge, base, curation, production, engineering"
 faq:
-  - q: "What belongs in an agent knowledge base versus general search index?"
-    a: "Knowledge bases hold authoritative, agent-consumable content: policies, runbooks, product specs, and support articles with explicit freshness metadata. General search indexes mix marketing pages, stale wikis, and duplicate PDFs. Curation means whitelisting sources, normalizing structure, and rejecting documents that fail quality gates before they reach embedding."
-  - q: "How often should teams re-embed knowledge base content?"
-    a: "Re-embed on content hash change, not on a fixed calendar. Track source ETag, last-modified, or CMS publish version. Full re-index weekly is fine for small corpora; large tenants should use incremental CDC from the CMS or object store with tombstone propagation when documents retire."
-  - q: "What chunking strategy works best for agent retrieval?"
-    a: "Hybrid: structure-aware splits on headings and tables for docs, sliding windows with 10–15% overlap for prose, parent-child linking so agents retrieve small chunks but hydrate full sections. Hard-cap token size to your embedder limit minus metadata overhead. Never chunk without storing source URI, section path, and content hash on every vector."
-  - q: "How do you measure knowledge base curation quality?"
-    a: "Run a golden-set eval weekly: precision@k, answer faithfulness, citation accuracy, and stale-answer rate when ground truth changed in the last 30 days. Alert when any source's median chunk age exceeds its SLA or when duplicate-near-duplicate ratio crosses 5%. Production user thumbs-down on cited answers is the lagging indicator—fix the pipeline before that spikes."
+  - q: "What is Agent systems: knowledge base curation?"
+    a: "Agent systems: knowledge base curation is the production approach to keep agent side effects idempotent around knowledge base curation. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: knowledge base curation?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent knowledge base curation, prioritize it."
+  - q: "What is the most common mistake with Agent systems: knowledge base curation?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A support agent answered confidently that refunds take fourteen days. Finance had changed the policy to seven days three weeks earlier; the CMS was updated, but the nightly embed job skipped pages without `lastModified` bumps because the editor republished in place without touching metadata. The agent cited a chunk from February. Nobody owned curation—only ingestion. Knowledge base curation is the discipline that keeps RAG pipelines honest: what enters the index, how it is split, when it expires, and who approves changes before users see wrong answers dressed in citations.
+**Agent systems: knowledge base curation** means you keep agent side effects idempotent around knowledge base curation — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-## Sources of truth and ingestion boundaries
+This write-up is specific to `agent-knowledge-base-curation` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-Curated knowledge bases start with an explicit **source registry**, not a recursive web crawl:
+## Fitting Agent systems: knowledge base curation into an existing system
 
-| Source type | Ingestion mode | Freshness signal | Typical SLA |
-|-------------|----------------|------------------|-------------|
-| CMS articles | Webhook + poll fallback | `published_at`, version id | 15 minutes |
-| PDF runbooks | Object store event | S3 etag, content hash | 1 hour |
-| API docs (OpenAPI) | CI artifact on merge | Git SHA | On deploy |
-| Slack export | Batch (discouraged) | Export timestamp | Manual only |
-| Confluence | App connector | Page version | 30 minutes |
+Teams usually discover Agent systems: knowledge base curation after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Reject sources that cannot emit reliable change signals. Wikis with anonymous edits and no audit trail belong in search, not in agent ground truth.
+Keep side effects at the edges and make every write idempotent. Agent systems: knowledge base curation without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent knowledge base curation.
+
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
+
+## Contracts and ownership boundaries
+
+Teams usually discover Agent systems: knowledge base curation after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent knowledge base curation.
+
+Concretely, being able to keep agent side effects idempotent around knowledge base curation forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
 ```python
+# Agent systems: knowledge base curation
 from dataclasses import dataclass
-from enum import Enum
 
-class SourceTier(str, Enum):
-    AUTHORITATIVE = "authoritative"   # agent may cite as policy
-    REFERENCE = "reference"           # cite with disclaimer
-    DEPRECATED = "deprecated"         # tombstone only
+@dataclass(frozen=True)
+class AgentKnowledgeBaseRequest:
+    tenant_id: str
+    idempotency_key: str
 
-@dataclass
-class KnowledgeSource:
-    source_id: str
-    uri: str
-    tier: SourceTier
-    owner_team: str
-    max_staleness_hours: int
-    content_hash: str | None = None
-
-def should_ingest(source: KnowledgeSource, new_hash: str) -> bool:
-    if source.tier == SourceTier.DEPRECATED:
-        return False
-    return source.content_hash != new_hash
+async def run_agent_knowledge_base_cur(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-knowledge-base-curation"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Every document carries `source_id`, `content_hash`, `ingested_at`, and `expires_at` computed from tier SLA. Downstream retrieval filters expired chunks before ranking.
+## State, storage, and retention
 
-## Chunking and structure preservation
+Teams usually discover Agent systems: knowledge base curation after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Naive fixed-token splits destroy tables, numbered procedures, and cross-references. Production pipelines preserve document structure:
+Keep side effects at the edges and make every write idempotent. Agent systems: knowledge base curation without retry semantics is a future incident write-up.
 
-```python
-import hashlib
-from typing import Iterator
+Acceptance check: an on-call engineer can explain system state for agent knowledge base curation from one dashboard and one runbook page.
 
-def chunk_markdown(doc_id: str, text: str, max_tokens: int = 512) -> Iterator[dict]:
-    sections = split_on_headings(text)  # H1–H3 boundaries
-    for path, body in sections:
-        if token_count(body) <= max_tokens:
-            yield make_chunk(doc_id, path, body)
-            continue
-        for window in sliding_windows(body, max_tokens, overlap=0.12):
-            yield make_chunk(doc_id, path, window)
+My never-again list for agent knowledge base curation: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-def make_chunk(doc_id: str, section_path: str, body: str) -> dict:
-    content_hash = hashlib.sha256(body.encode()).hexdigest()
-    return {
-        "doc_id": doc_id,
-        "section_path": section_path,
-        "text": body,
-        "content_hash": content_hash,
-        "chunk_id": f"{doc_id}:{content_hash[:16]}",
-    }
-```
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-**Parent-child linking** stores small retrieval units while agents hydrate context from parent sections:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```sql
-CREATE TABLE kb_chunks (
-  chunk_id TEXT PRIMARY KEY,
-  doc_id TEXT NOT NULL,
-  parent_chunk_id TEXT REFERENCES kb_chunks(chunk_id),
-  section_path TEXT NOT NULL,
-  content_hash TEXT NOT NULL,
-  embedding_version INT NOT NULL,
-  ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at TIMESTAMPTZ
-);
+## Security defaults that are non-negotiable
 
-CREATE INDEX idx_kb_doc ON kb_chunks(doc_id);
-CREATE UNIQUE INDEX idx_kb_hash ON kb_chunks(doc_id, content_hash);
-```
+I treat Agent systems: knowledge base curation as an operations problem first. The goal is to keep agent side effects idempotent around knowledge base curation, not to collect frameworks.
 
-When retrieval returns a child chunk, the agent prompt includes the parent section up to token budget—reducing hallucinated gaps in procedures.
+Keep side effects at the edges and make every write idempotent. Agent systems: knowledge base curation without retry semantics is a future incident write-up.
 
-## Quality gates before embedding
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent knowledge base curation.
 
-Not every extracted page deserves vectors. Run **pre-embed gates**:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: knowledge base curation cannot answer, it is not production-ready.
 
-1. **Language detection** — drop or route non-primary-language docs.
-2. **Boilerplate ratio** — nav/footer repetition above 30% triggers re-extraction.
-3. **Duplicate detection** — MinHash or simhash against existing corpus; near-duplicates merge or supersede.
-4. **PII scan** — block or redact before embed; never rely on retrieval-time filtering alone.
-5. **Minimum information density** — empty headings, stub pages, and "TODO" placeholders fail.
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-```typescript
-type GateResult = { pass: boolean; reason?: string };
+## SLOs and dashboards
 
-export function runQualityGates(raw: ExtractedDocument): GateResult {
-  if (raw.boilerplateRatio > 0.3) {
-    return { pass: false, reason: "high_boilerplate" };
-  }
-  if (raw.tokenCount < 40) {
-    return { pass: false, reason: "stub_document" };
-  }
-  if (raw.piiFindings.length > 0 && !raw.redacted) {
-    return { pass: false, reason: "pii_unresolved" };
-  }
-  return { pass: true };
-}
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent knowledge base curation, that means making failure visible early.
 
-Failed gates land in a **curation queue** for human review—not silent drops. Owners need visibility when authoritative sources fail.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-## Freshness, tombstones, and versioning
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent knowledge base curation.
 
-Stale vectors are worse than missing vectors: they produce confident wrong answers. Implement **tombstone propagation**:
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-```python
-async def handle_cms_unpublish(event: dict, vector_store, db):
-    doc_id = event["document_id"]
-    await db.execute(
-        "UPDATE kb_chunks SET expires_at = now() WHERE doc_id = $1",
-        doc_id,
-    )
-    chunk_ids = await db.fetch("SELECT chunk_id FROM kb_chunks WHERE doc_id = $1", doc_id)
-    await vector_store.delete([c["chunk_id"] for c in chunk_ids])
-```
+Related reading:
 
-Track **embedding model version** separately from content hash. When you upgrade embedders, re-embed authoritative tier first; reference tier can lag behind a feature flag.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Expose freshness in retrieval metadata so agents (or orchestrators) can downgrade stale citations:
+## First-week validation plan
 
-```python
-def freshness_weight(chunk: dict, now) -> float:
-    age_hours = (now - chunk["ingested_at"]).total_seconds() / 3600
-    sla = chunk["max_staleness_hours"]
-    if age_hours <= sla:
-        return 1.0
-    # linear decay after SLA; hit zero at 2x SLA
-    return max(0.0, 1.0 - (age_hours - sla) / sla)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent knowledge base curation, that means making failure visible early.
 
-## Human curation workflows
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Automation handles volume; humans handle judgment. Minimum workflow for authoritative content:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent knowledge base curation.
 
-- **Domain owner** approves source registry entries.
-- **Editor** publishes in CMS; webhook triggers ingest.
-- **Curator** resolves gate failures and duplicate conflicts weekly.
-- **On-call** can freeze a `source_id` during incidents ("do not cite billing FAQ until fixed").
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-Store curation decisions in an audit log:
+## Practical defaults for Agent systems: knowledge base curation
 
-```sql
-CREATE TABLE kb_curation_events (
-  id BIGSERIAL PRIMARY KEY,
-  doc_id TEXT,
-  actor TEXT NOT NULL,
-  action TEXT NOT NULL,  -- approve, reject, deprecate, freeze
-  reason TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent knowledge base curation, that means making failure visible early.
 
-Agents should never bypass freeze flags—check at retrieval time, not only at ingest.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-## Evaluation harness
+Acceptance check: an on-call engineer can explain system state for agent knowledge base curation from one dashboard and one runbook page.
 
-Ship a **golden question set** per domain with expected citation URLs and answer rubrics:
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-| Metric | Target (authoritative) | Alert threshold |
-|--------|------------------------|-----------------|
-| Citation accuracy | ≥ 95% | < 90% |
-| Answer faithfulness | ≥ 92% | < 85% |
-| Stale answer rate | < 2% | > 5% |
-| Retrieval MRR@5 | domain-specific | −10% week/week |
+After a month, delete unused flags and dual paths. `agent-knowledge-base-curation` accumulates temporary bridges faster than teams expect.
 
-```python
-def eval_citation_accuracy(question: str, retrieved: list, expected_urls: set) -> float:
-    cited = {c["source_uri"] for c in retrieved[:5]}
-    return len(cited & expected_urls) / max(1, len(expected_urls))
-```
+## Review questions before merging agent knowledge base curation work
 
-Run eval on every embed pipeline deploy and on a schedule. Compare scores across embedding versions before full rollout.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent knowledge base curation, that means making failure visible early.
 
-## Security and compliance
+Put a metric on the user-visible effect of agent knowledge base curation before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Knowledge bases aggregate sensitive material—HR policies, security runbooks, customer data in support tickets. Apply **tenant isolation** at the chunk level: `tenant_id` on every row, enforced in retrieval middleware. Encrypt embeddings at rest if your threat model includes datastore breach.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: knowledge base curation that needs a hero is not done.
 
-Retention policies differ by tier: authoritative legal docs may need seven-year retention; ephemeral Slack exports should never enter the authoritative tier. Document lawful basis for personal data in ingested tickets if GDPR applies.
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-## Operational dashboards
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-Monitor:
+## Field notes after thirty days of agent knowledge base curation
 
-- `kb_ingest_lag_seconds{source}` — time from publish to searchable
-- `kb_gate_rejection_total{reason}` — spikes mean upstream CMS or extractor regression
-- `kb_stale_chunks_count{tier}` — chunks past `expires_at` still in index (should be zero)
-- `kb_duplicate_ratio` — rolling 7-day near-duplicate rate
-- `kb_eval_faithfulness` — from nightly golden set
+Teams usually discover Agent systems: knowledge base curation after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Page when authoritative stale chunk count > 0 for more than one hour—that means tombstone or expiry logic failed.
+Put a metric on the user-visible effect of agent knowledge base curation before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Anti-patterns
+Acceptance check: an on-call engineer can explain system state for agent knowledge base curation from one dashboard and one runbook page.
 
-- **Crawl the whole wiki** without ownership or tier classification.
-- **Re-embed everything nightly** regardless of change—wastes compute and hides CDC bugs.
-- **Chunk without section paths**—agents cannot cite precisely or hydrate parents.
-- **No tombstones on unpublish**—the classic "refund policy" incident.
-- **Single global embedder upgrade** without re-eval and canary tenant.
+Slug-specific note (agent-knowledge-base-curation): prioritize curation behavior under load and verify with a fixture named `agent-knowledge-base-curation-smoke`.
 
-## The takeaway
-
-Knowledge base curation is not metadata hygiene—it is the control plane for agent truthfulness. Register sources explicitly, gate quality before embedding, propagate tombstones on retraction, and measure citation accuracy against golden sets. Ingestion pipelines are commodities; curation workflows and freshness SLAs are what separate agents that cite current policy from agents that cite February.
-
-## FAQ
-
-### What belongs in an agent knowledge base versus general search index?
-
-Knowledge bases hold authoritative, agent-consumable content: policies, runbooks, product specs, and support articles with explicit freshness metadata. General search indexes mix marketing pages, stale wikis, and duplicate PDFs. Curation means whitelisting sources, normalizing structure, and rejecting documents that fail quality gates before they reach embedding.
-
-### How often should teams re-embed knowledge base content?
-
-Re-embed on content hash change, not on a fixed calendar. Track source ETag, last-modified, or CMS publish version. Full re-index weekly is fine for small corpora; large tenants should use incremental CDC from the CMS or object store with tombstone propagation when documents retire.
-
-### What chunking strategy works best for agent retrieval?
-
-Hybrid: structure-aware splits on headings and tables for docs, sliding windows with 10–15% overlap for prose, parent-child linking so agents retrieve small chunks but hydrate full sections. Hard-cap token size to your embedder limit minus metadata overhead. Never chunk without storing source URI, section path, and content hash on every vector.
-
-### How do you measure knowledge base curation quality?
-
-Run a golden-set eval weekly: precision@k, answer faithfulness, citation accuracy, and stale-answer rate when ground truth changed in the last 30 days. Alert when any source's median chunk age exceeds its SLA or when duplicate-near-duplicate ratio crosses 5%. Production user thumbs-down on cited answers is the lagging indicator—fix the pipeline before that spikes.
+Default deny, explicit timeouts, and one dashboard row for agent knowledge base curation. Expand only when the metric demands it.
 
 ## Resources
 
-- [platform.openai.com/docs/guides/embeddings](https://platform.openai.com/docs/guides/embeddings) — OpenAI embeddings guide
-- [python.langchain.com/docs/concepts/text_splitters](https://python.langchain.com/docs/concepts/text_splitters) — LangChain text splitters
-- [www.llamaindex.ai/blog/evaluating-rag-systems](https://www.llamaindex.ai/blog/evaluating-rag-systems) — Evaluating RAG systems
-- [docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html) — Amazon Bedrock knowledge bases
-- [arxiv.org/abs/2309.15217](https://arxiv.org/abs/2309.15217) — RAG survey (Gao et al.)
+- Internal runbook seed: `agent-knowledge-base-curation`
+- https://12factor.net/
+- https://martinfowler.com/

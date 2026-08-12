@@ -1,286 +1,159 @@
 ---
-title: "AI Agents: Dead Letter Queue Handling"
+title: "Agent reliability via dead letter queue handling"
 slug: "agent-dead-letter-queue-handling"
-description: "Dead Letter Queue Handling: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Agent reliability via dead letter queue handling: how to ship agent dead letter queue handling with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-11-11"
-dateModified: "2024-11-11"
-tags: ["AI", "Agent", "Dead"]
-keywords: "agent, dead, letter, queue, handling, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, dead, letter, queue, handling, production, engineering"
 faq:
-  - q: "When should an agent job go to the DLQ instead of retrying?"
-    a: "Route to DLQ when failure is deterministic: schema validation errors, unknown tool names after deploy, token payloads that exceed model context even after compression, or tenant config that no longer exists. Transient failures—429 rate limits, network blips, sandbox cold starts—belong on the main queue with backoff until a retry budget exhausts."
-  - q: "What metadata must every DLQ message carry?"
-    a: "Original payload hash, receive count, last error class and message, correlation/trace ID, agent version, model ID, tenant ID, and timestamps for first failure and DLQ arrival. Without this envelope, replay becomes guesswork and root-cause analysis spans hours."
-  - q: "How do you replay DLQ messages safely after a fix?"
-    a: "Never bulk-redrive without triage. Replay through a staging consumer with the fixed code, validate success rate on a sample batch, then redrive in tenant-scoped batches with idempotency keys so duplicate side effects cannot occur. Cap replay rate to avoid thundering herds on LLM APIs."
-  - q: "How is agent DLQ handling different from generic microservice DLQs?"
-    a: "Agent jobs are expensive—each retry may invoke an LLM, burn embedding quota, or trigger paid external APIs. DLQ policies must account for cost per retry, partial completion (tool A succeeded, tool B failed), and content that may be toxic or oversized rather than treating all failures as equal HTTP errors."
+  - q: "What is Agent reliability via dead letter queue handling?"
+    a: "Agent reliability via dead letter queue handling is the production approach to ship agent dead letter queue handling with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via dead letter queue handling?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent dead letter queue handling, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via dead letter queue handling?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A support agent queue held 14,000 messages. Four hundred sat in the dead letter queue for three weeks—nobody owned the dashboard. Each DLQ entry was a customer ticket summarization job that failed when a prompt template referenced a retired tool schema. Engineers fixed the template on day two. Without a replay workflow, those tickets never got AI-assisted responses; customers waited while the main queue processed new work fine.
+**Agent reliability via dead letter queue handling** means you ship agent dead letter queue handling with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Dead letter queues are where agent platforms store **work that will not succeed without intervention**. Treating DLQ as a graveyard guarantees silent data loss. Treating it as an operational queue—with classification, triage, and controlled replay—is what separates demo pipelines from production systems.
+This write-up is specific to `agent-dead-letter-queue-handling` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## DLQ architecture for agent pipelines
+## A pragmatic path to Agent reliability via dead letter queue handling
 
-Agent workloads typically fan out: orchestrator → tool workers → LLM completion → post-process → webhook. Failures can occur at any stage with different retry semantics.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent dead letter queue handling, that means making failure visible early.
 
-```
-                    ┌──▶ tool-worker ──┐
-Orchestrator ──▶ Q ─┤                  ├──▶ completion ──▶ Q ──▶ post-process
-                    └──▶ retrieval ────┘         │
-                                                   │ maxReceiveCount
-                                                   ▼
-                                              [ DLQ ]
-                                                   │
-                                    triage UI / automated classifier
-                                                   │
-                              replay (staging) ──▶ main Q
-```
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Design principles:
+Acceptance check: an on-call engineer can explain system state for agent dead letter queue handling from one dashboard and one runbook page.
 
-- **One DLQ per failure domain** — do not mix tool failures with webhook delivery failures; replay policies differ.
-- **Poison pill isolation** — messages exceeding receive count route to DLQ automatically; never infinite nack loops.
-- **Partial state capture** — if tool A succeeded, persist intermediate state on the message envelope so replay does not re-bill.
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
 
-## Failure classification before DLQ routing
+## Start from the user-visible symptom
 
-Not every failure deserves the same path. Classify at the worker boundary:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent dead letter queue handling, that means making failure visible early.
 
-| Class | Examples | DLQ? | Notes |
-|-------|----------|------|-------|
-| Transient | 429, 503, timeout | After budget | Exponential backoff first |
-| Permanent input | Bad JSON, unknown enum | Immediate | Fix upstream producer |
-| Permanent config | Missing API key for tenant | Immediate | Page tenant owner |
-| Version skew | Tool schema mismatch post-deploy | Immediate | Replay after deploy sync |
-| Cost abort | Token estimate > budget | Immediate | Needs prompt compression |
-| Security | Jailbreak payload flagged | Separate DLQ | Restricted access |
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via dead letter queue handling that needs a hero is not done.
+
+Concretely, being able to ship agent dead letter queue handling with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
 
 ```typescript
-type FailureClass =
-  | "transient"
-  | "permanent_input"
-  | "permanent_config"
-  | "version_skew"
-  | "cost_abort"
-  | "security";
-
-interface AgentJobEnvelope {
-  jobId: string;
-  tenantId: string;
-  agentVersion: string;
-  modelId: string;
-  payloadHash: string;
-  receiveCount: number;
-  partialState?: Record<string, unknown>;
-  traceId: string;
-}
-
-interface DLQDecision {
-  route: "retry" | "dlq" | "security_dlq";
-  failureClass: FailureClass;
-  reason: string;
-}
-
-const MAX_RECEIVES = 5;
-const TRANSIENT_BUDGET = 3;
-
-function decideDLQ(
-  envelope: AgentJobEnvelope,
-  error: Error,
-): DLQDecision {
-  const cls = classifyError(error);
-
-  if (cls === "security") {
-    return { route: "security_dlq", failureClass: cls, reason: error.message };
-  }
-
-  if (cls === "transient") {
-    if (envelope.receiveCount >= TRANSIENT_BUDGET) {
-      return {
-        route: "dlq",
-        failureClass: cls,
-        reason: `transient budget exhausted after ${envelope.receiveCount} attempts`,
-      };
-    }
-    return { route: "retry", failureClass: cls, reason: "transient, backoff" };
-  }
-
-  // permanent classes
-  return { route: "dlq", failureClass: cls, reason: error.message };
-}
-
-function classifyError(error: Error): FailureClass {
-  if (error.name === "RateLimitError" || error.name === "ServiceUnavailable") {
-    return "transient";
-  }
-  if (error.name === "ValidationError" || error.name === "SchemaMismatch") {
-    return "permanent_input";
-  }
-  if (error.name === "TenantConfigMissing") {
-    return "permanent_config";
-  }
-  if (error.name === "ToolNotFound") {
-    return "version_skew";
-  }
-  if (error.name === "TokenBudgetExceeded") {
-    return "cost_abort";
-  }
-  if (error.name === "SafetyViolation") {
-    return "security";
-  }
-  return "transient"; // default conservative: retry until budget
-}
-```
-
-## Enriching DLQ messages
-
-Raw broker DLQ entries are insufficient. Wrap on send:
-
-```python
-import json
-import hashlib
-from datetime import datetime, timezone
-
-
-def build_dlq_payload(original: dict, exc: Exception, envelope: dict) -> dict:
-    return {
-        "original_message": original,
-        "dlq_metadata": {
-            "arrived_at": datetime.now(timezone.utc).isoformat(),
-            "first_failure_at": envelope.get("first_failure_at"),
-            "receive_count": envelope["receive_count"],
-            "failure_class": envelope.get("failure_class"),
-            "error_type": type(exc).__name__,
-            "error_message": str(exc)[:2000],
-            "agent_version": envelope["agent_version"],
-            "model_id": envelope["model_id"],
-            "tenant_id": envelope["tenant_id"],
-            "trace_id": envelope["trace_id"],
-            "payload_hash": hashlib.sha256(
-                json.dumps(original, sort_keys=True).encode()
-            ).hexdigest(),
-            "partial_state": envelope.get("partial_state"),
-        },
-    }
-```
-
-Store DLQ payloads in durable object storage with broker reference if messages exceed size limits—agent jobs often carry large retrieved context blobs.
-
-## Triage and replay workflows
-
-**Triage dashboard** should group by `failure_class`, `agent_version`, and `tenant_id`. On-call engineers need one-click sample payload inspection with PII redaction, not raw JSON in CloudWatch.
-
-**Replay pipeline:**
-
-1. Filter DLQ by fixed root cause (e.g., `failure_class=version_skew` AND `agent_version < 2.4.0`).
-2. Transform payload if needed (schema migration function versioned alongside agent).
-3. Submit to staging queue; require >95% success on first 100 messages.
-4. Redrive to production in batches of 50 with 30-second pause—protects LLM rate limits.
-5. Mark DLQ entries `replayed_at` with operator ID; never delete until retention window expires.
-
-```python
-async def replay_batch(
-    dlq_messages: list[dict],
-    transform_fn,
-    target_queue,
-    *,
-    batch_size: int = 50,
-    pause_seconds: float = 30,
-):
-    for i in range(0, len(dlq_messages), batch_size):
-        batch = dlq_messages[i : i + batch_size]
-        for msg in batch:
-            transformed = transform_fn(msg["original_message"])
-            await target_queue.send(
-                transformed,
-                idempotency_key=msg["dlq_metadata"]["payload_hash"],
-            )
-        await asyncio.sleep(pause_seconds)
-```
-
-## Observability and alerting
-
-Metrics that matter:
-
-- `dlq_depth` by queue and failure_class
-- `dlq_age_seconds` p99 — how long work has been stranded
-- `dlq_inflow_rate` — spikes indicate deploy regressions
-- `replay_success_rate` — replay without fix recreates incidents
-- `cost_of_retries_usd` — agent-specific; sum LLM tokens on failed attempts
-
-Alert when `dlq_depth > 0` for more than 15 minutes on customer-facing queues—not when depth is zero forever (that means DLQ routing is broken).
-
-Trace DLQ sends as span events `dlq.routed` with failure_class so distributed traces show the full retry history.
-
-## Security considerations
-
-DLQ messages contain production payloads—prompts, user PII, retrieved documents. Apply encryption at rest, restrict IAM to triage roles, and audit every replay action. Security-classified messages go to a separate DLQ with tighter ACLs and automatic ticket creation.
-
-Do not expose DLQ contents to third-party observability vendors without scrubbing. A DLQ dump during an incident has caused more than one accidental PII leak.
-
-## Testing DLQ paths
-
-- **Unit tests** for classification logic—every error type maps correctly.
-- **Integration tests** that force max receive count and assert DLQ arrival with metadata.
-- **Game days** inject version skew deploy and verify triage dashboard grouping.
-- **Replay drills** quarterly: team replays staging DLQ batch under time pressure.
-
-## Multi-stage agent DLQ patterns
-
-Long-running agent workflows span multiple queues. A failure in step four should not re-run steps one through three if those side effects already committed.
-
-**Saga-style checkpoints.** Persist `partial_state` after each successful stage: retrieval complete, tools invoked, draft response generated. DLQ messages carry the checkpoint so replay resumes at the failed stage.
-
-**Compensating actions.** If step three charged a metered API and step four failed permanently, DLQ triage may trigger a refund or usage credit—not only a blind replay. Encode `billable_events` on the envelope.
-
-**Child job DLQs.** Orchestrator fans out to tool workers with separate DLQs. Parent job should transition to `awaiting_child` state, not fail entirely when one tool DLQs—unless the tool was on the critical path. Document which tools are optional vs blocking in agent config; DLQ routing reads that config.
-
-```typescript
-interface ToolPolicy {
-  name: string;
-  critical: boolean;
-  dlqQueue: string;
-}
-
-async function onToolDLQ(
-  parentJobId: string,
-  tool: ToolPolicy,
-  dlqPayload: DLQPayload,
-): Promise<void> {
-  if (tool.critical) {
-    await parentQueue.send({
-      action: "fail_parent",
-      parentJobId,
-      reason: `critical tool ${tool.name} DLQ`,
-      dlqRef: dlqPayload.id,
-    });
-  } else {
-    await parentQueue.send({
-      action: "continue_without_tool",
-      parentJobId,
-      skippedTool: tool.name,
-    });
-    await auditLog.record("non_critical_tool_dlq", dlqPayload);
+// Agent reliability via dead letter queue handling
+export async function handle_agent_dead_letter_queue_handling(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-dead-letter-queue-handling");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-## Cost-aware DLQ retention
+## Implementation details for agent dead letter queue handling
 
-Agent DLQ messages can be large—retrieved context, base64 attachments. Set TTL policies: hot DLQ in broker for 7 days, archive to S3/GCS for 90 days with lifecycle deletion. Index metadata in a triage database so engineers search by `tenant_id` and `failure_class` without listing every S3 object.
+I treat Agent reliability via dead letter queue handling as an operations problem first. The goal is to ship agent dead letter queue handling with human override paths, not to collect frameworks.
 
-Chargeback reports should include DLQ volume by tenant. A tenant sending systematically bad payloads drives DLQ inflow and LLM retry cost—that is a product conversation, not only an ops cleanup.
+Keep side effects at the edges and make every write idempotent. Agent reliability via dead letter queue handling without retry semantics is a future incident write-up.
 
-## The takeaway
+Acceptance check: an on-call engineer can explain system state for agent dead letter queue handling from one dashboard and one runbook page.
 
-Dead letter queue handling for agents is operational insurance. The DLQ is not failure—it is visibility. Classify failures, enrich messages, triage with ownership, and replay with idempotency and rate limits. The customer tickets sitting in that 14,000-message queue deserved the same engineering rigor as the happy path.
+My never-again list for agent dead letter queue handling: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
+
+## Flags, canaries, and kill switches
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent dead letter queue handling, that means making failure visible early.
+
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via dead letter queue handling that needs a hero is not done.
+
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via dead letter queue handling cannot answer, it is not production-ready.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+## Proving it worked
+
+Teams usually discover Agent reliability via dead letter queue handling after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
+
+Put a metric on the user-visible effect of agent dead letter queue handling before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent dead letter queue handling.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+Related reading:
+
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+
+## Follow-ups teams usually skip
+
+I treat Agent reliability via dead letter queue handling as an operations problem first. The goal is to ship agent dead letter queue handling with human override paths, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Agent reliability via dead letter queue handling without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent dead letter queue handling.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+## Practical defaults for Agent reliability via dead letter queue handling
+
+I treat Agent reliability via dead letter queue handling as an operations problem first. The goal is to ship agent dead letter queue handling with human override paths, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent dead letter queue handling before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent dead letter queue handling.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent dead letter queue handling. Expand only when the metric demands it.
+
+## Review questions before merging agent dead letter queue handling work
+
+Teams usually discover Agent reliability via dead letter queue handling after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
+
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent dead letter queue handling.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-dead-letter-queue-handling` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent dead letter queue handling
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent dead letter queue handling, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Agent reliability via dead letter queue handling without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent dead letter queue handling.
+
+Slug-specific note (agent-dead-letter-queue-handling): prioritize handling behavior under load and verify with a fixture named `agent-dead-letter-queue-handling-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent dead letter queue handling. Expand only when the metric demands it.
 
 ## Resources
 
-- [AWS SQS Dead-Letter Queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
-- [Azure Service Bus dead-lettering](https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues)
-- [Google Cloud Pub/Sub dead-letter topics](https://cloud.google.com/pubsub/docs/dead-letter-topics)
-- [Apache Kafka — handling poison pills](https://kafka.apache.org/documentation/#design_philosophy)
-- [Companion: Poison Message Detection](/agent-poison-message-detection/)
-- [OpenTelemetry semantic conventions — messaging](https://opentelemetry.io/docs/specs/semconv/messaging/)
+- Internal runbook seed: `agent-dead-letter-queue-handling`
+- https://12factor.net/
+- https://martinfowler.com/

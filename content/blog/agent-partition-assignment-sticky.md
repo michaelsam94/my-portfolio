@@ -1,251 +1,159 @@
 ---
-title: "AI Agents: Partition Assignment Sticky"
+title: "Partition Assignment Sticky for production agents"
 slug: "agent-partition-assignment-sticky"
-description: "Sticky partition assignment keeps agent event streams co-located with per-session state — fewer rebalance storms, warmer caches, and predictable tool-loop latency in Kafka consumer groups."
+description: "Partition Assignment Sticky for production agents: how to make agent partition assignment sticky observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-02-02"
-dateModified: "2025-02-02"
-tags: ["AI", "Agent", "Partition"]
-keywords: "sticky partition assignment, Kafka cooperative sticky assignor, agent session affinity, consumer group rebalance, partition key agent events"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, partition, assignment, sticky, production, engineering"
 faq:
-  - q: "What does sticky partition assignment mean in Kafka?"
-    a: "The cooperative sticky assignor tries to preserve existing partition-to-consumer mappings during rebalance, moving only the minimum partitions needed to restore balance. That reduces stop-the-world pauses compared to range or round-robin reassignment that shuffles most partitions every scale event."
-  - q: "Why do agent pipelines care about partition stickiness?"
-    a: "Stateful agent workers cache session context, in-flight tool approvals, and partial LLM responses in memory. If rebalance moves partitions frequently, workers cold-start caches, duplicate processing during revocation, and miss ordering guarantees users perceive as 'the agent forgot what it was doing.'"
-  - q: "How should I choose partition keys for agent events?"
-    a: "Use session_id or conversation_id as the Kafka message key so all turns, tool results, and heartbeat events for one agent session land on one partition. Never key by user_id alone if one user runs parallel sessions — those sessions will serialize unnecessarily."
-  - q: "What is the difference between partition stickiness and sticky sessions in HTTP load balancers?"
-    a: "HTTP sticky sessions route a client to the same server via cookies. Kafka sticky assignment keeps a partition on the same consumer *when possible* within a consumer group. Both pursue locality, but Kafka stickiness survives only across rebalances that do not force migration — it is cooperative, not absolute."
+  - q: "What is Partition Assignment Sticky for production agents?"
+    a: "Partition Assignment Sticky for production agents is the production approach to make agent partition assignment sticky observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Partition Assignment Sticky for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent partition assignment sticky, prioritize it."
+  - q: "What is the most common mistake with Partition Assignment Sticky for production agents?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-During a routine Kubernetes node drain, our agent orchestrator scaled from twelve consumers to fourteen. The consumer group used the default range assignor. Partitions reshuffled across the entire fleet. For four minutes, half the agent sessions saw duplicated tool invocations; the other half stalled waiting for cold caches to reload retrieval context from Postgres. The drain succeeded. The incident review did not.
+**Partition Assignment Sticky for production agents** means you make agent partition assignment sticky observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like retries without idempotency keys start paging people.
 
-The fix paired two ideas: **key messages by session** so related events co-locate, and **sticky assignment** so scaling events move fewer partitions. Together they keep agent workers warm on the data that matters.
+This write-up is specific to `agent-partition-assignment-sticky` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Event locality in agent architectures
+## Partition Assignment Sticky for production agents: production checklist
 
-A typical agent loop emits a burst of records per user turn:
+I treat Partition Assignment Sticky for production agents as an operations problem first. The goal is to make agent partition assignment sticky observable and interruptible, not to collect frameworks.
 
-```
-UserMessage → PlannerDecision → ToolRequest → ToolResult → AssistantDelta → RunComplete
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Downstream consumers include:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Partition Assignment Sticky for production agents that needs a hero is not done.
 
-- A **state materializer** merging events into session snapshots
-- A **billing meter** aggregating token usage
-- A **human approval gate** blocking destructive tools
-- An **audit archiver** writing immutable logs
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-The materializer and approval gate are stateful in memory. If partition 7 moves from consumer A to consumer B mid-session, B must rebuild state from compaction topic or SQL before processing the next `ToolResult` — latency spikes exactly when the user is watching the spinner.
+## Inputs, outputs, invariants
 
-Stickiness is not nostalgia for single-server apps. It is a **rebalance cost reducer** that makes stateful stream processing tractable without jumping straight to Kafka Streams or Flink for every workload.
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Partition keys: the prerequisite
+Keep side effects at the edges and make every write idempotent. Partition Assignment Sticky for production agents without retry semantics is a future incident write-up.
 
-Sticky assignment preserves mapping; keys determine mapping semantics.
+Acceptance check: an on-call engineer can explain system state for agent partition assignment sticky from one dashboard and one runbook page.
 
-```python
-from confluent_kafka import Producer
-import json
+Concretely, being able to make agent partition assignment sticky observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-producer = Producer({"bootstrap.servers": "kafka:9092"})
-
-def publish_agent_event(session_id: str, event_type: str, payload: dict):
-    producer.produce(
-        topic="agent.events.v1",
-        key=session_id.encode("utf-8"),  # same key → same partition
-        value=json.dumps({"type": event_type, **payload}).encode("utf-8"),
-        headers=[("schema_version", b"1")],
-    )
-    producer.flush()
-```
-
-Rules that prevented cross-session interference:
-
-| Key choice | Effect |
-|------------|--------|
-| `session_id` | All turns serialized per session — correct default |
-| `tenant_id` | Hot tenants create hot partitions — avoid unless low volume |
-| `random UUID` | Round-robin load spread — destroys ordering and cache locality |
-| `tool_name` | Bizarre skew — never |
-
-Partition count should exceed peak concurrent sessions divided by target sessions-per-partition, but stay low enough that rebalance work stays bounded. We used 48 partitions for ~2,000 concurrent sessions — roughly 40 sessions per partition average, knowing skew creates hotspots.
-
-## Enabling cooperative sticky assignor
-
-Kafka 2.4+ ships `CooperativeStickyAssignor`. Configure consumers explicitly — defaults still bite:
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
 ```python
-from confluent_kafka import Consumer
+# Partition Assignment Sticky for production agents
+from dataclasses import dataclass
 
-consumer = Consumer({
-    "bootstrap.servers": "kafka:9092",
-    "group.id": "agent-materializer",
-    "auto.offset.reset": "earliest",
-    "enable.auto.commit": False,
-    "partition.assignment.strategy": "cooperative-sticky",
-})
-consumer.subscribe(["agent.events.v1"])
+@dataclass(frozen=True)
+class AgentPartitionAssiRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_partition_assignme(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-partition-assignment-sticky"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-For Java clients:
+## Concurrency, retries, and timeouts
 
-```java
-props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
-    List.of(CooperativeStickyAssignor.class.getName()));
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partition assignment sticky, that means making failure visible early.
 
-Verify in consumer group description after deploy — `partition.assignment.strategy` should list cooperative-sticky, not range.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-### What changes during rebalance
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Partition Assignment Sticky for production agents that needs a hero is not done.
 
-Classic eager rebalance: revoke **all** partitions, reassign everything, resume. Cooperative sticky: revoke **some** partitions, assign newcomers incrementally, preserve stable mappings where balance allows.
+My never-again list for agent partition assignment sticky: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-For agent workers, that means a scale-out adds one consumer that receives ~1/N of partitions from incumbents instead of everyone trading partitions.
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-## Stateful consumption pattern
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Combine stickiness with explicit revocation handling:
+## Support and audit workflows
 
-```python
-running_tasks: dict[tuple[str, int], SessionState] = {}
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-while True:
-    msg = consumer.poll(1.0)
-    if msg is None:
-        continue
-    if msg.error():
-        handle_error(msg.error())
-        continue
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-    key = (msg.topic(), msg.partition())
-    state = running_tasks.get(key)
-    if state is None:
-        state = SessionState.load_from_store(session_id=msg.key().decode())
-        running_tasks[key] = state
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Partition Assignment Sticky for production agents that needs a hero is not done.
 
-    state.apply_event(json.loads(msg.value()))
-    consumer.commit(asynchronous=False)
+Review prompts I use: what happens twice, what happens never, what happens partially? If Partition Assignment Sticky for production agents cannot answer, it is not production-ready.
 
-def on_partitions_revoked(revoked):
-    for tp in revoked:
-        state = running_tasks.pop(tp, None)
-        if state:
-            state.flush_to_store()
-            state.close()
-```
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-Register `on_partitions_revoked` via `consumer.subscribe(..., on_revoke=on_partitions_revoked)` in confluent-kafka or the rebalance listener API in Java. Sticky assignment reduces how often this fires; it does not eliminate the need for correct revocation.
+## Capacity and load notes
 
-## Static membership and session timeouts
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Frequent rolling deploys trigger rebalance even with sticky assignors if consumers churn faster than `session.timeout.ms`. Two mitigations:
+Put a metric on the user-visible effect of agent partition assignment sticky before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-**Static group membership** — set `group.instance.id` to a stable pod name (StatefulSet ordinal or deployment pod UID stored in env). The broker treats instance restarts as the same member when the ID returns within session timeout.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partition assignment sticky.
 
-```yaml
-env:
-  - name: KAFKA_GROUP_INSTANCE_ID
-    valueFrom:
-      fieldRef:
-        fieldPath: metadata.name
-```
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-**Tune timeouts** — agent consumers doing long tool calls may need higher `max.poll.interval.ms` so they are not kicked mid-run. Balance against failure detection latency.
+Related reading:
 
-## Detecting rebalance pain
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Metrics worth dashboarding:
+## Ship gate
 
-- `kafka_consumer_rebalance_total` — spikes correlating with deploys
-- **End-to-end session latency** p99 during scale events
-- **Duplicate tool invocation rate** — state lost between revoke and reload
-- **Per-partition lag** heatmap — sticky assignment should avoid all lag jumping uniformly
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Log partition migrations at INFO during rebalance:
+Put a metric on the user-visible effect of agent partition assignment sticky before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```
-Rebalance: lost partitions [(agent.events.v1, 12)]
-Rebalance: gained partitions [(agent.events.v1, 31)]
-```
+Acceptance check: an on-call engineer can explain system state for agent partition assignment sticky from one dashboard and one runbook page.
 
-If gained set is nearly full partition list after adding one pod, sticky assignor is not active — check config typos and client library versions.
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-## When stickiness is insufficient
+## Practical defaults for Partition Assignment Sticky for production agents
 
-Move to external state store when:
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-- Sessions exceed memory per consumer
-- Workers must survive partition moves without reload pause
-- You need exactly-once semantics across multiple topics
+Keep side effects at the edges and make every write idempotent. Partition Assignment Sticky for production agents without retry semantics is a future incident write-up.
 
-Kafka Streams state stores or a Redis/session table keyed by `session_id` decouple processing locality from partition ownership. Sticky assignment still helps by keeping cache hit rates high, but correctness no longer depends on in-memory warmth.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partition assignment sticky.
 
-## Anti-patterns observed in production
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-**Long synchronous tool calls inside poll loop.** Violates `max.poll.interval.ms`; consumer gets evicted; sticky assignment cannot help.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-**Auto-commit enabled on stateful paths.** Duplicate processing after crash becomes user-visible double tool calls.
+## Review questions before merging agent partition assignment sticky work
 
-**Key churn mid-session.** Migrating from `user_id` to `session_id` keys reshuffles all partitions once — plan a dual-write window.
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-**Over-partitioning tiny deployments.** Three consumers with 256 partitions guarantees churn; start with `max(12, 3 × consumer_count)`.
+Put a metric on the user-visible effect of agent partition assignment sticky before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Testing rebalance behavior before production
+Acceptance check: an on-call engineer can explain system state for agent partition assignment sticky from one dashboard and one runbook page.
 
-Rebalance bugs hide until the second consumer joins. Reproduce in staging with a reduced topic:
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-```bash
-# Create a 12-partition topic mirroring production
-kafka-topics --create --topic agent.events.staging \
-  --partitions 12 --replication-factor 1 \
-  --bootstrap-server localhost:9092
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-# Start two consumers with cooperative-sticky, publish keyed traffic
-kafka-console-producer --topic agent.events.staging \
-  --property "parse.key=true" --property "key.separator=:" \
-  --bootstrap-server localhost:9092 <<EOF
-sess-001:{"type":"UserMessage"}
-sess-001:{"type":"ToolRequest"}
-sess-002:{"type":"UserMessage"}
-EOF
-```
+## Field notes after thirty days of agent partition assignment sticky
 
-Scale from one to three consumers while recording partition ownership per `group.instance.id`. With sticky assignment, adding the third consumer should move roughly four partitions total, not reassign all twelve. Repeat after enabling static membership — restart a single pod and confirm zero partition migration if it rejoins within session timeout.
+Teams usually discover Partition Assignment Sticky for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Inject latency into `on_partitions_revoked` handlers in tests. If flush-to-store takes longer than `max.poll.interval.ms`, the consumer will churn regardless of stickiness — fix handler performance before tuning assignors.
+Put a metric on the user-visible effect of agent partition assignment sticky before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Ordering guarantees agents actually need
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partition assignment sticky.
 
-Kafka guarantees order **within a partition**, not across partitions. Agent UX usually requires:
+Slug-specific note (agent-partition-assignment-sticky): prioritize sticky behavior under load and verify with a fixture named `agent-partition-assignment-sticky-smoke`.
 
-- Tool requests and tool results for the same session stay ordered
-- Heartbeats may arrive out of band on a separate topic without keys
-
-Do not publish `AssistantDelta` streaming tokens to a keyed topic if multiple sessions multiplex through one producer thread without flushing key order — batching can reorder within the client library buffer. Per-session producer instances or partition-aware send queues prevented subtle transcript garbling in one deployment.
-
-Sticky assignment preserves which consumer reads that ordered stream; it does not create order where keys were wrong.
-
-## Capacity planning worksheet
-
-Rough seats-per-partition math before go-live:
-
-| Input | Example value |
-|-------|---------------|
-| Peak concurrent sessions | 3,000 |
-| Events per session per minute | 8 |
-| Target events/partition/minute | 600 |
-| Required partitions (ceil) | `(3000 × 8) / 600 = 40` |
-
-Round up to account for skew — one noisy integration test tenant can double traffic on its key hash bucket. Monitor per-partition byte rate in Kafka; hot partitions survive sticky assignment but still bottleneck single-threaded consumption.
-
-## Closing
-
-Sticky partition assignment is boring Kafka configuration until it is not — usually during the first autoscaling event on a stateful agent consumer. Pair cooperative-sticky with session-scoped message keys, explicit revocation flushing, and static membership where deploy cadence allows. The goal is not permanent affinity forever; it is **minimal partition motion** when the fleet breathes, so agent sessions keep their context without users noticing infrastructure underneath.
+Default deny, explicit timeouts, and one dashboard row for agent partition assignment sticky. Expand only when the metric demands it.
 
 ## Resources
 
-- [Apache Kafka cooperative rebalancing (KIP-429)](https://cwiki.apache.org/confluence/display/KAFKA/KIP-429%3A+Kafka+Consumer+Incremental+Rebalance+Protocol)
-- [Kafka sticky assignor documentation](https://kafka.apache.org/documentation/#consumerconfigs_partition.assignment.strategy)
-- [Confluent consumer configuration reference](https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html)
-- [Static membership in Kafka (KIP-345)](https://cwiki.apache.org/confluence/display/KAFKA/KIP-345%3A+Introduce+Static+Membership+Protocol+to+Reduce+Consumer+Rebalances)
-- [Jay Kreps on log compaction and stream processing](https://www.confluent.io/blog/compaction-in-kafka/)
+- Internal runbook seed: `agent-partition-assignment-sticky`
+- https://12factor.net/
+- https://martinfowler.com/

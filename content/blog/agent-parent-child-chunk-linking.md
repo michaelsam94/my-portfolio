@@ -1,181 +1,159 @@
 ---
-title: "AI Agents: Parent Child Chunk Linking"
+title: "Parent Child Chunk Linking for production agents"
 slug: "agent-parent-child-chunk-linking"
-description: "How parent-child chunk linking preserves retrieval precision while giving LLMs enough surrounding context — schema design, expansion rules, and eval metrics for production RAG."
+description: "Parent Child Chunk Linking for production agents: how to make agent parent child chunk linking observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-06-21"
-dateModified: "2025-06-21"
-tags: ["AI", "Agent", "Parent"]
-keywords: "parent child chunk linking, RAG retrieval, small-to-big retrieval, hierarchical chunks, vector search expansion, document chunking strategy"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, parent, child, chunk, linking, production, engineering"
 faq:
-  - q: "When should I use parent-child linking instead of a single chunk size?"
-    a: "Use it when your embedding model performs best on 256–512 token chunks but users ask questions that require paragraph- or section-level context. Linking lets retrieval stay precise while generation reads a wider parent window."
-  - q: "Should the parent or the child be embedded?"
-    a: "Almost always embed the child (small chunk) and store the parent text separately. Embedding large parents dilutes semantic signal; embedding children and expanding to parents at query time is the standard small-to-big pattern."
-  - q: "How do I prevent retrieving the wrong parent for overlapping chunks?"
-    a: "Give every child an immutable parent_id and byte/char offsets into the parent. Never recompute parent boundaries at query time from heuristics — re-chunking events must version parent records so stale links fail loudly in ingest validation."
-  - q: "What metrics prove parent-child linking is working?"
-    a: "Track context precision (did expanded text contain the answer span?), citation accuracy, and nDCG@k on a labeled set where gold evidence lives in known child IDs. Regression in child recall with flat parent embedding is a sign your link graph broke."
+  - q: "What is Parent Child Chunk Linking for production agents?"
+    a: "Parent Child Chunk Linking for production agents is the production approach to make agent parent child chunk linking observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Parent Child Chunk Linking for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent parent child chunk linking, prioritize it."
+  - q: "What is the most common mistake with Parent Child Chunk Linking for production agents?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A support agent once answered a billing question with a perfectly relevant sentence — pulled from the middle of a three-page policy PDF — and still got escalated because the sentence mentioned a grandfathered rate without the table header that defined who qualifies. The retrieval stack did its job: cosine similarity found the right needle. The generation step had a needle without the haystack around it.
+**Parent Child Chunk Linking for production agents** means you make agent parent child chunk linking observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Parent-child chunk linking exists to split that problem in two. Small **child** chunks drive vector search; larger **parent** chunks supply the context window at answer time. The pattern shows up under names like small-to-big retrieval, hierarchical chunking, and parent-document expansion, but the engineering contract is the same: store two granularities, search one, read the other.
+This write-up is specific to `agent-parent-child-chunk-linking` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## The failure mode of one chunk size
+## Incident pattern involving agent parent child chunk linking
 
-Teams usually start with fixed-size splits — 512 tokens, 20% overlap, ship it. That works until documents have internal structure: nested headings, tables, cross-references, legal definitions that appear once and bind clauses ten pages later.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent parent child chunk linking, that means making failure visible early.
 
-Shrink chunks and recall improves; context collapses. Grow chunks and the embedding averages away the specific phrase a user typed. Overlap helps at the margins but doubles storage and still severs tables from captions.
+Keep side effects at the edges and make every write idempotent. Parent Child Chunk Linking for production agents without retry semantics is a future incident write-up.
 
-Parent-child linking encodes an explicit bet: **retrieval and reading have different optimal granularities.** Children compete in vector space; parents compete for token budget in the prompt.
+Acceptance check: an on-call engineer can explain system state for agent parent child chunk linking from one dashboard and one runbook page.
 
-## Data model
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-At minimum you need four fields on every child record:
+## Root cause in plain language
 
-| Field | Role |
-|-------|------|
-| `child_id` | Stable primary key used in retrieval logs |
-| `parent_id` | Foreign key to the parent text blob |
-| `embedding` | Vector for the child only |
-| `child_text` | Optional; store if you rerank on lexical features |
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent parent child chunk linking, that means making failure visible early.
 
-Parents carry `parent_text`, source metadata (path, version, ACL), and optionally a outline breadcrumb (`"Refund Policy > Enterprise > SLA Credits"`). Keep parents immutable per `parent_id`; when the source document changes, mint new parent IDs and re-link children rather than overwriting in place — otherwise eval sets and audit trails reference ghosts.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Acceptance check: an on-call engineer can explain system state for agent parent child chunk linking from one dashboard and one runbook page.
+
+Concretely, being able to make agent parent child chunk linking observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
 ```python
+# Parent Child Chunk Linking for production agents
 from dataclasses import dataclass
-from typing import Optional
 
 @dataclass(frozen=True)
-class ParentChunk:
-    parent_id: str
-    doc_id: str
-    doc_version: int
-    text: str
-    heading_path: tuple[str, ...]
+class AgentParentChildCRequest:
+    tenant_id: str
+    idempotency_key: str
 
-@dataclass(frozen=True)
-class ChildChunk:
-    child_id: str
-    parent_id: str
-    start_char: int
-    end_char: int
-    text: str
-    embedding: list[float]
-
-def validate_link(child: ChildChunk, parent: ParentChunk) -> None:
-    if child.parent_id != parent.parent_id:
-        raise ValueError("parent_id mismatch")
-    excerpt = parent.text[child.start_char : child.end_char]
-    if excerpt.strip() != child.text.strip():
-        raise ValueError("child offsets do not match parent text")
+async def run_agent_parent_child_chunk(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-parent-child-chunk-linking"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Validation at ingest catches the most common production bug: a pipeline re-chunked documents but only re-embedded children, leaving offsets pointed at the wrong parent version.
+## The fix that held under load
 
-## Ingest: splitting with structure awareness
+I treat Parent Child Chunk Linking for production agents as an operations problem first. The goal is to make agent parent child chunk linking observable and interruptible, not to collect frameworks.
 
-Structure-aware splitting beats naive token windows for parent boundaries. A practical approach:
+Put a metric on the user-visible effect of agent parent child chunk linking before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-1. Parse documents into sections (Markdown headings, PDF outline, HTML `h1–h6`).
-2. Each section becomes a **parent** if it fits under your max parent token budget (often 1,500–3,000 tokens).
-3. Split each parent into **children** of 256–512 tokens with modest overlap (50–80 tokens) *inside* the parent only.
+Acceptance check: an on-call engineer can explain system state for agent parent child chunk linking from one dashboard and one runbook page.
 
-Overlap should never cross parent borders. If a user query matches the last child of section A and the first child of section B, you want two distinct parent expansions — not a synthetic merge that never existed in the source doc.
+My never-again list for agent parent child chunk linking: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-For code repositories, parents often map to file paths or symbol blocks; children map to function bodies or comment paragraphs. For chat exports, parents map to conversation sessions; children map to individual turns. The linking logic is identical even when the splitter changes.
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-## Query path: search small, expand big
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-The runtime pipeline has three beats:
+## Tests and probes that catch regressions
 
-```typescript
-type RetrievedChild = {
-  childId: string;
-  parentId: string;
-  score: number;
-};
+I treat Parent Child Chunk Linking for production agents as an operations problem first. The goal is to make agent parent child chunk linking observable and interruptible, not to collect frameworks.
 
-async function retrieveWithExpansion(
-  queryEmbedding: number[],
-  topK: number,
-): Promise<{ parentId: string; text: string; childHits: RetrievedChild[] }[]> {
-  const childHits = await vectorIndex.search(queryEmbedding, topK * 3);
+Put a metric on the user-visible effect of agent parent child chunk linking before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-  // Dedupe by parent — keep best-scoring child per parent
-  const byParent = new Map<string, RetrievedChild>();
-  for (const hit of childHits) {
-    const prev = byParent.get(hit.parentId);
-    if (!prev || hit.score > prev.score) byParent.set(hit.parentId, hit);
-  }
+Acceptance check: an on-call engineer can explain system state for agent parent child chunk linking from one dashboard and one runbook page.
 
-  const ranked = [...byParent.values()]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+Review prompts I use: what happens twice, what happens never, what happens partially? If Parent Child Chunk Linking for production agents cannot answer, it is not production-ready.
 
-  const parents = await parentStore.batchGet(ranked.map((r) => r.parentId));
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-  return ranked.map((r) => ({
-    parentId: r.parentId,
-    text: parents.get(r.parentId)!.text,
-    childHits: childHits.filter((h) => h.parentId === r.parentId),
-  }));
-}
-```
+## Runbook lines that save minutes
 
-Notice the `topK * 3` fan-out: multiple children from the same parent often land in the top band. Deduping before expansion prevents one long policy section from consuming four slots in the context window.
+Teams usually discover Parent Child Chunk Linking for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Optional refinement: **lost-in-the-middle** mitigation. If the parent is large, highlight the matched child span inside the parent with markers or extract a window centered on the child offsets while still passing heading breadcrumbs. Some teams store a tertiary "window" text precomputed at ingest.
+Put a metric on the user-visible effect of agent parent child chunk linking before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Prompt assembly and citations
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Parent Child Chunk Linking for production agents that needs a hero is not done.
 
-Agents should cite `child_id` (precision) while the model reads `parent_text` (context). A citation format that worked well in production:
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-```
-[source: doc_version=42 parent=refund-policy#enterprise child=rc_8912]
-```
+Related reading:
 
-Log both IDs in retrieval traces. When an answer is wrong, you can tell whether embedding search failed or the parent was right but the model ignored a clause.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Deduping parents also simplifies attribution: one parent expanded once even if three children matched.
+## Platform guardrails afterward
 
-## Tuning knobs that actually matter
+Teams usually discover Parent Child Chunk Linking for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-**Child size** is the main recall lever. If eval shows correct answers exist in the document but never surface in top-20 child hits, shrink children before retraining embeddings.
+Keep side effects at the edges and make every write idempotent. Parent Child Chunk Linking for production agents without retry semantics is a future incident write-up.
 
-**Parent size** is the main faithfulness lever. If answers hallucinate qualifiers, parents are probably too small or missing structural headings.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Parent Child Chunk Linking for production agents that needs a hero is not done.
 
-**topK vs fan-out multiplier** trades latency for diversity. Agent workloads with tool calls often use lower topK (3–5 parents) because each parent consumes 1,500+ tokens before tool results arrive.
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-**Metadata filters** (tenant, product SKU, doc ACL) should apply before vector search when possible. Linking does not fix authorization bugs — a retrieved parent still must pass document-level ACL checks at expansion time.
+## Practical defaults for Parent Child Chunk Linking for production agents
 
-## Evaluation without guessing
+Teams usually discover Parent Child Chunk Linking for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Build a gold set where each question maps to a `child_id` that contains the answer span *and* a `parent_id` required for full context. Score separately:
+Keep side effects at the edges and make every write idempotent. Parent Child Chunk Linking for production agents without retry semantics is a future incident write-up.
 
-- **Child recall@k** — is the correct child in the top k vector hits?
-- **Parent recall@k** — after dedupe, is the correct parent expanded?
-- **Answer correctness** — human or LLM-judge with rubric, given expanded context only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent parent child chunk linking.
 
-A healthy stack shows high child recall and slightly higher parent recall. If parent recall lags child recall, your dedupe or `batchGet` path is dropping IDs. If answer correctness lags parent recall, the problem moved downstream to prompting or model behavior.
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-## Operational hazards
+Default deny, explicit timeouts, and one dashboard row for agent parent child chunk linking. Expand only when the metric demands it.
 
-**Re-ingestion drift.** CI should fail when `doc_version` increments but child count delta exceeds a threshold without a signed migration note.
+## Review questions before merging agent parent child chunk linking work
 
-**Duplicate parents.** Two parents with near-identical text from PDF + HTML ingestion paths will steal top-k slots. Canonicalize on `doc_id` at index time.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent parent child chunk linking, that means making failure visible early.
 
-**Cross-language children.** Multilingual embeddings may match a translated child while the parent remains monolingual. Store language tags and filter when the agent detects query locale.
+Keep side effects at the edges and make every write idempotent. Parent Child Chunk Linking for production agents without retry semantics is a future incident write-up.
 
-**Token budget blowups.** Guard `sum(parent.text.length)` with a hard cap; truncate lowest-scoring parents first and log when truncation fires — it is a leading indicator that parent size or topK is miscalibrated.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Parent Child Chunk Linking for production agents that needs a hero is not done.
 
-## Closing perspective
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
 
-Parent-child chunk linking is not exotic infrastructure. It is a relational join between two chunk granularities — one optimized for geometry in embedding space, one optimized for human-readable structure. The teams that skip the explicit link graph usually recreate it accidentally with bigger chunks and worse recall. Making the relationship first-class in schema, ingest validation, and eval splits retrieval precision from generation context — which is exactly where RAG systems come apart under real documents.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
+
+## Field notes after thirty days of agent parent child chunk linking
+
+Teams usually discover Parent Child Chunk Linking for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Keep side effects at the edges and make every write idempotent. Parent Child Chunk Linking for production agents without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Parent Child Chunk Linking for production agents that needs a hero is not done.
+
+Slug-specific note (agent-parent-child-chunk-linking): prioritize linking behavior under load and verify with a fixture named `agent-parent-child-chunk-linking-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-parent-child-chunk-linking` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [LlamaIndex recursive retriever documentation](https://docs.llamaindex.ai/en/stable/examples/retrievers/recursive_retriever/)
-- [LangChain parent document retriever](https://python.langchain.com/docs/how_to/parent_document_retriever/)
-- [PostgreSQL foreign keys and referential integrity](https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-FK)
-- [Pinecone metadata filtering guide](https://docs.pinecone.io/guides/data/filter-with-metadata)
-- [BEIR benchmark for retrieval evaluation](https://github.com/beir-cellar/beir)
+- Internal runbook seed: `agent-parent-child-chunk-linking`
+- https://12factor.net/
+- https://martinfowler.com/

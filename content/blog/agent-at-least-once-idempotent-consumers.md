@@ -1,250 +1,159 @@
 ---
-title: "AI Agents: At Least Once Idempotent Consumers"
+title: "Agent reliability via at least once idempotent consumers"
 slug: "agent-at-least-once-idempotent-consumers"
-description: "Build agent event consumers that survive at-least-once delivery—dedup keys, idempotent side effects, offset commit ordering, and poison-message handling without double-charging LLM runs."
+description: "Agent reliability via at least once idempotent consumers: how to ship agent at least once idempotent consumers with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-11-20"
-dateModified: "2024-11-20"
-tags: ["AI", "Agent"]
-keywords: "at-least-once delivery, idempotent consumers, message deduplication, Kafka consumer, agent event processing, exactly-once semantics"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, at, least, once, idempotent, consumers, production, engineering"
 faq:
-  - q: "Is at-least-once delivery good enough for agent pipelines?"
-    a: "Yes, if every consumer is idempotent. Brokers and cloud queues guarantee at-least-once in practice—crashes between processing and ack always redeliver. Agent side effects (LLM calls, tool invocations, billing) cannot tolerate duplicates unless you deduplicate or make writes safe to replay."
-  - q: "Where should idempotency keys live for agent events?"
-    a: "Prefer the event envelope: stable idempotency_key derived from upstream run_id + step_name + attempt. Store processed keys in a dedup table or cache with TTL exceeding max redelivery window. Do not rely solely on Kafka offset—rebalances and replays skip offsets differently."
-  - q: "When should consumers commit offsets relative to side effects?"
-    a: "Commit only after side effects are durable and dedup record is written—process-store-commit order. Committing before a successful LLM tool call causes lost work on crash; committing after without dedup causes double execution on redelivery."
-  - q: "How do you handle poison messages that fail idempotency checks?"
-    a: "After N failures with the same idempotency_key, route to a dead-letter queue with full payload and consumer version. Do not skip offset on main partition without DLQ—silent loss is worse than duplicate. Alert on DLQ rate; replay only after fixing the handler bug."
+  - q: "What is Agent reliability via at least once idempotent consumers?"
+    a: "Agent reliability via at least once idempotent consumers is the production approach to ship agent at least once idempotent consumers with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via at least once idempotent consumers?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent at least once idempotent consumers, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via at least once idempotent consumers?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Our agent billing dashboard showed 847 runs for a batch that should have produced 812. The diff traced to a Kafka consumer that crashed after calling OpenAI but before committing its offset. On restart, every in-flight message ran again—same prompt, same tool chain, **new invoice line items**. The broker did exactly what at-least-once promises. We did not.
+**Agent reliability via at least once idempotent consumers** means you ship agent at least once idempotent consumers with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Agent platforms are event-heavy: run queued, step completed, tool result ingested, embedding job finished. Every handler must assume **the same message arrives twice** and still leave the system correct. This is not pessimism—it is the contract your queue already gives you.
+This write-up is specific to `agent-at-least-once-idempotent-consumers` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Delivery semantics in one diagram
+## Decision guide for Agent reliability via at least once idempotent consumers
 
-```
-Producer ──► Broker (persists) ──► Consumer
-                  │                    │
-                  │                    ├─ Process (maybe slow)
-                  │                    ├─ Crash here → redelivery
-                  │                    └─ Commit offset
-```
+Teams usually discover Agent reliability via at least once idempotent consumers after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-| Guarantee | What you get | Agent risk |
-|-----------|--------------|------------|
-| At-most-once | No duplicates | Lost runs, stuck workflows |
-| At-least-once | No loss, duplicates possible | Double LLM spend, duplicate emails |
-| Exactly-once | Broker marketing | End-to-end still needs idempotent sinks |
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Practical agent stacks choose at-least-once plus idempotent consumers. Chasing Kafka exactly-once semantics across Postgres, Stripe, and external APIs rarely pays off.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent at least once idempotent consumers.
 
-## Idempotency key design
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-An idempotency key must be **stable across redeliveries** and **unique across distinct work**.
+## When to refuse this approach
 
-Good sources:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent at least once idempotent consumers, that means making failure visible early.
 
-- `run_id` + `step_index` for orchestration events
-- Upstream `event_id` UUID if producer assigns one at creation
-- Hash of `(tenant_id, workflow_id, logical_operation, input_version)`
+Put a metric on the user-visible effect of agent at least once idempotent consumers before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Bad sources:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via at least once idempotent consumers that needs a hero is not done.
 
-- Kafka `(topic, partition, offset)` — changes on repartitioning
-- `Date.now()` inside the consumer
-- LLM response content — nondeterministic at non-zero temperature
+Concretely, being able to ship agent at least once idempotent consumers with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
 ```typescript
-import { createHash } from "crypto";
-
-export function idempotencyKey(event: AgentEvent): string {
-  const material = [
-    event.tenant_id,
-    event.run_id,
-    event.step_name,
-    String(event.input_version ?? 0),
-  ].join("|");
-  return createHash("sha256").update(material).digest("hex");
+// Agent reliability via at least once idempotent consumers
+export async function handle_agent_at_least_once_idempotent_consumers(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-at-least-once-idempotent-consumers");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-Include `input_version` when step inputs can be patched and re-emitted under the same step name.
+## Minimal production setup
 
-## The dedup store
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent at least once idempotent consumers, that means making failure visible early.
 
-Track processed keys before performing irreversible side effects:
+Keep side effects at the edges and make every write idempotent. Agent reliability via at least once idempotent consumers without retry semantics is a future incident write-up.
 
-```sql
-CREATE TABLE consumer_dedup (
-  idempotency_key   TEXT PRIMARY KEY,
-  consumer_group    TEXT NOT NULL,
-  processed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  result_ref        TEXT,  -- optional pointer to output artifact
-  expires_at        TIMESTAMPTZ NOT NULL
-);
+Acceptance check: an on-call engineer can explain system state for agent at least once idempotent consumers from one dashboard and one runbook page.
 
-CREATE INDEX ON consumer_dedup (expires_at);
-```
+My never-again list for agent at least once idempotent consumers: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-TTL should exceed broker redelivery window (often 7 days for SQS visibility timeout stacks; Kafka depends on retention). Expired keys allow intentional replay after bug fixes—version your handler and use a new `input_version` when semantics change.
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-For high-throughput paths, Redis SET with TTL works as a fast filter backed by Postgres for audit:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```python
-async def try_claim(key: str, group: str, ttl_seconds: int = 604800) -> bool:
-    # SET NX — only first consumer wins
-    claimed = await redis.set(f"dedup:{group}:{key}", "1", nx=True, ex=ttl_seconds)
-    if not claimed:
-        return False
-    await db.execute(
-        "INSERT INTO consumer_dedup (idempotency_key, consumer_group, expires_at) "
-        "VALUES ($1, $2, now() + interval '7 days') ON CONFLICT DO NOTHING",
-        key, group,
-    )
-    return True
-```
+## Cost, complexity, and ownership
 
-## Consumer loop: correct ordering
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent at least once idempotent consumers, that means making failure visible early.
 
-```python
-async def consume(message: AgentEvent, handler_version: str) -> None:
-    key = idempotency_key(message)
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-    if not await try_claim(key, CONSUMER_GROUP):
-        metrics.increment("consumer.duplicate_skipped")
-        return  # safe no-op; still ack message
+Acceptance check: an on-call engineer can explain system state for agent at least once idempotent consumers from one dashboard and one runbook page.
 
-    try:
-        result = await execute_side_effects(message)  # LLM, DB writes, webhooks
-        await store_result_ref(key, result.id)
-        await commit_offset(message)
-    except TransientError as e:
-        await release_claim(key)  # allow redelivery
-        raise
-    except PermanentError as e:
-        await dead_letter(message, reason=str(e), handler_version=handler_version)
-        await commit_offset(message)  # do not block partition forever
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via at least once idempotent consumers cannot answer, it is not production-ready.
 
-Critical details:
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-1. **Claim before side effects** — two concurrent deliveries must not both pass.
-2. **Release claim on transient failure** — otherwise you drop work permanently.
-3. **DLQ on permanent failure** — with handler version for replay tooling.
-4. **Ack/commit after success path completes** — including dedup persist.
+## Migration without dual-running forever
 
-## Making side effects idempotent
+I treat Agent reliability via at least once idempotent consumers as an operations problem first. The goal is to ship agent at least once idempotent consumers with human override paths, not to collect frameworks.
 
-Dedup is the outer gate; inner operations should still be safe if dedup TTL expires.
+Put a metric on the user-visible effect of agent at least once idempotent consumers before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-**Database writes:** use upserts keyed on business id:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent at least once idempotent consumers.
 
-```sql
-INSERT INTO agent_run_steps (run_id, step_index, status, output_json)
-VALUES ($1, $2, 'completed', $3)
-ON CONFLICT (run_id, step_index)
-DO UPDATE SET
-  status = EXCLUDED.status,
-  output_json = EXCLUDED.output_json,
-  updated_at = now()
-WHERE agent_run_steps.status != 'completed';
-```
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-The `WHERE` clause prevents overwriting a completed step with stale retry data.
+Related reading:
 
-**External APIs:** pass provider idempotency headers. OpenAI and Stripe both support idempotency keys—reuse your envelope key:
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-```typescript
-await openai.chat.completions.create(
-  { model: "gpt-4o", messages },
-  { headers: { "Idempotency-Key": idempotencyKey } }
-);
-```
+## Definition of done
 
-**Tool invocations:** store `(run_id, tool_name, args_hash)` → `external_ref` and return cached ref on duplicate.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent at least once idempotent consumers, that means making failure visible early.
 
-## Agent-specific patterns
+Put a metric on the user-visible effect of agent at least once idempotent consumers before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-**Run orchestrator consumer:** emits step jobs. Idempotency on `(run_id, step_index)` prevents duplicate parallel steps that race on shared state.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent at least once idempotent consumers.
 
-**Embedding worker:** content hash as key. Re-embedding identical document after redelivery should overwrite same vector row, not duplicate index entries.
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-**Webhook notifier:** HMAC-signed payload with `event_id`. Receivers deduplicate; your consumer still dedups before POST to avoid partner rate limits.
+## Practical defaults for Agent reliability via at least once idempotent consumers
 
-**Billing aggregator:** sum token usage with `(run_id, step_index)` granularity. Never `+=` on redelivery—use insert-only usage rows with unique constraint.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent at least once idempotent consumers, that means making failure visible early.
 
-## Offset commit vs transactional outbox
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Some teams wrap DB write + offset commit in one transaction (Kafka transactions). That helps when the **only** sink is your database. Agent pipelines call external LLM APIs—those cannot join your Kafka transaction.
+Acceptance check: an on-call engineer can explain system state for agent at least once idempotent consumers from one dashboard and one runbook page.
 
-Pattern that works:
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-1. Dedup claim in DB transaction with workflow state update.
-2. Side effect outside transaction.
-3. On side effect success, mark step complete; on failure, release claim.
+Default deny, explicit timeouts, and one dashboard row for agent at least once idempotent consumers. Expand only when the metric demands it.
 
-If side effect succeeds but mark-complete fails, redelivery hits dedup—return cached result from `result_ref` instead of re-calling the LLM.
+## Review questions before merging agent at least once idempotent consumers work
 
-```python
-async def execute_with_cache(message: AgentEvent, key: str):
-    existing = await get_result_ref(key)
-    if existing:
-        return existing
-    result = await call_llm_and_tools(message)
-    await save_result_ref(key, result.id)
-    return result
-```
+I treat Agent reliability via at least once idempotent consumers as an operations problem first. The goal is to ship agent at least once idempotent consumers with human override paths, not to collect frameworks.
 
-## Poison messages and DLQ replay
+Keep side effects at the edges and make every write idempotent. Agent reliability via at least once idempotent consumers without retry semantics is a future incident write-up.
 
-Define `MAX_ATTEMPTS = 5` with exponential backoff. Same `idempotency_key` incrementing attempt counter in logs—not in the key itself.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via at least once idempotent consumers that needs a hero is not done.
 
-DLQ payload should include:
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-- Original event JSON
-- Stack trace and handler version
-- Partition, offset, timestamp
-- Tenant id for scoped replay tools
+After a month, delete unused flags and dual paths. `agent-at-least-once-idempotent-consumers` accumulates temporary bridges faster than teams expect.
 
-Replay tooling must **require** explicit operator action and bump handler version or event `input_version`. Blind DLQ re-inject without code fix replays the poison.
+## Field notes after thirty days of agent at least once idempotent consumers
 
-## Observability
+Teams usually discover Agent reliability via at least once idempotent consumers after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Metrics that catch duplicate damage early:
+Keep side effects at the edges and make every write idempotent. Agent reliability via at least once idempotent consumers without retry semantics is a future incident write-up.
 
-- `consumer.duplicate_skipped` — should correlate with rebalance events, not baseline traffic
-- `consumer.dedup_claim_contention` — concurrent delivery attempt rate
-- `llm.calls_per_run_id` — should be ~1; alert if p99 > 1.2
-- `billing.tokens_per_run_id` — same
-- DLQ depth by `error_class`
+Acceptance check: an on-call engineer can explain system state for agent at least once idempotent consumers from one dashboard and one runbook page.
 
-Trace id propagation: attach `run_id` and `idempotency_key` to every span so incident queries do not require grep across three systems.
+Slug-specific note (agent-at-least-once-idempotent-consumers): prioritize consumers behavior under load and verify with a fixture named `agent-at-least-once-idempotent-consumers-smoke`.
 
-## Testing redelivery
-
-Unit tests are insufficient. Integration tests must:
-
-1. Process message successfully.
-2. Simulate crash before commit (do not commit offset).
-3. Redeliver same message.
-4. Assert exactly one LLM mock call and one billing row.
-
-Use testcontainers for Kafka or SQS; inject a hook that throws `TransientError` on first attempt.
-
-Property test: random crash points in handler should never increase `count(*)` on immutable ledger tables.
-
-## When not to deduplicate
-
-Some analytics events **want** counts of attempts including failures. Route those to a separate fire-and-forget topic without idempotent sinks—never mix with billing or tool execution on the same consumer without branching logic.
-
-At-least-once is not a bug in your broker—it is physics. Idempotent consumers turn redelivery from a financial incident into a metric blip. Design keys from day one, claim before spend, cache results after success, and drill redelivery in game days before Black Friday traffic does it for you.
-
-Document the redelivery contract in your internal agent SDK README: every handler author must declare idempotency keys and side-effect class ( reversible vs irreversible ) before merge. Code review without that checklist is how duplicate LLM invoices return.
+After a month, delete unused flags and dual paths. `agent-at-least-once-idempotent-consumers` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Kafka Documentation — Consumer Semantics](https://kafka.apache.org/documentation/#semantics)
-- [AWS SQS — Exactly-Once Processing (FIFO deduplication)](https://docs.aws.amazon.com/AWSSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues-exactly-once-processing.html)
-- [Stripe Idempotent Requests](https://stripe.com/docs/api/idempotent_requests)
-- [OpenAI API — Idempotency](https://platform.openai.com/docs/api-reference/requesting-idempotency)
-- [Designing Data-Intensive Applications — Ch. 11 (Stream Processing)](https://dataintensive.net/)
+- Internal runbook seed: `agent-at-least-once-idempotent-consumers`
+- https://12factor.net/
+- https://martinfowler.com/

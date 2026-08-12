@@ -1,251 +1,159 @@
 ---
-title: "AI Agents: Cold Start Recommendations"
+title: "Agent systems: cold start recommendations"
 slug: "agent-cold-start-recommendations"
-description: "Bootstrapping agent recommendations for new users, tools, and tenants — popularity priors, content-based fallbacks, LLM-generated profiles, and exploration without trashing early UX."
+description: "Agent systems: cold start recommendations: how to keep agent side effects idempotent around cold start recommendations — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-07-14"
-dateModified: "2025-07-14"
-tags: ["AI", "Agent", "Cold"]
-keywords: "cold start recommendations, agent personalization, new user agent UX, exploration exploitation agents, content-based agent routing"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, cold, start, recommendations, production, engineering"
 faq:
-  - q: "What cold-start problems do agent platforms face?"
-    a: "Three distinct cases: new users (no interaction history), new tools/skills (no usage stats), and new tenants (no org-level priors). Each needs different fallback signals — global popularity, content metadata, role-based defaults, or LLM-inferred intent from onboarding forms."
-  - q: "Should cold-start agents explore randomly or stay conservative?"
-    a: "Conservative for safety-critical paths (finance, healthcare): show proven defaults until confidence threshold. Explore in low-risk surfaces (suggested prompts, optional tools) using Thompson sampling or epsilon-greedy with caps. Never A/B test auth flows on cold users without explicit consent."
-  - q: "Can LLMs generate cold-start user profiles safely?"
-    a: "Yes for non-sensitive inference: job title + stated goal → suggested agent modes and tool bundles. Never persist inferred demographics; treat LLM profiles as ephemeral session context; validate outputs against an allowlist of tools and data scopes before execution."
-  - q: "How long until a user is 'warm' enough for personalized routing?"
-    a: "Typical thresholds: 5+ completed sessions OR 20+ tool interactions OR explicit preference save. Below that, blend 70% global prior / 30% content-based. Enterprise tenants can warm faster via SSO group membership mapped to preset profiles."
+  - q: "What is Agent systems: cold start recommendations?"
+    a: "Agent systems: cold start recommendations is the production approach to keep agent side effects idempotent around cold start recommendations. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: cold start recommendations?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent cold start recommendations, prioritize it."
+  - q: "What is the most common mistake with Agent systems: cold start recommendations?"
+    a: "The usual failure is treating agent cold start recommendations as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A first-time user opens your agent workspace and sees an empty screen — or worse, recommendations trained on power users that suggest "batch reindex the vector store" and "write a custom MCP server." Cold start is not a niche ML problem for agent products; it is the **first-session experience** that determines whether someone returns. Recommendation systems built for e-commerce do not transfer cleanly: agent actions have side effects, tools touch live data, and a bad suggestion is a failed task, not a ignored product tile.
+**Agent systems: cold start recommendations** means you keep agent side effects idempotent around cold start recommendations — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like treating agent cold start recommendations as a pure library problem start paging people.
 
-This piece covers cold-start strategies for agent personalization — what to recommend before you know the user, how to bootstrap new tools into the catalog, and how to explore without compromising safety.
+This write-up is specific to `agent-cold-start-recommendations` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Three cold-start axes
+## What Agent systems: cold start recommendations changes in day-two ops
 
-Agent platforms hit cold start on three independent axes:
+Teams usually discover Agent systems: cold start recommendations after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-| Axis | Unknown | Risk if wrong |
-|------|---------|---------------|
-| User | Preferences, skill level, domain | Wrong tool → data leak or frustration |
-| Item (tool/skill/prompt) | Quality, compatibility | New tool promoted → outages |
-| Tenant/org | Compliance tier, data residency | Cross-tenant prior leakage |
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent cold start recommendations as a pure library problem.
 
-Treat them separately. A warm user on a new tenant still needs tenant-scoped priors. A new user in a mature tenant inherits org defaults but not colleague behavior (privacy).
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cold start recommendations.
 
-```
-                    ┌──────────────────┐
-         new user   │  onboarding form │
-                    │  SSO groups      │
-                    └────────┬─────────┘
-                             │
-              ┌──────────────▼──────────────┐
-              │   cold-start ranker         │
-              │   blend: global + content   │
-              │   + org prior + LLM sketch  │
-              └──────────────┬──────────────┘
-                             │
-              ┌──────────────▼──────────────┐
-              │  suggested tools / prompts  │
-              │  (exploration budget capped)│
-              └─────────────────────────────┘
-```
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-## Global popularity priors — the honest baseline
+## Designing so you can keep agent side effects idempotent around cold start recommendations
 
-Before personalization, **global task success rate** beats clever models:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cold start recommendations, that means making failure visible early.
 
-```sql
--- nightly batch: tool popularity with success weighting
-SELECT
-  tool_id,
-  count(*) AS uses,
-  avg(CASE WHEN outcome = 'success' THEN 1.0 ELSE 0.0 END) AS success_rate,
-  count(*) * avg(CASE WHEN outcome = 'success' THEN 1.0 ELSE 0.0 END) AS weighted_score
-FROM agent_tool_events
-WHERE created_at > now() - interval '30 days'
-  AND tenant_id IS NOT NULL  -- exclude internal dogfood if biased
-GROUP BY tool_id
-HAVING count(*) >= 100
-ORDER BY weighted_score DESC
-LIMIT 20;
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: cold start recommendations without retry semantics is a future incident write-up.
 
-Expose top-N as "Popular with new users" only after Bayesian smoothing avoids ranking a tool with 3/3 successes above one with 970/1000:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: cold start recommendations that needs a hero is not done.
+
+Concretely, being able to keep agent side effects idempotent around cold start recommendations forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
 ```python
-def smoothed_success_rate(successes: int, trials: int, prior_a: float = 2, prior_b: float = 2) -> float:
-    """Beta-binomial mean — dampens tiny sample noise."""
-    return (successes + prior_a) / (trials + prior_a + prior_b)
+# Agent systems: cold start recommendations
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentColdStartRecRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_cold_start_recomme(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-cold-start-recommendations"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Popularity alone fails on long-tail domains — pair with content features.
+## Failure modes specific to agent cold start recommendations
 
-## Content-based fallbacks from metadata
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cold start recommendations, that means making failure visible early.
 
-Every agent tool should ship with structured metadata:
+Keep side effects at the edges and make every write idempotent. Agent systems: cold start recommendations without retry semantics is a future incident write-up.
 
-```yaml
-# tools/search_incidents.yaml
-id: search_incidents
-title: Search Incidents
-description: Query PagerDuty and Jira for open incidents
-tags: [sre, oncall, production]
-required_scopes: [read_incidents]
-risk_tier: low
-embedding_text: "Find outages, pages, incident history, on-call"
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cold start recommendations.
 
-At cold start, embed the user's stated goal from onboarding (or first message) and cosine-match against `embedding_text`:
+My never-again list for agent cold start recommendations: treating agent cold start recommendations as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```python
-def content_based_tools(user_goal: str, catalog: list[Tool], embed_fn, k: int = 5) -> list[Tool]:
-    q = embed_fn(user_goal)
-    scored = [(t, cosine(q, embed_fn(t.embedding_text))) for t in catalog]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [t for t, _ in scored[:k]]
-```
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-Filter by **risk_tier** and **required_scopes** before ranking — content similarity must not surface admin tools to read-only users.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent cold start recommendations as a pure library problem |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## LLM-generated session profiles (ephemeral)
+## Signals worth paging on
 
-Use an LLM once at session start to infer a structured profile — not stored PII, regenerated each session unless user saves preferences:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cold start recommendations, that means making failure visible early.
 
-```python
-PROFILE_SCHEMA = {
-    "domain": "sre | support | data | general",
-    "experience": "beginner | intermediate | expert",
-    "suggested_tool_ids": ["list of ids from allowlist"],
-    "starter_prompts": ["max 3 short prompts"],
-}
+Put a metric on the user-visible effect of agent cold start recommendations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-async def infer_cold_start_profile(user_message: str, org_defaults: dict) -> dict:
-    prompt = f"""Given user goal: {user_message}
-Org default domain: {org_defaults.get('domain', 'general')}
-Return JSON matching schema. Only suggest tool IDs from: {ALLOWLIST}."""
-    return await llm.json_completion(prompt, schema=PROFILE_SCHEMA)
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: cold start recommendations that needs a hero is not done.
 
-Validate every suggested `tool_id` ∈ allowlist ∩ user's RBAC scopes. Reject profiles that mention credentials, bypass flows, or out-of-scope data sources.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: cold start recommendations cannot answer, it is not production-ready.
 
-Starter prompts reduce blank-page anxiety without executing tools — low risk, high UX value.
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-## Org and SSO priors for enterprise tenants
+## Rollout sequence with Temporal
 
-Enterprise cold start is often **warm at org level, cold at user level**. Map IdP groups to preset bundles:
+Teams usually discover Agent systems: cold start recommendations after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-```json
-{
-  "Okta_Group_SRE": {
-    "pinned_tools": ["search_runbooks", "query_metrics", "create_incident"],
-    "default_agent_mode": "ops_copilot",
-    "exploration_allowed": false
-  },
-  "Okta_Group_Support": {
-    "pinned_tools": ["search_kb", "draft_reply", "lookup_customer"],
-    "default_agent_mode": "support_assist",
-    "exploration_allowed": true
-  }
-}
-```
+Put a metric on the user-visible effect of agent cold start recommendations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Sync group mappings nightly; never infer group membership from behavior. Document in privacy policy which attributes come from SSO vs observed actions.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cold start recommendations.
 
-## Item cold start: launching new tools
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-New tools have zero usage history — downrank them in global popularity but **boost in targeted exploration slots**:
+Related reading:
 
-```python
-def explore_exploit_score(
-    tool: Tool,
-    user_trust: float,
-    global_rate: float,
-    context_match: float,
-    exploration_bonus: float = 0.1,
-) -> float:
-    if tool.launched_at > now() - timedelta(days=14):
-        # UCB-style bonus for new items
-        bonus = exploration_bonus * math.sqrt(math.log(total_sessions) / (tool.exposures + 1))
-    else:
-        bonus = 0
-    return user_trust * (0.5 * global_rate + 0.5 * context_match) + bonus
-```
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Cap new-tool exposure at 5% of cold-start sessions until `exposures >= 500` and `success_rate >= org_median`. Kill-switch tools that spike error rates.
+## What I would delete after month one
 
-Shadow mode: run new tool recommendations in log-only (`would_recommend`) for a week before surfacing in UI.
+I treat Agent systems: cold start recommendations as an operations problem first. The goal is to keep agent side effects idempotent around cold start recommendations, not to collect frameworks.
 
-## Exploration policies that respect agent safety
+Keep side effects at the edges and make every write idempotent. Agent systems: cold start recommendations without retry semantics is a future incident write-up.
 
-Multi-armed bandits popular in recommender systems need guardrails for agents:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cold start recommendations.
 
-1. **Arms = low-risk suggestions only** — prompts, read-only tools, UI layouts
-2. **Never bandit-select** write tools, external HTTP, or code execution for cold users
-3. **Thompson sampling** on success rate with Beta priors — explore tools with uncertain outcomes
-4. **Epsilon-greedy** with ε ≤ 0.05 for consumer; ε = 0 for regulated
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-```python
-import numpy as np
+## Practical defaults for Agent systems: cold start recommendations
 
-def thompson_sample_tool(tools: list[Tool]) -> Tool:
-    samples = []
-    for t in tools:
-        a, b = t.successes + 2, (t.trials - t.successes) + 2
-        samples.append((t, np.random.beta(a, b)))
-    return max(samples, key=lambda x: x[1])[0]
-```
+I treat Agent systems: cold start recommendations as an operations problem first. The goal is to keep agent side effects idempotent around cold start recommendations, not to collect frameworks.
 
-Log every exploration decision with `policy_version` for audit.
+Put a metric on the user-visible effect of agent cold start recommendations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Warm-up transitions and hybrid scoring
+Acceptance check: an on-call engineer can explain system state for agent cold start recommendations from one dashboard and one runbook page.
 
-Define explicit transition from cold → warm:
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-```python
-def personalization_weight(interactions: int, sessions: int) -> float:
-    """0 = fully cold, 1 = fully personalized."""
-    if sessions >= 5 and interactions >= 20:
-        return 1.0
-    if sessions >= 2:
-        return 0.4
-    return 0.0
+After a month, delete unused flags and dual paths. `agent-cold-start-recommendations` accumulates temporary bridges faster than teams expect.
 
-def final_rank(user_id: str, candidates: list[Tool]) -> list[Tool]:
-    w = personalization_weight(get_stats(user_id))
-    cold = content_popularity_blend(user_id)
-    warm = collaborative_filter_score(user_id)
-    return merge_scores(candidates, (1 - w) * cold + w * warm)
-```
+## Review questions before merging agent cold start recommendations work
 
-Sudden switches feel jarring — interpolate over 2–3 sessions. Show "We're learning your preferences" when `w` crosses 0.3.
+Teams usually discover Agent systems: cold start recommendations after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Metrics that matter for cold start
+Keep side effects at the edges and make every write idempotent. Agent systems: cold start recommendations without retry semantics is a future incident write-up.
 
-Dashboard four KPIs:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: cold start recommendations that needs a hero is not done.
 
-| Metric | Target | Notes |
-|--------|--------|-------|
-| First-session task completion | > 60% | Primary north star |
-| Time-to-first-successful-tool-call | < 90s | Includes onboarding |
-| Day-7 retention (cold cohort) | baseline + lift | A/B cold-start policies |
-| Bad suggestion rate | < 2% | User dismiss + error within 30s |
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
 
-Segment by acquisition channel — users from docs land differently from blank signups.
+Default deny, explicit timeouts, and one dashboard row for agent cold start recommendations. Expand only when the metric demands it.
 
-## Privacy and compliance
+## Field notes after thirty days of agent cold start recommendations
 
-Cold-start systems tempt over-collection. Minimum viable onboarding: role + goal text. Do not require company size, location, or phone for agent recommendations.
+Teams usually discover Agent systems: cold start recommendations after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-If using LLM inference on onboarding text, route through data processing agreement-covered endpoints; redact before logging.
+Keep side effects at the edges and make every write idempotent. Agent systems: cold start recommendations without retry semantics is a future incident write-up.
 
-Right-to-erasure must delete warm profiles **and** derived popularity contributions — use differential privacy or per-user contribution caps if k-anonymity matters.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cold start recommendations.
 
-Cold-start recommendations for agents balance exploration with safety constraints generic recsys ignores. Start with smoothed global popularity and content metadata; add org SSO priors for enterprise; use ephemeral LLM profiles validated against allowlists; promote new tools through capped exploration; blend into collaborative filtering only after explicit warm-up thresholds. The first session is not a data collection exercise — it is a contract that the agent understands what the user is trying to do before suggesting tools that touch production.
+Slug-specific note (agent-cold-start-recommendations): prioritize recommendations behavior under load and verify with a fixture named `agent-cold-start-recommendations-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating agent cold start recommendations as a pure library problem. Missing that note blocks merge.
 
 ## Resources
 
-- [Recommender Systems Handbook — cold start chapter](https://link.springer.com/book/10.1007/978-1-4899-7637-6)
-- [Microsoft Recommenders — cold-start notebooks](https://github.com/recommenders-team/recommenders)
-- [Thompson sampling for online decision making](https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf)
-- [NIST AI RMF — user transparency for adaptive systems](https://www.nist.gov/itl/ai-risk-management-framework)
-- [Bayesian Methods for Hackers — Beta distributions](https://github.com/CamDavidsonPilon/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers)
+- Internal runbook seed: `agent-cold-start-recommendations`
+- https://12factor.net/
+- https://martinfowler.com/

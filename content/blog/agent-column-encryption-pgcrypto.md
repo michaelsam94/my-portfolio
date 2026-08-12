@@ -1,323 +1,159 @@
 ---
-title: "Column-Level Encryption with PostgreSQL pgcrypto"
+title: "Agent systems: column encryption pgcrypto"
 slug: "agent-column-encryption-pgcrypto"
-description: "Encrypt sensitive agent data at the column level using PostgreSQL pgcrypto: key management, envelope encryption, searchable hashes, rotation, and query patterns that survive audits."
+description: "Agent systems: column encryption pgcrypto: how to keep agent side effects idempotent around column encryption pgcrypto — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-01-04"
-dateModified: "2025-01-04"
-tags: ["PostgreSQL", "Security", "Encryption", "AI Agents"]
-keywords: "pgcrypto column encryption, postgres encrypt column, agent data encryption, envelope encryption postgres, pgp_sym_encrypt"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, column, encryption, pgcrypto, production, engineering"
 faq:
-  - q: "When is pgcrypto column encryption the right choice versus application-level encryption or TDE?"
-    a: "Use pgcrypto when you need field-level protection inside PostgreSQL — PII in agent conversation logs, API keys in config tables — and want encryption close to data without a separate vault round-trip per row. Application-level encryption gives you more algorithm control; TDE (transparent data encryption) protects disks but not DBAs. Column encryption protects against snapshot leaks and casual SELECT * exposure."
-  - q: "Can you search or index encrypted columns with pgcrypto?"
-    a: "Not on ciphertext directly. Store a deterministic HMAC or hash of the plaintext in a separate column for equality lookups (email, external ID). Range queries and full-text search require plaintext sidecars, blind indexes, or accepting decrypt-in-app patterns. Plan access patterns before encrypting."
-  - q: "How do you rotate encryption keys without downtime?"
-    a: "Use envelope encryption: a data encryption key (DEK) per row or tenant, wrapped by a key encryption key (KEK) in KMS. Rotation re-wraps DEKs with a new KEK; background jobs re-encrypt row data with new DEKs during low traffic. Never store the KEK in the database."
-  - q: "Does pgcrypto protect against privileged DBAs?"
-    a: "Partially. A superuser can read keys if you pass them through SQL session variables carelessly. Combine column encryption with least-privilege roles, avoid superuser app connections, and use KMS-backed keys fetched by the application — not stored in Postgres settings. Assume DBA can see schema and ciphertext; plaintext requires key access you control."
+  - q: "What is Agent systems: column encryption pgcrypto?"
+    a: "Agent systems: column encryption pgcrypto is the production approach to keep agent side effects idempotent around column encryption pgcrypto. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: column encryption pgcrypto?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent column encryption pgcrypto, prioritize it."
+  - q: "What is the most common mistake with Agent systems: column encryption pgcrypto?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent systems: column encryption pgcrypto** means you keep agent side effects idempotent around column encryption pgcrypto — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Agent platforms persist conversation transcripts, tool outputs, OAuth tokens, and tenant API keys. Row-level security keeps tenant A from reading tenant B's rows, but a backup leak, replica snapshot, or over-privileged analyst account still exposes plaintext if columns store secrets directly. **PostgreSQL pgcrypto** encrypts at the column level inside the database boundary — useful when agents write sensitive fields through ORMs and you need defense in depth without rewriting every query path through an external vault.
+This write-up is specific to `agent-column-encryption-pgcrypto` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-The hard part is not calling `pgp_sym_encrypt`. It is key lifecycle, searchable ciphertext tradeoffs, and migration paths that do not lock you out of your own data.
+## What Agent systems: column encryption pgcrypto changes in day-two ops
 
-## Threat model and placement
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent column encryption pgcrypto, that means making failure visible early.
 
-Column encryption with pgcrypto addresses:
+Put a metric on the user-visible effect of agent column encryption pgcrypto before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-- Backup/tape exposure (ciphertext without keys is useless)
-- Accidental `SELECT *` in analytics replicas
-- Compromised read-only credentials that should not see PII
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent column encryption pgcrypto.
 
-It does **not** address:
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-- Application compromise (attacker inherits decrypt path)
-- Superuser with key material in session
-- SQL injection that exfiltrates after decrypt in query
+## Designing so you can keep agent side effects idempotent around column encryption pgcrypto
 
-```
-┌─────────────┐     KEK in KMS/Vault     ┌──────────────┐
-│  App layer  │ ─── fetch DEK wrap ────► │  PostgreSQL  │
-│  (agent)    │     pgp_sym_encrypt      │  (ciphertext)│
-└─────────────┘                          └──────────────┘
-```
+Teams usually discover Agent systems: column encryption pgcrypto after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Place decryption in a thin repository layer — not scattered in every agent tool handler.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-## Schema pattern
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: column encryption pgcrypto that needs a hero is not done.
 
-Enable extension and define encrypted columns as `bytea`:
+Concretely, being able to keep agent side effects idempotent around column encryption pgcrypto forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-CREATE TABLE agent_sessions (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     UUID NOT NULL,
-  user_id       UUID NOT NULL,
-  -- searchable blind index for tenant+user lookups
-  user_id_hmac  BYTEA NOT NULL,
-  transcript    BYTEA,           -- encrypted JSON
-  api_key       BYTEA,           -- encrypted secret
-  dek_id        TEXT NOT NULL,   -- which DEK wrapped this row
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+```python
+# Agent systems: column encryption pgcrypto
+from dataclasses import dataclass
 
-CREATE INDEX agent_sessions_user_lookup
-  ON agent_sessions (tenant_id, user_id_hmac);
+@dataclass(frozen=True)
+class AgentColumnEncryptRequest:
+    tenant_id: str
+    idempotency_key: str
 
--- RLS still required — encryption ≠ authorization
-ALTER TABLE agent_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON agent_sessions
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
+async def run_agent_column_encryption_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-column-encryption-pgcrypto"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Separate **encryption** from **authorization**. Encrypted columns without RLS still leak metadata and row counts.
+## Failure modes specific to agent column encryption pgcrypto
 
-## Encrypt and decrypt functions
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent column encryption pgcrypto, that means making failure visible early.
 
-Wrap pgcrypto in SQL functions so application code calls stable interfaces:
+Keep side effects at the edges and make every write idempotent. Agent systems: column encryption pgcrypto without retry semantics is a future incident write-up.
 
-```sql
-CREATE OR REPLACE FUNCTION encrypt_column(
-  plaintext TEXT,
-  dek BYTEA
-) RETURNS BYTEA
-LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT pgp_sym_encrypt(plaintext, encode(dek, 'hex'), 'cipher-algo=aes256');
-$$;
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: column encryption pgcrypto that needs a hero is not done.
 
-CREATE OR REPLACE FUNCTION decrypt_column(
-  ciphertext BYTEA,
-  dek BYTEA
-) RETURNS TEXT
-LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT pgp_sym_decrypt(ciphertext, encode(dek, 'hex'))::text;
-$$;
+My never-again list for agent column encryption pgcrypto: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
--- Blind index for equality search (use tenant-scoped pepper)
-CREATE OR REPLACE FUNCTION blind_index(
-  value TEXT,
-  pepper BYTEA
-) RETURNS BYTEA
-LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT hmac(value, pepper, 'sha256');
-$$;
-```
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-Application repository (TypeScript):
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```typescript
-import { Pool } from "pg";
-import { getDekForTenant } from "./kms";
+## Signals worth paging on
 
-export class SessionRepository {
-  constructor(private pool: Pool) {}
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent column encryption pgcrypto, that means making failure visible early.
 
-  async insertSession(tenantId: string, userId: string, transcript: object) {
-    const dek = await getDekForTenant(tenantId);
-    const pepper = await getBlindIndexPepper(tenantId);
+Put a metric on the user-visible effect of agent column encryption pgcrypto before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-    await this.pool.query(
-      `INSERT INTO agent_sessions (tenant_id, user_id, user_id_hmac, transcript, dek_id)
-       VALUES ($1, $2, blind_index($3, $4), encrypt_column($5, $6), $7)`,
-      [
-        tenantId,
-        userId,
-        userId,
-        pepper,
-        JSON.stringify(transcript),
-        dek.material,
-        dek.id,
-      ]
-    );
-  }
+Acceptance check: an on-call engineer can explain system state for agent column encryption pgcrypto from one dashboard and one runbook page.
 
-  async getTranscript(sessionId: string, tenantId: string): Promise<object> {
-    const dek = await getDekForTenant(tenantId);
-    const { rows } = await this.pool.query(
-      `SELECT decrypt_column(transcript, $1) AS plaintext
-       FROM agent_sessions WHERE id = $2 AND tenant_id = $3`,
-      [dek.material, sessionId, tenantId]
-    );
-    return JSON.parse(rows[0].plaintext);
-  }
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: column encryption pgcrypto cannot answer, it is not production-ready.
 
-Never log DEKs or decrypted plaintext in agent tracing spans.
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-## Key management architecture
+## Rollout sequence with Temporal
 
-**Anti-pattern**: one global passphrase in `DATABASE_URL` or a Postgres GUC.
+Teams usually discover Agent systems: column encryption pgcrypto after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-**Production pattern**: envelope encryption per tenant or per table class.
+Put a metric on the user-visible effect of agent column encryption pgcrypto before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```typescript
-interface DataEncryptionKey {
-  id: string;
-  material: Buffer;  // 32 bytes AES-256
-  wrapped: Buffer;   // ciphertext stored in kms_wrapped_deks table
-}
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent column encryption pgcrypto.
 
-async function getDekForTenant(tenantId: string): Promise<DataEncryptionKey> {
-  const cached = dekCache.get(tenantId);
-  if (cached) return cached;
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-  const row = await db.query(
-    `SELECT dek_id, wrapped_blob FROM kms_wrapped_deks WHERE tenant_id = $1 AND active = true`,
-    [tenantId]
-  );
-  const material = await kms.decrypt(row.wrapped_blob); // AWS KMS, GCP CKMS, Vault
-  const dek = { id: row.dek_id, material, wrapped: row.wrapped_blob };
-  dekCache.set(tenantId, dek, { ttl: 300_000 });
-  return dek;
-}
-```
+Related reading:
 
-Store only wrapped DEKs in Postgres. Raw key material lives in memory briefly.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Migration from plaintext columns
+## What I would delete after month one
 
-Strangle migration in four phases:
+I treat Agent systems: column encryption pgcrypto as an operations problem first. The goal is to keep agent side effects idempotent around column encryption pgcrypto, not to collect frameworks.
 
-```sql
--- Phase 1: add nullable encrypted columns
-ALTER TABLE agent_sessions ADD COLUMN transcript_enc BYTEA;
-ALTER TABLE agent_sessions ADD COLUMN dek_id TEXT;
+Keep side effects at the edges and make every write idempotent. Agent systems: column encryption pgcrypto without retry semantics is a future incident write-up.
 
--- Phase 2: backfill (batch job, rate-limited)
--- UPDATE ... SET transcript_enc = encrypt_column(transcript::text, dek), dek_id = ...
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent column encryption pgcrypto.
 
--- Phase 3: dual-read — app tries enc first, falls back to plaintext
--- Phase 4: drop plaintext column after verification window
-ALTER TABLE agent_sessions DROP COLUMN transcript;
-ALTER TABLE agent_sessions RENAME COLUMN transcript_enc TO transcript;
-```
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-Track backfill progress:
+## Practical defaults for Agent systems: column encryption pgcrypto
 
-```sql
-CREATE TABLE encryption_migration_status (
-  table_name TEXT PRIMARY KEY,
-  rows_total BIGINT,
-  rows_encrypted BIGINT,
-  started_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ
-);
-```
+I treat Agent systems: column encryption pgcrypto as an operations problem first. The goal is to keep agent side effects idempotent around column encryption pgcrypto, not to collect frameworks.
 
-Pause agent writes to affected tables only if you cannot dual-write — prefer dual-write with feature flag.
+Keep side effects at the edges and make every write idempotent. Agent systems: column encryption pgcrypto without retry semantics is a future incident write-up.
 
-## Query patterns and limitations
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent column encryption pgcrypto.
 
-| Access pattern | Approach |
-|----------------|----------|
-| Fetch by primary key | Decrypt in SELECT |
-| Filter by email/user ID | `blind_index` column + HMAC |
-| Full-text on transcript | Do not encrypt fields you must search — tokenize/redact instead |
-| Analytics aggregates | ETL to warehouse with separate access controls; no decrypt in BI |
-| ORDER BY encrypted field | Not supported — sort keys stay plaintext or derived |
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-Agent memory systems often need semantic search on transcripts. Options:
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-1. **Redact before index**: store encrypted full transcript + plaintext summary with PII stripped for embedding index.
-2. **Searchable encryption** (specialized, heavy): usually not worth it for agent logs.
-3. **Decrypt in secure enclave** for batch indexing — rare outside regulated environments.
+## Review questions before merging agent column encryption pgcrypto work
 
-## Rotation runbook
+I treat Agent systems: column encryption pgcrypto as an operations problem first. The goal is to keep agent side effects idempotent around column encryption pgcrypto, not to collect frameworks.
 
-**KEK rotation** (annual or on incident):
+Keep side effects at the edges and make every write idempotent. Agent systems: column encryption pgcrypto without retry semantics is a future incident write-up.
 
-1. Create `kek_v2` in KMS.
-2. Background job: `wrapped_v2 = kms.encrypt(dek, kek_v2)` for each row in `kms_wrapped_deks`.
-3. Flip `active` flag to v2 wrapped blobs.
-4. Retire v1 after all rows re-wrapped.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: column encryption pgcrypto that needs a hero is not done.
 
-**DEK rotation** (per tenant compromise):
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-1. Generate new DEK for tenant.
-2. Re-encrypt all rows: `UPDATE ... SET col = encrypt_column(decrypt_column(col, old_dek), new_dek)`.
-3. Batch in chunks of 1000 with `FOR UPDATE SKIP LOCKED` to avoid table locks.
+After a month, delete unused flags and dual paths. `agent-column-encryption-pgcrypto` accumulates temporary bridges faster than teams expect.
 
-```sql
--- Chunked re-encrypt
-WITH batch AS (
-  SELECT id FROM agent_sessions
-  WHERE tenant_id = $1 AND dek_id = $2
-  LIMIT 1000
-  FOR UPDATE SKIP LOCKED
-)
-UPDATE agent_sessions s
-SET transcript = encrypt_column(decrypt_column(transcript, $3), $4),
-    dek_id = $5
-FROM batch b WHERE s.id = b.id;
-```
+## Field notes after thirty days of agent column encryption pgcrypto
 
-## Performance considerations
+I treat Agent systems: column encryption pgcrypto as an operations problem first. The goal is to keep agent side effects idempotent around column encryption pgcrypto, not to collect frameworks.
 
-`pgp_sym_encrypt/decrypt` is CPU-bound. Measure on production-shaped row sizes:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-- Agent transcripts (10–500 KB JSON): decrypt adds 1–5 ms per row at p95 — acceptable for single-session fetch, painful for bulk export.
-- API keys (short strings): negligible overhead.
+Acceptance check: an on-call engineer can explain system state for agent column encryption pgcrypto from one dashboard and one runbook page.
 
-Mitigations:
+Slug-specific note (agent-column-encryption-pgcrypto): prioritize pgcrypto behavior under load and verify with a fixture named `agent-column-encryption-pgcrypto-smoke`.
 
-- Cache decrypted session headers in Redis with short TTL for hot agent threads.
-- Do not decrypt in list endpoints — return metadata only.
-- Use connection pooling; crypto in Postgres consumes CPU on the primary — watch `pg_stat_activity` wait events during backfill.
-
-## Compliance and audit
-
-Document in your data map:
-
-- Algorithm: `aes256` via OpenPGP symmetric (pgcrypto default path)
-- Key storage: KMS ARN, rotation schedule
-- Who can decrypt: application role `agent_app` — not `analytics_readonly`
-
-Audit log decrypt access at application layer:
-
-```typescript
-async function getTranscriptAudited(sessionId: string, actor: string) {
-  await auditLog.write({ action: "decrypt", resource: sessionId, actor });
-  return repo.getTranscript(sessionId);
-}
-```
-
-Pg audit extensions log SQL but not which human triggered the app path — app-level audit is mandatory for SOC2/HIPAA narratives.
-
-## Testing
-
-Integration test with real Postgres + pgcrypto:
-
-```typescript
-test("round-trip encrypt decrypt", async () => {
-  const dek = crypto.randomBytes(32);
-  const { rows } = await pool.query(
-    `SELECT decrypt_column(encrypt_column($1, $2), $2) AS out`,
-    ['{"role":"user","content":"secret"}', dek]
-  );
-  expect(rows[0].out).toBe('{"role":"user","content":"secret"}');
-});
-
-test("blind index stable per pepper", async () => {
-  const pepper = crypto.randomBytes(32);
-  const a = await pool.query(`SELECT blind_index('user@x.com', $1) AS h`, [pepper]);
-  const b = await pool.query(`SELECT blind_index('user@x.com', $1) AS h`, [pepper]);
-  expect(a.rows[0].h).toEqual(b.rows[0].h);
-});
-```
-
-Include migration tests that verify dual-read paths and backfill completeness gates.
-
-## The takeaway
-
-pgcrypto column encryption gives agent platforms a practical middle ground between plaintext Postgres and full application-side crypto. Success depends on envelope key management, blind indexes for lookups you still need, chunked rotation jobs, and keeping decryption in one repository layer — not spread across fifty agent tools. Encrypt what must stay confidential at rest; do not encrypt fields you still need to search — redesign those paths instead.
+After a month, delete unused flags and dual paths. `agent-column-encryption-pgcrypto` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [PostgreSQL pgcrypto documentation](https://www.postgresql.org/docs/current/pgcrypto.html)
-- [PostgreSQL column encryption best practices (Crunchy Data)](https://www.crunchydata.com/blog/postgres-data-encryption-at-rest)
-- [AWS KMS envelope encryption guide](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#enveloping)
-- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)
-- [Blind index pattern for searchable encryption limitations](https://paragonie.com/blog/2017/05/building-searchable-encrypted-databases-with-php-and-sql)
+- Internal runbook seed: `agent-column-encryption-pgcrypto`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,131 +1,157 @@
 ---
-title: "Hexagonal Kotlin Ports"
+title: "Shipping hexagonal kotlin ports without regret"
 slug: "hexagonal-kotlin-ports"
-description: "Hexagonal Kotlin Ports: how to avoid the demo-only happy path in production sre systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Shipping hexagonal kotlin ports without regret: how to ship hexagonal kotlin behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-28"
 dateModified: "2026-08-12"
 tags:
-  - "SRE"
-  - "Observability"
-keywords: "hexagonal, kotlin, ports, sre, production, engineering"
+  - "Kotlin"
+keywords: "hexagonal, kotlin, ports, production, engineering"
 faq:
-  - q: "What is Hexagonal Kotlin Ports?"
-    a: "Hexagonal Kotlin Ports is a production approach to avoid the demo-only happy path. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Hexagonal Kotlin Ports?"
-    a: "Invest when on-call already feels this pain weekly. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Hexagonal Kotlin Ports?"
-    a: "The usual failure is dual-writing without an outbox. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Shipping hexagonal kotlin ports without regret?"
+    a: "Shipping hexagonal kotlin ports without regret is the production approach to ship hexagonal kotlin behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping hexagonal kotlin ports without regret?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with hexagonal kotlin ports, prioritize it."
+  - q: "What is the most common mistake with Shipping hexagonal kotlin ports without regret?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Hexagonal Kotlin Ports** means you avoid the demo-only happy path — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when on-call already feels this pain weekly; that is usually also when shortcuts like dual-writing without an outbox start paging people.
+**Shipping hexagonal kotlin ports without regret** means you ship hexagonal kotlin behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in SRE systems using Prometheus, Grafana: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `hexagonal-kotlin-ports` in a product context, using Postgres, Redis for the mechanics while keeping ownership human.
 
-## Decision guide for Hexagonal Kotlin Ports
+## Decision guide for Shipping hexagonal kotlin ports without regret
 
-Most write-ups on Hexagonal Kotlin Ports stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For hexagonal kotlin ports, that means making failure visible early.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Keep side effects at the edges and make every write idempotent. Shipping hexagonal kotlin ports without regret without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hexagonal kotlin ports.
 
-## When this is the wrong tool
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
-If you only remember one thing about Hexagonal Kotlin Ports: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## When to refuse this approach
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Shipping hexagonal kotlin ports without regret as an operations problem first. The goal is to ship hexagonal kotlin behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of hexagonal kotlin ports before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Practically, being able to avoid the demo-only happy path means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for hexagonal kotlin ports from one dashboard and one runbook page.
 
-```typescript
-export async function handle(input: unknown): Promise<Result> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new ValidationError(parsed.error);
-  // Hexagonal Kotlin Ports
-  return repo.execute(parsed.data);
+Concretely, being able to ship hexagonal kotlin behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
+
+```kotlin
+// Shipping hexagonal kotlin ports without regret
+interface Gateway_hexagonal_kotlin {
+  suspend fun execute(input: Request): Result<Response>
+}
+
+class DefaultGateway(
+  private val client: HttpClient,
+  private val metrics: Metrics,
+) : Gateway_hexagonal_kotlin {
+  override suspend fun execute(input: Request) = runCatching {
+    metrics.count("hexagonal-kotlin-ports.attempt")
+    client.post(input)
+  }.onFailure { metrics.count("hexagonal-kotlin-ports.error") }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-If you only remember one thing about Hexagonal Kotlin Ports: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Teams usually discover Shipping hexagonal kotlin ports without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of hexagonal kotlin ports before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping hexagonal kotlin ports without regret that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: dual-writing without an outbox; skipping Hexagonal Kotlin Ports error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for hexagonal kotlin ports: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; dual-writing without an outbox |
-| Durable path | on-call already feels this pain weekly | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-Most write-ups on Hexagonal Kotlin Ports stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For hexagonal kotlin ports, that means making failure visible early.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Shipping hexagonal kotlin ports without regret without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping hexagonal kotlin ports without regret that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Hexagonal Kotlin Ports designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping hexagonal kotlin ports without regret cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
-I have watched teams under-specify Hexagonal Kotlin Ports and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Migration without dual-running forever
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Shipping hexagonal kotlin ports without regret as an operations problem first. The goal is to ship hexagonal kotlin behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Hexagonal Kotlin Ports changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of hexagonal kotlin ports before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping hexagonal kotlin ports without regret that needs a hero is not done.
+
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-If you only remember one thing about Hexagonal Kotlin Ports: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Production systems punish vague ownership and unmeasured happy paths. For hexagonal kotlin ports, that means making failure visible early.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Prefer small diffs with a kill switch. Hexagonal Kotlin Ports changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping hexagonal kotlin ports without regret that needs a hero is not done.
 
-## Practical defaults I use for Hexagonal Kotlin Ports
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
-I have watched teams under-specify Hexagonal Kotlin Ports and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Practical defaults for Shipping hexagonal kotlin ports without regret
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Teams usually discover Shipping hexagonal kotlin ports without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Hexagonal Kotlin Ports error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for hexagonal kotlin ports from one dashboard and one runbook page.
 
-## Review questions before merging Hexagonal Kotlin Ports work
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
-Most write-ups on Hexagonal Kotlin Ports stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+## Review questions before merging hexagonal kotlin ports work
 
-Prefer small diffs with a kill switch. Hexagonal Kotlin Ports changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Shipping hexagonal kotlin ports without regret as an operations problem first. The goal is to ship hexagonal kotlin behind flags with a rollback, not to collect frameworks.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Hexagonal Kotlin Ports error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Shipping hexagonal kotlin ports without regret without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Hexagonal Kotlin Ports
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hexagonal kotlin ports.
 
-Most write-ups on Hexagonal Kotlin Ports stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+After a month, delete unused flags and dual paths. `hexagonal-kotlin-ports` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of hexagonal kotlin ports
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Hexagonal Kotlin Ports error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For hexagonal kotlin ports, that means making failure visible early.
+
+Put a metric on the user-visible effect of hexagonal kotlin ports before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for hexagonal kotlin ports from one dashboard and one runbook page.
+
+Slug-specific note (hexagonal-kotlin-ports): prioritize ports behavior under load and verify with a fixture named `hexagonal-kotlin-ports-smoke`.
+
+After a month, delete unused flags and dual paths. `hexagonal-kotlin-ports` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `hexagonal-kotlin-ports`
 - https://12factor.net/
+- https://martinfowler.com/

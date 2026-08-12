@@ -1,252 +1,159 @@
 ---
-title: "Rate Limit Token Bucket"
+title: "LLM ops guide to rate limit token bucket"
 slug: "llm-rate-limit-token-bucket"
-description: "Implement token-bucket rate limits for agent APIs: burst-friendly quotas for tool loops, Redis Lua atomicity, multi-dimensional limits on tokens and cost, and Retry-After headers clients actually respect for teams running LLM features in production."
+description: "LLM ops guide to rate limit token bucket: how to operate rate limit token bucket under token and quota pressure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-29"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "token bucket rate limit agents, Redis Lua rate limiting, LLM API quota burst, Retry-After agent clients, multi-dimensional rate limits"
+  - "Engineering"
+keywords: "llm, rate, limit, token, bucket, production, engineering"
 faq:
-  - q: "Why token bucket instead of fixed window for agent endpoints?"
-    a: "Agent sessions burst: a user sends one message, the backend fires six tool calls in two seconds, then goes idle. Fixed windows either block legitimate bursts or allow 2x spikes at window boundaries. Token bucket permits controlled bursts while enforcing average rate over time."
-  - q: "Should rate limits apply per user, per API key, or per tenant?"
-    a: "All three, nested. Tenant limit protects your infrastructure; API key limit protects integrators from runaway scripts; user limit protects shared-tenant fairness. Check cheapest scope first to fail fast."
-  - q: "How do you rate-limit token consumption vs HTTP requests?"
-    a: "Maintain separate buckets: requests_per_minute for ingress, tokens_per_minute and cost_usd_per_hour for egress to model providers. A single slow request can exhaust token budget without high request count — one-dimensional limits miss that."
-  - q: "What should Retry-After contain for agent clients?"
-    a: "Seconds until the bucket has enough tokens for the requested cost, not a generic 60. Agent SDKs should read Retry-After, backoff with jitter, and surface a user-visible 'rate limited' state instead of retrying tool loops blindly."
+  - q: "What is LLM ops guide to rate limit token bucket?"
+    a: "LLM ops guide to rate limit token bucket is the production approach to operate rate limit token bucket under token and quota pressure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in LLM ops guide to rate limit token bucket?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with llm rate limit token bucket, prioritize it."
+  - q: "What is the most common mistake with LLM ops guide to rate limit token bucket?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A script called your agent API 400 times in a minute. Each call was "valid." Each triggered a three-tool loop averaging 8,000 completion tokens. The invoice arrived before the alert fired because you counted **requests** while the attacker — or more often, a buggy retry loop — consumed **tokens**. Fixed-window counters at the edge didn't help; the damage was downstream.
+**LLM ops guide to rate limit token bucket** means you operate rate limit token bucket under token and quota pressure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Token bucket rate limiting fits agent workloads because it models **sustained throughput with tolerated bursts** — exactly how humans and autonomous loops behave.
+This write-up is specific to `llm-rate-limit-token-bucket` in a llm context, using Postgres, vLLM, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Token bucket mechanics in plain terms
+## Decision guide for LLM ops guide to rate limit token bucket
 
-The bucket holds at most `capacity` tokens. Tokens refill continuously at `refill_rate` per second. Each operation consumes `cost` tokens. If insufficient tokens exist, reject or queue.
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-```
-capacity = 100 tokens
-refill_rate = 10 tokens/sec
+Put a metric on the user-visible effect of llm rate limit token bucket before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-t=0:   bucket=100, request cost 40 → allow, bucket=60
-t=0:   request cost 40 → allow, bucket=20
-t=0:   request cost 40 → DENY (need 40, have 20)
-t=2:   refilled 20 → bucket=40 → allow if retried
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to rate limit token bucket that needs a hero is not done.
 
-Compare to leaky bucket (smoother output, less burst-friendly) and sliding window log (accurate, memory-heavy). For multi-tenant agent gateways, token bucket hits the sweet spot: predictable memory, burst tolerance, easy Redis implementation.
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-## Atomic Redis implementation with Lua
+## When to refuse this approach
 
-Race conditions destroy rate limiters. Two concurrent tool calls both read `tokens=5`, both deduct, both pass — you doubled spend. Use a single atomic script:
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-```lua
--- KEYS[1] = bucket key, ARGV[1]=now_ms, ARGV[2]=cost, ARGV[3]=capacity, ARGV[4]=refill_per_ms
-local data = redis.call('HMGET', KEYS[1], 'tokens', 'last_refill')
-local tokens = tonumber(data[1])
-local last = tonumber(data[2])
-local now = tonumber(ARGV[1])
-local cost = tonumber(ARGV[2])
-local capacity = tonumber(ARGV[3])
-local refill_per_ms = tonumber(ARGV[4])
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-if tokens == nil then
-  tokens = capacity
-  last = now
-end
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm rate limit token bucket.
 
-local elapsed = math.max(0, now - last)
-tokens = math.min(capacity, tokens + elapsed * refill_per_ms)
+Concretely, being able to operate rate limit token bucket under token and quota pressure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-if tokens < cost then
-  local deficit = cost - tokens
-  local retry_ms = math.ceil(deficit / refill_per_ms)
-  return {0, tokens, retry_ms}
-end
-
-tokens = tokens - cost
-redis.call('HMSET', KEYS[1], 'tokens', tokens, 'last_refill', now)
-redis.call('PEXPIRE', KEYS[1], 86400000)
-return {1, tokens, 0}
-```
-
-Wrap in TypeScript at the gateway:
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
 ```typescript
-type LimitResult =
-  | { allowed: true; remaining: number }
-  | { allowed: false; remaining: number; retryAfterMs: number };
-
-async function consumeTokenBucket(
-  redis: Redis,
-  key: string,
-  cost: number,
-  capacity: number,
-  refillPerSecond: number
-): Promise<LimitResult> {
-  const [allowed, remaining, retryMs] = await redis.eval(
-    TOKEN_BUCKET_LUA,
-    1,
-    key,
-    Date.now(),
-    cost,
-    capacity,
-    refillPerSecond / 1000
-  ) as [number, number, number];
-
-  if (allowed === 1) {
-    return { allowed: true, remaining };
+// LLM ops guide to rate limit token bucket
+export async function handle_llm_rate_limit_token_bucket(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("llm-rate-limit-token-bucket");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-  return { allowed: false, remaining, retryAfterMs: retryMs };
 }
 ```
 
-Key naming: `rl:tenant:{id}:tokens`, `rl:tenant:{id}:requests`, `rl:user:{id}:cost_usd`.
+## Minimal production setup
 
-## Multi-dimensional limits for agent loops
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-One bucket is never enough. Check dimensions in order of cheapness:
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-```typescript
-async function checkAgentLimits(ctx: RequestContext): Promise<LimitResult> {
-  const checks = [
-    { key: `rl:req:${ctx.tenantId}`, cost: 1, capacity: 300, refill: 5 },
-    { key: `rl:tok:${ctx.tenantId}`, cost: ctx.estimatedTokens, capacity: 500_000, refill: 8000 },
-    { key: `rl:usd:${ctx.tenantId}`, cost: ctx.estimatedCostMicros, capacity: 50_000_000, refill: 13889 },
-  ];
+Acceptance check: an on-call engineer can explain system state for llm rate limit token bucket from one dashboard and one runbook page.
 
-  for (const c of checks) {
-    const result = await consumeTokenBucket(redis, c.key, c.cost, c.capacity, c.refill);
-    if (!result.allowed) {
-      return result;
-    }
-  }
-  return { allowed: true, remaining: 0 };
-}
-```
+My never-again list for llm rate limit token bucket: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Estimate `cost` before the LLM call using historical p90 tokens for `(tool_name, tenant tier)`. Reconcile after the call with a **refund** or **debt** adjustment — otherwise underestimates erode limits and overestimates frustrate users.
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-For streaming responses, reserve tokens upfront, stream partial deduction every N chunks, release unused reservation on `done`.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## HTTP surface: headers clients need
+## Cost, complexity, and ownership
 
-Return standard headers so SDKs behave:
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm rate limit token bucket, that means making failure visible early.
 
-```
-HTTP/1.1 429 Too Many Requests
-Retry-After: 3
-X-RateLimit-Limit: 500000
-X-RateLimit-Remaining: 1240
-X-RateLimit-Reset: 1732890123
-X-RateLimit-Policy: token-bucket; capacity=500000; refill=8000; scope=tenant
-```
+Keep side effects at the edges and make every write idempotent. LLM ops guide to rate limit token bucket without retry semantics is a future incident write-up.
 
-Agent SDK retry policy:
+Acceptance check: an on-call engineer can explain system state for llm rate limit token bucket from one dashboard and one runbook page.
 
-```typescript
-async function withRateLimitRetry<T>(fn: () => Promise<T>, max = 3): Promise<T> {
-  for (let attempt = 0; attempt <= max; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (!isRateLimitError(e) || attempt === max) throw e;
-      const retryAfter = parseRetryAfter(e.headers) ?? backoffMs(attempt);
-      await sleep(retryAfter + jitter(0, 250));
-    }
-  }
-  throw new Error("unreachable");
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If LLM ops guide to rate limit token bucket cannot answer, it is not production-ready.
 
-Never retry tool side effects blindly. Pair rate limit backoff with **idempotency keys** on mutating tools.
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-## Fairness under noisy neighbors
+## Migration without dual-running forever
 
-Within a tenant, one power user can drain the shared bucket. Options:
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-- **Weighted sub-buckets** per user with minimum guaranteed refill
-- **Priority tiers** — enterprise tenants get higher capacity, not just higher refill
-- **Concurrency limits** separate from token bucket (max in-flight agent runs)
+Put a metric on the user-visible effect of llm rate limit token bucket before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Token bucket controls average rate; a concurrency semaphore controls simultaneous tool fan-out. You need both when agents parallelize retrieval.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm rate limit token bucket.
 
-## Observability and tuning
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-Dashboard per scope:
+Related reading:
 
-- `rate_limit_rejected_total{scope, reason}`
-- `rate_limit_retry_after_ms_histogram`
-- `bucket_remaining_ratio` sampled pre-request
-- Correlation with `llm_tokens_total` — if rejections are low but cost spikes, your token estimates are wrong
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Load-test with **burst then idle** patterns, not uniform QPS. Tune capacity to absorb p99 burst of a single agent session; tune refill to match your model provider's sustained TPM contract.
+## Definition of done
 
-Alert when rejection rate exceeds 1% for five minutes for paid tiers — that is a product-visible event, not noise.
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-## Edge cases that bite
+Keep side effects at the edges and make every write idempotent. LLM ops guide to rate limit token bucket without retry semantics is a future incident write-up.
 
-- **Clock skew** across gateway nodes — use Redis TIME or centralized `now_ms` from the script caller consistently
-- **Cold start after key expiry** — resetting to full capacity is a gift to bursters; consider starting at `capacity * 0.5`
-- **Partial failures** — if LLM call fails after reservation, refund tokens in a `finally` block
-- **Webhooks inbound** — rate limit by sender IP and signature key, separate bucket from user-facing API
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to rate limit token bucket that needs a hero is not done.
 
-Token bucket rate limiting will not make agents cheap. It will make cost predictable, bursts survivable, and 429 responses actionable instead of mysterious.
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-## Global vs local buckets at the edge
+## Practical defaults for LLM ops guide to rate limit token bucket
 
-Single-region Redis works until you deploy multi-region gateways. Options:
+Teams usually discover LLM ops guide to rate limit token bucket after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| Central Redis (one region) | Exact global count | Cross-region latency, single point of failure |
-| Regional buckets at 1/N capacity | Fast, resilient | User can burst N × regional limit via geo routing |
-| CRDT / gossip sync | True global burst | Complex, eventual consistency |
+Put a metric on the user-visible effect of llm rate limit token bucket before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Most agent APIs accept **regional buckets** with capacity set to `global_capacity / region_count` plus 10% headroom for uneven traffic. Enterprise contracts that promise hard global caps need central Redis or a dedicated rate-limit service (Envoy RLS, Kong).
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm rate limit token bucket.
 
-At the CDN edge, enforce coarse request limits only — edge nodes lack token-cost context. Fine-grained token buckets belong on the gateway that knows model pricing.
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-## Coordinating with upstream provider limits
+Default deny, explicit timeouts, and one dashboard row for llm rate limit token bucket. Expand only when the metric demands it.
 
-Your bucket is not the only bucket. OpenAI, Anthropic, and Bedrock enforce TPM/RPM independently. Mirror provider limits as nested buckets:
+## Review questions before merging llm rate limit token bucket work
 
-```typescript
-const tenantOk = await consumeTokenBucket(redis, `rl:tok:${tenantId}`, estimated, ...);
-if (!tenantOk.allowed) return reject429(tenantOk);
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm rate limit token bucket, that means making failure visible early.
 
-const providerOk = await consumeTokenBucket(
-  redis,
-  `rl:provider:openai:tpm`,
-  estimated,
-  providerTpmCapacity,
-  providerTpmRefill
-);
-if (!providerOk.allowed) {
-  // queue or route to fallback model — don't burn tenant budget retrying doomed calls
-  return queueForRetry(providerOk.retryAfterMs);
-}
-```
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-When provider limits bind before tenant limits, expose a different error code (`503_provider_capacity`) so clients don't blame the tenant quota. Ops dashboards should show provider bucket saturation separately — that is a vendor or contract problem, not a user abuse problem.
+Acceptance check: an on-call engineer can explain system state for llm rate limit token bucket from one dashboard and one runbook page.
 
-## Graceful degradation tiers
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
 
-When buckets empty, degrade in stages rather than hard-failing everything:
+Default deny, explicit timeouts, and one dashboard row for llm rate limit token bucket. Expand only when the metric demands it.
 
-1. **Disable nonessential tools** (web browse, image gen) — cheap check via feature flag
-2. **Switch model tier** — smaller model still answers, higher bucket effective capacity
-3. **Queue batch requests** — async webhook when complete
-4. **Hard 429** — only when revenue or abuse policy requires it
+## Field notes after thirty days of llm rate limit token bucket
 
-Document degradation order in customer-facing SLA appendices. Surprises here generate more support tickets than honest throttling.
+I treat LLM ops guide to rate limit token bucket as an operations problem first. The goal is to operate rate limit token bucket under token and quota pressure, not to collect frameworks.
+
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for llm rate limit token bucket from one dashboard and one runbook page.
+
+Slug-specific note (llm-rate-limit-token-bucket): prioritize bucket behavior under load and verify with a fixture named `llm-rate-limit-token-bucket-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-rate-limit-token-bucket` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Token bucket algorithm (Wikipedia)](https://en.wikipedia.org/wiki/Token_bucket)
-- [Redis EVAL atomicity documentation](https://redis.io/docs/interact/programmability/eval-intro/)
-- [IETF RateLimit header fields draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers)
-- [Retry-After header (RFC 9110)](https://httpwg.org/specs/rfc9110.html#field.retry-after)
-- [Envoy rate limit service architecture](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting)
+- Internal runbook seed: `llm-rate-limit-token-bucket`
+- https://12factor.net/
+- https://martinfowler.com/

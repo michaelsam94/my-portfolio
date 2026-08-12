@@ -1,235 +1,159 @@
 ---
-title: "AI Agents: Datasheet Datasets"
+title: "Datasheet Datasets for production agents"
 slug: "agent-datasheet-datasets"
-description: "Datasheet Datasets: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Datasheet Datasets for production agents: how to make agent datasheet datasets observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-18"
-dateModified: "2025-05-18"
-tags: ["AI", "Agent", "Datasheet"]
-keywords: "agent, datasheet, datasets, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, datasheet, datasets, production, engineering"
 faq:
-  - q: "What is a Datasheet for Datasets in an agent context?"
-    a: "It is a structured, versioned document describing how a dataset was created, what it contains, known limitations, and recommended uses—applied to the corpora, eval sets, and fine-tune data that power agent retrieval, tool routing, and safety classifiers. Unlike a README with column names, it answers whether this data is safe to embed, fine-tune on, or expose to a multi-tenant agent."
-  - q: "Which agent datasets need datasheets first?"
-    a: "Start with datasets on the critical path: RAG knowledge bases with PII risk, tool-selection training logs, human preference datasets for RLHF, and eval suites that gate production promotion. Internal wiki dumps and scraped documentation can wait until they feed a customer-facing agent."
-  - q: "How do datasheets connect to dataset versioning?"
-    a: "Every dataset version hash—content-addressed blob or table snapshot—should reference a datasheet version in metadata. CI rejects embedding jobs or fine-tune pipelines when the datasheet is missing, stale relative to the data, or marked deprecated. Agents deployed without a linked datasheet should fail promotion gates."
-  - q: "Who owns agent dataset datasheets?"
-    a: "The team that creates or curates the dataset owns the datasheet, with mandatory review from security when PII is possible and from legal when data crosses jurisdictions. Platform teams provide the schema, validation tooling, and registry—not the domain content."
+  - q: "What is Datasheet Datasets for production agents?"
+    a: "Datasheet Datasets for production agents is the production approach to make agent datasheet datasets observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Datasheet Datasets for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent datasheet datasets, prioritize it."
+  - q: "What is the most common mistake with Datasheet Datasets for production agents?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An agent shipped a confident answer about a refund policy that had been revoked eighteen months earlier. Retrieval pulled from a Confluence export indexed before the policy change. The embedding job had no owner, no changelog, and no document explaining that the corpus was a one-time snapshot with known gaps in the EU region. Legal did not ask whether the model hallucinated—they asked why production agents were allowed to cite unaudited data.
+**Datasheet Datasets for production agents** means you make agent datasheet datasets observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-That incident is what **Datasheet for Datasets** discipline prevents. Gebru et al. introduced the concept for ML datasets broadly; agent systems multiply the stakes because datasets are not static training artifacts—they are live inputs to retrieval, tool routing, eval gates, and fine-tune loops that change weekly.
+This write-up is specific to `agent-datasheet-datasets` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Why agents need datasheets, not READMEs
+## Incident pattern involving agent datasheet datasets
 
-Traditional ML treats datasets as batch inputs with a train/val/test split. Agents treat datasets as **operational dependencies**:
+I treat Datasheet Datasets for production agents as an operations problem first. The goal is to make agent datasheet datasets observable and interruptible, not to collect frameworks.
 
-- RAG corpora define what the agent can cite.
-- Tool invocation logs become fine-tune material for routing models.
-- Eval sets decide whether a prompt change promotes to production.
-- Safety classifiers train on red-team transcripts and moderation labels.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Each of these can drift, contain PII, encode outdated business rules, or over-represent one tenant's vocabulary. A README listing S3 paths does not answer: *Should we embed this in prod? Can we fine-tune a shared base model on it? What happens if a regulator asks for provenance?*
+Acceptance check: an on-call engineer can explain system state for agent datasheet datasets from one dashboard and one runbook page.
 
-A datasheet answers those questions in a fixed schema so humans and automation can consume it.
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
-## Anatomy of an agent dataset datasheet
+## Root cause in plain language
 
-Adapt the original eight sections to agent-specific concerns:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent datasheet datasets, that means making failure visible early.
 
-| Section | Agent focus |
-|---------|-------------|
-| Motivation | Which agent workflows depend on this data |
-| Composition | Sources, sampling, deduplication, tenant scope |
-| Collection process | Scrapers, exports, human labeling, retention |
-| Preprocessing | Chunking, redaction, language filters |
-| Uses | RAG, fine-tune, eval-only, shadow traffic |
-| Distribution | Access controls, export restrictions |
-| Maintenance | Owner, refresh cadence, deprecation policy |
-| Known limitations | Staleness, bias, missing locales, PII residue |
+Put a metric on the user-visible effect of agent datasheet datasets before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Add agent-specific extensions:
+Acceptance check: an on-call engineer can explain system state for agent datasheet datasets from one dashboard and one runbook page.
 
-- **Embedding compatibility** — model ID, dimension, distance metric used at index time
-- **Tool schema alignment** — whether examples match current OpenAI/Anthropic tool formats
-- **Multi-tenancy** — shared vs tenant-isolated; cross-tenant leakage risk
-- **Eval linkage** — which promotion gates reference this dataset version
+Concretely, being able to make agent datasheet datasets observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## Datasheet as code in the pipeline
-
-Store datasheets beside datasets under version control. Validate in CI before any downstream job runs.
-
-```yaml
-# datasets/support-kb-eu/v2025-05-01/datasheet.yaml
-schema_version: 1
-dataset_id: support-kb-eu
-version: "2025-05-01"
-content_hash: "sha256:a3f9c2..."
-
-motivation: |
-  Primary RAG corpus for EU Tier-1 support agent. Answers policy and
-  product questions for DE, FR, NL locales.
-
-composition:
-  sources:
-    - type: confluence_export
-      space: SUPPORT-EU
-      snapshot_date: "2025-04-28"
-    - type: zendesk_articles
-      locale: [de, fr, nl]
-      count: 12400
-  excluded:
-    - draft_pages
-    - internal-only labels: [legal-hold, exec-only]
-  estimated_tokens: 48_000_000
-
-preprocessing:
-  chunk_size: 512
-  chunk_overlap: 64
-  pii_redaction: presidio_v2
-  dedupe: minhash_lsh_threshold_0.92
-
-uses:
-  allowed:
-    - rag_retrieval_prod
-    - offline_eval_regression
-  forbidden:
-    - fine_tune_shared_base
-    - cross_region_replication
-
-maintenance:
-  owner: support-platform@company.com
-  refresh: weekly_sunday_utc
-  sla_staleness_max_days: 14
-
-limitations:
-  - Confluence export misses inline comments updated after snapshot
-  - NL coverage ~15% lower than DE for hardware SKU docs
-  - Known PII false-negative rate 0.3% on phone numbers in tables
-
-embedding:
-  model: text-embedding-3-large
-  dimensions: 3072
-  index: pinecone/support-eu-prod
-```
-
-Gate embedding and fine-tune jobs on datasheet presence and freshness:
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
 ```python
+# Datasheet Datasets for production agents
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
-import yaml
 
+@dataclass(frozen=True)
+class AgentDatasheetDataRequest:
+    tenant_id: str
+    idempotency_key: str
 
-@dataclass
-class DatasheetValidation:
-    ok: bool
-    errors: list[str]
-
-
-def validate_datasheet_for_job(
-    datasheet_path: str,
-    data_blob_hash: str,
-    job_type: str,
-) -> DatasheetValidation:
-    with open(datasheet_path) as f:
-        ds = yaml.safe_load(f)
-
-    errors: list[str] = []
-
-    if ds.get("content_hash") != data_blob_hash:
-        errors.append(
-            f"content_hash mismatch: datasheet={ds.get('content_hash')} "
-            f"data={data_blob_hash}"
-        )
-
-    allowed = ds.get("uses", {}).get("allowed", [])
-    forbidden = ds.get("uses", {}).get("forbidden", [])
-    if job_type in forbidden:
-        errors.append(f"job_type {job_type!r} explicitly forbidden")
-    if job_type not in allowed:
-        errors.append(f"job_type {job_type!r} not in allowed uses")
-
-    max_days = ds.get("maintenance", {}).get("sla_staleness_max_days")
-    if max_days:
-        version_date = datetime.fromisoformat(ds["version"])
-        age = (datetime.now(timezone.utc) - version_date.replace(tzinfo=timezone.utc)).days
-        if age > max_days:
-            errors.append(f"dataset stale: {age} days > SLA {max_days}")
-
-    return DatasheetValidation(ok=len(errors) == 0, errors=errors)
+async def run_agent_datasheet_datasets(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-datasheet-datasets"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Operational integration
+## The fix that held under load
 
-**Registry.** Central catalog listing dataset ID, version, owner, linked agents, and datasheet URL. Agent deployment manifests should declare `dataset_refs` that resolve through the registry—same pattern as container image digests.
+I treat Datasheet Datasets for production agents as an operations problem first. The goal is to make agent datasheet datasets observable and interruptible, not to collect frameworks.
 
-**Lineage.** When an agent answer is wrong, trace backward: agent version → retrieval index → embedding job → dataset version → datasheet limitations. OpenLineage or custom spans with `dataset.version` attributes make this queryable.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-**Refresh workflows.** Scheduled re-ingestion must produce a new content hash, updated datasheet version, and diff summary ("412 pages added, 89 removed, 3 PII blocks"). Auto-promote to staging index; eval regression must pass before prod swap.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent datasheet datasets.
 
-**Deprecation.** Mark datasheets `status: deprecated` with `successor_version` and `hard_delete_after`. Block new agent versions from referencing deprecated datasets; existing agents get a 30-day migration window with alerts.
+My never-again list for agent datasheet datasets: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Security and compliance
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
-Datasheets are evidence artifacts. For GDPR and similar regimes, document lawful basis, data subjects represented, retention, and erasure procedure. If a user exercises deletion rights, the datasheet's `composition.sources` tells you which shards to purge and whether re-embedding is required.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-For multi-tenant agents, datasheets must state isolation guarantees explicitly. "Tenant A's tickets were included in fine-tune" is a datasheet fact, not an inference from code archaeology.
+## Tests and probes that catch regressions
 
-Red-team and safety datasets need access controls documented in the Distribution section—who can read jailbreak prompts, where copies may not land (laptops, vendor tickets).
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent datasheet datasets, that means making failure visible early.
 
-## Testing and review cadence
+Keep side effects at the edges and make every write idempotent. Datasheet Datasets for production agents without retry semantics is a future incident write-up.
 
-- **Schema validation** — CI fails on missing required fields.
-- **Human review** — security sign-off when `pii_redaction` is anything other than `none`; legal when `cross_border: true`.
-- **Consistency checks** — row counts in datasheet match actual parquet/JSONL stats within tolerance.
-- **Drill** — quarterly exercise: pick a random prod agent, reconstruct full dataset lineage from a logged trace in under 15 minutes.
+Acceptance check: an on-call engineer can explain system state for agent datasheet datasets from one dashboard and one runbook page.
 
-## Common failure modes
+Review prompts I use: what happens twice, what happens never, what happens partially? If Datasheet Datasets for production agents cannot answer, it is not production-ready.
 
-**Ghost corpora.** Engineers index a folder nobody owns. Fix: no index job without registry entry and datasheet.
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
-**Stale-but-live.** Weekly refresh breaks silently; agents cite outdated policies. Fix: staleness SLA in datasheet + alert on `version` age.
+## Runbook lines that save minutes
 
-**Scope creep.** Eval dataset reused for fine-tune without updating `uses`. Fix: job-type validation in CI.
+Teams usually discover Datasheet Datasets for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-**Copy-paste datasheets.** Template filled with placeholders. Fix: linter rejects `TBD` in production paths; require owner email domain match.
+Put a metric on the user-visible effect of agent datasheet datasets before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Cross-team workflows
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Datasheet Datasets for production agents that needs a hero is not done.
 
-Datasheets sit at the intersection of ML, product, and compliance. Make handoffs explicit:
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
-**ML engineers** publish initial datasheet draft when a dataset version is cut. Include embedding model compatibility and eval linkage.
+Related reading:
 
-**Product owners** validate `motivation` and `limitations` against customer-facing promises. If marketing claims the agent knows "all EU policies," the datasheet must not say NL hardware docs are 15% sparse.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-**Security** reviews `composition.sources` and `preprocessing.pii_redaction` before prod index promotion. Sign off with ticket ID stored in datasheet metadata.
+## Platform guardrails afterward
 
-**Legal** approves `uses.cross_border` and retention fields. Block prod deploy if legal review timestamp is older than the dataset version.
+Teams usually discover Datasheet Datasets for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Weekly office hours for "datasheet questions" reduce Slack DMs and inconsistent interpretations. Publish a JSON schema and example gallery in the internal docs portal so new teams do not reinvent structure.
+Put a metric on the user-visible effect of agent datasheet datasets before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Measuring datasheet ROI
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Datasheet Datasets for production agents that needs a hero is not done.
 
-Track operational metrics tied to datasheet maturity:
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
 
-- Mean time to answer lineage questions during incidents (target: under 10 minutes)
-- Percentage of prod agent deployments with valid `dataset_refs` (target: 100%)
-- Eval regressions attributed to undocumented dataset drift (target: trending down)
-- Legal review cycle time for new corpora (target: days, not weeks)
+## Practical defaults for Datasheet Datasets for production agents
 
-When an wrong-answer incident occurs, tag root cause: `dataset_stale`, `dataset_scope`, `model_issue`, or `prompt_issue`. If `dataset_*` causes dominate, datasheet investment is justified. If prompts dominate, do not blame the corpus—fix the card instead.
+I treat Datasheet Datasets for production agents as an operations problem first. The goal is to make agent datasheet datasets observable and interruptible, not to collect frameworks.
 
-## The takeaway
+Keep side effects at the edges and make every write idempotent. Datasheet Datasets for production agents without retry semantics is a future incident write-up.
 
-Datasheet discipline turns agent datasets from tribal knowledge into auditable infrastructure. The investment is modest—a YAML file per version, validation in CI, a registry—but the payoff shows up when evals fail for explainable reasons, legal reviews finish in days instead of weeks, and wrong answers trace to a documented stale export rather than a mysterious model mood swing.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Datasheet Datasets for production agents that needs a hero is not done.
+
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent datasheet datasets. Expand only when the metric demands it.
+
+## Review questions before merging agent datasheet datasets work
+
+Teams usually discover Datasheet Datasets for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Acceptance check: an on-call engineer can explain system state for agent datasheet datasets from one dashboard and one runbook page.
+
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Field notes after thirty days of agent datasheet datasets
+
+I treat Datasheet Datasets for production agents as an operations problem first. The goal is to make agent datasheet datasets observable and interruptible, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent datasheet datasets before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent datasheet datasets from one dashboard and one runbook page.
+
+Slug-specific note (agent-datasheet-datasets): prioritize datasets behavior under load and verify with a fixture named `agent-datasheet-datasets-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent datasheet datasets. Expand only when the metric demands it.
 
 ## Resources
 
-- [Datasheets for Datasets (Gebru et al., 2018)](https://arxiv.org/abs/1803.09010)
-- [Model Cards for Model Reporting (Mitchell et al.)](https://arxiv.org/abs/1810.03993)
-- [Hugging Face Dataset Card documentation](https://huggingface.co/docs/hub/datasets-cards)
-- [OpenLineage specification](https://openlineage.io/docs/)
-- [Microsoft Presidio — PII detection](https://microsoft.github.io/presidio/)
-- [NIST AI RMF — data governance](https://www.nist.gov/itl/ai-risk-management-framework)
+- Internal runbook seed: `agent-datasheet-datasets`
+- https://12factor.net/
+- https://martinfowler.com/

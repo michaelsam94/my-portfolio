@@ -1,188 +1,159 @@
 ---
-title: "RAG: Error Budget Policy Enforcement"
+title: "Error Budget Policy Enforcement for RAG quality"
 slug: "rag-error-budget-policy-enforcement"
-description: "Error budget policies for RAG services — SLO burn alerts, release gates, auto-rollback triggers, and balancing velocity with retrieval quality."
+description: "Error Budget Policy Enforcement for RAG quality: how to reduce hallucinations via better error budget policy enforcement — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-03-17"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Error"]
-keywords: "rag, error, budget, policy, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, error, budget, policy, enforcement, production, engineering"
 faq:
-  - q: "What SLOs should RAG products define for error budgets?"
-    a: "Common choices: availability of successful query responses (excluding user errors), end-to-end latency under threshold, retrieval precision proxy (thumbs-down rate ceiling), and generation safety block rate within bounds. Pick one primary user-facing SLO—often availability or p95 latency—and derive error budget as allowed bad events per rolling window."
-  - q: "How do error budgets gate RAG deployments?"
-    a: "When budget burn exceeds policy threshold—e.g., 50% consumed in first half of window—freeze non-emergency deploys, require exec exception for risky changes, and prioritize reliability work. CI/CD integration blocks promotion if multi-window burn rate alerts fire within 24 hours of release."
-  - q: "Can error budgets apply to ML quality regressions not just uptime?"
-    a: "Yes. Treat eval metric regressions beyond tolerance as budget-consuming events if tied to user-visible quality—e.g., nDCG drop on live feedback-labeled sample or spike in 'no useful answer' reports. Combine infrastructure SLOs with quality burn in composite policy."
+  - q: "What is Error Budget Policy Enforcement for RAG quality?"
+    a: "Error Budget Policy Enforcement for RAG quality is the production approach to reduce hallucinations via better error budget policy enforcement. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Error Budget Policy Enforcement for RAG quality?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with rag error budget policy enforcement, prioritize it."
+  - q: "What is the most common mistake with Error Budget Policy Enforcement for RAG quality?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The team shipped three RAG prompt changes and a reranker upgrade in one week while p95 latency crept from 1.2s to 3.8s and thumbs-down rate doubled. Dashboards showed red; deploys continued because nobody tied releases to **error budget** policy. On-call firefighting replaced planned reliability work until leadership asked why SLO charts existed if they did not change behavior.
+**Error Budget Policy Enforcement for RAG quality** means you reduce hallucinations via better error budget policy enforcement — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-**Error budgets**—the complement of SLOs—quantify how much unreliability you can afford before prioritizing stability over features. **Policy enforcement** means budgets actually block risky deploys, trigger rollbacks, and allocate engineering time—not slide deck decoration.
+This write-up is specific to `rag-error-budget-policy-enforcement` in a rag context, using OpenTelemetry, Postgres, pgvector for the mechanics while keeping ownership human.
 
-## Defining SLOs meaningful for RAG
+## Error Budget Policy Enforcement for RAG quality: production checklist
 
-Infrastructure-only SLOs miss user pain. Layer metrics:
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag error budget policy enforcement, that means making failure visible early.
 
-| SLI | Measurement | Example target |
-|-----|-------------|----------------|
-| Availability | Successful `/query` / total attempts | 99.9% monthly |
-| Latency | p95 e2e < 2s | 99% of hours |
-| Quality | Thumbs-down / rated answers | < 8% weekly |
-| Safety | Policy violation escapes | 0 (hard gate) |
+Keep side effects at the edges and make every write idempotent. Error Budget Policy Enforcement for RAG quality without retry semantics is a future incident write-up.
 
-Pick **one primary SLO** for budget math—typically availability or latency users feel first.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag error budget policy enforcement.
 
-Monthly budget at 99.9%: ~43 minutes downtime equivalent. Translate quality regressions to budget cost via policy: "1% absolute thumbs-down spike = 10% budget burn."
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-## Error budget calculation
+## Inputs, outputs, invariants
 
-Rolling 30-day window:
+I treat Error Budget Policy Enforcement for RAG quality as an operations problem first. The goal is to reduce hallucinations via better error budget policy enforcement, not to collect frameworks.
 
-```
-error_budget_total = (1 - SLO_target) * total_events
-error_budget_remaining = error_budget_total - bad_events
-burn_rate = bad_events_last_1h / (error_budget_total / 720)
-```
+Keep side effects at the edges and make every write idempotent. Error Budget Policy Enforcement for RAG quality without retry semantics is a future incident write-up.
 
-Multi-window burn alerts (Google SRE book):
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Error Budget Policy Enforcement for RAG quality that needs a hero is not done.
 
-- **Fast burn** (1h, 14.4×): page immediately—budget exhausted in hours
-- **Slow burn** (6h, 6×): ticket + deploy freeze review
+Concretely, being able to reduce hallucinations via better error budget policy enforcement forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```yaml
-# Prometheus alert example (conceptual)
-- alert: RAGErrorBudgetFastBurn
-  expr: rag:slo_burn_rate_1h > 14.4
-  labels:
-    severity: page
-  annotations:
-    summary: "RAG availability budget burning fast"
-```
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-## Policy tiers and enforcement actions
+```python
+# Error Budget Policy Enforcement for RAG quality
+from dataclasses import dataclass
 
-Document in `ERROR_BUDGET_POLICY.md` with executive sign-off:
+@dataclass(frozen=True)
+class RagErrorBudgetPolRequest:
+    tenant_id: str
+    idempotency_key: str
 
-| Budget remaining | Actions |
-|------------------|---------|
-| > 50% | Normal deploy velocity |
-| 25–50% | Require reliability reviewer on PRs affecting retrieval |
-| 10–25% | Freeze feature deploys; allow fixes and rollbacks only |
-| < 10% | Incident commander approves exceptions; focus sprint on SLO |
-| 0% | Halt all prod changes except rollback until budget resets |
-
-**Automate enforcement** in CD:
-
-```yaml
-# deploy-gate job
-steps:
-  - name: check error budget
-    run: |
-      BURN=$(curl -s $SLO_API/rag-availability/burn-24h)
-      if (( $(echo "$BURN > 0.5" | bc -l) )); then
-        echo "Deploy blocked: error budget burn ${BURN}"
-        exit 1
-      fi
+async def run_rag_error_budget_policy_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("rag-error-budget-policy-enforcement"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Exceptions logged with ticket ID—quarterly review of override abuse.
+## Concurrency, retries, and timeouts
 
-## Linking releases to budget consumption
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Tag deploys with version; correlate burn spikes:
+With OpenTelemetry, Postgres, pgvector, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-- ArgoCD / GitHub deploy events → SLO dashboard vertical markers
-- Within 1h of deploy, burn increase > 2× baseline → auto-rollback hook if canary metrics fail
+Acceptance check: an on-call engineer can explain system state for rag error budget policy enforcement from one dashboard and one runbook page.
 
-Canary analysis for RAG:
+My never-again list for rag error budget policy enforcement: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-- Compare canary vs baseline: latency, error rate, thumbs-down on opt-in beta users
-- Flagger or custom analysis waits 30 min before full promotion
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-## Quality-aware budgets
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Pure uptime SLOs greenlight broken retrieval—every request returns 200 with useless answers.
+## Support and audit workflows
 
-Add **quality SLI** from:
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-- Explicit user ratings
-- Implicit signals: immediate re-query, copy-none rate
-- Sampled human eval on live traffic
+Put a metric on the user-visible effect of rag error budget policy enforcement before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Policy: quality burn consumes half as fast as availability burn until threshold—tunable.
+Acceptance check: an on-call engineer can explain system state for rag error budget policy enforcement from one dashboard and one runbook page.
 
-When reranker deploy drops nDCG on shadow eval, block before prod even if pods healthy.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Error Budget Policy Enforcement for RAG quality cannot answer, it is not production-ready.
 
-## Organizational rituals
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-**Error budget meeting** weekly when budget < 50%: product + eng decide tradeoffs—delay corpus reindex? rollback prompt?
+## Capacity and load notes
 
-**Blameless postmortems** when budget exhausted—action items feed reliability backlog with priority over roadmap.
+I treat Error Budget Policy Enforcement for RAG quality as an operations problem first. The goal is to reduce hallucinations via better error budget policy enforcement, not to collect frameworks.
 
-Product managers learn budget language: "That feature costs 15% budget if latency regression uncaught."
+Put a metric on the user-visible effect of rag error budget policy enforcement before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Tooling
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Error Budget Policy Enforcement for RAG quality that needs a hero is not done.
 
-- **Sloth** or **OpenSLO** for SLO definitions as code
-- **Google Cloud Operations** / **Datadog SLO** / **Prometheus + Sloth**
-- **Nobl9** for policy reporting to leadership
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-Export `error_budget_remaining` gauge to internal portal—visibility drives behavior.
+Related reading:
 
-## Anti-patterns
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-- **Loose SLOs** (99% on internal tool)—budget never burns, policy meaningless
-- **Ignoring quality**—green uptime, angry users
-- **Manual-only enforcement**—deploy freeze forgotten under launch pressure
-- **Resetting SLO without postmortem**—teaches teams budgets lie
+## Ship gate
 
-## RAG-specific considerations
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Corpus reindex and embedding model migrations are high-risk—schedule when budget > 60%, with pre-approved rollback and extended canary.
+Put a metric on the user-visible effect of rag error budget policy enforcement before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Token cost spikes are not error budget unless tied to SLI—finance metric separate unless causes throttling errors.
+Acceptance check: an on-call engineer can explain system state for rag error budget policy enforcement from one dashboard and one runbook page.
 
-Seasonal traffic (tax season, product launch) may need temporary SLO tuning via change control—not silent goal relaxation.
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-Error budget policy enforcement makes SLOs operational: burn too fast and deploys stop, rollbacks trigger, and reliability work gets priority. RAG teams shipping prompt, reranker, and index changes weekly need that guardrail—otherwise dashboards turn red while CI stays green and users absorb the regression until someone notices thumbs-down, not uptime.
+## Practical defaults for Error Budget Policy Enforcement for RAG quality
 
-## Cross-team accountability
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Product owns feature velocity; platform owns SLO definition—but **both** sign error budget exceptions. Exception template captures: expected budget cost, rollback plan, monitoring owner, duration. Retrospective on every exception whether predicted cost matched actual.
+Keep side effects at the edges and make every write idempotent. Error Budget Policy Enforcement for RAG quality without retry semantics is a future incident write-up.
 
-Tie performance review incentives cautiously—punishing teams for budget burn during upstream provider outage encourages hiding incidents. Measure response quality and learning, not raw green dashboards.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Error Budget Policy Enforcement for RAG quality that needs a hero is not done.
 
-## Composite SLOs for RAG product tiers
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-Enterprise tier customers may contract higher availability (99.95%)—separate error budget pools per tier if routing isolates noisy neighbor free users from paid latency SLO. Tag SLI events with `tier` label; burn calculations respect tier-specific targets.
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-Free tier exhausts budget first → throttle features before enterprise pool affected—explicit fairness policy communicated publicly.
+## Review questions before merging rag error budget policy enforcement work
 
-## Executive reporting without vanity metrics
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Monthly SLO review deck: budget remaining per service, top three budget consumers (incidents/releases), planned reliability investments. Avoid greenwashing—show weeks where budget hit zero and features paused. Leadership alignment improves when error budget language replaces vague "we prioritize reliability."
+With OpenTelemetry, Postgres, pgvector, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Link budget status to roadmap planning: Q3 feature freeze if Q2 exhausted budget twice—program management adjusts commitments using objective criteria, not politics alone.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Error Budget Policy Enforcement for RAG quality that needs a hero is not done.
 
-## Customer communication during budget exhaustion
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-When error budget forces feature freeze during peak season, **customer comms** template explains reliability focus without exposing internal SLO jargon—"temporarily pausing non-critical updates to stabilize search quality." Support macros align with public status page entries linked to incident timeline.
+Default deny, explicit timeouts, and one dashboard row for rag error budget policy enforcement. Expand only when the metric demands it.
 
-Post-recovery: publish brief retrospective blog internally highlighting budget policy worked—prevented three risky deploys during unstable week—reinforces culture for teams skeptical of deploy freezes.
+## Field notes after thirty days of rag error budget policy enforcement
 
-## Sustaining policy beyond the first incident
+Teams usually discover Error Budget Policy Enforcement for RAG quality after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Error budget policies fail without executive reinforcement after the first fire drill. Schedule quarterly SLO review with VPs present; publish internal scorecard ranking services by budget health—not to punish, but to allocate reliability engineers where burn chronic. Teams with consistent green budgets mentor teams learning incident response; cross-pollination spreads runbook quality faster than central SRE memos alone.
+Keep side effects at the edges and make every write idempotent. Error Budget Policy Enforcement for RAG quality without retry semantics is a future incident write-up.
 
-Link budget outcomes to planning: teams that exhausted budget twice in rolling quarter enter mandatory reliability sprint next quarter with pre-approved headcount from platform—product roadmap adjusts transparently rather than slipping reliability work indefinitely via silent overtime.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag error budget policy enforcement.
 
-Publish error budget status internally like weather forecast: green/yellow/red weekly email to engineering. Yellow means freeze non-critical RAG prompt experiments; red means incident commander approves all prod changes. Transparency reduces surprise when PM cannot ship Thursday feature—everyone saw budget burning since Tuesday standup.
+Slug-specific note (rag-error-budget-policy-enforcement): prioritize enforcement behavior under load and verify with a fixture named `rag-error-budget-policy-enforcement-smoke`.
 
-Integrate budget burn with status page: user-visible degradation consumes budget faster—adjust SLI definitions so external incidents and internal regressions both visible in same metric language finance and product already learned during prior quarter review.
+After a month, delete unused flags and dual paths. `rag-error-budget-policy-enforcement` accumulates temporary bridges faster than teams expect.
 
-Reliability improvements funded from budget exhaustion sprints should ship with the same visibility as feature launches—internal changelog celebrates SLO recovery so teams see platform work valued, not only feature PRs in release notes.
+## Resources
 
-SLO targets should be renegotiated annually with product leadership—not silently tightened without engineering input, not left stale while reliability improves uncelebrated. Error budgets connect that conversation to measurable tradeoffs every quarter.
-
-## Integration notes for error budget policy enforcement
-
-This rarely lives alone. Map upstream dependencies (auth, data stores, queues) and downstream consumers before you harden the happy path. Sequence the rollout: observability first, then flags, then the risky behavior change. That order turns rollback into a flag flip instead of a reverse migration under pressure. Keep the integration diagram in the same repo as the code so it cannot rot in a slide deck.
+- Internal runbook seed: `rag-error-budget-policy-enforcement`
+- https://12factor.net/
+- https://martinfowler.com/

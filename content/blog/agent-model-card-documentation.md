@@ -1,263 +1,159 @@
 ---
-title: "AI Agents: Model Card Documentation"
+title: "Operating agents with model card documentation"
 slug: "agent-model-card-documentation"
-description: "Treat model cards as versioned, testable artifacts—not PDF afterthoughts—so agent releases ship with auditable limits, eval evidence, and clear ownership."
+description: "Operating agents with model card documentation: how to bound tool calls and blast radius for model card documentation — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-16"
-dateModified: "2025-05-16"
-tags: ["AI", "Agent", "Model"]
-keywords: "model cards, ML documentation, LLM governance, agent model registry, responsible AI, model metadata, Hugging Face model card"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, model, card, documentation, production, engineering"
 faq:
-  - q: "What must a model card include for a production agent?"
-    a: "At minimum: intended use and out-of-scope uses, training or fine-tune data summary, evaluation results on tasks that mirror production, known failure modes, inference limits (context, tools, languages), privacy and retention behavior, and an owner plus escalation path."
-  - q: "How is an agent model card different from a vendor datasheet?"
-    a: "Vendor datasheets describe the base model. Your card describes the composed system: base model plus prompts, tools, retrieval index, safety filters, and deployment configuration. Auditors care about what you actually run, not what the API marketing page claims."
-  - q: "Should model cards block CI if eval scores regress?"
-    a: "They should block promotion when regressions exceed agreed thresholds on release gates tied to the card's eval suite—not on every commit. Store eval artifacts as immutable blobs referenced by card version so historical releases remain explainable."
-  - q: "Where should model cards live in the repo?"
-    a: "Alongside the agent bundle they describe: `models/support-agent/v3/model-card.yaml`, referenced by deployment manifests. Generated PDFs are optional exports; the source of truth is structured text under version control."
+  - q: "What is Operating agents with model card documentation?"
+    a: "Operating agents with model card documentation is the production approach to bound tool calls and blast radius for model card documentation. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with model card documentation?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent model card documentation, prioritize it."
+  - q: "What is the most common mistake with Operating agents with model card documentation?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Legal asked a reasonable question during a procurement review: "Which model answers EU customer tickets, what data does it retain, and what testing proves it won't invent refund policies?" Engineering opened Notion, found a slide from last quarter, and a PDF exported from a notebook. The base model had been swapped twice since then. Prompts had moved to a new tool-calling schema. Nobody could map the slide to what was running in `prod-eu-west`.
+**Operating agents with model card documentation** means you bound tool calls and blast radius for model card documentation — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-That afternoon is when model card documentation stops being "ML paperwork" and becomes release infrastructure. A model card is the contract between the team that ships an agent and everyone who must trust it—security, legal, support leads, and your future self during a 2 a.m. incident.
+This write-up is specific to `agent-model-card-documentation` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## What a model card is not
+## Explaining Operating agents with model card documentation to a skeptical teammate
 
-It is not a marketing blurb or a dump of training hyperparameters copied from a paper. It is not a one-time ethics checklist signed at launch.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model card documentation, that means making failure visible early.
 
-A useful card answers operational questions without a live engineer:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-- What is this agent allowed to do autonomously?
-- What must it escalate?
-- What languages, regions, and data classes does it handle?
-- What evals ran before this version promoted, and what failed?
-- What changed since the last version?
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model card documentation.
 
-If those answers live only in Slack threads, you do not have documentation—you have folklore.
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-## Structure that survives audits and refactors
+## Making it routine to bound tool calls and blast radius for model card documentation
 
-Adapt the [Model Card framework (Mitchell et al.)](https://arxiv.org/abs/1810.03993) to agent systems by adding a **composition** section. Base models are rarely deployed naked; agents are stacks.
+Teams usually discover Operating agents with model card documentation after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Recommended sections for agent model cards:
+Put a metric on the user-visible effect of agent model card documentation before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-1. **Model details** — base model IDs, fine-tunes, quantization, hosting region
-2. **Composition** — prompts, tool schemas, retrieval sources, guardrails
-3. **Intended use** — workflows, user populations, success criteria
-4. **Out-of-scope uses** — explicit non-goals (medical advice, binding contracts)
-5. **Training and data** — fine-tune sets, PII handling, retention windows
-6. **Evaluation** — offline suites, online metrics, human review samples
-7. **Limitations and risks** — hallucination patterns, bias findings, jailbreak sensitivity
-8. **Monitoring** — dashboards, alert thresholds, rollback triggers
-9. **Version history** — changelog with diffs to prompts and tools
-10. **Contacts** — owner, backup, security liaison
+Acceptance check: an on-call engineer can explain system state for agent model card documentation from one dashboard and one runbook page.
 
-Keep prose tight. Long narrative belongs in linked runbooks; the card should be scannable.
+Concretely, being able to bound tool calls and blast radius for model card documentation forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## Model card as code
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-Treat the card like application config: validate in CI, render for humans, attach to deployments.
-
-```yaml
-# models/support-agent/v3/model-card.yaml
-schema_version: 1
-model_card_version: "3.2.1"
-agent_id: support-agent
-display_name: "Support Agent — EU Tier-1"
-owner:
-  team: agent-platform
-  email: agent-platform@company.com
-  slack: "#agent-releases"
-
-base_models:
-  - provider: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    region: eu-west-1
-
-composition:
-  prompt_bundle: prompts/support/eu/v12.txt
-  tools:
-    - ticket_lookup
-    - refund_policy_rag
-    - escalate_to_human
-  retrieval:
-    index: kb-eu-refunds-v4
-    max_chunks: 8
-  safety:
-    - input_pii_redaction
-    - output_policy_filter_v2
-
-intended_use: |
-  Draft replies and suggest macros for tier-1 billing and shipping questions
-  for EU customers on paid plans. Human agents approve before send.
-
-out_of_scope:
-  - legal interpretation
-  - medical or safety emergencies
-  - autonomous refunds above €50
-
-data:
-  fine_tune: none
-  logs_retention_days: 30
-  pii_fields_redacted: [email, phone, address]
-
-evaluation:
-  gates:
-    - name: golden_set_accuracy
-      metric: exact_match_approval_rate
-      threshold: 0.91
-    - name: policy_violation_rate
-      metric: policy_violations_per_1k
-      threshold_max: 0.5
-  artifacts:
-    - s3://eval-artifacts/support-agent/3.2.1/report.json
-
-monitoring:
-  dashboards:
-    - https://grafana.internal/d/support-agent-eu
-  rollback_if:
-    handoff_rate_1h_delta: "> 0.15"
-    policy_violation_spike: "> 3x baseline"
-
-changelog:
-  - version: "3.2.1"
-    date: "2025-05-10"
-    notes: "Prompt v12 tightens refund eligibility wording; tool schema unchanged."
+```typescript
+// Operating agents with model card documentation
+export async function handle_agent_model_card_documentation(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-model-card-documentation");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Validation rules catch incomplete cards before merge:
+## Code seams that keep refactors cheap
 
-```python
-# ci/validate_model_card.py
-from pathlib import Path
-import sys
-import yaml
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model card documentation, that means making failure visible early.
 
-REQUIRED_TOP_LEVEL = [
-    "model_card_version", "owner", "base_models", "composition",
-    "intended_use", "out_of_scope", "evaluation", "monitoring",
-]
+Keep side effects at the edges and make every write idempotent. Operating agents with model card documentation without retry semantics is a future incident write-up.
 
-def validate(path: Path) -> list[str]:
-    errors = []
-    doc = yaml.safe_load(path.read_text())
-    for key in REQUIRED_TOP_LEVEL:
-        if key not in doc:
-            errors.append(f"{path}: missing required key '{key}'")
-    if "evaluation" in doc:
-        gates = doc["evaluation"].get("gates", [])
-        if not gates:
-            errors.append(f"{path}: evaluation.gates must not be empty")
-    owner = doc.get("owner", {})
-    if not owner.get("email"):
-        errors.append(f"{path}: owner.email required for escalation")
-    return errors
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with model card documentation that needs a hero is not done.
 
-if __name__ == "__main__":
-    paths = list(Path("models").rglob("model-card.yaml"))
-    all_errors = []
-    for p in paths:
-        all_errors.extend(validate(p))
-    if all_errors:
-        print("\n".join(all_errors))
-        sys.exit(1)
-    print(f"Validated {len(paths)} model cards.")
-```
+My never-again list for agent model card documentation: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Pair validation with eval artifact checks: CI downloads `report.json`, verifies thresholds, and comments on the pull request with a diff summary.
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-## Binding cards to releases
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-A card nobody reads is shelfware. Wire it into the deployment path:
+## Table stakes vs later polish
 
-```yaml
-# deploy/support-agent-eu.yaml
-apiVersion: serving.internal/v1
-kind: AgentDeployment
-metadata:
-  name: support-agent-eu
-spec:
-  agent_version: "3.2.1"
-  model_card: models/support-agent/v3/model-card.yaml
-  model_card_digest: sha256:8f3a2c...  # computed in CI
-  promotion_requires:
-    - ci/model-card-validate
-    - ci/eval-gates
-    - approval: agent-release-approvers
-```
+I treat Operating agents with model card documentation as an operations problem first. The goal is to bound tool calls and blast radius for model card documentation, not to collect frameworks.
 
-At deploy time, the controller refuses promotion if the digest does not match the built artifact—preventing "we updated the card but forgot to redeploy" drift.
+Put a metric on the user-visible effect of agent model card documentation before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-For multi-tenant agents, maintain **tenant overlays** rather than forking entire cards:
+Acceptance check: an on-call engineer can explain system state for agent model card documentation from one dashboard and one runbook page.
 
-```yaml
-# models/support-agent/v3/overlays/tenant-acme.yaml
-extends: ../model-card.yaml
-tenant_id: acme-corp
-composition:
-  retrieval:
-    index: kb-acme-v2
-out_of_scope:
-  - competitor_price_matching   # contractual exclusion
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with model card documentation cannot answer, it is not production-ready.
 
-The base card stays canonical; overlays diff cleanly in review.
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-## Human-readable exports without losing truth
+## Regressions that show up after launch
 
-Some stakeholders want PDFs. Generate them from the same YAML so exports never diverge:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model card documentation, that means making failure visible early.
 
-```bash
-# Makefile target — pseudocode pipeline
-model-card-render models/support-agent/v3/model-card.yaml > dist/support-agent-v3.2.1.md
-pandoc dist/support-agent-v3.2.1.md -o dist/support-agent-v3.2.1.pdf
-```
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Store PDFs as release attachments, not sources of truth. When legal asks for "the card," send a link to the tagged commit.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model card documentation.
 
-## Operating model cards after launch
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-Documentation rots when behavior changes silently. Enforce **card updates on meaningful diffs**:
+Related reading:
 
-| Change | Card action |
-|--------|-------------|
-| Prompt wording only | Bump patch version, changelog entry |
-| New tool or retrieval index | Minor version, re-run eval gates |
-| Base model swap | Minor or major, full eval suite + security review |
-| Data retention change | Major version, legal review required |
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Schedule quarterly reviews even if nothing shipped—verify monitoring links, contacts, and out-of-scope lists still match reality.
+## Twelve-month maintenance load
 
-During incidents, the card is the first document on-call opens. If `rollback_if` conditions are defined upfront, decisions happen faster than debating whether a spike is noise.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model card documentation, that means making failure visible early.
 
-## Cross-team review without calendar bloat
+Put a metric on the user-visible effect of agent model card documentation before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Model cards work best with lightweight review lanes instead of a single heavyweight committee:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model card documentation.
 
-- **Security** reviews `out_of_scope`, data retention, and tool permissions—async comment on the pull request within two business days.
-- **Legal** reviews intended use statements and regional deployment notes—only on major version bumps or new data classes.
-- **Support** validates that failure modes match macros they actually send—15-minute read-through, not a slide deck.
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-Tag reviewers in CODEOWNERS by directory. If `models/support-agent/**` changes, `@support-leads` auto-requests review. Cards that never get eyeballs from downstream teams fail exactly when an auditor calls.
+## Practical defaults for Operating agents with model card documentation
 
-Store resolved review threads in the pull request history; do not copy meeting notes into the card body. The YAML stays terse; GitHub/GitLab holds the conversation.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model card documentation, that means making failure visible early.
 
-## Measuring documentation quality
+Put a metric on the user-visible effect of agent model card documentation before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Track meta-metrics:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model card documentation.
 
-- Percentage of production agents with cards linked in deploy manifests
-- Mean age of eval artifacts referenced by live cards
-- Time to answer audit questionnaires (should drop after cards mature)
-- Number of incident postmortems citing missing or stale card sections
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
 
-Good cards reduce repeated cross-team meetings. That is the ROI—not checkbox compliance.
+After a month, delete unused flags and dual paths. `agent-model-card-documentation` accumulates temporary bridges faster than teams expect.
 
-Model card documentation is how you prove you knew what you shipped. Build it into the pipeline early, keep it structured, and treat changes with the same discipline as code—because for agents, the card is part of the system.
+## Review questions before merging agent model card documentation work
+
+Teams usually discover Operating agents with model card documentation after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+Put a metric on the user-visible effect of agent model card documentation before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model card documentation.
+
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-model-card-documentation` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent model card documentation
+
+I treat Operating agents with model card documentation as an operations problem first. The goal is to bound tool calls and blast radius for model card documentation, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with model card documentation without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with model card documentation that needs a hero is not done.
+
+Slug-specific note (agent-model-card-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-model-card-documentation-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Model Cards for Model Reporting (Mitchell et al., 2019)](https://arxiv.org/abs/1810.03993) — original framework paper
-- [Hugging Face: Model Cards documentation](https://huggingface.co/docs/hub/model-cards) — widely used card format and metadata fields
-- [Google Model Card Toolkit](https://github.com/tensorflow/model-card-toolkit) — generators and schemas for structured cards
-- [NIST AI RMF 1.0](https://www.nist.gov/itl/ai-risk-management-framework) — risk framing that maps to intended use and monitoring sections
-- [EU AI Act high-level summary (European Commission)](https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai) — regulatory context for documentation expectations in EU deployments
+- Internal runbook seed: `agent-model-card-documentation`
+- https://12factor.net/
+- https://martinfowler.com/

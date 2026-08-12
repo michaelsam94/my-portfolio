@@ -1,244 +1,159 @@
 ---
-title: "AI Agents: Gateway Api Ingress Evolution"
+title: "Agent systems: gateway api ingress evolution"
 slug: "agent-gateway-api-ingress-evolution"
-description: "Migrating agent workloads from Ingress to Gateway API — HTTPRoute, GRPCRoute, TLS termination, canary traffic splits, and platform-level rate limits for LLM inference endpoints."
+description: "Agent systems: gateway api ingress evolution: how to keep agent side effects idempotent around gateway api ingress evolution — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-14"
-dateModified: "2026-02-14"
-tags: ["AI", "Agent", "Gateway"]
-keywords: "Gateway API, Kubernetes ingress, HTTPRoute, GRPCRoute, agent inference, canary rollout, TLS termination, Envoy Gateway, NGINX migration"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, gateway, api, ingress, evolution, production, engineering"
 faq:
-  - q: "Why migrate agent inference ingress from classic Ingress to Gateway API?"
-    a: "Gateway API separates infrastructure (GatewayClass, load balancer) from application routing (HTTPRoute), supports gRPC and WebSocket first-class, exposes portable traffic splitting for canaries, and replaces annotation soup with typed CRDs. Agent platforms mixing REST tools, streaming SSE, and gRPC embedders outgrow single-resource Ingress limitations."
-  - q: "Can HTTPRoute do canary rollouts for a new agent orchestrator version?"
-    a: "Yes. BackendRef weights or RequestMirror filters split traffic between stable and candidate Services. Pair with metric analysis (error rate, p95 latency, token throughput) before shifting weight to 100%. Gateway API's role-based visibility lets app teams own HTTPRoute while platform teams own Gateway."
-  - q: "How do you handle long-lived SSE streams from agent chat through Gateway API?"
-    a: "Configure appropriate idle timeouts on Gateway and backend Service — defaults often kill streams at 60s. Use HTTPRoute rules matching /v1/chat/completions or /agent/stream paths with backend policies extending timeout. Verify your implementation (Envoy Gateway, Istio, Cilium) documents streaming behavior; not all controllers treat SSE identically."
-  - q: "What is the recommended coexistence strategy during Ingress to Gateway API migration?"
-    a: "Run dual entry temporarily: existing Ingress handles legacy paths; new Gateway owns net-new hostnames or /v2 prefixes. Migrate route-by-route with DNS or path cutover, validate TLS cert propagation on Gateway listeners, then decommission Ingress controllers once HTTPRoute coverage matches. Never big-bang flip production agent traffic without weighted fallback."
+  - q: "What is Agent systems: gateway api ingress evolution?"
+    a: "Agent systems: gateway api ingress evolution is the production approach to keep agent side effects idempotent around gateway api ingress evolution. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: gateway api ingress evolution?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent gateway api ingress evolution, prioritize it."
+  - q: "What is the most common mistake with Agent systems: gateway api ingress evolution?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Agent platforms outgrow `kubernetes.io/ingress.class` annotations the same way they outgrow single-model routing: one hostname initially serves a simple REST API, then adds streaming chat, gRPC embedding services, WebSocket tool bridges, admin dashboards, and per-tenant rate limits — each fighting for another NGINX snippet nobody remembers writing. **Gateway API** is the Kubernetes evolution of ingress: role-oriented resources, implementation-agnostic routing, and first-class traffic splitting. For teams running agent inference behind Kubernetes, the migration question is when, not if — and how to do it without dropping active SSE sessions mid-token.
+**Agent systems: gateway api ingress evolution** means you keep agent side effects idempotent around gateway api ingress evolution — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Classic **Ingress** bundles listener config, routing rules, and TLS into one resource owned ambiguously by "whoever applied the YAML." Annotations differ per controller (NGINX, ALB, GCE). gRPC requires expert mode. Canary deploys mean duplicating Ingress resources or bolting on service mesh. Gateway API splits concerns: **GatewayClass** (platform), **Gateway** (cluster ops), **HTTPRoute** / **GRPCRoute** (application teams), **BackendTLSPolicy** (mTLS to upstream). Agent service owners publish routes; platform engineers operate the data plane.
+This write-up is specific to `agent-gateway-api-ingress-evolution` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Resource model mapped to agent workloads
+## What Agent systems: gateway api ingress evolution changes in day-two ops
 
-| Gateway API resource | Owner | Agent platform example |
-|---------------------|-------|------------------------|
-| GatewayClass | Platform | `envoy`, `aws-alb`, `gke-l7-global-external` |
-| Gateway | Platform | Public LB for `api.agents.example.com` |
-| HTTPRoute | App team | `/v1/agents/*` → orchestrator Service |
-| GRPCRoute | App team | `embedder.v1.Embedder` → GPU embedder pods |
-| ReferenceGrant | Platform | Allow HTTPRoute in ns `agents` to reference Gateway in ns `infra` |
+I treat Agent systems: gateway api ingress evolution as an operations problem first. The goal is to keep agent side effects idempotent around gateway api ingress evolution, not to collect frameworks.
 
-An agent stack typically exposes:
+Keep side effects at the edges and make every write idempotent. Agent systems: gateway api ingress evolution without retry semantics is a future incident write-up.
 
-- **Orchestrator REST + SSE** — chat completions, tool streaming
-- **Webhook ingress** — Slack, Teams, email triggers
-- **Internal gRPC** — low-latency embedder and reranker calls (sometimes behind same Gateway with internal listener)
-- **Admin API** — separate HTTPRoute with IP allowlist or auth policy attachment
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent gateway api ingress evolution.
 
-## Baseline Gateway and HTTPRoute for agent REST
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: agent-public
-  namespace: infra
-spec:
-  gatewayClassName: envoy-gateway
-  listeners:
-    - name: https
-      protocol: HTTPS
-      port: 443
-      hostname: api.agents.example.com
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - name: agents-api-tls
-            namespace: infra
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: agent-orchestrator
-  namespace: agents
-spec:
-  parentRefs:
-    - name: agent-public
-      namespace: infra
-  hostnames:
-    - api.agents.example.com
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1/agents
-      timeouts:
-        request: 300s      # long agent turns; controller-specific field placement may vary
-      backendRefs:
-        - name: orchestrator-stable
-          port: 8080
-          weight: 90
-        - name: orchestrator-canary
-          port: 8080
-          weight: 10
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1/webhooks
-      backendRefs:
-        - name: webhook-handler
-          port: 8080
+## Designing so you can keep agent side effects idempotent around gateway api ingress evolution
+
+Teams usually discover Agent systems: gateway api ingress evolution after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent gateway api ingress evolution from one dashboard and one runbook page.
+
+Concretely, being able to keep agent side effects idempotent around gateway api ingress evolution forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
+
+```python
+# Agent systems: gateway api ingress evolution
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentGatewayApiInRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_gateway_api_ingres(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-gateway-api-ingress-evolution"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Weights on `backendRefs` enable **canary agent releases** without a service mesh — though verify your Gateway controller implements weighted routing (Envoy Gateway yes; some cloud L7 load balancers map differently).
+## Failure modes specific to agent gateway api ingress evolution
 
-## GRPCRoute for embedder and reranker services
+I treat Agent systems: gateway api ingress evolution as an operations problem first. The goal is to keep agent side effects idempotent around gateway api ingress evolution, not to collect frameworks.
 
-Agent retrieval stacks often gRPC-call embedders from the orchestrator inside the cluster, but edge gRPC matters when clients or sidecars call directly. GRPCRoute matches on service/method:
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: GRPCRoute
-metadata:
-  name: embedder-route
-  namespace: agents
-spec:
-  parentRefs:
-    - name: agent-internal
-      namespace: infra
-  hostnames:
-    - embedder.internal.agents.example.com
-  rules:
-    - matches:
-        - method:
-            service: embedder.v1.Embedder
-            method: EmbedBatch
-      backendRefs:
-        - name: embedder-gpu
-          port: 9090
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent gateway api ingress evolution.
 
-HTTP/2 cleartext (h2c) versus TLS differs by implementation — prefer TLS for cross-namespace boundaries even "internal."
+My never-again list for agent gateway api ingress evolution: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## TLS termination and mTLS to agent pods
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-Gateway terminates public TLS; **BackendTLSPolicy** (or equivalent policy attachment) configures upstream validation when agent pods expect mTLS or present their own certs:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: orchestrator-upstream-tls
-  namespace: agents
-spec:
-  targetRefs:
-    - group: ""
-      kind: Service
-      name: orchestrator-stable
-  validation:
-    caCertificateRefs:
-      - name: internal-ca
-        group: ""
-        kind: ConfigMap
-    hostname: orchestrator.agents.svc.cluster.local
-```
+## Signals worth paging on
 
-Agent workloads processing PII benefit from encryption even inside the cluster — Gateway API policy attachments centralize that config instead of per-deployment sidecar annotations.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent gateway api ingress evolution, that means making failure visible early.
 
-## Streaming, SSE, and WebSocket considerations
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Agent chat UIs consume **Server-Sent Events** or WebSocket streams lasting minutes. Ingress controllers default **proxy-read-timeout** to 60 seconds — users see frozen tokens mid-sentence. Gateway implementations expose timeout configuration on HTTPRoute, Gateway, or policy CRDs depending on version.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: gateway api ingress evolution that needs a hero is not done.
 
-Checklist for streaming routes:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: gateway api ingress evolution cannot answer, it is not production-ready.
 
-- Extend idle/read timeout above max expected turn duration (often 120–300s; tool-heavy agents longer)
-- Disable response buffering if controller supports it — buffering breaks SSE chunk delivery
-- Confirm HTTP/1.1 keep-alive behavior for SSE; HTTP/2 multiplexing may differ
-- Load-test concurrent long streams; connection limits hit before CPU on small Gateways
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-For **WebSocket tool bridges**, match `Upgrade` headers in HTTPRoute rules (implementation-specific) or use dedicated Gateway listener on port 443 with appropriate backend protocol.
+## Rollout sequence with Temporal
 
-## Rate limiting and WAF at the Gateway layer
+Teams usually discover Agent systems: gateway api ingress evolution after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Agent APIs are abuse magnets — prompt injection is app-layer, but credential stuffing and runaway automation hit ingress first. Attach rate-limit **Policy** (Gateway API inference extension ecosystem) or vendor-specific extensions at Gateway or HTTPRoute:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-```yaml
-# Conceptual — exact CRD varies by implementation (Envoy GlobalRateLimit, etc.)
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy
-metadata:
-  name: agent-rate-limits
-  namespace: agents
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: agent-orchestrator
-  rateLimit:
-    local:
-      rules:
-        - clientSelectors:
-            - headers:
-                - name: x-tenant-id
-                  type: Distinct
-          limit:
-            requests: 120
-            unit: Minute
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: gateway api ingress evolution that needs a hero is not done.
 
-Per-tenant limits using `x-tenant-id` header distinct counting align with agent plan tiers. Global IP limits catch unauthenticated webhook abuse on `/v1/webhooks`.
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-## Migration playbook from Ingress
+Related reading:
 
-A phased migration reduces risk for live agent sessions:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-**Phase 1 — Install Gateway controller** alongside existing Ingress (Envoy Gateway, Istio, or cloud-managed). Create GatewayClass and Gateway; issue certs via cert-manager `Certificate` referenced by Gateway listener.
+## What I would delete after month one
 
-**Phase 2 — Dual publish** new hostname `api-v2.agents.example.com` on Gateway; keep legacy Ingress on `api.agents.example.com`. Internal dogfood on v2 hostname.
+Teams usually discover Agent systems: gateway api ingress evolution after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-**Phase 3 — Path or weight cutover** — HTTPRoute mirrors Ingress paths. Shift DNS CNAME or use weighted DNS 90/10 between Ingress LB and Gateway LB. Monitor SSE disconnect rate and 5xx during shift.
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-**Phase 4 — Decommission Ingress** per route. Delete orphan annotations. Document GatewayClass as the only supported ingress pattern for new agent services.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: gateway api ingress evolution that needs a hero is not done.
 
-Translate common NGINX Ingress annotations:
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-| Ingress annotation | Gateway API equivalent |
-|--------------------|------------------------|
-| `nginx.ingress.kubernetes.io/proxy-read-timeout` | HTTPRoute/Gateway timeout policy |
-| `nginx.ingress.kubernetes.io/canary-weight` | backendRefs weights |
-| `nginx.ingress.kubernetes.io/ssl-redirect` | HTTPRoute redirect filter or listener HTTP→HTTPS |
-| `cert-manager.io/cluster-issuer` | Same Certificate ref on Gateway listener |
+## Practical defaults for Agent systems: gateway api ingress evolution
 
-## Multi-cluster and multi-tenant Gateway patterns
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent gateway api ingress evolution, that means making failure visible early.
 
-Agent platforms spanning regions may deploy **Gateway per cluster** with Global Load Balancer anycast fronting — HTTPRoute definitions replicated via GitOps (Argo CD ApplicationSet). Tenant-specific subdomains (`tenant-a.api.agents.example.com`) route via additional HTTPRoute hostnames without separate Gateways.
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-**ReferenceGrant** enforces cross-namespace trust: orchestrator namespace references Gateway in infra namespace only when platform team grants it — prevents arbitrary teams attaching routes to public Gateways.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent gateway api ingress evolution.
 
-## Observability across Gateway and agent SLOs
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-Export Gateway metrics: request count, 4xx/5xx, upstream latency, active connections, stream duration. Correlate with agent orchestrator metrics (tokens/sec, tool errors) during canaries.
+After a month, delete unused flags and dual paths. `agent-gateway-api-ingress-evolution` accumulates temporary bridges faster than teams expect.
 
-Distributed traces should propagate `traceparent` from Gateway through to LLM calls — some controllers support OpenTelemetry export natively. Without it, "latency at ingress" vs "latency in model" becomes guesswork during incidents.
+## Review questions before merging agent gateway api ingress evolution work
 
-Log access with `tenant_id`, `route_name`, `backend_ref`, `protocol` (SSE vs REST). Agent incidents often split blame between Gateway timeout misconfig and orchestrator deadlock — logs must distinguish.
+Teams usually discover Agent systems: gateway api ingress evolution after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Testing before production cutover
+Put a metric on the user-visible effect of agent gateway api ingress evolution before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Contract test HTTPRoute acceptance: apply to test cluster, curl all path prefixes, verify TLS chain, run k6 with SSE scenario measuring stream completeness. GRPCRoute: `grpcurl` EmbedBatch against canary weight.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: gateway api ingress evolution that needs a hero is not done.
 
-Chaos: kill canary backend pods during weighted split — error budget should trip automated weight rollback if wired to Flagger or Argo Rollouts integration.
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
 
-## Closing
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
-Gateway API ingress evolution is how Kubernetes-native agent platforms graduate from annotation-driven Ingress to typed, portable routing with canaries, gRPC, and policy attachments. Migrate route-by-route, validate streaming timeouts against real agent turn durations, and keep Ingress alive until SSE disconnect metrics prove parity. The Gateway is the front door users hit; agent reliability starts at the listener timeout defaults nobody changed from 60 seconds.
+## Field notes after thirty days of agent gateway api ingress evolution
+
+Teams usually discover Agent systems: gateway api ingress evolution after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Acceptance check: an on-call engineer can explain system state for agent gateway api ingress evolution from one dashboard and one runbook page.
+
+Slug-specific note (agent-gateway-api-ingress-evolution): prioritize evolution behavior under load and verify with a fixture named `agent-gateway-api-ingress-evolution-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
 ## Resources
 
-- [Kubernetes Gateway API Documentation](https://gateway-api.sigs.k8s.io/)
-- [Envoy Gateway User Guide](https://gateway.envoyproxy.io/docs/)
-- [Gateway API: HTTPRoute Specification](https://gateway-api.sigs.k8s.io/api-types/httproute/)
-- [Flagger: Canary CRD with Gateway API](https://docs.flagger.app/tutorials/gateway-api-progressive-delivery)
-- [cert-manager: Securing Gateway Resources](https://cert-manager.io/docs/usage/gateway/)
+- Internal runbook seed: `agent-gateway-api-ingress-evolution`
+- https://12factor.net/
+- https://martinfowler.com/

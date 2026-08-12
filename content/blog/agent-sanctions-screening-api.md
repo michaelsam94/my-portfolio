@@ -1,255 +1,159 @@
 ---
-title: "AI Agents: Sanctions Screening Api"
+title: "Sanctions Screening Api for production agents"
 slug: "agent-sanctions-screening-api"
-description: "Screening APIs sit on the critical path between agent-initiated transfers and regulatory compliance. Integration patterns, fuzzy name matching, false-positive queues, and audit trails that survive examiner review."
+description: "Sanctions Screening Api for production agents: how to make agent sanctions screening api observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-08-14"
-dateModified: "2025-08-14"
-tags: ["AI", "Agent", "Sanctions"]
-keywords: "sanctions screening API, OFAC compliance, watchlist matching, fuzzy name matching, AML integration, payment compliance gate"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, sanctions, screening, api, production, engineering"
 faq:
-  - q: "Should sanctions screening block synchronously on the payment API or run asynchronously?"
-    a: "Block synchronously on outbound payments, wire transfers, and any agent-initiated action that moves funds or goods to a new counterparty. Regulators expect a hold before release when a potential match exists. Async batch screening suits periodic rescreening of existing customers against updated lists — run nightly, not at click time. Never let an agent complete a transfer and screen afterward."
-  - q: "How do I reduce false positives without missing true matches?"
-    a: "Tune matching thresholds per entity type: individuals need higher fuzzy tolerance than corporate names. Normalize inputs — transliterate Cyrillic, strip honorifics, expand aliases — before calling the vendor API. Maintain an internal allowlist for cleared false positives with expiry dates and approver IDs. Re-screen allowlisted entities when lists update. Log every override with business justification."
-  - q: "What audit evidence do examiners expect from a screening integration?"
-    a: "Immutable logs showing: who was screened, which list version, raw request payload (redacted PII in copies), match score, disposition (cleared, escalated, blocked), timestamp, and system or human actor. Retain seven years minimum for US MSB/BSA contexts — confirm with your compliance officer. Agent-initiated screens must attribute to the triggering user and agent session, not just the service account."
-  - q: "Can an LLM agent call a sanctions API directly via tool use?"
-    a: "The agent should propose beneficiary details; a deterministic compliance service must call the screening API and gate the transaction. LLMs hallucinate names, miss transliteration rules, and cannot be the system of record for regulatory decisions. Wrap screening in a tool that returns structured pass/fail/pending — never free-text 'looks fine' responses on the payment critical path."
+  - q: "What is Sanctions Screening Api for production agents?"
+    a: "Sanctions Screening Api for production agents is the production approach to make agent sanctions screening api observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Sanctions Screening Api for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent sanctions screening api, prioritize it."
+  - q: "What is the most common mistake with Sanctions Screening Api for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An agent workflow drafted a cross-border payout to "Mohammad Al-Rahman Trading LLC." The payment service called the screening vendor, got a 87% fuzzy match against a sanctioned entity named "Mohammed Rahman," and auto-released because the integration treated anything below 90% as clear. Compliance found the gap during a quarterly sample — not during the transaction.
+**Sanctions Screening Api for production agents** means you make agent sanctions screening api observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Sanctions screening APIs are the membrane between software that moves fast and regulation that does not forgive ambiguity. OFAC, EU consolidated lists, UN sanctions, PEP databases — vendors wrap them in REST endpoints that return match scores, entity metadata, and list provenance. Your job is not to pick the vendor slogan; it is to integrate screening so that every agent-initiated transfer, onboarding, and counterparty change hits a deterministic gate with evidence you can reproduce under audit.
+This write-up is specific to `agent-sanctions-screening-api` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Regulatory context in one paragraph
+## Incident pattern involving agent sanctions screening api
 
-US persons and companies must block transactions involving sanctioned parties and report matches to OFAC. Similar regimes exist in the EU, UK, and dozens of jurisdictions. Screening is not optional for fintech, marketplaces paying sellers, payroll platforms, or any product where an agent can initiate movement of value. Penalties for willful violations reach millions; negligent integration gaps are treated as program failures, not one-off bugs.
+Teams usually discover Sanctions Screening Api for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Agents raise the stakes because they compose actions from natural language. "Pay the invoice from the PDF" becomes a beneficiary name, amount, and routing number extracted by a model — then executed by tools. Screening must sit **between** tool authorization and execution, not inside the model's reasoning loop.
+Put a metric on the user-visible effect of agent sanctions screening api before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Architecture: where screening sits in the flow
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sanctions screening api.
 
-```
-User intent → Agent planner → Compliance gate → Payment rail
-                                  │
-                                  ├─ Sanctions API (sync)
-                                  ├─ PEP / adverse media (optional)
-                                  └─ Case management (on match)
-```
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-The compliance gate is a dedicated service — not a middleware one-liner. It owns normalization, vendor calls, threshold logic, case creation, and audit emission. Payment rails receive a signed `ComplianceClearance` token with expiry, list version, and correlation ID.
+## Root cause in plain language
 
-```typescript
-interface ScreeningRequest {
-  correlationId: string;
-  entityType: "individual" | "organization" | "vessel" | "aircraft";
-  name: string;
-  aliases?: string[];
-  address?: Address;
-  dateOfBirth?: string; // ISO 8601 for individuals
-  nationalId?: string;  // hashed at rest; sent per vendor contract
-  countryCode: string;
-  triggeredBy: {
-    userId: string;
-    agentSessionId: string;
-    workflowId: string;
-  };
-}
+I treat Sanctions Screening Api for production agents as an operations problem first. The goal is to make agent sanctions screening api observable and interruptible, not to collect frameworks.
 
-interface ScreeningResult {
-  disposition: "clear" | "potential_match" | "confirmed_match" | "error";
-  matchScore?: number;
-  matchedEntities?: MatchedEntity[];
-  listVersion: string;
-  vendorRequestId: string;
-  screenedAt: string;
-}
-```
+Put a metric on the user-visible effect of agent sanctions screening api before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Never pass vendor responses directly to the LLM for "interpretation." The agent sees `{ disposition: "pending_review", caseId: "CASE-8842" }` — not raw watchlist JSON with similar names the model might paraphrase incorrectly.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sanctions Screening Api for production agents that needs a hero is not done.
 
-## Calling vendor APIs: patterns that hold up
+Concretely, being able to make agent sanctions screening api observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Major vendors (ComplyAdvantage, Dow Jones Risk & Compliance, Refinitiv World-Check, OFAC-API.com, etc.) expose similar REST shapes: POST `/screenings` with entity attributes, GET `/screenings/{id}` for async enrichment, webhooks on list updates.
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
 ```python
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+# Sanctions Screening Api for production agents
+from dataclasses import dataclass
 
-class SanctionsClient:
-    def __init__(self, base_url: str, api_key: str):
-        self.client = httpx.Client(
-            base_url=base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=httpx.Timeout(10.0, connect=3.0),
-        )
+@dataclass(frozen=True)
+class AgentSanctionsScreRequest:
+    tenant_id: str
+    idempotency_key: str
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=0.5, max=8))
-    def screen(self, payload: dict) -> dict:
-        response = self.client.post("/v2/screenings", json=payload)
-        if response.status_code == 429:
-            response.raise_for_status()  # retry after backoff
-        response.raise_for_status()
-        return response.json()
-
-
-def compliance_gate(req: ScreeningRequest, client: SanctionsClient) -> ScreeningResult:
-    normalized = normalize_entity(req)  # transliteration, alias expansion
-    raw = client.screen(normalized.to_vendor_payload())
-    result = map_vendor_response(raw)
-    emit_audit_event(req, result)
-    if result.disposition == "potential_match":
-        case_id = case_management.open_case(req, result)
-        result.case_id = case_id
-    return result
+async def run_agent_sanctions_screenin(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-sanctions-screening-api"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-**Timeouts**: Screening on the payment critical path needs a hard ceiling — typically 3–10 seconds. On timeout, disposition is `error`, payment is held, and ops is alerted. Fail open is not an option for outbound transfers.
+## The fix that held under load
 
-**Retries**: Retry idempotent vendor reads and transient 5xx/429 responses with jitter. Do not retry a screening that returned `potential_match` — you will duplicate cases.
+I treat Sanctions Screening Api for production agents as an operations problem first. The goal is to make agent sanctions screening api observable and interruptible, not to collect frameworks.
 
-**List version pinning**: Store `listVersion` on every clearance. When OFAC publishes a Friday afternoon update, batch rescreening jobs query customers screened against older versions.
+Put a metric on the user-visible effect of agent sanctions screening api before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Name matching: why scores lie
+Acceptance check: an on-call engineer can explain system state for agent sanctions screening api from one dashboard and one runbook page.
 
-Fuzzy matching compares normalized strings using algorithms — Levenshtein distance, phonetic encoding (Soundex, Double Metaphone), n-gram overlap. Arabic patronymics, Korean family-name-first order, LLC suffixes, and transliteration variants ("Muhammad" / "Mohamed" / "Mohammed") produce score inflation and deflation in equal measure.
+My never-again list for agent sanctions screening api: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Normalization pipeline before the API call:
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-```typescript
-function normalizeForScreening(name: string, locale?: string): string {
-  let n = name.trim().normalize("NFKC");
-  n = stripHonorifics(n); // Mr, Dr, Sheikh — vendor-specific lists vary
-  n = collapseWhitespace(n);
-  n = transliterate(n, locale); // ICU transliteration rules
-  n = removeCorporateSuffixes(n); // LLC, Ltd, GmbH — optional per entity type
-  return n.toUpperCase();
-}
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Threshold policy belongs in configuration, not code constants:
+## Tests and probes that catch regressions
 
-```yaml
-# screening-thresholds.yaml — reviewed by compliance quarterly
-thresholds:
-  individual:
-    auto_clear_below: 75
-    manual_review_above: 75
-    auto_block_above: 95
-  organization:
-    auto_clear_below: 80
-    manual_review_above: 80
-    auto_block_above: 92
-  payment_rail: ach_outbound
-```
+I treat Sanctions Screening Api for production agents as an operations problem first. The goal is to make agent sanctions screening api observable and interruptible, not to collect frameworks.
 
-Individual and organization thresholds differ because corporate names collide more innocently ("Global Trading Ltd" is not rare). Document why each number was chosen — examiners ask.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## False positives and the human queue
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sanctions screening api.
 
-Most matches are false positives. Operations teams drowning in alerts start clicking clear without review — that is a compliance failure mode.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Sanctions Screening Api for production agents cannot answer, it is not production-ready.
 
-Build a case queue with:
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-- Match score, list source, matched alias, side-by-side comparison UI
-- Customer history: prior cleared false positives for same entity
-- SLA timers: potential matches block payout until disposition within N hours
-- Four-eyes rule: one analyst clears, senior approves overrides above a dollar threshold
+## Runbook lines that save minutes
 
-```sql
-CREATE TABLE screening_cases (
-  id              UUID PRIMARY KEY,
-  correlation_id  UUID NOT NULL,
-  disposition     TEXT NOT NULL CHECK (disposition IN ('open', 'cleared', 'escalated', 'blocked')),
-  match_score     NUMERIC(5,2),
-  list_version    TEXT NOT NULL,
-  assigned_to     TEXT,
-  cleared_by      TEXT,
-  cleared_at      TIMESTAMPTZ,
-  justification   TEXT, -- required on manual clear
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+Teams usually discover Sanctions Screening Api for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-CREATE INDEX idx_cases_open ON screening_cases (disposition) WHERE disposition = 'open';
-```
+Keep side effects at the edges and make every write idempotent. Sanctions Screening Api for production agents without retry semantics is a future incident write-up.
 
-Allowlist cleared false positives with expiry — re-screen on list update or after 90 days, whichever comes first. Permanent allowlists without rescreening fail audits.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sanctions screening api.
 
-## Agent-specific integration rules
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-When agents initiate payments or onboard counterparties:
+Related reading:
 
-1. **Extract structured entities** from documents using deterministic parsers where possible; use LLM extraction only with schema validation (Zod/JSON Schema) and human confirmation above limits.
-2. **Screen before showing success** to the user. UI copy: "Payment pending compliance review" beats "Payment sent" followed by clawback.
-3. **Attribute every screen** to `userId`, `agentSessionId`, and `workflowId`. Auditors trace agent autonomy back to human accountability.
-4. **Disable tool execution on pending disposition.** The payment tool checks clearance token validity:
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-```typescript
-async function executePaymentTool(ctx: ToolContext, input: PaymentInput): Promise<void> {
-  const clearance = await compliance.getClearance(input.beneficiaryId);
-  if (!clearance || clearance.disposition !== "clear") {
-    throw new ToolBlockedError("beneficiary_not_cleared", {
-      disposition: clearance?.disposition ?? "missing",
-      caseId: clearance?.caseId,
-    });
-  }
-  if (clearance.expiresAt < new Date()) {
-    throw new ToolBlockedError("clearance_expired");
-  }
-  await paymentRail.submit(input, { complianceRef: clearance.id });
-}
-```
+## Platform guardrails afterward
 
-5. **Never let the model override a block.** Tool policies ignore prompt injection claiming "compliance already approved."
+I treat Sanctions Screening Api for production agents as an operations problem first. The goal is to make agent sanctions screening api observable and interruptible, not to collect frameworks.
 
-## Observability and rescreening at scale
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Metrics that matter:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sanctions Screening Api for production agents that needs a hero is not done.
 
-- `screening_latency_seconds` p50/p95 by entity type
-- `screening_disposition_total{disposition}` — ratio of potential_match to clear
-- `screening_vendor_errors_total` — 429, 5xx, timeout
-- `cases_queue_depth` and `case_age_hours` — backlog SLAs
-- `payments_blocked_total{reason}` — blocked vs pending vs cleared-after-review
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-Alert when error rate exceeds 1% for 5 minutes or case queue age exceeds SLA. Dashboard list version lag: "98% of active customers screened against list version ≥ X."
+## Practical defaults for Sanctions Screening Api for production agents
 
-Batch rescreening after list updates:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent sanctions screening api, that means making failure visible early.
 
-```python
-def enqueue_rescreen(stale_before: datetime, list_version: str) -> None:
-    customers = db.query(
-        "SELECT id FROM beneficiaries WHERE last_screened_at < %s OR list_version != %s",
-        (stale_before, list_version),
-    )
-    for batch in chunked(customers, 500):
-        queue.publish("rescreen.batch", {"beneficiary_ids": [c.id for c in batch]})
-```
+Keep side effects at the edges and make every write idempotent. Sanctions Screening Api for production agents without retry semantics is a future incident write-up.
 
-Rate-limit batch jobs against vendor quotas. Spread rescreens over hours, prioritize high-risk and high-volume beneficiaries first.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sanctions Screening Api for production agents that needs a hero is not done.
 
-## Testing without triggering regulatory incidents
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-Vendor sandboxes return canned matches for test entities — use them. Maintain fixture names that trigger `potential_match` and `confirmed_match` in CI.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-Contract tests assert your mapper handles vendor schema changes. Golden-file tests for normalization: "Sheikh Mohammad bin Rashid Al Maktoum" → expected normalized form.
+## Review questions before merging agent sanctions screening api work
 
-Game-day exercises: vendor outage → payments hold, cases queue, no silent fail-open. List update simulation → rescreen job completes, one seeded beneficiary re-flags.
+I treat Sanctions Screening Api for production agents as an operations problem first. The goal is to make agent sanctions screening api observable and interruptible, not to collect frameworks.
 
-## What examiners will ask for
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Prepare exports before they ask:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sanctions screening api.
 
-- Sample of 25 cleared potential matches with analyst justification
-- Evidence of list update rescreening within your documented SLA
-- Agent-initiated transaction trail from user prompt to clearance token to payment rail reference
-- Override log: who cleared, when, score, list version, dollar amount
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
 
-Sanctions screening APIs are commodity infrastructure. The integration — normalization, thresholds, case workflow, audit, agent gating — is where programs succeed or fail. Build the compliance service first; let agents compose on top of a rail that already knows how to say no.
+After a month, delete unused flags and dual paths. `agent-sanctions-screening-api` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent sanctions screening api
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent sanctions screening api, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sanctions Screening Api for production agents that needs a hero is not done.
+
+Slug-specific note (agent-sanctions-screening-api): prioritize api behavior under load and verify with a fixture named `agent-sanctions-screening-api-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- [OFAC — Sanctions List Search and downloads](https://ofac.treasury.gov/sanctions-list-service) — Official SDN and consolidated list sources
-- [FinCEN — BSA requirements for money services businesses](https://www.fincen.gov/resources/statutes-regulations/guidance) — US AML program expectations
-- [EU — Consolidated Financial Sanctions list](https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions) — EU screening data source
-- [Wolfsberg Group — Payment Transparency Standards](https://wolfsberg-principles.com/) — Industry due diligence guidance for payment screening
-- [ISO 20022 — Payment initiation message standards](https://www.iso20022.org/iso-20022-message-definitions) — Structured beneficiary fields that improve match accuracy
+- Internal runbook seed: `agent-sanctions-screening-api`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,148 +1,159 @@
 ---
-title: "AI Agents: Subresource Integrity for LLM Web Clients"
+title: "Subresource Integrity Hashes for production agents"
 slug: "agent-subresource-integrity-hashes"
-description: "Pin CDN scripts with SRI hashes — especially SDK bundles that handle API keys and streaming parsers."
+description: "Subresource Integrity Hashes for production agents: how to make agent subresource integrity hashes observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-08"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "Security"
-  - "Web"
-  - "SRI"
-keywords: "subresource integrity, SRI, CDN security, LLM SDK"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, subresource, integrity, hashes, production, engineering"
 faq:
-  - q: "When should teams prioritize Subresource Integrity for LLM Web Clients?"
-    a: "When LLM chat widgets load third-party JavaScript from CDNs."
-  - q: "What is the most common mistake with SRI hashes?"
-    a: "SRI on static assets but not on dynamically versioned SDK loader URLs."
-  - q: "How do we know Subresource Integrity for LLM Web Clients is working?"
-    a: "Define a leading metric for SRI hashes (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
+  - q: "What is Subresource Integrity Hashes for production agents?"
+    a: "Subresource Integrity Hashes for production agents is the production approach to make agent subresource integrity hashes observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Subresource Integrity Hashes for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent subresource integrity hashes, prioritize it."
+  - q: "What is the most common mistake with Subresource Integrity Hashes for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A CDN compromise could have swapped the chat SDK — no integrity attributes on script tags.
+**Subresource Integrity Hashes for production agents** means you make agent subresource integrity hashes observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Pin CDN scripts with SRI hashes — especially SDK bundles that handle API keys and streaming parsers.
+This write-up is specific to `agent-subresource-integrity-hashes` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## The production story behind SRI hashes
+## Incident pattern involving agent subresource integrity hashes
 
-SRI on static assets but not on dynamically versioned SDK loader URLs. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Subresource Integrity for LLM Web Clients is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subresource integrity hashes, that means making failure visible early.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Sri Hashes is how you convert that chaos into an invariant someone can operate.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-## Designing subresource integrity for llm web clients for real constraints
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subresource integrity hashes.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For SRI hashes, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## Root cause in plain language
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subresource integrity hashes, that means making failure visible early.
 
-## Implementation walkthrough
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits SRI hashes during an incident.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subresource integrity hashes.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to make agent subresource integrity hashes observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
 ```python
-# Operational hook — SRI hashes
-def apply_subresource_integrity_hashes(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+# Subresource Integrity Hashes for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentSubresourceInRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_subresource_integr(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-subresource-integrity-hashes"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Platform depth
+## The fix that held under load
 
-Platform teams own defaults and libraries; product teams own domain config. Document interfaces where SRI hashes gates handoffs to downstream owners.
-Review after every magnitude change in traffic or model swap — assumptions drift silently.
+Teams usually discover Subresource Integrity Hashes for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Failure modes worth rehearsing
+Keep side effects at the edges and make every write idempotent. Subresource Integrity Hashes for production agents without retry semantics is a future incident write-up.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Acceptance check: an on-call engineer can explain system state for agent subresource integrity hashes from one dashboard and one runbook page.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent subresource integrity hashes: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Leading indicators: error rate on SRI hashes, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Tests and probes that catch regressions
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; SRI hashes regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+I treat Subresource Integrity Hashes for production agents as an operations problem first. The goal is to make agent subresource integrity hashes observable and interruptible, not to collect frameworks.
 
-## Production hardening
+Put a metric on the user-visible effect of agent subresource integrity hashes before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Pin versions affecting SRI hashes. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Acceptance check: an on-call engineer can explain system state for agent subresource integrity hashes from one dashboard and one runbook page.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Subresource Integrity Hashes for production agents cannot answer, it is not production-ready.
 
-Subresource Integrity for LLM Web Clients touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-## Further reading
+## Runbook lines that save minutes
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subresource integrity hashes, that means making failure visible early.
 
-## Operating SRI hashes after scale events (review 1)
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subresource integrity hashes.
 
-When subresource integrity for llm web clients touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
+## Platform guardrails afterward
 
-## Operating SRI hashes after scale events (review 2)
+I treat Subresource Integrity Hashes for production agents as an operations problem first. The goal is to make agent subresource integrity hashes observable and interruptible, not to collect frameworks.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Put a metric on the user-visible effect of agent subresource integrity hashes before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-When subresource integrity for llm web clients touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Acceptance check: an on-call engineer can explain system state for agent subresource integrity hashes from one dashboard and one runbook page.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Subresource Integrity Hashes for production agents
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent subresource integrity hashes, that means making failure visible early.
 
-## Operating SRI hashes after scale events (review 3)
+Keep side effects at the edges and make every write idempotent. Subresource Integrity Hashes for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Subresource Integrity Hashes for production agents that needs a hero is not done.
 
-When subresource integrity for llm web clients touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent subresource integrity hashes. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent subresource integrity hashes work
 
+I treat Subresource Integrity Hashes for production agents as an operations problem first. The goal is to make agent subresource integrity hashes observable and interruptible, not to collect frameworks.
 
-## Operating SRI hashes after scale events (review 4)
+Keep side effects at the edges and make every write idempotent. Subresource Integrity Hashes for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subresource integrity hashes.
 
-When subresource integrity for llm web clients touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent subresource integrity hashes. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent subresource integrity hashes
 
+I treat Subresource Integrity Hashes for production agents as an operations problem first. The goal is to make agent subresource integrity hashes observable and interruptible, not to collect frameworks.
 
-## Operating SRI hashes after scale events (review 5)
+Keep side effects at the edges and make every write idempotent. Subresource Integrity Hashes for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent subresource integrity hashes.
 
-When subresource integrity for llm web clients touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-subresource-integrity-hashes): prioritize hashes behavior under load and verify with a fixture named `agent-subresource-integrity-hashes-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
+Default deny, explicit timeouts, and one dashboard row for agent subresource integrity hashes. Expand only when the metric demands it.
 
 ## Resources
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [AWS documentation](https://docs.aws.amazon.com/)
+- Internal runbook seed: `agent-subresource-integrity-hashes`
+- https://12factor.net/
+- https://martinfowler.com/

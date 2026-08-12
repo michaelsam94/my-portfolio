@@ -1,239 +1,159 @@
 ---
-title: "AI Agents: Otp Brute Force Protection"
+title: "Operating agents with otp brute force protection"
 slug: "agent-otp-brute-force-protection"
-description: "Rate-limit and harden OTP verification for agent account linking and step-up auth — entropy math, constant-time checks, progressive lockouts, and detection without locking out entire offices."
+description: "Operating agents with otp brute force protection: how to bound tool calls and blast radius for otp brute force protection — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-22"
-dateModified: "2025-12-22"
-tags: ["AI Agents", "Security", "Authentication", "OTP"]
-keywords: "OTP brute force protection, TOTP rate limiting, agent step-up authentication, constant-time OTP verify, credential stuffing OTP"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, otp, brute, force, protection, production, engineering"
 faq:
-  - q: "How many guesses does a 6-digit OTP allow?"
-    a: "A uniform 6-digit code has 10^6 = 1,000,000 possibilities. Without rate limits, an attacker submitting 100 guesses per second exhausts the space in under three hours. Real TOTP windows and lockouts must shrink effective attempts to single digits per user."
-  - q: "Should OTP verification use the same rate limit for IP and user?"
-    a: "Layer both. Per-user limits stop targeted attacks on one account; per-IP and global limits stop distributed sprays across many users. CAPTCHA or proof-of-work gates kick in when IP buckets exceed thresholds — before user lockout affects legitimate shared-NAT offices."
-  - q: "Why constant-time comparison for OTP?"
-    a: "Early-exit string comparison leaks how many digits matched via response timing — microsecond differences exploitable over many samples. Hash both sides and use `crypto.timingSafeEqual`, or use a vetted library like PyOTP that already constant-times."
-  - q: "Do agent platforms need OTP if they use OAuth?"
-    a: "Yes for step-up flows: linking a destructive tool (production deploy, treasury transfer), recovering API keys, or confirming human-in-the-loop approvals. OAuth proves identity once; OTP proves possession right now before irreversible agent actions."
+  - q: "What is Operating agents with otp brute force protection?"
+    a: "Operating agents with otp brute force protection is the production approach to bound tool calls and blast radius for otp brute force protection. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with otp brute force protection?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent otp brute force protection, prioritize it."
+  - q: "What is the most common mistake with Operating agents with otp brute force protection?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Operating agents with otp brute force protection** means you bound tool calls and blast radius for otp brute force protection — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Security researchers breached a staging agent console in eleven minutes last quarter — not by cracking AES, but by POSTing six-digit codes to `/v1/link-account/verify` faster than the team thought possible. The OTP implementation was textbook: HMAC-SHA1 TOTP, thirty-second window, codes stored nowhere (derived on the fly). What was missing: per-user attempt counters, IP-level throttling, constant-time comparison, and alerts when failure velocity crossed a floor. OTP brute force protection is not about picking longer codes; it is about shrinking the **effective** search space under adversarial throughput.
+This write-up is specific to `agent-otp-brute-force-protection` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## Attack surface on agent OTP flows
+## Explaining Operating agents with otp brute force protection to a skeptical teammate
 
-Typical flows that need hardening:
+Teams usually discover Operating agents with otp brute force protection after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-1. **Email/SMS magic OTP** — user enters code to bind Slack or GitHub to an agent workspace
-2. **TOTP step-up** — existing session must re-enter authenticator app code before enabling `deploy:production` tools
-3. **Recovery codes** — single-use backup after device loss; higher value, lower entropy per code
+Put a metric on the user-visible effect of agent otp brute force protection before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Each endpoint is independent from OAuth token validation. Attackers bypass the IdP entirely and hammer verification directly.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent otp brute force protection.
 
-```
-Attacker                         Your API
-   │                                 │
-   │  POST /verify { user, code }    │  × 50,000/min
-   │ ───────────────────────────────►│
-   │◄─────────────────────────────── │  401 invalid (fast)
-   │                                 │  no lockout → game over
-```
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-## Entropy and window math
+## Making it routine to bound tool calls and blast radius for otp brute force protection
 
-| OTP type | Space | Notes |
-|----------|-------|-------|
-| 6-digit numeric | 10^6 | Common; needs aggressive limits |
-| 8-digit numeric | 10^8 | Better; still not sufficient alone |
-| TOTP (6 digit, ±1 window) | ~3 × 10^6 effective | Accept current ± adjacent intervals |
-| Alphanumeric 8 | 36^8 ≈ 2.8×10^12 | Recovery codes; single-use |
+Teams usually discover Operating agents with otp brute force protection after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Assume attackers get **ten** valid guesses per account before lockout. For 6-digit TOTP with ±1 window, probability of success per lockout cycle is roughly 3×10^-5 — acceptable if lockouts escalate and alerts fire.
+Put a metric on the user-visible effect of agent otp brute force protection before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Layered rate limiting
+Acceptance check: an on-call engineer can explain system state for agent otp brute force protection from one dashboard and one runbook page.
 
-```python
-import hashlib
-import hmac
-import time
-from dataclasses import dataclass
+Concretely, being able to bound tool calls and blast radius for otp brute force protection forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-@dataclass
-class RateLimitResult:
-    allowed: bool
-    retry_after_sec: int | None = None
-
-class OtpRateLimiter:
-    def __init__(self, redis):
-        self.r = redis
-
-    def _key(self, namespace: str, value: str) -> str:
-        digest = hashlib.sha256(value.encode()).hexdigest()[:32]
-        return f"otp:{namespace}:{digest}"
-
-    def check_and_bump(self, user_id: str, ip: str) -> RateLimitResult:
-        limits = [
-            ("user", user_id, 5, 900),      # 5 fails / 15 min → lockout
-            ("ip", ip, 30, 3600),           # 30 fails / hour → captcha
-            ("global", "all", 5000, 60),    # platform fuse
-        ]
-        for namespace, ident, max_fails, window in limits:
-            key = self._key(namespace, ident)
-            count = self.r.incr(key)
-            if count == 1:
-                self.r.expire(key, window)
-            if count > max_fails:
-                ttl = self.r.ttl(key)
-                return RateLimitResult(False, ttl if ttl > 0 else window)
-        return RateLimitResult(True)
-
-    def reset_user(self, user_id: str) -> None:
-        self.r.delete(self._key("user", user_id))
-```
-
-On success, call `reset_user`. On failure, increment before returning generic error — never reveal whether the user exists.
-
-## Constant-time verification
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
 ```typescript
-import { timingSafeEqual, createHmac } from "crypto";
-import { authenticator } from "otplib";
-
-authenticator.options = { window: 1 }; // ±30s
-
-export function verifyTotp(secret: string, code: string): boolean {
-  // Normalize input — reject non-digits early (not secret-dependent)
-  if (!/^\d{6}$/.test(code)) {
-    // Burn fixed time to avoid format oracle
-    timingSafeEqual(Buffer.alloc(32), Buffer.alloc(32));
-    return false;
+// Operating agents with otp brute force protection
+export async function handle_agent_otp_brute_force_protection(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-otp-brute-force-protection");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-
-  const expected = authenticator.generate(secret);
-  // otplib check already constant-time; for email OTP compare hashes:
-  const a = createHmac("sha256", "otp-pepper").update(code).digest();
-  const b = createHmac("sha256", "otp-pepper").update(expected).digest();
-  return timingSafeEqual(a, b);
 }
 ```
 
-For email OTP, store `HMAC(pepper, code)` in Redis with TTL — compare hashes, never plaintext codes in logs.
+## Code seams that keep refactors cheap
 
-## Progressive lockout without punishing NAT
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent otp brute force protection, that means making failure visible early.
 
-Blunt permanent lockouts after five failures strand entire companies behind one IP. Escalation ladder:
+Put a metric on the user-visible effect of agent otp brute force protection before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-1. **Attempts 1–3** — generic "invalid code" (same HTTP status and body length)
-2. **Attempts 4–5** — add 2^n second delay server-side (2, 4, 8… capped at 30s)
-3. **Attempt 6+** — user-level lockout 15 minutes; require password re-auth or support channel
-4. **IP > 30/hour** — CAPTCHA or Turnstile token required on next request
-5. **Global fuse** — disable OTP verify platform-wide; page on-call (DDoS or bug)
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent otp brute force protection.
 
-```python
-async def verify_otp_endpoint(request):
-    user_id = request.user_id  # from session, not from body
-    ip = request.client_ip
-    code = request.json.get("code", "")
+My never-again list for agent otp brute force protection: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-    rl = limiter.check_and_bump(user_id, ip)
-    if not rl.allowed:
-        return json({"error": "too_many_attempts"}, status=429,
-                    headers={"Retry-After": str(rl.retry_after_sec)})
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-    if not verify_totp(user_secrets[user_id], code):
-        await audit.log("otp_fail", user_id=user_id, ip=ip)
-        await metrics.increment("otp_verify_failure")
-        # Generic message — no "wrong digit" hints
-        return json({"error": "invalid_code"}, status=401)
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-    limiter.reset_user(user_id)
-    await metrics.increment("otp_verify_success")
-    return json({"status": "verified"})
-```
+## Table stakes vs later polish
 
-## Detection and response metrics
+I treat Operating agents with otp brute force protection as an operations problem first. The goal is to bound tool calls and blast radius for otp brute force protection, not to collect frameworks.
 
-Track:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-- `otp_verify_failure_rate` by tenant — spike may mean credential stuffing list
-- `otp_lockout_total` — product signal for UX friction
-- `otp_verify_latency_p99` — timing attacks often correlate with abnormal latency profiles
-- Ratio of failures to SMS/email sends — pre-gen attack if sends are low but verify traffic high
+Acceptance check: an on-call engineer can explain system state for agent otp brute force protection from one dashboard and one runbook page.
 
-Alert when failures exceed 10× baseline for ten minutes. Auto-enable CAPTCHA tier-wide before manual triage.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with otp brute force protection cannot answer, it is not production-ready.
 
-## Testing brute force defenses
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-```python
-def test_lockout_after_five_failures(client, user):
-    for _ in range(5):
-        r = client.post("/verify", json={"code": "000000"})
-        assert r.status_code == 401
-    r = client.post("/verify", json={"code": "000000"})
-    assert r.status_code == 429
-    assert "Retry-After" in r.headers
+## Regressions that show up after launch
 
-def test_no_user_enumeration(client):
-    r1 = client.post("/verify", json={"code": "123456"})  # valid session user
-    r2 = client.post("/verify-unauthenticated", json={"email": "nobody@x.com", "code": "123456"})
-    assert r1.status_code == r2.status_code  # both 401, same body shape
-```
+I treat Operating agents with otp brute force protection as an operations problem first. The goal is to bound tool calls and blast radius for otp brute force protection, not to collect frameworks.
 
-Load-test with gradual ramp — ensure Redis INCR does not become the bottleneck before OTP logic does.
+Keep side effects at the edges and make every write idempotent. Operating agents with otp brute force protection without retry semantics is a future incident write-up.
 
-## Agent-specific considerations
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with otp brute force protection that needs a hero is not done.
 
-Step-up OTP before enabling high-risk tools should bind verification to a **intent nonce**:
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-```json
-{
-  "intent": "enable_tool:github.merge_production",
-  "nonce": "n_8f2a…",
-  "expires_at": "2025-12-22T18:05:00Z"
-}
-```
+Related reading:
 
-The verify endpoint checks OTP **and** that the nonce matches the pending action in session — preventing replay of a generic "verified" flag for a different destructive operation five minutes later.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Human-in-the-loop approvals that display OTP in Slack must rate-limit by channel ID as well — compromised webhook should not get unlimited guesses.
+## Twelve-month maintenance load
 
-## Closing note
+Teams usually discover Operating agents with otp brute force protection after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Six digits is fine when the surrounding controls make billion-guess attacks impossible. Layer per-user, per-IP, and global limits; compare codes in constant time; escalate lockouts gradually; instrument failure velocity; bind successful verification to explicit intent. The staging breach postmortem ended with those controls plus a mandatory CAPTCHA after twenty IP-level failures — no code length change required.
+Keep side effects at the edges and make every write idempotent. Operating agents with otp brute force protection without retry semantics is a future incident write-up.
 
-## SMS and email OTP — delivery-side limits
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with otp brute force protection that needs a hero is not done.
 
-TOTP apps sidestep SMS intercept, but many agent products still email six-digit codes for first-time linking. Rate-limit **sends** separately from **verifies**:
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-```python
-SEND_LIMITS = [
-    ("user", 3, 3600),   # max 3 OTP emails per hour per user
-    ("ip", 10, 3600),    # max 10 send requests per IP per hour
-]
+## Practical defaults for Operating agents with otp brute force protection
 
-def request_otp(user_id: str, ip: str) -> None:
-    if not send_limiter.allow(user_id, ip):
-        raise RateLimitError("wait_before_resend")
-    code = secrets.randbelow(1_000_000)
-    store_hash(user_id, hash_code(code), ttl=600)
-    mailer.send_otp(user_id, code)  # never log code
-```
+Teams usually discover Operating agents with otp brute force protection after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Resend buttons must enforce sixty-second cooldown in UI **and** server — client-only timers do not stop scripts. Invalidate prior code hash when issuing a new one so only the latest OTP validates.
+Put a metric on the user-visible effect of agent otp brute force protection before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Compliance logging without leaking secrets
+Acceptance check: an on-call engineer can explain system state for agent otp brute force protection from one dashboard and one runbook page.
 
-Audit logs should record `otp_verify_failure` with `user_id`, `ip`, `user_agent`, and coarse `failure_reason` enum — never the submitted code. Retention policies differ: SOC2 often wants ninety days of auth events; GDPR may require deletion on erasure requests. Structured JSON logs integrate with SIEM rules:
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
 
-```json
-{"event":"otp_verify_failure","user_id":"u_123","ip":"203.0.113.4","attempt":4,"tenant":"acme"}
-```
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Correlate spikes with WAF blocks and geo anomalies before assuming brute force versus misconfigured mobile clock skew.
+## Review questions before merging agent otp brute force protection work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent otp brute force protection, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent otp brute force protection before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent otp brute force protection from one dashboard and one runbook page.
+
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
+
+## Field notes after thirty days of agent otp brute force protection
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent otp brute force protection, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with otp brute force protection without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent otp brute force protection.
+
+Slug-specific note (agent-otp-brute-force-protection): prioritize protection behavior under load and verify with a fixture named `agent-otp-brute-force-protection-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent otp brute force protection. Expand only when the metric demands it.
 
 ## Resources
 
-- [RFC 6238 — TOTP: Time-Based One-Time Password Algorithm](https://datatracker.ietf.org/doc/html/rfc6238)
-- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
-- [NIST SP 800-63B Digital Identity Guidelines](https://pages.nist.gov/800-63-3/sp800-63b.html)
-- [Redis INCR rate limiting pattern](https://redis.io/docs/latest/commands/incr/)
-- [Cloudflare Turnstile (CAPTCHA alternative)](https://developers.cloudflare.com/turnstile/)
+- Internal runbook seed: `agent-otp-brute-force-protection`
+- https://12factor.net/
+- https://martinfowler.com/

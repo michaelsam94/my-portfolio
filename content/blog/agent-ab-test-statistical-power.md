@@ -1,204 +1,159 @@
 ---
-title: "AI Agents: Ab Test Statistical Power"
+title: "Agent systems: ab test statistical power"
 slug: "agent-ab-test-statistical-power"
-description: "Statistical power is the difference between experiments that detect real lifts and ones that waste weeks on noise — sample size math, pre-registration, and stopping rules for production A/B tests."
+description: "Agent systems: ab test statistical power: how to keep agent side effects idempotent around ab test statistical power — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-29"
-dateModified: "2025-03-29"
-tags: ["AI", "Agent"]
-keywords: "A/B testing, statistical power, sample size, minimum detectable effect, hypothesis testing, experiment design, Type II error, sequential testing"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, ab, test, statistical, power, production, engineering"
 faq:
-  - q: "What is statistical power in an A/B test?"
-    a: "Power (typically denoted 1−β) is the probability that your test detects a real effect of a given size when one exists. At 80% power, if the true lift is your minimum detectable effect, you will reject the null hypothesis 80% of the time. The remaining 20% is a Type II error — a false negative."
-  - q: "How much traffic do I need for an A/B test?"
-    a: "Sample size depends on baseline conversion rate, minimum detectable effect (MDE), significance level (α), and desired power. A site with 2% conversion detecting a 10% relative lift (2.0% → 2.2%) typically needs roughly 30,000 users per variant at α=0.05 and 80% power. Use a calculator; do not guess."
-  - q: "Can I stop an A/B test early when results look significant?"
-    a: "Peeking inflates false positive rates unless you use sequential testing methods (e.g., O'Brien-Fleming boundaries, mSPRT, or Bayesian approaches with proper priors). Stopping the first time p < 0.05 turns a nominally 5% α test into a 20–30% false positive rate depending on peek frequency."
-  - q: "What minimum detectable effect should I choose?"
-    a: "Pick the smallest lift that would justify the engineering cost of shipping the variant. If a 0.5% relative improvement is not worth a deploy, do not power the test to detect it — you will run for months. Align MDE with product and finance, not statistics alone."
+  - q: "What is Agent systems: ab test statistical power?"
+    a: "Agent systems: ab test statistical power is the production approach to keep agent side effects idempotent around ab test statistical power. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: ab test statistical power?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent ab test statistical power, prioritize it."
+  - q: "What is the most common mistake with Agent systems: ab test statistical power?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Product teams love A/B tests because they promise objectivity. Data teams dread them because most experiments are designed to fail quietly — not with a dramatic wrong answer, but with a inconclusive shrug after three weeks of split traffic.
+**Agent systems: ab test statistical power** means you keep agent side effects idempotent around ab test statistical power — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-The culprit is usually statistical power. An underpowered experiment cannot distinguish a real improvement from sampling noise. Teams ship the control by default, conclude "the variant didn't work," and never learn that the test was never capable of detecting the lift in the first place.
+This write-up is specific to `agent-ab-test-statistical-power` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Power in one picture
+## What Agent systems: ab test statistical power changes in day-two ops
 
-Hypothesis testing balances four linked parameters:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ab test statistical power, that means making failure visible early.
 
-| Parameter | Symbol | Typical value | What it means |
-|-----------|--------|---------------|---------------|
-| Significance level | α | 0.05 | False positive rate if null is true |
-| Power | 1−β | 0.80 | True positive rate if effect exists |
-| Effect size | δ or MDE | domain-specific | Smallest lift worth detecting |
-| Sample size | n | computed | Users per variant |
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Fix any three and the fourth is determined. In practice you choose α, power, and MDE, then calculate n before launching.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ab test statistical power that needs a hero is not done.
 
-The null hypothesis H₀: treatment effect = 0. The alternative H₁: effect ≥ MDE. Power is P(reject H₀ | H₁ is true).
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-A test with 20% power is a coin flip with extra steps. Yet I routinely audit experiment configs where teams set 50/50 splits on a feature with 500 daily exposures and expect to detect a 3% relative lift on a 1.2% conversion metric within two weeks. The math says they need eight months.
+## Designing so you can keep agent side effects idempotent around ab test statistical power
 
-## Sample size for proportion metrics
+Teams usually discover Agent systems: ab test statistical power after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Most product experiments measure binary outcomes: clicked, subscribed, purchased. For two-proportion z-tests, sample size per variant approximates:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-```
-n ≈ 2 × (z_{α/2} + z_β)² × p(1−p) / δ²
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ab test statistical power that needs a hero is not done.
 
-Where p is baseline conversion rate and δ is absolute lift (not relative). A 10% *relative* lift on 2% baseline is only 0.2 absolute percentage points.
+Concretely, being able to keep agent side effects idempotent around ab test statistical power forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
 ```python
-import math
-from scipy import stats
+# Agent systems: ab test statistical power
+from dataclasses import dataclass
 
-def sample_size_proportions(
-    baseline: float,
-    relative_lift: float,
-    alpha: float = 0.05,
-    power: float = 0.80,
-) -> int:
-    """Users per variant for two-sided proportion test."""
-    p1 = baseline
-    p2 = baseline * (1 + relative_lift)
-    delta = abs(p2 - p1)
-    p_bar = (p1 + p2) / 2
+@dataclass(frozen=True)
+class AgentAbTestStatisRequest:
+    tenant_id: str
+    idempotency_key: str
 
-    z_alpha = stats.norm.ppf(1 - alpha / 2)
-    z_beta = stats.norm.ppf(power)
-
-    n = (2 * (z_alpha + z_beta) ** 2 * p_bar * (1 - p_bar)) / (delta ** 2)
-    return math.ceil(n)
-
-# Example: 2% baseline, detect 10% relative lift (→ 2.2%)
-n_per_variant = sample_size_proportions(0.02, 0.10)
-print(f"Need {n_per_variant:,} users per variant")  # ~31,000
+async def run_agent_ab_test_statistica(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-ab-test-statistical-power"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-For continuous metrics (revenue per user, session duration), swap in Cohen's d and use t-test formulas. Revenue metrics with heavy tails need larger samples or winsorization — raw means are dominated by outliers and inflate variance.
+## Failure modes specific to agent ab test statistical power
 
-## Pre-registration beats post-hoc storytelling
+I treat Agent systems: ab test statistical power as an operations problem first. The goal is to keep agent side effects idempotent around ab test statistical power, not to collect frameworks.
 
-Before any traffic splits, document:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-1. **Primary metric** — one metric decides ship/no-ship
-2. **MDE** — smallest effect worth detecting
-3. **Sample size and runtime** — derived from MDE, not vibes
-4. **Secondary metrics** — exploratory, not decision criteria
-5. **Segmentation plan** — pre-specified slices, not "let's check mobile"
+Acceptance check: an on-call engineer can explain system state for agent ab test statistical power from one dashboard and one runbook page.
 
-Store this in your experiment platform or a locked doc. When the PM asks on day four "can we also look at returning users in Germany," you have a paper trail distinguishing confirmatory from exploratory analysis.
+My never-again list for agent ab test statistical power: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Exploratory slices are fine. Using them as ship criteria after the fact is p-hacking with a spreadsheet.
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-## The peeking problem and legitimate early stopping
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Classical fixed-horizon tests assume you look at results exactly once, at predetermined n. Real teams peek daily. Each peek is an additional hypothesis test on the same data without α correction.
+## Signals worth paging on
 
-If you peek 10 times during an experiment, your effective false positive rate exceeds 15% even with nominal α=0.05.
+I treat Agent systems: ab test statistical power as an operations problem first. The goal is to keep agent side effects idempotent around ab test statistical power, not to collect frameworks.
 
-Mitigations:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-**Fixed horizon (simplest).** Do not look until n reaches pre-calculated sample size. Hard discipline, zero methodology overhead.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ab test statistical power.
 
-**Sequential probability ratio test (SPRT / mSPRT).** Valid early stopping with controlled error rates. Statsig, Optimizely, and Eppo implement variants. Requires platform support.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: ab test statistical power cannot answer, it is not production-ready.
 
-**Group sequential designs.** Pre-plan interim analyses at 50% and 100% sample with Bonferroni or O'Brien-Fleming adjusted boundaries.
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-**Bayesian experiments.** Report P(variant > control | data). Still requires a pre-specified decision rule — "stop if prob best > 95%" — not moving goalposts.
+## Rollout sequence with Temporal
 
-```typescript
-// Anti-pattern: daily peek with naive p-value
-async function shouldShipUnsafe(experimentId: string): Promise<boolean> {
-  const result = await statsEngine.analyze(experimentId);
-  // Each call is a separate peek — inflates false positives
-  return result.pValue < 0.05;
-}
+Teams usually discover Agent systems: ab test statistical power after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-// Better: enforce fixed horizon in the platform
-async function shouldShip(experimentId: string): Promise<"ship" | "hold" | "not_ready"> {
-  const exp = await experimentStore.get(experimentId);
-  const result = await statsEngine.analyze(experimentId);
+Put a metric on the user-visible effect of agent ab test statistical power before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-  if (exp.currentSampleSize < exp.requiredSampleSize) {
-    return "not_ready"; // do not evaluate p-value yet
-  }
-  return result.pValue < exp.alpha ? "ship" : "hold";
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ab test statistical power that needs a hero is not done.
 
-## Multiple comparisons and metric gardens
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-Every additional metric you treat as confirmatory multiplies false positive risk. Ten independent metrics at α=0.05 expect half a false significant result even under the null.
+Related reading:
 
-Hierarchy of evidence:
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-1. One primary metric, one decision
-2. Secondary metrics labeled exploratory in the report
-3. Guardrail metrics (latency, error rate, support tickets) with "do no harm" thresholds, not lift targets
+## What I would delete after month one
 
-For guardrails, use non-inferiority framing: "variant error rate must not exceed control by more than 0.1%."
+I treat Agent systems: ab test statistical power as an operations problem first. The goal is to keep agent side effects idempotent around ab test statistical power, not to collect frameworks.
 
-## Variance reduction: the free lunch
+Put a metric on the user-visible effect of agent ab test statistical power before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-If sample size is the bottleneck, reduce variance before asking for more traffic:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ab test statistical power.
 
-**CUPED (Controlled-experiment Using Pre-Experiment Data).** Adjust post-treatment outcomes by pre-treatment covariates. Often cuts required sample size 30–50% when users have stable pre-period behavior.
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-**Stratified randomization.** Balance on known high-variance dimensions (country, plan tier) at assignment time.
+## Practical defaults for Agent systems: ab test statistical power
 
-**User-level clustering.** For B2B, randomize at account level, not user level, to avoid interference.
+I treat Agent systems: ab test statistical power as an operations problem first. The goal is to keep agent side effects idempotent around ab test statistical power, not to collect frameworks.
 
-```python
-def cuped_adjust(
-    post_metric: np.ndarray,
-    pre_metric: np.ndarray,
-) -> np.ndarray:
-    """Return CUPED-adjusted metric for variance reduction."""
-    theta = np.cov(post_metric, pre_metric)[0, 1] / np.var(pre_metric)
-    pre_mean = pre_metric.mean()
-    return post_metric - theta * (pre_metric - pre_mean)
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: ab test statistical power without retry semantics is a future incident write-up.
 
-Check with your stats team whether CUPED assumptions hold for your metric — it fails when pre-period data is missing or non-stationary.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ab test statistical power.
 
-## Power analysis for LLM and agent features
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-AI product experiments add wrinkles:
+After a month, delete unused flags and dual paths. `agent-ab-test-statistical-power` accumulates temporary bridges faster than teams expect.
 
-**Latency as a guardrail.** A prompt change may lift conversion while p99 latency crosses 3 seconds. Power the guardrail separately or use composite success criteria.
+## Review questions before merging agent ab test statistical power work
 
-**Non-stationarity.** Model updates upstream of your feature change mid-experiment. Freeze model versions during tests or include version as a covariate.
+I treat Agent systems: ab test statistical power as an operations problem first. The goal is to keep agent side effects idempotent around ab test statistical power, not to collect frameworks.
 
-**Heavy-tailed cost metrics.** Token spend per session has infinite-looking variance. Median-based tests or log-transform before computing sample size.
+Keep side effects at the edges and make every write idempotent. Agent systems: ab test statistical power without retry semantics is a future incident write-up.
 
-**Network effects.** If treatment users affect control users (shared marketplace inventory), independent-sample formulas underestimate required n. Cluster randomization or switchback designs apply.
+Acceptance check: an on-call engineer can explain system state for agent ab test statistical power from one dashboard and one runbook page.
 
-## Reporting results honestly
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-When the test concludes, report:
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-- Point estimate and confidence interval, not just p-value
-- Achieved power at observed effect (post-hoc power is misleading for interpretation, but "we were powered to detect 5% lift and observed 1%" is informative)
-- Runtime and sample size relative to plan
-- Any protocol deviations (early stop, filter changes, incident exclusions)
+## Field notes after thirty days of agent ab test statistical power
 
-"We didn't reach significance" is ambiguous. "We observed +1.2% relative lift (95% CI: −0.8% to +3.2%) with 85% of planned sample; we are underpowered to confirm lifts below 3%" is actionable.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ab test statistical power, that means making failure visible early.
 
-## Organizational habits that compound
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Teams with high experiment velocity share a few practices:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ab test statistical power that needs a hero is not done.
 
-- **Experiment review before launch** — a 15-minute stats check on MDE and n
-- **Shared calculator** — same formulas in the platform and the wiki
-- **Kill switch on underpowered tests** — platform warns when projected runtime exceeds 4 weeks
-- **Archive of inconclusive tests** — meta-analysis across similar features reveals if MDEs were systematically too ambitious
+Slug-specific note (agent-ab-test-statistical-power): prioritize power behavior under load and verify with a fixture named `agent-ab-test-statistical-power-smoke`.
 
-Statistical power is not academic pedantry. It is the contract between product and data teams about what "we tested it" actually means. Design for power before you split traffic, stop peeking without correction, and treat every inconclusive result as a sample size problem until proven otherwise.
+Default deny, explicit timeouts, and one dashboard row for agent ab test statistical power. Expand only when the metric demands it.
 
 ## Resources
 
-- [Evan Miller: Sample Size Calculator (proportions)](https://www.evanmiller.org/ab-testing/sample-size.html)
-- [Google: Overlapping Experiment Infrastructure (2010 paper)](https://research.google/pubs/pub36500/)
-- [Microsoft ExP platform documentation on A/B testing](https://www.microsoft.com/en-us/research/group/experimentation-platform-exp/)
-- [Imbens & Rubin: Causal Inference for Statistics, Social, and Biomedical Sciences](https://www.cambridge.org/core/books/causal-inference-for-statistics-social-and-biomedical-sciences/71126BE7574D334F988712FDE354DAE5)
-- [Statsig docs: Sequential testing and CUPED](https://docs.statsig.com/experiments-plus/stats-engine)
+- Internal runbook seed: `agent-ab-test-statistical-power`
+- https://12factor.net/
+- https://martinfowler.com/

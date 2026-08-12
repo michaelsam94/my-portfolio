@@ -1,131 +1,158 @@
 ---
-title: "Billing Broker"
+title: "Billing-broker engineering checklist"
 slug: "billing-broker"
-description: "Billing Broker: how to ship it with clear ownership and rollback in production testing systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Billing-broker engineering checklist: how to ship billing broker behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-29"
 dateModified: "2026-08-12"
 tags:
-  - "Testing"
-  - "Quality"
-keywords: "billing, broker, testing, production, engineering"
+  - "Engineering"
+  - "Billing"
+keywords: "billing, broker, production, engineering"
 faq:
-  - q: "What is Billing Broker?"
-    a: "Billing Broker is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Billing Broker?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Billing Broker?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Billing-broker engineering checklist?"
+    a: "Billing-broker engineering checklist is the production approach to ship billing broker behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Billing-broker engineering checklist?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with billing broker, prioritize it."
+  - q: "What is the most common mistake with Billing-broker engineering checklist?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Billing Broker** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Billing-broker engineering checklist** means you ship billing broker behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Below is how I implement and operate it in Testing systems using Playwright, Vitest: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `billing-broker` in a product context, using Postgres, OpenTelemetry for the mechanics while keeping ownership human.
 
-## A pragmatic path to Billing Broker
+## A pragmatic path to Billing-broker engineering checklist
 
-I have watched teams under-specify Billing Broker and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+I treat Billing-broker engineering checklist as an operations problem first. The goal is to ship billing broker behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Billing Broker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-broker engineering checklist that needs a hero is not done.
 
-## Start with the user-visible symptom
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
-Most write-ups on Billing Broker stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Start from the user-visible symptom
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Billing-broker engineering checklist as an operations problem first. The goal is to ship billing broker behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-broker engineering checklist that needs a hero is not done.
+
+Concretely, being able to ship billing broker behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Billing-broker engineering checklist
+export async function handle_billing_broker(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Billing Broker
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("billing-broker");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Implementing ways to ship it with clear ownership and rollback
+## Implementation details for billing broker
 
-If you only remember one thing about Billing Broker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+I treat Billing-broker engineering checklist as an operations problem first. The goal is to ship billing broker behind flags with a rollback, not to collect frameworks.
 
-Make Billing Broker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Broker — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for billing broker from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Billing Broker error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for billing broker: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Guardrails and feature flags
+## Flags, canaries, and kill switches
 
-Most write-ups on Billing Broker stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For billing broker, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for billing broker from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Billing Broker designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Billing-broker engineering checklist cannot answer, it is not production-ready.
 
-## Measuring whether it worked
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
-If you only remember one thing about Billing Broker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+## Proving it worked
 
-Make Billing Broker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Broker — you only deployed it.
+Teams usually discover Billing-broker engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Prefer small diffs with a kill switch. Billing Broker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing broker.
+
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Follow-ups that usually get skipped
+## Follow-ups teams usually skip
 
-If you only remember one thing about Billing Broker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For billing broker, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Prefer small diffs with a kill switch. Billing Broker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for billing broker from one dashboard and one runbook page.
 
-## Practical defaults I use for Billing Broker
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
-Most write-ups on Billing Broker stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Billing-broker engineering checklist
 
-In Testing stacks I lean on Playwright, Vitest for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Production systems punish vague ownership and unmeasured happy paths. For billing broker, that means making failure visible early.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of billing broker before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-A month in, prune unused paths. Billing Broker accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-broker engineering checklist that needs a hero is not done.
 
-## Review questions before merging Billing Broker work
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
-If you only remember one thing about Billing Broker: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+After a month, delete unused flags and dual paths. `billing-broker` accumulates temporary bridges faster than teams expect.
 
-Make Billing Broker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Broker — you only deployed it.
+## Review questions before merging billing broker work
 
-Prefer small diffs with a kill switch. Billing Broker changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Production systems punish vague ownership and unmeasured happy paths. For billing broker, that means making failure visible early.
 
-A month in, prune unused paths. Billing Broker accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Billing Broker
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing broker.
 
-I have watched teams under-specify Billing Broker and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
 
-Make Billing Broker error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Broker — you only deployed it.
+After a month, delete unused flags and dual paths. `billing-broker` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of billing broker
 
-A month in, prune unused paths. Billing Broker accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat Billing-broker engineering checklist as an operations problem first. The goal is to ship billing broker behind flags with a rollback, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Billing-broker engineering checklist without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for billing broker from one dashboard and one runbook page.
+
+Slug-specific note (billing-broker): prioritize broker behavior under load and verify with a fixture named `billing-broker-smoke`.
+
+After a month, delete unused flags and dual paths. `billing-broker` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `billing-broker`
 - https://12factor.net/
+- https://martinfowler.com/

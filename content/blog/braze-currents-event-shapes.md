@@ -1,131 +1,158 @@
 ---
-title: "Braze Currents Event Shapes"
+title: "Braze Currents Event Shapes: production notes"
 slug: "braze-currents-event-shapes"
-description: "Braze Currents Event Shapes: how to measure the user-visible signal first in production sre systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Braze Currents Event Shapes: production notes: how to measure braze currents before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-11"
 dateModified: "2026-08-12"
 tags:
-  - "SRE"
-  - "Observability"
-keywords: "braze, currents, event, shapes, sre, production, engineering"
+  - "Engineering"
+  - "Braze"
+keywords: "braze, currents, event, shapes, production, engineering"
 faq:
-  - q: "What is Braze Currents Event Shapes?"
-    a: "Braze Currents Event Shapes is a production approach to measure the user-visible signal first. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Braze Currents Event Shapes?"
-    a: "Invest when auditors or enterprise buyers ask how you know it works. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Braze Currents Event Shapes?"
-    a: "The usual failure is treating edge cases as follow-ups. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Braze Currents Event Shapes: production notes?"
+    a: "Braze Currents Event Shapes: production notes is the production approach to measure braze currents before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Braze Currents Event Shapes: production notes?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with braze currents event shapes, prioritize it."
+  - q: "What is the most common mistake with Braze Currents Event Shapes: production notes?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Braze Currents Event Shapes** means you measure the user-visible signal first — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when auditors or enterprise buyers ask how you know it works; that is usually also when shortcuts like treating edge cases as follow-ups start paging people.
+**Braze Currents Event Shapes: production notes** means you measure braze currents before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in SRE systems using Prometheus, Grafana: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `braze-currents-event-shapes` in a product context, using Prometheus, Postgres for the mechanics while keeping ownership human.
 
-## Braze Currents Event Shapes: production checklist
+## Braze Currents Event Shapes: production notes: production checklist
 
-If you only remember one thing about Braze Currents Event Shapes: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
 
-Make Braze Currents Event Shapes error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Braze Currents Event Shapes — you only deployed it.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Braze Currents Event Shapes: production notes that needs a hero is not done.
 
-## Inputs, outputs, and invariants
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
-If you only remember one thing about Braze Currents Event Shapes: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+## Inputs, outputs, invariants
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of braze currents event shapes before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Practically, being able to measure the user-visible signal first means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Braze Currents Event Shapes: production notes that needs a hero is not done.
+
+Concretely, being able to measure braze currents before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Braze Currents Event Shapes: production notes
+export async function handle_braze_currents_event_shapes(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Braze Currents Event Shapes
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("braze-currents-event-shapes");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Concurrency and retry behavior
+## Concurrency, retries, and timeouts
 
-If you only remember one thing about Braze Currents Event Shapes: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Production systems punish vague ownership and unmeasured happy paths. For braze currents event shapes, that means making failure visible early.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Keep side effects at the edges and make every write idempotent. Braze Currents Event Shapes: production notes without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Braze Currents Event Shapes: production notes that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: treating edge cases as follow-ups; skipping Braze Currents Event Shapes error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for braze currents event shapes: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; treating edge cases as follow-ups |
-| Durable path | auditors or enterprise buyers ask how you know it works | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Human workflows (support, ops, audit)
+## Support and audit workflows
 
-I have watched teams under-specify Braze Currents Event Shapes and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
 
-Make Braze Currents Event Shapes error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Braze Currents Event Shapes — you only deployed it.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for braze currents event shapes from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Braze Currents Event Shapes designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Braze Currents Event Shapes: production notes cannot answer, it is not production-ready.
 
-## Load and capacity notes
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
-If you only remember one thing about Braze Currents Event Shapes: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+## Capacity and load notes
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Production systems punish vague ownership and unmeasured happy paths. For braze currents event shapes, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Braze Currents Event Shapes changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on braze currents event shapes.
+
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-## Definition of done
+## Ship gate
 
-If you only remember one thing about Braze Currents Event Shapes: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of braze currents event shapes before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on braze currents event shapes.
 
-## Practical defaults I use for Braze Currents Event Shapes
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
-Most write-ups on Braze Currents Event Shapes stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Braze Currents Event Shapes: production notes
 
-Make Braze Currents Event Shapes error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Braze Currents Event Shapes — you only deployed it.
+Teams usually discover Braze Currents Event Shapes: production notes after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of braze currents event shapes before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Braze Currents Event Shapes error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Braze Currents Event Shapes: production notes that needs a hero is not done.
 
-## Review questions before merging Braze Currents Event Shapes work
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
-Most write-ups on Braze Currents Event Shapes stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging braze currents event shapes work
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
 
-A month in, prune unused paths. Braze Currents Event Shapes accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Braze Currents Event Shapes: production notes without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Braze Currents Event Shapes
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Braze Currents Event Shapes: production notes that needs a hero is not done.
 
-Most write-ups on Braze Currents Event Shapes stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `braze-currents-event-shapes` accumulates temporary bridges faster than teams expect.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of braze currents event shapes
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Braze Currents Event Shapes error rate. Expand only when the metric says you must.
+I treat Braze Currents Event Shapes: production notes as an operations problem first. The goal is to measure braze currents before optimizing it, not to collect frameworks.
+
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on braze currents event shapes.
+
+Slug-specific note (braze-currents-event-shapes): prioritize shapes behavior under load and verify with a fixture named `braze-currents-event-shapes-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for braze currents event shapes. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `braze-currents-event-shapes`
 - https://12factor.net/
+- https://martinfowler.com/

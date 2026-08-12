@@ -1,214 +1,159 @@
 ---
-title: "CORS Preflight Caching for Faster Cross-Origin Requests"
+title: "Retrieval systems and cors preflight caching"
 slug: "rag-cors-preflight-caching"
-description: "Cache CORS preflight OPTIONS responses to cut agent dashboard latency — Access-Control-Max-Age, Vary headers, CDN pitfalls, and when preflight caching breaks after deploys."
+description: "Retrieval systems and cors preflight caching: how to keep citations faithful when handling cors preflight caching — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-02"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Cors"]
-keywords: "CORS preflight caching, Access-Control-Max-Age, OPTIONS request, agent API gateway, Vary header, browser preflight"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, cors, preflight, caching, production, engineering"
 faq:
-  - q: "How long should Access-Control-Max-Age be for agent APIs?"
-    a: "Browsers cap Max-Age at 86400 seconds (24 hours) in Chromium and Firefox; Safari historically ignored or capped lower. For agent backends that rotate auth headers or CORS allowlists weekly, use 300–3600 seconds so policy changes propagate without users hard-refreshing. Pair short TTLs with versioned API paths when you must cache longer."
-  - q: "Why do agent dashboards still send OPTIONS on every tool call?"
-    a: "Preflight triggers on non-simple methods (PUT, PATCH, DELETE), custom headers (Authorization, X-Request-Id, X-Agent-Session), or Content-Type beyond application/x-www-form-urlencoded, multipart/form-data, or text/plain. Agent UIs often send application/json with Bearer tokens — every distinct origin+path+header combo may preflight unless Max-Age caches the prior approval."
-  - q: "Does caching preflight at the CDN help agent latency?"
-    a: "Only if the CDN forwards OPTIONS to origin or you configure edge rules that echo correct CORS response headers. Blindly caching 204/200 OPTIONS without Vary on Origin and Access-Control-Request-Headers causes cross-tenant leakage — one customer's allowed origin served to another. Prefer origin caching at the API gateway with explicit Vary."
+  - q: "What is Retrieval systems and cors preflight caching?"
+    a: "Retrieval systems and cors preflight caching is the production approach to keep citations faithful when handling cors preflight caching. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Retrieval systems and cors preflight caching?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with rag cors preflight caching, prioritize it."
+  - q: "What is the most common mistake with Retrieval systems and cors preflight caching?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The agent console felt fast in staging and sluggish in production. Chrome DevTools showed the pattern immediately: every tool invocation fired **two** round trips — an OPTIONS preflight, then the POST — and preflight never hit disk cache. The API team had configured CORS correctly on the gateway; they had simply omitted **Access-Control-Max-Age**, so the browser treated every cross-origin agent call as a fresh permission check. For a dashboard that chains twenty tool calls per workflow, that is forty HTTP requests where twenty would suffice.
+**Retrieval systems and cors preflight caching** means you keep citations faithful when handling cors preflight caching — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-CORS preflight caching is not exotic optimization. It is baseline latency hygiene for any agent UI hosted on a different origin than its API — `app.example.com` calling `api.example.com`, or a Vercel preview hitting a staging gateway. This post covers how browsers cache preflight, what headers must align, where CDNs lie, and how to verify caching survives deploys.
+This write-up is specific to `rag-cors-preflight-caching` in a rag context, using OpenSearch, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## When the browser preflights
+## Short answer: Retrieval systems and cors preflight caching
 
-Simple requests skip preflight. Agent stacks rarely qualify:
+I treat Retrieval systems and cors preflight caching as an operations problem first. The goal is to keep citations faithful when handling cors preflight caching, not to collect frameworks.
 
-| Trigger | Agent example |
-|---------|---------------|
-| Method not GET/HEAD/POST | `PATCH /sessions/{id}/tools` |
-| Custom request header | `Authorization`, `X-Trace-Id`, `X-Agent-Version` |
-| Content-Type not "simple" | `application/json` bodies on POST |
+Put a metric on the user-visible effect of rag cors preflight caching before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Each unique combination of **URL**, **method**, **header set**, and **Origin** produces a distinct preflight cache entry. Adding a new telemetry header to the SDK invalidates prior cache keys for every endpoint until Max-Age expires.
+Acceptance check: an on-call engineer can explain system state for rag cors preflight caching from one dashboard and one runbook page.
 
-```
-Browser                    API Gateway
-   │                            │
-   │── OPTIONS /v1/tools ──────►│  Access-Control-Request-Method: POST
-   │   Origin: https://app...   │  Access-Control-Request-Headers: authorization, content-type
-   │                            │
-   │◄── 204 No Content ─────────│  Access-Control-Allow-Origin: https://app...
-   │    Access-Control-Max-Age: 3600
-   │    Access-Control-Allow-Headers: authorization, content-type
-   │                            │
-   │  (cache 3600s for this key)
-   │                            │
-   │── POST /v1/tools ─────────►│  actual request — no second OPTIONS
-```
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-Without `Access-Control-Max-Age`, the cache entry TTL is zero — browsers may still memoize briefly in memory during a single page session, but navigation or tab discard clears it.
+## Constraints before abstractions
 
-## Server-side OPTIONS handler
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag cors preflight caching, that means making failure visible early.
 
-Implement OPTIONS explicitly at the gateway; do not rely on frameworks to infer CORS from POST handlers alone.
+Keep side effects at the edges and make every write idempotent. Retrieval systems and cors preflight caching without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for rag cors preflight caching from one dashboard and one runbook page.
+
+Concretely, being able to keep citations faithful when handling cors preflight caching forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
 ```typescript
-// gateway/cors.ts
-const ALLOWED_ORIGINS = new Set([
-  "https://app.example.com",
-  "https://staging-app.example.com",
-]);
-
-const ALLOWED_HEADERS = [
-  "authorization",
-  "content-type",
-  "x-request-id",
-  "x-agent-session",
-];
-
-const MAX_AGE_SECONDS = 3600;
-
-export function handleOptions(req: Request): Response {
-  const origin = req.headers.get("Origin");
-  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
-    return new Response(null, { status: 403 });
+// Retrieval systems and cors preflight caching
+export async function handle_rag_cors_preflight_caching(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("rag-cors-preflight-caching");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-
-  const requestMethod = req.headers.get("Access-Control-Request-Method");
-  const requestHeaders = req.headers.get("Access-Control-Request-Headers");
-
-  if (!requestMethod) {
-    return new Response(null, { status: 400 });
-  }
-
-  // Echo requested headers if subset of allowlist (case-insensitive)
-  const requested = (requestHeaders ?? "")
-    .split(",")
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
-
-  const allowedSet = new Set(ALLOWED_HEADERS.map((h) => h.toLowerCase()));
-  if (!requested.every((h) => allowedSet.has(h))) {
-    return new Response(null, { status: 403 });
-  }
-
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": ALLOWED_HEADERS.join(", "),
-      "Access-Control-Max-Age": String(MAX_AGE_SECONDS),
-      Vary: "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
-    },
-  });
 }
 ```
 
-**Vary** is non-negotiable when responses differ by Origin. CDNs and shared caches that ignore Vary serve Customer A's CORS headers to Customer B — a subtle cross-tenant bug in multi-tenant agent platforms.
+## Reference implementation notes (OpenSearch)
 
-Actual POST responses must repeat `Access-Control-Allow-Origin` (and `Allow-Credentials` if cookies flow). Preflight cache does not substitute for response headers on the real request.
+Teams usually discover Retrieval systems and cors preflight caching after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-## Gateway and CDN layering
+Put a metric on the user-visible effect of rag cors preflight caching before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Three common deployment shapes:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Retrieval systems and cors preflight caching that needs a hero is not done.
 
-1. **API gateway terminates CORS** — OPTIONS never hits application pods. Best for uniform policy and lowest origin load.
-2. **CDN edge** — cache OPTIONS only with cache key including Origin and requested headers. Default CloudFront/Fastly behaviors often miss OPTIONS entirely; configure a dedicated behavior.
-3. **Service mesh sidecar** — Envoy's CORS filter supports `max_age`; ensure the filter runs on both ingress and internal east-west paths if browser-facing traffic passes through.
+My never-again list for rag cors preflight caching: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```yaml
-# envoy cors filter excerpt
-typed_config:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
-  allow_origin_string_match:
-    - exact: https://app.example.com
-  allow_methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
-  allow_headers: authorization,content-type,x-request-id
-  max_age: "3600"
-```
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-Measure OPTIONS QPS separately from business routes. Healthy traffic shows OPTIONS ≪ POST after warm cache; OPTIONS ≈ POST means caching failed or Max-Age is zero.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Agent-specific pitfalls
+## Quick path vs durable path
 
-**Streaming and WebSockets.** CORS governs fetch and XHR; WebSocket handshakes use a different Origin check. Do not assume fixing REST preflight helps SSE or WS agent channels.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag cors preflight caching, that means making failure visible early.
 
-**Multiple SDK versions.** v1 SDK sends `X-Agent-Version: 1`; v2 adds `X-Tenant-Id`. Each header permutation is a new preflight key. Stabilize header sets across minor SDK releases or accept cache churn during rollouts.
+Keep side effects at the edges and make every write idempotent. Retrieval systems and cors preflight caching without retry semantics is a future incident write-up.
 
-**Credentials mode.** `fetch(..., { credentials: 'include' })` forbids `Access-Control-Allow-Origin: *`. Wildcard origins break credentialed sessions; explicit origin echo is required on both OPTIONS and POST.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag cors preflight caching.
 
-**Third-party tool embeds.** Agents embedded in customer iframes may run on arbitrary origins. Dynamic origin allowlists (database-backed, cached 60s at gateway) beat static env vars — but shorten Max-Age when allowlist changes are frequent.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Retrieval systems and cors preflight caching cannot answer, it is not production-ready.
 
-## Observability and verification
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-Instrument at the edge:
+## Edge cases demos miss
 
-```python
-# metrics middleware (pseudo)
-def record_cors(req, resp):
-    if req.method == "OPTIONS":
-        metrics.increment("http.options.count", tags={"path": req.path_template})
-        max_age = resp.headers.get("Access-Control-Max-Age", "0")
-        metrics.histogram("cors.max_age", int(max_age))
-```
+Teams usually discover Retrieval systems and cors preflight caching after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Client-side verification script for CI:
+Keep side effects at the edges and make every write idempotent. Retrieval systems and cors preflight caching without retry semantics is a future incident write-up.
 
-```javascript
-// scripts/verify-preflight-cache.mjs
-const origin = "https://staging-app.example.com";
-const url = "https://staging-api.example.com/v1/agent/tools";
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag cors preflight caching.
 
-async function preflight() {
-  const t0 = performance.now();
-  await fetch(url, {
-    method: "OPTIONS",
-    headers: {
-      Origin: origin,
-      "Access-Control-Request-Method": "POST",
-      "Access-Control-Request-Headers": "authorization, content-type",
-    },
-  });
-  return performance.now() - t0;
-}
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-const first = await preflight();
-const second = await preflight();
-console.log({ firstMs: first, secondMs: second, cached: second < first * 0.5 });
-```
+Related reading:
 
-Run twice in a real browser context; the second OPTIONS should not appear in Network tab if cache hit (Chrome hides cached preflight) or completes in sub-millisecond time.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-Alert when OPTIONS p95 exceeds POST p95 × 0.3 sustained — usually a deploy stripped Max-Age or Vary misconfiguration at CDN.
+## Merge checklist
 
-## Security tradeoffs
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag cors preflight caching, that means making failure visible early.
 
-Long Max-Age means revoked origins stay trusted until TTL expiry. For agent APIs with static allowlists, 24h is fine. For marketplaces that onboard customer subdomains hourly, keep Max-Age under 600s and accept extra OPTIONS cost — cheaper than serving a deprovisioned tenant.
+With OpenSearch, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Never cache OPTIONS at shared CDN layers without origin-specific cache keys. `Access-Control-Allow-Origin` must reflect the request Origin, not a constant.
+Acceptance check: an on-call engineer can explain system state for rag cors preflight caching from one dashboard and one runbook page.
 
-Preflight responses must not leak sensitive bodies — 204 with headers only.
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-## Rollout checklist
+## Practical defaults for Retrieval systems and cors preflight caching
 
-1. Add explicit OPTIONS route before changing Max-Age in production.
-2. Set Max-Age to 3600; verify with DevTools — disable cache, load app, reload, confirm OPTIONS count drops.
-3. Add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers`.
-4. Dashboard OPTIONS/POST ratio target: < 0.05 after five minutes of active use.
-5. Document header additions in SDK changelog — each new header busts preflight cache once per user.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag cors preflight caching, that means making failure visible early.
 
-## Service worker interaction
+With OpenSearch, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Progressive agent dashboards that register service workers must not intercept OPTIONS incorrectly. If `fetch` handlers rewrite cross-origin tool calls, ensure OPTIONS passes through untouched or implements identical CORS header logic. A service worker that caches POST responses but drops Max-Age on synthetic OPTIONS responses creates Heisenbugs — preflight succeeds in dev without SW, fails intermittently in production PWA mode.
+Acceptance check: an on-call engineer can explain system state for rag cors preflight caching from one dashboard and one runbook page.
 
-## The takeaway
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
 
-CORS preflight caching is a one-header fix that agent teams overlook because OPTIONS traffic is invisible in business metrics until dashboards feel heavy. Set `Access-Control-Max-Age`, echo `Vary` correctly, handle OPTIONS at the gateway, and watch OPTIONS QPS as a first-class SLO. Agent UIs that hammer tool APIs dozens of times per session will feel snappier without touching model latency at all.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
+
+## Review questions before merging rag cors preflight caching work
+
+I treat Retrieval systems and cors preflight caching as an operations problem first. The goal is to keep citations faithful when handling cors preflight caching, not to collect frameworks.
+
+Put a metric on the user-visible effect of rag cors preflight caching before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Retrieval systems and cors preflight caching that needs a hero is not done.
+
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
+
+## Field notes after thirty days of rag cors preflight caching
+
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag cors preflight caching, that means making failure visible early.
+
+Put a metric on the user-visible effect of rag cors preflight caching before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Retrieval systems and cors preflight caching that needs a hero is not done.
+
+Slug-specific note (rag-cors-preflight-caching): prioritize caching behavior under load and verify with a fixture named `rag-cors-preflight-caching-smoke`.
+
+After a month, delete unused flags and dual paths. `rag-cors-preflight-caching` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [MDN: CORS preflight request](https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request)
-- [Fetch spec — HTTP-cors-protocol](https://fetch.spec.whatwg.org/#http-cors-protocol)
-- [Envoy CORS filter documentation](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/cors_filter)
-- [Chrome DevTools network panel — understanding preflight](https://developer.chrome.com/docs/devtools/network/)
-- [OWASP CORS guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- Internal runbook seed: `rag-cors-preflight-caching`
+- https://12factor.net/
+- https://martinfowler.com/

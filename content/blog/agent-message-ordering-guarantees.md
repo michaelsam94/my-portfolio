@@ -1,264 +1,159 @@
 ---
-title: "Message Ordering Guarantees for Multi-Agent Pipelines"
+title: "Agent systems: message ordering guarantees"
 slug: "agent-message-ordering-guarantees"
-description: "Design Kafka partitions, SQS FIFO, and in-process agent mailboxes so tool results, user edits, and streaming tokens arrive in causal order—without blocking parallelism or corrupting conversation state."
+description: "Agent systems: message ordering guarantees: how to keep agent side effects idempotent around message ordering guarantees — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-11-15"
-dateModified: "2024-11-15"
-tags: ["AI Agents", "Messaging", "Distributed Systems", "Event Ordering"]
-keywords: "message ordering guarantees, agent event pipeline, Kafka partition key, FIFO queue, causal ordering, conversation state machine"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, message, ordering, guarantees, production, engineering"
 faq:
-  - q: "Do agent systems need global message ordering?"
-    a: "Almost never. You need per-conversation (or per-run_id) ordering so user messages, tool calls, and tool results replay in causal sequence. Cross-tenant and cross-run ordering is irrelevant and forcing global order destroys throughput."
-  - q: "How does Kafka provide ordering for agent events?"
-    a: "Ordering is guaranteed only within a single partition. Publish all events for one run_id or conversation_id to the same partition using a stable key. More partitions increase parallelism; hot keys create skew—monitor partition lag per key hash."
-  - q: "What breaks ordering in agent pipelines most often?"
-    a: "Retry without sequence numbers, parallel tool workers returning results out of completion order, mixing at-least-once delivery with non-idempotent state updates, and UI websockets that race SSE chunks against REST history fetches. Fix with monotonic sequence ids and idempotent reducers."
-  - q: "Should streaming LLM tokens participate in the same ordering scheme?"
-    a: "Tokens on a single stream are ordered by the provider connection. Your pipeline should assign them sub-sequence ids (run_id, message_id, chunk_index) when persisting to event log so reconnecting clients merge chunks correctly. Do not interleave two assistant messages on one stream without message boundaries."
+  - q: "What is Agent systems: message ordering guarantees?"
+    a: "Agent systems: message ordering guarantees is the production approach to keep agent side effects idempotent around message ordering guarantees. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: message ordering guarantees?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent message ordering guarantees, prioritize it."
+  - q: "What is the most common mistake with Agent systems: message ordering guarantees?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent systems: message ordering guarantees** means you keep agent side effects idempotent around message ordering guarantees — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-The agent showed the user "Refund approved" before it showed "Checking order status"—backwards causality in the transcript. Root cause was three **tool workers** writing results to Redis lists without sequence numbers; the UI sorted by `completed_at`, and a fast cache hit finished after a slow database lookup. The model had the right final answer; the **event log** lied about how we got there. Worse: replaying the conversation for eval trained the wrong policy on shuffled tool traces.
+This write-up is specific to `agent-message-ordering-guarantees` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-Multi-agent and tool-augmented systems are message systems disguised as chat. Ordering guarantees define whether state machines, billing meters, and audit trails remain trustworthy. The mistake is assuming your broker's "ordered" marketing applies globally. In practice you engineer **scope**: ordered per run, per session, or per partition—and accept disorder everywhere else.
+## Fitting Agent systems: message ordering guarantees into an existing system
 
-## Ordering scopes
+I treat Agent systems: message ordering guarantees as an operations problem first. The goal is to keep agent side effects idempotent around message ordering guarantees, not to collect frameworks.
 
-| Scope | Guarantee | Typical use |
-|-------|-----------|-------------|
-| Global | Total order all events | Avoid—single bottleneck |
-| Per conversation | All user/assistant/tool events ordered | Chat UI, run replay |
-| Per aggregate | Order within one tool invocation chain | Planner → executor subgraph |
-| Per provider stream | Token order within one completion | SSE to browser |
+Put a metric on the user-visible effect of agent message ordering guarantees before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Pick the **weakest scope that satisfies invariants**. Billing usually needs per-run order; cross-run order does not matter.
+Acceptance check: an on-call engineer can explain system state for agent message ordering guarantees from one dashboard and one runbook page.
 
-## Event envelope design
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-Every persisted message carries:
+## Contracts and ownership boundaries
 
-```typescript
-type AgentEvent = {
-  runId: string;
-  conversationId: string;
-  seq: number;           // monotonic per runId, assigned by single writer
-  causationId?: string;  // parent event seq
-  type: "user_message" | "assistant_chunk" | "tool_call" | "tool_result" | "system";
-  payload: unknown;
-  createdAt: string;     // informational only—not for ordering
-};
-```
+Teams usually discover Agent systems: message ordering guarantees after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-**Assign `seq` at the orchestrator**—the single writer for a run—not at workers. Workers return results; orchestrator commits with next seq.
+Put a metric on the user-visible effect of agent message ordering guarantees before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```typescript
-class RunEventLog {
-  private nextSeq = 1;
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: message ordering guarantees that needs a hero is not done.
 
-  append(type: AgentEvent["type"], payload: unknown, causationId?: string): AgentEvent {
-    const event: AgentEvent = {
-      runId: this.runId,
-      conversationId: this.conversationId,
-      seq: this.nextSeq++,
-      causationId,
-      type,
-      payload,
-      createdAt: new Date().toISOString(),
-    };
-    this.store.append(event); // transactional with state transition
-    return event;
-  }
-}
-```
+Concretely, being able to keep agent side effects idempotent around message ordering guarantees forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Consumers **must not** sort by timestamp—clocks skew, retries duplicate, and tool latency varies.
-
-## Broker patterns
-
-### Kafka: partition by run_id
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
 ```python
-producer.send(
-    topic="agent.events.v1",
-    key=run_id.encode(),  # stable partition mapping
-    value=json.dumps(event).encode(),
-    headers=[("seq", str(seq).encode())],
-)
+# Agent systems: message ordering guarantees
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentMessageOrderiRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_message_ordering_g(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-message-ordering-guarantees"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Consumer reads partition sequentially; idempotent reducer applies events in seq order. On duplicate delivery (at-least-once), skip if `seq <= last_applied_seq`.
+## State, storage, and retention
 
-```python
-def apply_event(state: RunState, event: dict) -> RunState:
-    if event["seq"] <= state.last_seq:
-        return state  # duplicate or replay
-    if event["seq"] != state.last_seq + 1:
-        raise GapError(f"expected {state.last_seq + 1}, got {event['seq']}")
-    return reduce(state, event)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent message ordering guarantees, that means making failure visible early.
 
-**Gap detection** triggers buffer or fetch from authoritative store—never guess.
+Keep side effects at the edges and make every write idempotent. Agent systems: message ordering guarantees without retry semantics is a future incident write-up.
 
-### SQS FIFO: MessageGroupId = run_id
+Acceptance check: an on-call engineer can explain system state for agent message ordering guarantees from one dashboard and one runbook page.
 
-FIFO queues provide order within a message group. Throughput limit: 300 TPS per group (AWS default)—sufficient for single-run orchestration, not for fan-in from thousands of parallel tools unless you batch.
+My never-again list for agent message ordering guarantees: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```json
-{
-  "MessageGroupId": "run_7f3a",
-  "MessageDeduplicationId": "run_7f3a-seq-42",
-  "MessageBody": "{...}"
-}
-```
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-Use content-based dedup or explicit dedup id from `(run_id, seq)`.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-### Redis Streams: XADD with consumer groups
+## Security defaults that are non-negotiable
 
-Good for low-latency agent workers:
+I treat Agent systems: message ordering guarantees as an operations problem first. The goal is to keep agent side effects idempotent around message ordering guarantees, not to collect frameworks.
 
-```
-XADD run:7f3a:events * type tool_result seq 42 payload {...}
-```
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Consumer group reads preserve order per stream key. One stream key per run_id; cap stream length with MAXLEN ~ approximate for memory.
+Acceptance check: an on-call engineer can explain system state for agent message ordering guarantees from one dashboard and one runbook page.
 
-## Parallel tools without order corruption
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: message ordering guarantees cannot answer, it is not production-ready.
 
-When the planner invokes three tools in parallel, results may **complete** out of order but should **commit** in planner-assigned order:
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-```
-Planner emits: tool_call seq=5 (A), seq=6 (B), seq=7 (C)
-Workers complete: C, A, B
-Orchestrator buffers until A arrives → append seq=8 result A
-                  then B → seq=9
-                  then C → seq=10
-```
+## SLOs and dashboards
 
-Buffer with timeout—if B never returns, append failure at seq=9 and do not block forever:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent message ordering guarantees, that means making failure visible early.
 
-```typescript
-async function collectToolResults(
-  calls: ToolCall[],
-  timeoutMs: number,
-): Promise<ToolResult[]> {
-  const pending = new Map(calls.map((c) => [c.id, c]));
-  const ordered: ToolResult[] = [];
-  const deadline = Date.now() + timeoutMs;
+Keep side effects at the edges and make every write idempotent. Agent systems: message ordering guarantees without retry semantics is a future incident write-up.
 
-  while (pending.size > 0 && Date.now() < deadline) {
-    const result = await resultQueue.pop(calls[0].runId);
-    pending.delete(result.callId);
-    ordered.push(result);
-  }
-  for (const call of pending.values()) {
-    ordered.push({ callId: call.id, error: "timeout" });
-  }
-  return ordered.sort((a, b) => a.plannerOrder - b.plannerOrder);
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: message ordering guarantees that needs a hero is not done.
 
-The LLM sees tool results in **planner order**, matching the causal narrative.
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-## Streaming tokens and persistence
+Related reading:
 
-SSE delivers ordered chunks on one HTTP connection. Reconnects race with history API:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-1. Client connects SSE with `Last-Event-ID: run/7f3a/chunk/881`
-2. Server replays chunks with index > 881 from store, then live stream
-3. Persist chunks with `(message_id, chunk_index)` unique constraint
+## First-week validation plan
 
-```sql
-CREATE TABLE assistant_chunks (
-  run_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  chunk_index INT NOT NULL,
-  content TEXT NOT NULL,
-  PRIMARY KEY (run_id, message_id, chunk_index)
-);
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent message ordering guarantees, that means making failure visible early.
 
-UI merges by `(message_id, chunk_index)`, not arrival time.
+Put a metric on the user-visible effect of agent message ordering guarantees before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Causal ordering vs total ordering
+Acceptance check: an on-call engineer can explain system state for agent message ordering guarantees from one dashboard and one runbook page.
 
-**Causal**: if event B references tool output from A, B must appear after A in the log. **Total**: every pair comparable.
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-Agent runs need causal order for tool chains; independent user edits on different branches (edit-and-resubmit) need **branch ids**:
+## Practical defaults for Agent systems: message ordering guarantees
 
-```typescript
-type AgentEvent = {
-  // ...
-  branchId: string;  // fork on user edit
-  seq: number;         // monotonic per (runId, branchId)
-};
-```
+I treat Agent systems: message ordering guarantees as an operations problem first. The goal is to keep agent side effects idempotent around message ordering guarantees, not to collect frameworks.
 
-Main branch seq=12 → user edits → new branch `edit-1` seq=1. UI shows branch picker; eval replays explicit branch.
+Keep side effects at the edges and make every write idempotent. Agent systems: message ordering guarantees without retry semantics is a future incident write-up.
 
-## Failure modes
+Acceptance check: an on-call engineer can explain system state for agent message ordering guarantees from one dashboard and one runbook page.
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Duplicate tool charges | Retry without idempotency key | Idempotent tool layer keyed by (run_id, seq) |
-| Missing tool result in transcript | Out-of-order append | Orchestrator buffer + gap detection |
-| Stale UI after reconnect | Client sorts by time | Server-side seq cursor |
-| Partition hot spot | All runs same tenant key | Salt key: hash(tenant_id + run_id) |
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-## Testing ordering
+After a month, delete unused flags and dual paths. `agent-message-ordering-guarantees` accumulates temporary bridges faster than teams expect.
 
-Property-based tests: random parallel tool completions always produce monotonic seq in store.
+## Review questions before merging agent message ordering guarantees work
 
-Integration: kill consumer mid-batch; restart; verify no duplicates applied and no gaps without alert.
+Teams usually discover Agent systems: message ordering guarantees after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Chaos: inject 500ms jitter on tool workers; transcript order unchanged when sorted by seq.
+Put a metric on the user-visible effect of agent message ordering guarantees before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Load: one run_id at 50 tool/sec—verify FIFO/Kafka partition limit not choking orchestrator single-writer.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: message ordering guarantees that needs a hero is not done.
 
-## Observability
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-Metrics:
+After a month, delete unused flags and dual paths. `agent-message-ordering-guarantees` accumulates temporary bridges faster than teams expect.
 
-- `event_seq_gap_total` — should be zero
-- `event_duplicate_skipped_total` — rises with retries, OK if idempotent
-- `tool_result_buffer_wait_ms` p95 — capacity signal
-- `partition_lag_max` per topic
+## Field notes after thirty days of agent message ordering guarantees
 
-Traces: link `causationId` across spans for debugging "why did seq 9 precede 8 in raw broker?"
+I treat Agent systems: message ordering guarantees as an operations problem first. The goal is to keep agent side effects idempotent around message ordering guarantees, not to collect frameworks.
 
-## Human-in-the-loop and approval events
+Keep side effects at the edges and make every write idempotent. Agent systems: message ordering guarantees without retry semantics is a future incident write-up.
 
-Human approvals—"confirm refund," "run destructive migration"—must slot into the same seq stream as model events, not a parallel audit table that UI merges ad hoc. Pattern:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: message ordering guarantees that needs a hero is not done.
 
-```typescript
-// User clicks approve on pending tool call at seq=14
-orchestrator.append("human_approval", {
-  approvedSeq: 14,
-  approverUserId: ctx.userId,
-  decision: "approved",
-}, /* causationId */ "14");
-orchestrator.append("tool_result", resultPayload, "14");
-```
+Slug-specific note (agent-message-ordering-guarantees): prioritize guarantees behavior under load and verify with a fixture named `agent-message-ordering-guarantees-smoke`.
 
-Rejections append `human_rejection` before any compensating `system` event. Eval replays see the full causal chain; billing attributes tool execution to post-approval seq only.
-
-## Multi-region and ordering
-
-Active-active regions break naive single-writer seq unless you elect one **ordering region** per run_id or use a CRDT/log merge. Practical approach for most agent SaaS:
-
-- Route all events for `run_id` to a home region via sticky gateway
-- Cross-region reads serve cached transcript with `last_seq` watermark
-- Failover promotes standby region only after pausing writers in primary—accept brief unavailability over split-brain duplicates
-
-If you must dual-write, use **conflict-free replicated seq** (allocating odd/even ranges per region) or a central consensus service (etcd, Spanner) for seq allocation—never `max(seq)+1` in two regions concurrently.
-
-## The takeaway
-
-Message ordering for agents is per-run causal consistency, not global FIFO. Centralize sequence assignment, partition brokers by run_id, buffer parallel tool results into planner order, persist streaming chunks with indexes, and make reducers idempotent for at-least-once delivery. Timestamps are for humans; sequence numbers are for correctness.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Kafka — Ordering Guarantees documentation](https://kafka.apache.org/documentation/#semantics)
-- [AWS SQS FIFO queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html)
-- [Redis Streams introduction](https://redis.io/docs/latest/develop/data-types/streams/)
-- [Leslie Lamport — Time, Clocks, and the Ordering of Events](https://lamport.azurewebsites.net/pubs/time-clocks.pdf)
-- [CloudEvents spec — event correlation attributes](https://cloudevents.io/)
+- Internal runbook seed: `agent-message-ordering-guarantees`
+- https://12factor.net/
+- https://martinfowler.com/

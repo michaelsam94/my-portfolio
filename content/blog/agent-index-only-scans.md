@@ -1,224 +1,159 @@
 ---
-title: "AI Agents: Index Only Scans"
+title: "Agent reliability via index only scans"
 slug: "agent-index-only-scans"
-description: "PostgreSQL index-only scans for agent retrieval workloads — covering indexes, visibility map tuning, EXPLAIN analysis, and schema choices that keep RAG metadata queries off the heap."
+description: "Agent reliability via index only scans: how to ship agent index only scans with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-11-29"
-dateModified: "2024-11-29"
-tags: ["AI", "Agent", "Index"]
-keywords: "index-only scan, PostgreSQL, covering index, visibility map, RAG metadata, agent retrieval, query optimization, INCLUDE index"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, index, only, scans, production, engineering"
 faq:
-  - q: "When does PostgreSQL choose an index-only scan?"
-    a: "The planner picks Index Only Scan when all columns in the query are present in the index leaf pages and the visibility map confirms heap pages are all-visible — meaning PostgreSQL can answer the query from the index alone without checking row versions on the heap. Partial coverage or stale visibility maps force Index Scan with heap fetches."
-  - q: "Why do index-only scans matter for agent RAG pipelines?"
-    a: "Agent systems run high-volume metadata filters — tenant_id, document status, embedding model version, chunk timestamps — before vector search or reranking. Index-only scans cut I/O on these narrow lookups, freeing buffer cache for pgvector HNSW traversals and keeping ingestion workers from contending on heap pages."
-  - q: "How do I design a covering index for agent document tables?"
-    a: "Lead with equality filters (tenant_id, status), then range columns (updated_at), and INCLUDE columns you SELECT but do not filter on (id, content_hash, source_uri). Match column order to your most common WHERE clauses. Avoid over-wide indexes that slow writes during sync ingestion."
-  - q: "Why does EXPLAIN show 'Heap Fetches' on an index-only scan?"
-    a: "Heap Fetches means some index entries pointed at heap pages not marked all-visible in the visibility map — usually after recent UPDATEs/DELETEs before VACUUM runs. Increase autovacuum aggressiveness on hot agent tables or accept occasional heap fetches until vacuum catches up."
+  - q: "What is Agent reliability via index only scans?"
+    a: "Agent reliability via index only scans is the production approach to ship agent index only scans with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via index only scans?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent index only scans, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via index only scans?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The agent retrieval service logged p95 metadata latency at 180 ms — odd, because the query was a simple tenant filter returning document IDs before a vector lookup. `EXPLAIN (ANALYZE, BUFFERS)` showed an Index Scan reading every matching heap page for a table with forty million chunk rows. The fix was not more RAM. It was a covering index that let PostgreSQL serve the filter as an Index Only Scan, dropping p95 to 12 ms and freeing shared buffers for the pgvector leg of the pipeline.
+**Agent reliability via index only scans** means you ship agent index only scans with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Index-only scans are one of the highest-leverage PostgreSQL optimizations for agent stacks, yet they rarely appear in RAG architecture diagrams. Teams obsess over embedding models and HNSW parameters while metadata queries — tenant scoping, freshness filters, soft-delete tombstones, model-version gates — quietly dominate buffer cache and connection time.
+This write-up is specific to `agent-index-only-scans` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## What an index-only scan actually does
+## A pragmatic path to Agent reliability via index only scans
 
-A standard Index Scan walks the B-tree, finds matching entries, then **fetches each heap tuple** to read columns not in the index and to verify the row is visible to your transaction (MVCC).
+Teams usually discover Agent reliability via index only scans after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-An Index Only Scan still walks the B-tree, but if **every required column lives in the index** and the **visibility map** says the heap page is all-visible, PostgreSQL skips the heap fetch entirely. The index leaf pages become a covering store for that query shape.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-```
-Query: SELECT id, content_hash FROM documents
-       WHERE tenant_id = $1 AND status = 'active'
-       AND updated_at > $2
-       ORDER BY updated_at DESC LIMIT 100;
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via index only scans that needs a hero is not done.
 
-Without covering index:
-  Index Scan → heap fetch per row → filter → sort
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-With covering index on (tenant_id, status, updated_at DESC)
-  INCLUDE (id, content_hash):
-  Index Only Scan → results (no heap)
-```
+## Start from the user-visible symptom
 
-The visibility map is a bitmap per heap page marking whether all tuples on the page are visible to all transactions. After bulk ingestion or heavy updates, pages are not all-visible until autovacuum runs — you get Index Only Scan in the plan but non-zero **Heap Fetches** in `EXPLAIN ANALYZE`.
+I treat Agent reliability via index only scans as an operations problem first. The goal is to ship agent index only scans with human override paths, not to collect frameworks.
 
-## Agent workloads that benefit most
+Put a metric on the user-visible effect of agent index only scans before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Agent pipelines hit PostgreSQL differently from OLTP checkout flows.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via index only scans that needs a hero is not done.
 
-**Pre-filter before vector search.** You resolve candidate document IDs by tenant, ACL tags, and freshness before calling pgvector or an external ANN service. These filters are repetitive, narrow, and often cover a small column set — ideal for covering indexes.
+Concretely, being able to ship agent index only scans with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-**Sync ingestion lookups.** Incremental sync upserts by `(tenant_id, external_id)` and checks `content_hash`. Unique indexes with included columns support index-only existence checks.
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-**Admin and eval queries.** Offline eval jobs scan "all active documents for tenant X updated since Y" — batch reads that amplify heap I/O without covering indexes.
-
-**Chunk metadata joins.** Multi-table joins between `documents` and `chunks` on `(document_id, chunk_index)` explode buffer reads when only the index could serve the driving filter.
-
-Vector indexes solve similarity. Index-only scans solve **everything around similarity** — and that surrounding work often sets your end-to-end retrieval ceiling.
-
-## Designing covering indexes for agent schemas
-
-Start from real query text in logs, not hypothetical ORM output. For each hot query, list:
-
-1. Equality filters (most selective first)
-2. Range filters
-3. Columns in SELECT / JOIN keys not used in WHERE
-4. ORDER BY columns
-
-Example agent document table:
-
-```sql
-CREATE TABLE agent_documents (
-  id              UUID PRIMARY KEY,
-  tenant_id       UUID NOT NULL,
-  external_id     TEXT NOT NULL,
-  status          TEXT NOT NULL DEFAULT 'active',
-  content_hash    TEXT NOT NULL,
-  embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
-  updated_at      TIMESTAMPTZ NOT NULL,
-  deleted_at      TIMESTAMPTZ
-);
-
--- Hot path: tenant-scoped active docs by freshness
-CREATE INDEX agent_docs_tenant_fresh_idx
-  ON agent_documents (tenant_id, status, updated_at DESC)
-  INCLUDE (id, content_hash, embedding_model)
-  WHERE deleted_at IS NULL;
-
--- Hot path: sync upsert lookup
-CREATE UNIQUE INDEX agent_docs_tenant_external_uidx
-  ON agent_documents (tenant_id, external_id)
-  INCLUDE (content_hash, status, updated_at);
+```typescript
+// Agent reliability via index only scans
+export async function handle_agent_index_only_scans(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-index-only-scans");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Partial indexes (`WHERE deleted_at IS NULL`) shrink index size and improve cache hit rate when soft deletes are common in knowledge bases.
+## Implementation details for agent index only scans
 
-Avoid indexing every column "just in case." Each index slows ingestion — and agent sync workers are write-heavy during business hours.
+I treat Agent reliability via index only scans as an operations problem first. The goal is to ship agent index only scans with human override paths, not to collect frameworks.
 
-## Reading EXPLAIN output like an agent SRE
+Keep side effects at the edges and make every write idempotent. Agent reliability via index only scans without retry semantics is a future incident write-up.
 
-```sql
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
-SELECT id, content_hash, embedding_model
-FROM agent_documents
-WHERE tenant_id = '11111111-1111-1111-1111-111111111111'
-  AND status = 'active'
-  AND updated_at > now() - interval '24 hours'
-ORDER BY updated_at DESC
-LIMIT 200;
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent index only scans.
 
-What to look for:
+My never-again list for agent index only scans: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Signal | Healthy | Investigate |
-|--------|---------|-------------|
-| Node type | `Index Only Scan` | `Seq Scan` on large tables |
-| Heap Fetches | 0 or low vs rows | Heap Fetches ≈ rows returned |
-| Buffers: shared hit | High hit ratio | Mostly reads — cache too small |
-| Actual rows vs Estimate | Within ~2× | Bad stats — run ANALYZE |
-| Sort node present | Avoid on large sets | Index column order mismatch |
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-Enable `track_io_timing` and log queries exceeding retrieval SLO. Correlate with `pg_stat_user_indexes` to find indexes that exist but never scan — dead weight during ingestion.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Visibility map and vacuum strategy
+## Flags, canaries, and kill switches
 
-Index-only scans degrade after bulk updates — exactly what sync pipelines do.
+Teams usually discover Agent reliability via index only scans after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-```sql
--- Check heap fetch pressure
-SELECT relname, idx_scan, idx_tup_fetch, idx_tup_read
-FROM pg_stat_user_indexes
-WHERE schemaname = 'public' AND relname LIKE 'agent_%';
+Keep side effects at the edges and make every write idempotent. Agent reliability via index only scans without retry semantics is a future incident write-up.
 
--- Per-table vacuum stats
-SELECT relname, n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze
-FROM pg_stat_user_tables
-WHERE relname = 'agent_documents';
-```
+Acceptance check: an on-call engineer can explain system state for agent index only scans from one dashboard and one runbook page.
 
-Tuning for hot agent tables:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via index only scans cannot answer, it is not production-ready.
 
-```sql
-ALTER TABLE agent_documents SET (
-  autovacuum_vacuum_scale_factor = 0.02,
-  autovacuum_analyze_scale_factor = 0.01,
-  fillfactor = 90
-);
-```
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-Lower scale factors trigger vacuum sooner after ingestion bursts, restoring all-visible bits faster. `fillfactor = 90` leaves headroom for HOT updates on metadata columns without new heap pages — though content_hash changes from sync will still create new row versions.
+## Proving it worked
 
-For massive one-time backfills, consider loading into a staging table, building indexes once, then swapping — rather than polluting the visibility map on the live table during peak agent traffic.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent index only scans, that means making failure visible early.
 
-## Interaction with pgvector and connection pooling
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Agent retrieval often runs two queries in sequence: metadata filter in PostgreSQL, then vector query via `<=>` operator on `chunks.embedding`.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent index only scans.
 
-Index-only scans on the metadata leg reduce:
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-- Time holding pooled connections (PgBouncer transaction mode timeouts)
-- Shared buffer eviction before the vector leg runs
-- CPU spent on heap visibility checks competing with HNSW graph traversal
+Related reading:
 
-If the metadata query returns ten thousand IDs that feed a vector query, you have a design problem no index type fixes — push more filtering into SQL or precompute allowed document sets. Index-only scans optimize **when the filtered set is small relative to corpus size**.
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Common mistakes in agent PostgreSQL schemas
+## Follow-ups teams usually skip
 
-**Leading column mismatch.** Index on `(status, tenant_id)` but every query filters `tenant_id` first — planner may skip the index or scan inefficiently.
+I treat Agent reliability via index only scans as an operations problem first. The goal is to ship agent index only scans with human override paths, not to collect frameworks.
 
-**Over-wide INCLUDE lists.** Including `body` or large JSON blobs in indexes bloats pages and defeats cache efficiency. Keep covering columns narrow; fetch heavy payloads by primary key only for the final result set.
+Keep side effects at the edges and make every write idempotent. Agent reliability via index only scans without retry semantics is a future incident write-up.
 
-**Ignoring statistics on skewed tenants.** One enterprise tenant with 80% of rows makes global statistics lie. Use extended statistics or partition by `tenant_id` for mega-tenants.
+Acceptance check: an on-call engineer can explain system state for agent index only scans from one dashboard and one runbook page.
 
-**UUID v4 primary keys in clustered order.** Random UUID inserts fragment indexes. For append-heavy chunk tables, consider `bigint` sequences or time-ordered IDs for better sequential scan locality — index-only scans still help, but ingestion becomes cheaper overall.
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-## Partitioning and index-only scans at scale
+## Practical defaults for Agent reliability via index only scans
 
-When agent document counts exceed comfortable single-table vacuum windows, declarative partitioning by `tenant_id` hash or `created_at` month keeps visibility maps manageable.
+I treat Agent reliability via index only scans as an operations problem first. The goal is to ship agent index only scans with human override paths, not to collect frameworks.
 
-Each partition carries its own indexes. A query with `tenant_id` equality prunes partitions before index-only scans run — compounding the benefit.
+Put a metric on the user-visible effect of agent index only scans before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Tradeoff: cross-partition admin queries get harder. Agent retrieval almost always scopes by tenant, so pruning aligns with product access patterns.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via index only scans that needs a hero is not done.
 
-## Testing index changes safely
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-Never build production indexes blindly during peak hours.
+After a month, delete unused flags and dual paths. `agent-index-only-scans` accumulates temporary bridges faster than teams expect.
 
-```sql
--- Production-safe concurrent build
-CREATE INDEX CONCURRENTLY agent_docs_tenant_fresh_idx_v2
-  ON agent_documents (tenant_id, status, updated_at DESC)
-  INCLUDE (id, content_hash, embedding_model)
-  WHERE deleted_at IS NULL;
-```
+## Review questions before merging agent index only scans work
 
-Workflow:
+Teams usually discover Agent reliability via index only scans after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-1. Capture baseline `EXPLAIN ANALYZE` and p95 from staging with production-shaped row counts.
-2. Build index concurrently on staging; re-run explain — confirm Index Only Scan, measure Heap Fetches after simulated sync burst + vacuum.
-3. Deploy during low traffic; use `pg_stat_statements` to verify plan flip.
-4. Drop superseded indexes only after a week of metrics — ingestion write latency should be monitored.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Load tests should include concurrent sync workers updating `content_hash` while retrieval runs — this is when Heap Fetches spike if vacuum lag is ignored.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via index only scans that needs a hero is not done.
 
-## Operational runbook
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
 
-Symptoms: metadata filter latency regression after deploy or sync spike.
+After a month, delete unused flags and dual paths. `agent-index-only-scans` accumulates temporary bridges faster than teams expect.
 
-1. Run `EXPLAIN ANALYZE` on top queries from `pg_stat_statements`.
-2. If Index Only Scan with high Heap Fetches → check `n_dead_tup`, force `VACUUM (ANALYZE)` if justified.
-3. If Index Scan or Seq Scan → missing or mismatched index; verify partial index predicates match query filters (`deleted_at IS NULL`).
-4. If estimates wildly off → `ANALYZE` or increase `default_statistics_target` on skewed columns.
-5. Post-incident: add ingestion/vacuum dashboard panel alongside retrieval SLO.
+## Field notes after thirty days of agent index only scans
 
-## Closing
+I treat Agent reliability via index only scans as an operations problem first. The goal is to ship agent index only scans with human override paths, not to collect frameworks.
 
-Index-only scans are not an exotic DBA feature — they are the difference between metadata filters that disappear in the background and filters that starve your agent retrieval path of I/O budget. For PostgreSQL-backed agent systems, design covering indexes from logged query shapes, keep visibility maps healthy with autovacuum tuned for sync write patterns, and verify plans with `EXPLAIN ANALYZE` under load — not just on empty staging tables.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via index only scans that needs a hero is not done.
+
+Slug-specific note (agent-index-only-scans): prioritize scans behavior under load and verify with a fixture named `agent-index-only-scans-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent index only scans. Expand only when the metric demands it.
 
 ## Resources
 
-- [PostgreSQL documentation: Index-Only Scans and Covering Indexes](https://www.postgresql.org/docs/current/indexes-index-only-scans.html)
-- [PostgreSQL: Visibility Map and VACUUM](https://www.postgresql.org/docs/current/routine-vacuuming.html)
-- [pgvector: Indexing and performance notes](https://github.com/pgvector/pgvector#indexing)
-- [Use The Index, Luke! — Covering indexes explained](https://use-the-index-luke.com/sql/partial-index/covering-index)
-- [pg_stat_statements and query planning workflow](https://www.postgresql.org/docs/current/pgstatstatements.html)
+- Internal runbook seed: `agent-index-only-scans`
+- https://12factor.net/
+- https://martinfowler.com/

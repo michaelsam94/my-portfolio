@@ -1,131 +1,158 @@
 ---
 title: "Outlook Rich Notifications"
 slug: "outlook-rich-notifications"
-description: "Outlook Rich Notifications: how to make retries and timeouts intentional in production security systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Outlook Rich Notifications: how to operationalize outlook rich with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-21"
 dateModified: "2026-08-12"
 tags:
-  - "Security"
-  - "Auth"
-keywords: "outlook, rich, notifications, security, production, engineering"
+  - "Engineering"
+  - "Outlook"
+keywords: "outlook, rich, notifications, production, engineering"
 faq:
   - q: "What is Outlook Rich Notifications?"
-    a: "Outlook Rich Notifications is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Outlook Rich Notifications is the production approach to operationalize outlook rich with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Outlook Rich Notifications?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with outlook rich notifications, prioritize it."
   - q: "What is the most common mistake with Outlook Rich Notifications?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Outlook Rich Notifications** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Outlook Rich Notifications** means you operationalize outlook rich with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Below is how I implement and operate it in Security systems using OAuth, OIDC: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `outlook-rich-notifications` in a product context, using OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Building Outlook Rich Notifications into an existing system
+## Fitting Outlook Rich Notifications into an existing system
 
-Most write-ups on Outlook Rich Notifications stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In Security stacks I lean on OAuth, OIDC for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Put a metric on the user-visible effect of outlook rich notifications before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Outlook Rich Notifications that needs a hero is not done.
 
-## Contracts and ownership
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
-If you only remember one thing about Outlook Rich Notifications: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## Contracts and ownership boundaries
 
-In Security stacks I lean on OAuth, OIDC for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on outlook rich notifications.
+
+Concretely, being able to operationalize outlook rich with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Outlook Rich Notifications
+export async function handle_outlook_rich_notifications(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Outlook Rich Notifications
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("outlook-rich-notifications");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Data and state implications
+## State, storage, and retention
 
-If you only remember one thing about Outlook Rich Notifications: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In Security stacks I lean on OAuth, OIDC for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Keep side effects at the edges and make every write idempotent. Outlook Rich Notifications without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Outlook Rich Notifications that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Outlook Rich Notifications error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for outlook rich notifications: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Security notes that are not optional
+## Security defaults that are non-negotiable
 
-I have watched teams under-specify Outlook Rich Notifications and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+I treat Outlook Rich Notifications as an operations problem first. The goal is to operationalize outlook rich with clear ownership, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Prefer small diffs with a kill switch. Outlook Rich Notifications changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on outlook rich notifications.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Outlook Rich Notifications designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Outlook Rich Notifications cannot answer, it is not production-ready.
 
-## Observability and SLOs
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
-Most write-ups on Outlook Rich Notifications stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## SLOs and dashboards
 
-In Security stacks I lean on OAuth, OIDC for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+I treat Outlook Rich Notifications as an operations problem first. The goal is to operationalize outlook rich with clear ownership, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on outlook rich notifications.
+
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Week-one validation plan
+## First-week validation plan
 
-Most write-ups on Outlook Rich Notifications stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Make Outlook Rich Notifications error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Outlook Rich Notifications — you only deployed it.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Prefer small diffs with a kill switch. Outlook Rich Notifications changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Outlook Rich Notifications that needs a hero is not done.
 
-## Practical defaults I use for Outlook Rich Notifications
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
-I have watched teams under-specify Outlook Rich Notifications and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Practical defaults for Outlook Rich Notifications
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Outlook Rich Notifications as an operations problem first. The goal is to operationalize outlook rich with clear ownership, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Outlook Rich Notifications error rate. Expand only when the metric says you must.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on outlook rich notifications.
 
-## Review questions before merging Outlook Rich Notifications work
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
-Most write-ups on Outlook Rich Notifications stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-Make Outlook Rich Notifications error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Outlook Rich Notifications — you only deployed it.
+## Review questions before merging outlook rich notifications work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Keep side effects at the edges and make every write idempotent. Outlook Rich Notifications without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Outlook Rich Notifications
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on outlook rich notifications.
 
-Most write-ups on Outlook Rich Notifications stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of outlook rich notifications
 
-A month in, prune unused paths. Outlook Rich Notifications accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Teams usually discover Outlook Rich Notifications after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
+
+Put a metric on the user-visible effect of outlook rich notifications before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Outlook Rich Notifications that needs a hero is not done.
+
+Slug-specific note (outlook-rich-notifications): prioritize notifications behavior under load and verify with a fixture named `outlook-rich-notifications-smoke`.
+
+After a month, delete unused flags and dual paths. `outlook-rich-notifications` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `outlook-rich-notifications`
 - https://12factor.net/
+- https://martinfowler.com/

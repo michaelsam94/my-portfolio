@@ -1,85 +1,103 @@
 ---
-title: "Slack Bolt Rotating Secrets"
+title: "Shipping slack bolt rotating secrets without regret"
 slug: "slack-bolt-rotating-secrets"
-description: "Slack Bolt Rotating Secrets: how to make retries and timeouts intentional in production sre systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Shipping slack bolt rotating secrets without regret: how to ship slack bolt behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-19"
 dateModified: "2026-08-12"
 tags:
-  - "SRE"
-  - "Observability"
-keywords: "slack, bolt, rotating, secrets, sre, production, engineering"
+  - "Engineering"
+  - "Slack"
+keywords: "slack, bolt, rotating, secrets, production, engineering"
 faq:
-  - q: "What is Slack Bolt Rotating Secrets?"
-    a: "Slack Bolt Rotating Secrets is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Slack Bolt Rotating Secrets?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Slack Bolt Rotating Secrets?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Shipping slack bolt rotating secrets without regret?"
+    a: "Shipping slack bolt rotating secrets without regret is the production approach to ship slack bolt behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping slack bolt rotating secrets without regret?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with slack bolt rotating secrets, prioritize it."
+  - q: "What is the most common mistake with Shipping slack bolt rotating secrets without regret?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Slack Bolt Rotating Secrets** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Shipping slack bolt rotating secrets without regret** means you ship slack bolt behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in SRE systems using Prometheus, Grafana: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `slack-bolt-rotating-secrets` in a product context, using OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Decision guide for Slack Bolt Rotating Secrets
+## Decision guide for Shipping slack bolt rotating secrets without regret
 
-Most write-ups on Slack Bolt Rotating Secrets stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Shipping slack bolt rotating secrets without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on slack bolt rotating secrets.
 
-## When this is the wrong tool
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
-If you only remember one thing about Slack Bolt Rotating Secrets: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## When to refuse this approach
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For slack bolt rotating secrets, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
+
+Concretely, being able to ship slack bolt behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Shipping slack bolt rotating secrets without regret
+export async function handle_slack_bolt_rotating_secrets(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Slack Bolt Rotating Secrets
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("slack-bolt-rotating-secrets");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Slack Bolt Rotating Secrets stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For slack bolt rotating secrets, that means making failure visible early.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Shipping slack bolt rotating secrets without regret without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Slack Bolt Rotating Secrets changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Slack Bolt Rotating Secrets error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for slack bolt rotating secrets: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-If you only remember one thing about Slack Bolt Rotating Secrets: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat Shipping slack bolt rotating secrets without regret as an operations problem first. The goal is to ship slack bolt behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Shipping slack bolt rotating secrets without regret without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on slack bolt rotating secrets.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Slack Bolt Rotating Secrets designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping slack bolt rotating secrets without regret cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
-Most write-ups on Slack Bolt Rotating Secrets stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Migration without dual-running forever
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+I treat Shipping slack bolt rotating secrets without regret as an operations problem first. The goal is to ship slack bolt behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
+
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
 Related reading:
 
@@ -87,45 +105,54 @@ Related reading:
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-Most write-ups on Slack Bolt Rotating Secrets stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Shipping slack bolt rotating secrets without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Slack Bolt Rotating Secrets changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
 
-## Practical defaults I use for Slack Bolt Rotating Secrets
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
-If you only remember one thing about Slack Bolt Rotating Secrets: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## Practical defaults for Shipping slack bolt rotating secrets without regret
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Shipping slack bolt rotating secrets without regret as an operations problem first. The goal is to ship slack bolt behind flags with a rollback, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
 
-## Review questions before merging Slack Bolt Rotating Secrets work
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
-I have watched teams under-specify Slack Bolt Rotating Secrets and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-In SRE stacks I lean on Prometheus, Grafana for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+## Review questions before merging slack bolt rotating secrets work
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Production systems punish vague ownership and unmeasured happy paths. For slack bolt rotating secrets, that means making failure visible early.
 
-A month in, prune unused paths. Slack Bolt Rotating Secrets accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Shipping slack bolt rotating secrets without regret without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Slack Bolt Rotating Secrets
+Acceptance check: an on-call engineer can explain system state for slack bolt rotating secrets from one dashboard and one runbook page.
 
-I have watched teams under-specify Slack Bolt Rotating Secrets and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `slack-bolt-rotating-secrets` accumulates temporary bridges faster than teams expect.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of slack bolt rotating secrets
 
-A month in, prune unused paths. Slack Bolt Rotating Secrets accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Teams usually discover Shipping slack bolt rotating secrets without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+Put a metric on the user-visible effect of slack bolt rotating secrets before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on slack bolt rotating secrets.
+
+Slug-specific note (slack-bolt-rotating-secrets): prioritize secrets behavior under load and verify with a fixture named `slack-bolt-rotating-secrets-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `slack-bolt-rotating-secrets`
 - https://12factor.net/
+- https://martinfowler.com/

@@ -1,331 +1,159 @@
 ---
-title: "AI Agents: Container Queries Responsive"
+title: "Container Queries Responsive for production agents"
 slug: "agent-container-queries-responsive"
-description: "Build responsive AI agent UIs with CSS container queries—chat panels, tool result cards, and embedded widgets that adapt to parent width, not just viewport breakpoints."
+description: "Container Queries Responsive for production agents: how to make agent container queries responsive observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-05"
-dateModified: "2026-06-05"
-tags: ["AI", "Agent", "Container"]
-keywords: "CSS container queries, @container, responsive agent UI, chat layout, component queries, embedded agent widget"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, container, queries, responsive, production, engineering"
 faq:
-  - q: "Why are viewport media queries insufficient for agent interfaces?"
-    a: "Agent UIs appear in split views, slide-over panels, iframe embeds, and mobile webviews where the viewport is wide but the chat column is 320px. Media queries see the phone or desktop; container queries see the actual space the agent UI occupies. Breakpoints tied to viewport cause broken tool cards and unreadable streaming text in narrow embeds."
-  - q: "Which elements should be container query roots in an agent chat?"
-    a: "Establish containment on the chat shell, each message column, and tool result cards—not the entire page. The chat shell drives thread density; message columns handle avatar and bubble layout; tool cards switch between table and stacked field layouts when width drops below usable thresholds."
-  - q: "Do container queries work in shadow DOM agent widgets?"
-    a: "Yes, when the shadow host or an inner wrapper sets container-type and styles use @container within the same shadow tree. External page CSS cannot query your shadow containers—design self-contained responsive rules inside the widget bundle."
-  - q: "How do container queries interact with streaming token layout?"
-    a: "Streaming text reflows as tokens arrive; combine container queries with min-width guards on code blocks and tool JSON viewers. Use overflow-x auto on preformatted regions and switch to collapsed field mode below narrow container widths to avoid horizontal scroll jank during stream."
+  - q: "What is Container Queries Responsive for production agents?"
+    a: "Container Queries Responsive for production agents is the production approach to make agent container queries responsive observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Container Queries Responsive for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent container queries responsive, prioritize it."
+  - q: "What is the most common mistake with Container Queries Responsive for production agents?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Our agent dashboard looked perfect in Figma at 1440px. In production, half of enterprise users ran it inside a 380px sidebar next to their CRM. Tool result tables overflowed horizontally, citation chips wrapped into illegible stacks, and the streaming markdown renderer reflowed so aggressively that users reported motion sickness. We had `@media (min-width: 768px)` everywhere. The viewport was 1920px. The agent panel was not.
+**Container Queries Responsive for production agents** means you make agent container queries responsive observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Responsive design for AI agent interfaces is a container problem, not a device problem. Agents ship as embeddable widgets, copilot sidebars, and multi-pane workspaces where the same component must breathe in a full-page chat and survive a narrow plugin slot. CSS container queries (`@container`) let components respond to their parent's size—the geometry users actually perceive.
+This write-up is specific to `agent-container-queries-responsive` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Viewport vs container: the mental model
+## Container Queries Responsive for production agents: production checklist
 
-**Media queries** answer: how big is the browser window?
+I treat Container Queries Responsive for production agents as an operations problem first. The goal is to make agent container queries responsive observable and interruptible, not to collect frameworks.
 
-**Container queries** answer: how big is the box I am laid out in?
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```
-┌─────────────────────────────────────────────┐  viewport 1440px
-│  CRM header                                 │
-├──────────────┬──────────────────────────────┤
-│   CRM list   │  Agent panel (380px) ◄───────┼── container query root
-│              │  ┌─────────────────────────┐ │
-│              │  │ Tool result card        │ │
-│              │  │ @container (narrow)     │ │
-│              │  └─────────────────────────┘ │
-└──────────────┴──────────────────────────────┘
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Container Queries Responsive for production agents that needs a hero is not done.
 
-Agent products increasingly embed in host apps you do not control. Container queries decouple your responsive rules from host page breakpoints.
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-## Establishing containment
+## Inputs, outputs, invariants
 
-A query container requires explicit containment on an ancestor:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent container queries responsive, that means making failure visible early.
 
-```css
-.agent-chat-shell {
-  container-type: inline-size;
-  container-name: agent-chat;
-  /* optional: height containment for block-axis queries */
-  /* container-type: size; requires defined block size */
-}
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-`inline-size` is the common case—width-driven layout for Western locales. Use `size` when vertical space determines layout (collapsed transcript modes in short modals).
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Container Queries Responsive for production agents that needs a hero is not done.
 
-Child components query with:
+Concretely, being able to make agent container queries responsive observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```css
-@container agent-chat (max-width: 480px) {
-  .message-row {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
-  }
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-  .message-avatar {
-    display: none;
-  }
+```python
+# Container Queries Responsive for production agents
+from dataclasses import dataclass
 
-  .tool-result-table {
-    display: block;
-  }
+@dataclass(frozen=True)
+class AgentContainerQuerRequest:
+    tenant_id: str
+    idempotency_key: str
 
-  .tool-result-table tr {
-    display: flex;
-    flex-direction: column;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-}
+async def run_agent_container_queries_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-container-queries-responsive"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Name containers when multiple nested contexts exist—chat shell vs individual tool card:
+## Concurrency, retries, and timeouts
 
-```css
-.tool-card {
-  container-type: inline-size;
-  container-name: tool-card;
-}
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent container queries responsive, that means making failure visible early.
 
-@container tool-card (max-width: 360px) {
-  .tool-field-label {
-    font-size: 0.75rem;
-  }
-}
-```
+Put a metric on the user-visible effect of agent container queries responsive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Layout patterns for agent chat
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent container queries responsive.
 
-### Message thread density
+My never-again list for agent container queries responsive: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Wide containers show multi-column metadata: model name, latency, token count inline. Narrow containers collapse metadata into a disclosure:
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-```css
-.message-meta-inline { display: flex; gap: 0.75rem; }
-.message-meta-compact { display: none; }
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-@container agent-chat (max-width: 520px) {
-  .message-meta-inline { display: none; }
-  .message-meta-compact { display: block; }
-}
-```
+## Support and audit workflows
 
-### Tool invocation cards
+I treat Container Queries Responsive for production agents as an operations problem first. The goal is to make agent container queries responsive observable and interruptible, not to collect frameworks.
 
-Tool calls render structured JSON—tables break in narrow widths. Use a **responsive field list** pattern:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```css
-.tool-fields {
-  display: grid;
-  grid-template-columns: minmax(8rem, 30%) 1fr;
-  gap: 0.5rem 1rem;
-}
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Container Queries Responsive for production agents that needs a hero is not done.
 
-@container tool-card (max-width: 400px) {
-  .tool-fields {
-    grid-template-columns: 1fr;
-  }
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Container Queries Responsive for production agents cannot answer, it is not production-ready.
 
-For arrays of results (search hits, database rows), switch from table to card stack below threshold—do not horizontal-scroll tables in 320px embeds unless data is inherently wide (then offer expand-to-modal).
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-### Streaming markdown and code blocks
+## Capacity and load notes
 
-Streaming content grows unpredictably. Container-aware rules:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent container queries responsive, that means making failure visible early.
 
-```css
-.prose pre {
-  max-width: 100%;
-  overflow-x: auto;
-}
+Keep side effects at the edges and make every write idempotent. Container Queries Responsive for production agents without retry semantics is a future incident write-up.
 
-@container agent-chat (max-width: 480px) {
-  .prose {
-    font-size: 0.9375rem;
-    line-height: 1.55;
-  }
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Container Queries Responsive for production agents that needs a hero is not done.
 
-  .prose pre {
-    font-size: 0.8125rem;
-  }
-}
-```
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-Avoid animating width-dependent properties on every token—prefer stable font-size steps at container breakpoints, not continuous reflow.
+Related reading:
 
-## React component structure
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Colocate container styles with agent UI components. Example shell:
+## Ship gate
 
-```tsx
-export function AgentChatPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="agent-chat-shell" data-testid="agent-chat-shell">
-      <div className="agent-chat-transcript">{children}</div>
-      <AgentComposer />
-    </div>
-  );
-}
-```
+I treat Container Queries Responsive for production agents as an operations problem first. The goal is to make agent container queries responsive observable and interruptible, not to collect frameworks.
 
-```css
-/* agent-chat.module.css */
-.agent-chat-shell {
-  container-type: inline-size;
-  container-name: agent-chat;
-  display: flex;
-  flex-direction: column;
-  min-height: 0; /* allow flex shrink in embeds */
-  height: 100%;
-}
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-When the same `ToolResultCard` renders in full-page and sidebar contexts, it inherits the nearest container—no prop drilling for `isNarrow`.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Container Queries Responsive for production agents that needs a hero is not done.
 
-## Embeds, iframes, and shadow DOM
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-Third-party embeds should ship self-contained CSS with container queries—host pages should not need agent-specific breakpoints.
+## Practical defaults for Container Queries Responsive for production agents
 
-For shadow DOM widgets:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent container queries responsive, that means making failure visible early.
 
-```javascript
-const sheet = new CSSStyleSheet();
-sheet.replaceSync(`
-  :host {
-    display: block;
-    height: 100%;
-  }
-  .root {
-    container-type: inline-size;
-    container-name: widget;
-  }
-  @container widget (max-width: 420px) {
-    .composer textarea { min-height: 2.5rem; }
-  }
-`);
-shadow.adoptedStyleSheets = [sheet];
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Test embeds at host widths host apps actually use—Salesforce, Zendesk, and Notion sidebar widths differ.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent container queries responsive.
 
-## Fallbacks and progressive enhancement
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-Container query support is broad in modern browsers but not universal in locked-down enterprise environments. Pattern:
+Default deny, explicit timeouts, and one dashboard row for agent container queries responsive. Expand only when the metric demands it.
 
-```css
-.message-row {
-  /* fallback: stack on small viewport */
-  grid-template-columns: 1fr;
-}
+## Review questions before merging agent container queries responsive work
 
-@media (min-width: 768px) {
-  .message-row {
-    grid-template-columns: auto 1fr;
-  }
-}
+I treat Container Queries Responsive for production agents as an operations problem first. The goal is to make agent container queries responsive observable and interruptible, not to collect frameworks.
 
-@container agent-chat (min-width: 520px) {
-  .message-row {
-    grid-template-columns: auto 1fr;
-  }
-}
-```
+Put a metric on the user-visible effect of agent container queries responsive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Viewport fallback provides baseline; container query overrides when containment is available—embedded narrow panels get correct layout even on desktop viewports.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent container queries responsive.
 
-Feature detection:
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-```css
-@supports (container-type: inline-size) {
-  .agent-chat-shell { container-type: inline-size; }
-}
-```
+Default deny, explicit timeouts, and one dashboard row for agent container queries responsive. Expand only when the metric demands it.
 
-## Testing responsive agent UI
+## Field notes after thirty days of agent container queries responsive
 
-Automated visual regression should resize **container**, not only viewport:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent container queries responsive, that means making failure visible early.
 
-```typescript
-test("tool card stacks fields in narrow container", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/agent-demo");
-  await page.locator('[data-testid="agent-chat-shell"]').evaluate((el) => {
-    (el as HTMLElement).style.width = "360px";
-  });
-  await expect(page.locator(".tool-fields")).toHaveScreenshot("tool-narrow.png");
-});
-```
+Put a metric on the user-visible effect of agent container queries responsive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Storybook 8+ supports container query decorators—define stories at 320, 480, and 720px container widths alongside full viewport stories.
+Acceptance check: an on-call engineer can explain system state for agent container queries responsive from one dashboard and one runbook page.
 
-Manual QA checklist:
+Slug-specific note (agent-container-queries-responsive): prioritize responsive behavior under load and verify with a fixture named `agent-container-queries-responsive-smoke`.
 
-- Sidebar embed at 320px and 400px
-- Split pane resize drag mid-conversation
-- Long German tool labels without overflow clip
-- Streaming message through container breakpoint boundary
-
-## Performance considerations
-
-Container queries recalculate when container size changes—split pane drags can fire many layout passes. Mitigations:
-
-- Avoid expensive `size` containment unless needed
-- Debounce non-critical layout-dependent JS reads
-- Use `content-visibility: auto` on off-screen transcript segments in long threads
-
-Do not nest deep container trees unnecessarily—each level adds style invalidation cost during resize.
-
-## Accessibility in responsive agent layouts
-
-When avatars hide in narrow containers, preserve speaker identity for screen readers:
-
-```css
-@container agent-chat (max-width: 480px) {
-  .message-avatar { display: none; }
-}
-```
-
-```html
-<article aria-labelledby="msg-42-author">
-  <span id="msg-42-author" class="visually-hidden">Assistant said</span>
-  ...
-</article>
-```
-
-Touch targets in narrow composers must stay ≥44px. Container shrink should not collapse send buttons below usable size—wrap actions vertically instead.
-
-## Container query units: cqw, cqh, and cqi
-
-Beyond breakpoint-style `@container (max-width: 480px)` rules, container query length units express sizes relative to the container itself:
-
-```css
-.tool-card-title {
-  font-size: clamp(0.875rem, 2.5cqw + 0.5rem, 1.125rem);
-}
-
-.citation-chip {
-  max-width: 40cqw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-```
-
-`cqw` is one percent of the query container's width—useful for citation chips and inline badges that should scale smoothly as users drag split-pane dividers without jumping between media-query steps. Pair `clamp()` with container units to avoid unreadably small text in very narrow embeds while capping growth in wide panels. Test `cqi` (inline axis) if you ship RTL locales where inline direction differs from physical width.
-
-## Related concepts
-
-Container queries pair with [partial hydration islands](https://blog.michaelsam94.com/agent-partial-hydration-islands/) for embeddable agent widgets and [motion-reduced preferences](https://blog.michaelsam94.com/agent-motion-reduced-preferences/) when layout shifts animate.
-
-## The takeaway
-
-Agent UIs live in containers users resize, embed, and split—not viewports designers pick. `@container` lets chat threads, tool cards, and streaming markdown adapt to real available width. Establish named containment on chat shells and cards, provide viewport fallbacks for legacy environments, and test by resizing the panel—not just the browser window.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- [MDN: CSS container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries) — syntax and containment fundamentals
-- [web.dev: Container queries land in stable browsers](https://web.dev/blog/container-queries-stable) — rollout and migration guidance
-- [CSS Containment Module Level 3](https://www.w3.org/TR/css-contain-3/) — specification
-- [Storybook container query addon patterns](https://storybook.js.org/blog/) — component-level responsive testing
-- [Inclusive Components responsive patterns](https://inclusive-components.design/) — accessible layout switching
+- Internal runbook seed: `agent-container-queries-responsive`
+- https://12factor.net/
+- https://martinfowler.com/

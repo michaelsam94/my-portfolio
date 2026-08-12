@@ -1,174 +1,159 @@
 ---
-title: "AI Agents: Anomaly Detection Metrics"
+title: "Anomaly Detection Metrics for production agents"
 slug: "agent-anomaly-detection-metrics"
-description: "Choosing and calibrating anomaly metrics for LLM agent fleets — token burn spikes, tool-loop detection, retrieval drift, and alert thresholds that on-call engineers trust."
+description: "Anomaly Detection Metrics for production agents: how to make agent anomaly detection metrics observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-04"
-dateModified: "2025-03-04"
-tags: ["AI", "Agent", "Anomaly"]
-keywords: "anomaly detection metrics, agent observability, token spike alerting, Prometheus anomaly, isolation forest ops, false positive rate, LLM SLO burn"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, anomaly, detection, metrics, production, engineering"
 faq:
-  - q: "Which metrics best detect anomalies in agent workloads?"
-    a: "Combine rate metrics (tokens/sec, tool calls/min, retrieval queries/sec), distribution metrics (p99 latency per tool, embedding similarity scores), and ratio metrics (refusal rate, error-to-success ratio, cost per completed task). Single-threshold alerts on raw counters fail when traffic grows — use seasonality-aware baselines or quantile-based bands."
-  - q: "How do you reduce false positives from anomaly alerts?"
-    a: "Group alerts by tenant and agent version, require multi-signal confirmation before paging (e.g., token spike AND error rate rise), use minimum support windows (anomaly sustained 10+ minutes), and maintain suppression rules for known events like marketing launches or batch reindex jobs."
-  - q: "What is the difference between point, contextual, and collective anomalies for agents?"
-    a: "Point anomalies are single outlier observations (one request with 500k tokens). Contextual anomalies are outliers given context (high token count during a known short prompt). Collective anomalies are subtle shifts across sequences (slow tool-call loop that each step looks normal). Agent failures often manifest as collective anomalies — optimize detectors accordingly."
-  - q: "Should anomaly detection use ML models or statistical thresholds?"
-    a: "Start with robust statistics (median absolute deviation, EWMA bands, seasonal decomposition) on 5–10 core metrics — they're explainable in postmortems. Add lightweight ML (isolation forest, matrix profile) for multivariate patterns once baselines are stable. Black-box models without feature attribution erode on-call trust quickly."
+  - q: "What is Anomaly Detection Metrics for production agents?"
+    a: "Anomaly Detection Metrics for production agents is the production approach to make agent anomaly detection metrics observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Anomaly Detection Metrics for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent anomaly detection metrics, prioritize it."
+  - q: "What is the most common mistake with Anomaly Detection Metrics for production agents?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Our pager fired at 3 a.m. because token consumption doubled. On-call rolled back a deploy that had nothing to do with it — marketing had emailed 40,000 users a link to the agent. The anomaly was real; the diagnosis was wrong because we alerted on a global counter without tenant segmentation, seasonality, or a companion signal distinguishing traffic growth from runaway tool loops. Anomaly detection for agent fleets lives or dies on **metric selection** and **threshold semantics**, not on which fancy algorithm you import.
+**Anomaly Detection Metrics for production agents** means you make agent anomaly detection metrics observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Agents generate time series traditional web SRE playbooks weren't designed for: bursty LLM calls, fat-tailed latency, retrieval fan-out, and feedback loops where one bad tool response triggers ten retries. This piece is about the metrics worth instrumenting and how to calibrate detectors so alerts mean "investigate agent behavior" — not "someone popular clicked a link."
+This write-up is specific to `agent-anomaly-detection-metrics` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Instrumentation map for agent pipelines
+## Incident pattern involving agent anomaly detection metrics
 
-Before algorithms, enumerate what you measure. A minimal agent observability schema:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anomaly detection metrics, that means making failure visible early.
 
-| Layer | Metrics | Anomaly question |
-|-------|---------|------------------|
-| Gateway | requests/sec, auth failures, queue depth | DDoS or credential stuffing? |
-| Orchestrator | active sessions, steps/session, loop detections | Runaway multi-turn loops? |
-| LLM | tokens in/out, time-to-first-token, model routing mix | Cost attack or wrong model route? |
-| Retrieval | queries/sec, chunks/request, cache hit rate | Retrieval storm or index corruption? |
-| Tools | calls/tool, error rate/tool, p99 latency/tool | Broken integration or abuse? |
-| Outcomes | task completion rate, human handoff rate | Silent quality collapse? |
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Emit labels consistently: `tenant_id`, `agent_version`, `model`, `tool_name`. Anomalies without labels are noise.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Anomaly Detection Metrics for production agents that needs a hero is not done.
 
-```python
-# instrumentation/agent_metrics.py
-from prometheus_client import Counter, Histogram, Gauge
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-TOKENS = Counter(
-    "agent_llm_tokens_total",
-    "Tokens consumed",
-    ["tenant_id", "agent_version", "direction"],  # direction=in|out
-)
-TOOL_CALLS = Counter(
-    "agent_tool_calls_total",
-    "Tool invocations",
-    ["tenant_id", "tool_name", "status"],
-)
-SESSION_STEPS = Histogram(
-    "agent_session_steps",
-    "Orchestration steps per completed session",
-    ["tenant_id", "agent_version"],
-    buckets=[1, 2, 5, 10, 20, 50, 100],
-)
-ACTIVE_LOOPS = Gauge(
-    "agent_detected_loops",
-    "Sessions flagged for repeated identical tool pattern",
-    ["tenant_id"],
-)
-```
+## Root cause in plain language
 
-## Point anomalies: spikes you can explain
+I treat Anomaly Detection Metrics for production agents as an operations problem first. The goal is to make agent anomaly detection metrics observable and interruptible, not to collect frameworks.
 
-Point anomalies are single observations far from typical — a request with 200k input tokens, a tool call returning 50MB JSON. They're the easiest to detect and the easiest to misinterpret.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Use **per-request caps** as hard limits (fail closed) and **statistical detectors** for softer warnings. Robust z-scores via median absolute deviation (MAD) resist LLM latency outliers better than mean/std:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Anomaly Detection Metrics for production agents that needs a hero is not done.
+
+Concretely, being able to make agent anomaly detection metrics observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
 ```python
-import numpy as np
+# Anomaly Detection Metrics for production agents
+from dataclasses import dataclass
 
-def mad_zscore(series: np.ndarray, value: float) -> float:
-    med = np.median(series)
-    mad = np.median(np.abs(series - med)) or 1e-9
-    return 0.6745 * (value - med) / mad
+@dataclass(frozen=True)
+class AgentAnomalyDetectRequest:
+    tenant_id: str
+    idempotency_key: str
 
-# Alert if mad_zscore(last_7d_hourly_tokens, current_hour_tokens) > 6
+async def run_agent_anomaly_detection_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-anomaly-detection-metrics"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-For token spikes, always pair with **request count**. Tokens/sec up 3× because requests/sec up 3× is capacity planning, not an incident. Tokens/sec up 3× at flat request count suggests prompt injection, retrieval bloat, or a model routing bug.
+## The fix that held under load
 
-## Contextual anomalies: same number, different meaning
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anomaly detection metrics, that means making failure visible early.
 
-Contextual anomalies violate expectations **given circumstances**. Completion tokens spike during "summarize this 80-page PDF" sessions — normal. The same spike on "what's the weather?" is not.
+Put a metric on the user-visible effect of agent anomaly detection metrics before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Encode context as detector dimensions:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Anomaly Detection Metrics for production agents that needs a hero is not done.
 
-- **Intent class or route** (support vs coding vs retrieval-heavy)
-- **Input size bucket** (chars or pages ingested)
-- **User tier** (free vs enterprise quotas)
+My never-again list for agent anomaly detection metrics: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Train separate baselines per `(tenant_id, route)` tuple. Cold-start tenants use global priors with wide bands until support ≥ 1000 sessions.
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-Seasonality matters. B2B agents peak weekday mornings; consumer agents peak evenings. Use STL decomposition or Prophet-style seasonal bands on hourly aggregates before declaring anomaly.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Collective anomalies: where agents actually fail
+## Tests and probes that catch regressions
 
-The painful incidents are collective: each tool call looks fine, but the session executes `search → read → search → read` twenty times, burning tokens and never completing. Matrix profile algorithms and sequence-based rules catch these:
+I treat Anomaly Detection Metrics for production agents as an operations problem first. The goal is to make agent anomaly detection metrics observable and interruptible, not to collect frameworks.
 
-```python
-def detect_tool_stutter(calls: list[str], window: int = 6) -> bool:
-    """True if same tool pattern repeats without progress."""
-    if len(calls) < window:
-        return False
-    recent = calls[-window:]
-    unique_tools = set(recent)
-    if len(unique_tools) <= 2 and recent.count(recent[0]) >= window // 2:
-        return True  # e.g., search,read,search,read,search,read
-    return False
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Track **steps-to-completion** distributions per agent version. A deploy that raises p50 steps from 4 to 9 is a quality regression — collective drift — even if no single step errors.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent anomaly detection metrics.
 
-Similarly, watch **refusal rate** and **human escalation rate** in tandem. Refusals drop while escalations rise might indicate guardrail bypass, not improvement.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Anomaly Detection Metrics for production agents cannot answer, it is not production-ready.
 
-## Multivariate detection without black boxes
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-Univariate alerts multiply; multivariate detectors find correlated shifts. Isolation forests on standardized feature vectors work when you limit features to those on-call can interpret:
+## Runbook lines that save minutes
 
-```python
-from sklearn.ensemble import IsolationForest
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anomaly detection metrics, that means making failure visible early.
 
-features = ["tokens_out_p95", "tool_error_rate", "retrieval_chunks_p95", "ttft_p95"]
-X = hourly_rollups[features].values
-clf = IsolationForest(contamination=0.02, random_state=42)
-scores = clf.fit_predict(X[-168:])  # last week hourly
-# -1 = anomaly hour; log feature values alongside score for explainability
-```
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Never page on `-1` alone. Require at least one business-critical feature beyond bounds documented in the runbook.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Anomaly Detection Metrics for production agents that needs a hero is not done.
 
-## Threshold design on-call engineers accept
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-Alert fatigue kills agent platforms slowly. Rules that survived review with three teams:
+Related reading:
 
-1. **Page on symptom, ticket on cause.** Page when task completion rate drops AND error rate rises; ticket when isolation forest score is weird but users unaffected.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-2. **Sustained breach.** Anomaly must persist 10–15 minutes to ignore flaky bursts from cold starts.
+## Platform guardrails afterward
 
-3. **Minimum volume.** Don't z-score hours with &lt; 50 sessions — variance is meaningless.
+I treat Anomaly Detection Metrics for production agents as an operations problem first. The goal is to make agent anomaly detection metrics observable and interruptible, not to collect frameworks.
 
-4. **Known-event suppressions.** Maintenance windows, index rebuilds, and launch calendars suppress predictable spikes.
+Keep side effects at the edges and make every write idempotent. Anomaly Detection Metrics for production agents without retry semantics is a future incident write-up.
 
-5. **Burn-rate alerts for SLOs.** Anomaly on error budget consumption (multi-window) beats static thresholds for latency.
+Acceptance check: an on-call engineer can explain system state for agent anomaly detection metrics from one dashboard and one runbook page.
 
-Document every alert with: **what it detects**, **what it doesn't**, **first actions**, **known false positives**. If you can't write that, delete the alert.
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-## Feedback loops from incidents
+## Practical defaults for Anomaly Detection Metrics for production agents
 
-After every anomaly-driven incident or false page, record:
+Teams usually discover Anomaly Detection Metrics for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-- Which metric fired first
-- Root cause category (traffic, bug, attack, misconfiguration)
-- Whether companion metrics would have clarified faster
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Retune thresholds monthly from this log. Agents change behavior with every prompt and tool update — static thresholds rot faster than microservice CPU alerts.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Anomaly Detection Metrics for production agents that needs a hero is not done.
 
-Synthetic probes help: scheduled canonical tasks ("health check agent" runs a fixed prompt/tool chain every 5 minutes). Anomaly on probe latency or token count signals platform regression independent of user traffic skew.
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
 
-Cost anomalies deserve equal billing with reliability anomalies. Track **cost per successful task** and **tokens per completed outcome** alongside latency. A deploy that doubles retrieval chunk count may leave error rates untouched while silently doubling inference spend — finance notices before SRE if you instrument spend as a first-class anomaly signal.
+Default deny, explicit timeouts, and one dashboard row for agent anomaly detection metrics. Expand only when the metric demands it.
 
-Version your agent releases in metric labels. When `agent_version` shifts, expect baseline drift for 24–48 hours; temporarily widen bands or suppress version-comparison alerts until the new version accumulates enough samples. Otherwise every prompt change pages on-call for benign behavioral shifts.
+## Review questions before merging agent anomaly detection metrics work
 
-Anomaly detection for agents is not one algorithm — it's a layered strategy. Instrument rate, distribution, and ratio metrics with rich labels; treat point, contextual, and collective patterns differently; pair statistical bands with business SLO burn; and optimize for postmortem explainability over model sophistication. The goal is fewer 3 a.m. rollbacks for marketing emails, and faster detection of the tool loop that actually burns your budget.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anomaly detection metrics, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent anomaly detection metrics.
+
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent anomaly detection metrics. Expand only when the metric demands it.
+
+## Field notes after thirty days of agent anomaly detection metrics
+
+I treat Anomaly Detection Metrics for production agents as an operations problem first. The goal is to make agent anomaly detection metrics observable and interruptible, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Anomaly Detection Metrics for production agents without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent anomaly detection metrics.
+
+Slug-specific note (agent-anomaly-detection-metrics): prioritize metrics behavior under load and verify with a fixture named `agent-anomaly-detection-metrics-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent anomaly detection metrics. Expand only when the metric demands it.
 
 ## Resources
 
-- [Google SRE Workbook — Monitoring distributed systems](https://sre.google/workbook/monitoring/)
-- [Prometheus documentation — histograms and alerting](https://prometheus.io/docs/practices/histograms/)
-- [Robust statistics for anomaly detection (NIST Engineering Stats Handbook)](https://www.itl.nist.gov/div898/handbook/)
-- [Matrix Profile for time series motifs and discords](https://matrixprofile.org/)
-- [OpenTelemetry semantic conventions for generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- Internal runbook seed: `agent-anomaly-detection-metrics`
+- https://12factor.net/
+- https://martinfowler.com/

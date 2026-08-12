@@ -1,248 +1,159 @@
 ---
-title: "AI Agents: Protobuf Evolution Compatibility"
+title: "Operating agents with protobuf evolution compatibility"
 slug: "agent-protobuf-evolution-compatibility"
-description: "How to evolve agent event schemas, tool RPC payloads, and streaming token frames in Protocol Buffers without breaking consumers mid-rollout."
+description: "Operating agents with protobuf evolution compatibility: how to bound tool calls and blast radius for protobuf evolution compatibility — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-02-12"
-dateModified: "2025-02-12"
-tags: ["AI", "Agent", "Protobuf"]
-keywords: "protobuf schema evolution, field numbers, backward compatibility, buf breaking changes, agent event schema, gRPC versioning"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, protobuf, evolution, compatibility, production, engineering"
 faq:
-  - q: "Can I rename a protobuf field without breaking wire compatibility?"
-    a: "Yes, if the field number stays the same and you only change the name in .proto source. Generated code changes, but on-the-wire bytes are unchanged. Renumbering a field is a breaking change—old binaries will misinterpret payloads."
-  - q: "What is the safest way to add a new field to an agent ToolRequest message?"
-    a: "Assign the next unused field number, mark it optional (proto3 optional or explicit presence), default safely, and deploy consumers before producers if the field is required for new behavior. Never reuse a retired field number; reserve it with a comment or reserved statement."
-  - q: "How do oneof fields affect evolution?"
-    a: "Adding a new oneof variant is backward compatible if clients ignore unknown fields. Changing which fields share a oneof, or moving an existing field into a oneof, is breaking. Agent tool argument unions often start as oneof—plan variant additions as additive only."
-  - q: "Should agent teams use JSON or protobuf for external webhooks?"
-    a: "JSON over HTTP for third-party integrators who cannot compile schemas; protobuf internally between your services. If you expose JSON mapped from proto, document that unknown JSON fields are ignored and never rely on JSON field name changes without version bumps."
+  - q: "What is Operating agents with protobuf evolution compatibility?"
+    a: "Operating agents with protobuf evolution compatibility is the production approach to bound tool calls and blast radius for protobuf evolution compatibility. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with protobuf evolution compatibility?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent protobuf evolution compatibility, prioritize it."
+  - q: "What is the most common mistake with Operating agents with protobuf evolution compatibility?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The deploy looked innocent: add `retrieval_context_id` to `AgentTurnEvent` so downstream eval pipelines could join retrieval logs with generation logs. Within twenty minutes, the Rust ingestion service panicked on parse—except protobuf parsers do not panic on unknown fields. The panic came from application code that matched on `event.payload` as a closed enum and hit `UNRECOGNIZED` after someone renumbered an existing field to "make room" for the new ID. Wire compatibility survived in theory. Team discipline did not.
+**Operating agents with protobuf evolution compatibility** means you bound tool calls and blast radius for protobuf evolution compatibility — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Protocol Buffers encode a contract optimized for evolution—if you follow the rules. Agent platforms generate enormous schema surface area quickly: tool definitions, streaming token frames, human feedback envelopes, embedding job batches. JSON-first prototypes harden into gRPC services under traffic. This piece is a field guide to evolving those schemas without coordinated big-bang deploys.
+This write-up is specific to `agent-protobuf-evolution-compatibility` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## Mental model: tags, not names
+## Explaining Operating agents with protobuf evolution compatibility to a skeptical teammate
 
-On the wire, a protobuf message is a sequence of `(field_number, wire_type, value)` triples. Field **names** exist for humans and code generators; field **numbers** are the real API.
+Teams usually discover Operating agents with protobuf evolution compatibility after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-```
-AgentTurnEvent (conceptual on-wire)
-  [1] string session_id = "abc"
-  [2] int32 turn_index = 7
-  [5] ToolInvocation tool = { ... }   // note gap: 3,4 unused or reserved
-  [6] string retrieval_context_id = "ctx-9f2"
-```
+Put a metric on the user-visible effect of agent protobuf evolution compatibility before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-A consumer compiled against an older `.proto` ignores field 6 entirely—stored as unknown fields in many runtimes. A consumer that **requires** field 6 before producers send it gets default empty string—usually fine if your logic treats empty as "legacy event."
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent protobuf evolution compatibility.
 
-Breaking changes re-use numbers, change wire types, or move fields between oneofs in ways old code cannot interpret.
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-## Safe changes (do these freely)
+## Making it routine to bound tool calls and blast radius for protobuf evolution compatibility
 
-| Change | Compatible? | Notes |
-|--------|-------------|-------|
-| Add new field with new number | Yes | Old code ignores it |
-| Add `optional` / explicit presence | Yes | Proto3 optional is evolution-friendly |
-| Add enum value (at end) | Yes* | *Old clients may drop unrecognized enum on serialize—test |
-| Add message to a oneof | Yes | New variant only |
-| Reserve deleted field numbers | Yes | Prevents accidental reuse |
-| Rename field or message | Yes | Number unchanged |
+Teams usually discover Operating agents with protobuf evolution compatibility after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-## Breaking changes (require version bump or new message)
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-| Change | Why it breaks |
-|--------|---------------|
-| Change field number | Wrong slot on wire |
-| Change field type (e.g. int32 → string) | Wire type mismatch |
-| Delete field without reservation | Number may be reused later |
-| Rename enum numeric values | Same wire, semantic shift |
-| Move existing field into oneof | Old layout incompatible |
+Acceptance check: an on-call engineer can explain system state for agent protobuf evolution compatibility from one dashboard and one runbook page.
 
-When you must break, ship `AgentTurnEventV2` on a new topic or RPC method and run dual-write until consumers migrate. Do not "just fix" the original message in place.
+Concretely, being able to bound tool calls and blast radius for protobuf evolution compatibility forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## A concrete agent schema evolution
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-Start with a minimal turn event:
-
-```protobuf
-syntax = "proto3";
-
-package agent.v1;
-
-message AgentTurnEvent {
-  string session_id = 1;
-  uint32 turn_index = 2;
-  string model_id = 3;
-  repeated ToolInvocation tools = 4;
-}
-
-message ToolInvocation {
-  string name = 1;
-  bytes arguments_json = 2;  // deferred JSON for flexibility
-  ToolStatus status = 3;
-}
-
-enum ToolStatus {
-  TOOL_STATUS_UNSPECIFIED = 0;
-  TOOL_STATUS_OK = 1;
-  TOOL_STATUS_ERROR = 2;
-}
-```
-
-Phase 2: add retrieval join key without breaking Rust, Go, and Python consumers:
-
-```protobuf
-message AgentTurnEvent {
-  reserved 5;              // if you deleted an experimental field
-  reserved "debug_blob";
-
-  string session_id = 1;
-  uint32 turn_index = 2;
-  string model_id = 3;
-  repeated ToolInvocation tools = 4;
-  optional string retrieval_context_id = 6;  // skip 5 if reserved
-}
-```
-
-Phase 3: structured tool args alongside JSON for gradual migration:
-
-```protobuf
-message ToolInvocation {
-  string name = 1;
-  bytes arguments_json = 2;
-  ToolStatus status = 3;
-  oneof typed_args {
-    CalendarArgs calendar = 4;
-    BillingArgs billing = 5;
-  }
-}
-
-message CalendarArgs {
-  string event_title = 1;
-  int64 start_unix_ms = 2;
-}
-```
-
-Consumers that only read `arguments_json` keep working. New orchestrators populate `typed_args` for type-safe validation. This dual representation costs bytes—acceptable in audit topics, questionable in per-token streaming frames where you want slim binary.
-
-## Streaming frames need extra discipline
-
-Token streaming messages often arrive at kilohertz aggregate rates. Prefer **additive** fields and fixed framing:
-
-```protobuf
-message StreamFrame {
-  uint64 sequence = 1;
-  oneof payload {
-    TokenDelta token = 2;
-    ToolCallStart tool_start = 3;
-    ToolCallEnd tool_end = 4;
-    Heartbeat heartbeat = 5;
+```typescript
+// Operating agents with protobuf evolution compatibility
+export async function handle_agent_protobuf_evolution_compatibility(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-protobuf-evolution-compatibility");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-Adding `ToolCallProgress` as variant 6 is safe. Splitting `TokenDelta` into separate message types on the same field number is not.
+## Code seams that keep refactors cheap
 
-For WebSocket clients using proto-json, enable `json_name` annotations once and never rename without a version bump—JavaScript clients often bind to JSON keys, not proto names.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent protobuf evolution compatibility, that means making failure visible early.
 
-## Automate compatibility checks in CI
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Human review of field numbers does not scale. **Buf** (or prototool) breaking-change detection against main:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with protobuf evolution compatibility that needs a hero is not done.
 
-```yaml
-# buf.yaml
-version: v2
-modules:
-  - path: proto
-breaking:
-  use:
-    - FILE
-lint:
-  use:
-    - DEFAULT
-```
+My never-again list for agent protobuf evolution compatibility: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```bash
-# In CI before merge
-buf breaking --against '.git#branch=main'
-```
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-FILE-level breaking rules catch field renames that change JSON casing integrations rely on, not just wire tags. For agent monorepos, pin generated stubs in the same PR as `.proto` changes so code review sees both.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Unknown fields and application logic
+## Table stakes vs later polish
 
-Protobuf guarantees parsing survives unknown fields; your **business logic** might not:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent protobuf evolution compatibility, that means making failure visible early.
 
-```go
-// Fragile — breaks when proto adds TOOL_STATUS_PENDING = 3
-switch inv.Status {
-case agentv1.ToolStatus_TOOL_STATUS_OK:
-    // ...
-case agentv1.ToolStatus_TOOL_STATUS_ERROR:
-    // ...
-default:
-    panic("unexpected tool status")
-}
-```
+Put a metric on the user-visible effect of agent protobuf evolution compatibility before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Prefer open handling:
+Acceptance check: an on-call engineer can explain system state for agent protobuf evolution compatibility from one dashboard and one runbook page.
 
-```go
-if inv.Status != agentv1.ToolStatus_TOOL_STATUS_OK {
-    metrics.ToolNonOK.Inc()
-    // handle or skip; do not panic on unrecognized enum
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with protobuf evolution compatibility cannot answer, it is not production-ready.
 
-Same for `oneof` switches in Rust and TypeScript—always include a fallback arm that logs and continues.
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-## JSON, GraphQL, and the impedance mismatch
+## Regressions that show up after launch
 
-Teams expose agent tool schemas to no-code builders as JSON Schema converted from proto. Conversion is lossy around `oneof`, `map`, and `Timestamp`. Document round-trip rules:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent protobuf evolution compatibility, that means making failure visible early.
 
-- Never expose internal field numbers in public docs.
-- Version public JSON schemas (`toolSchemaVersion: 2`).
-- When proto adds fields, JSON Schema `additionalProperties: false` integrations break—prefer `true` for extensibility on public surfaces.
+Put a metric on the user-visible effect of agent protobuf evolution compatibility before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-## Migration playbook for live traffic
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with protobuf evolution compatibility that needs a hero is not done.
 
-1. **Add** fields in proto; release consumers (ignore new data).
-2. **Deploy** producers writing new fields (dual-write optional legacy).
-3. **Migrate** readers to use new fields when present.
-4. **Deprecate** legacy paths; `reserved` old fields after traffic at zero.
-5. **Delete** dead code paths—not just proto comments.
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-For Kafka topics, use subject compatibility (Confluent Schema Registry with PROTOBUF) or embed `schema_version` in message headers if you manage schemas in Git.
+Related reading:
 
-```protobuf
-// Header: schema_version=3
-message AgentTurnEvent { ... }
-```
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Consumers read header first and dispatch to parser v3 or v2. Heavyweight but explicit when Buf breaking checks cannot cover all runtimes.
+## Twelve-month maintenance load
 
-## Field number allocation discipline
+Teams usually discover Operating agents with protobuf evolution compatibility after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Agent repos often sprawl across ten services generating stubs from the same proto tree. Assign number ranges per domain to reduce merge conflicts:
+Keep side effects at the edges and make every write idempotent. Operating agents with protobuf evolution compatibility without retry semantics is a future incident write-up.
 
-| Range | Owner | Example messages |
-|-------|-------|------------------|
-| 1–99 | Core session | `AgentTurnEvent`, `StreamFrame` |
-| 100–199 | Tools | `ToolInvocation`, `ToolResult` |
-| 200–299 | Retrieval | `RetrievalQuery`, `ChunkHit` |
-| 300–399 | Human feedback | `Rating`, `Correction` |
+Acceptance check: an on-call engineer can explain system state for agent protobuf evolution compatibility from one dashboard and one runbook page.
 
-Publish the registry in `proto/README.md`. CI rejects PRs that allocate outside range without platform review.
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
 
-Never set `json_name` to camelCase in proto3 then switch to snake_case in public REST—the wire is unchanged but mobile clients desync. Pick a JSON convention and lint it.
+## Practical defaults for Operating agents with protobuf evolution compatibility
 
-## Closing thought
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent protobuf evolution compatibility, that means making failure visible early.
 
-Protobuf evolution compatibility is a social contract enforced by integers. Agent systems change fast; field numbers change never—or only with a numbered migration plan. Treat `.proto` files like database migrations: additive by default, breaking changes get a new table name, not a silent ALTER.
+Keep side effects at the edges and make every write idempotent. Operating agents with protobuf evolution compatibility without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent protobuf evolution compatibility from one dashboard and one runbook page.
+
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Review questions before merging agent protobuf evolution compatibility work
+
+I treat Operating agents with protobuf evolution compatibility as an operations problem first. The goal is to bound tool calls and blast radius for protobuf evolution compatibility, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with protobuf evolution compatibility without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent protobuf evolution compatibility.
+
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-protobuf-evolution-compatibility` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent protobuf evolution compatibility
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent protobuf evolution compatibility, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent protobuf evolution compatibility before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent protobuf evolution compatibility.
+
+Slug-specific note (agent-protobuf-evolution-compatibility): prioritize compatibility behavior under load and verify with a fixture named `agent-protobuf-evolution-compatibility-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent protobuf evolution compatibility. Expand only when the metric demands it.
 
 ## Resources
 
-- [Protocol Buffers — Updating a Message Type](https://protobuf.dev/programming-guides/proto3/#updating)
-- [Buf breaking change detection rules](https://buf.build/docs/breaking/rules/)
-- [Google API Improvement Guide — Compatibility](https://cloud.google.com/apis/design/compatibility)
-- [Confluent Schema Registry — Protobuf](https://docs.confluent.io/platform/current/schema-registry/fundamentals/serdes-develop/serdes-protobuf.html)
-- [gRPC versioning guidance](https://grpc.io/docs/guides/versioning/)
+- Internal runbook seed: `agent-protobuf-evolution-compatibility`
+- https://12factor.net/
+- https://martinfowler.com/

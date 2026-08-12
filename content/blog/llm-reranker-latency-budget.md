@@ -1,237 +1,159 @@
 ---
-title: "Reranker Latency Budget"
+title: "Reranker Latency Budget in LLM services"
 slug: "llm-reranker-latency-budget"
-description: "Allocate milliseconds across retrieval, reranking, and generation in agent RAG pipelines—with adaptive top-k, deadline propagation, and graceful fallback when the cross-encoder misses its slot for teams running LLM features in production."
+description: "Reranker Latency Budget in LLM services: how to harden LLM services around reranker latency budget — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-04-14"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "reranker latency budget, cross-encoder timeout, RAG pipeline SLA, adaptive top-k, Cohere rerank, retrieval quality tradeoff"
+  - "Engineering"
+keywords: "llm, reranker, latency, budget, production, engineering"
 faq:
-  - q: "What share of total RAG latency should reranking consume?"
-    a: "Cap reranking at 15–25% of end-to-end p95 budget for interactive agents—typically 80–150 ms on a 600 ms target. Retrieval and generation dominate; reranking is high leverage per millisecond but hits steep diminishing returns past 100 candidate pairs."
-  - q: "Should agents skip reranking under load?"
-    a: "Degrade by reducing candidate count before skipping entirely. Drop from top-50 to top-20 first; if still over budget, fall back to bi-encoder scores with a logged degrade flag. Blind skip without telemetry hides quality regressions product teams never notice until eval scores drop."
-  - q: "How do you budget batched vs per-query rerank calls?"
-    a: "Batching improves throughput but adds queue wait. Set a max batch wait of 10–20 ms; if the batch is not full by then, send partial batch. Measure queue_time separately from model_inference_ms—on-call often optimizes the wrong knob."
-  - q: "Does reranker latency matter for background agent tasks?"
-    a: "Loosen budgets for async jobs—500 ms rerank on a 30 s report job is fine. Still enforce deadlines so runaway retrieval does not block worker pools; use context cancellation propagated from the job scheduler."
+  - q: "What is Reranker Latency Budget in LLM services?"
+    a: "Reranker Latency Budget in LLM services is the production approach to harden LLM services around reranker latency budget. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Reranker Latency Budget in LLM services?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with llm reranker latency budget, prioritize it."
+  - q: "What is the most common mistake with Reranker Latency Budget in LLM services?"
+    a: "The usual failure is treating llm reranker latency budget as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Product wanted "better answers" from the support agent. Engineering added a cross-encoder reranker on top-100 bi-encoder hits. p95 query latency jumped from 620 ms to 1.4 s; users complained before eval dashboards moved. The reranker was not slow in isolation—it had **no budget**, ran on 100 pairs every time, and blocked generation even when the first five bi-encoder results were already correct. Fixing agent quality required treating reranking as a scheduled passenger with a ticket, not a free rider on the critical path.
+**Reranker Latency Budget in LLM services** means you harden LLM services around reranker latency budget — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating llm reranker latency budget as a pure library problem start paging people.
 
-## Decompose the pipeline budget
+This write-up is specific to `llm-reranker-latency-budget` in a llm context, using Prometheus, Postgres, vLLM for the mechanics while keeping ownership human.
 
-Start from user-facing SLO—say 800 ms p95 for first token visible—and allocate backward:
+## Incident pattern involving llm reranker latency budget
 
-| Stage | Target p95 | Notes |
-|-------|------------|-------|
-| Gateway auth + routing | 40 ms | fixed |
-| Query embedding | 60 ms | cache frequent queries |
-| Vector retrieval (top-100) | 120 ms | HNSW params trade recall |
-| **Rerank (100→10)** | **120 ms** | **this post** |
-| Context assembly | 30 ms | token trimming |
-| LLM first token | 430 ms | dominates |
+I treat Reranker Latency Budget in LLM services as an operations problem first. The goal is to harden LLM services around reranker latency budget, not to collect frameworks.
 
-Sum with overlap awareness: parallelize embedding with auth where possible; rerank cannot start until retrieval returns.
+Put a metric on the user-visible effect of llm reranker latency budget before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Document the budget in repo `docs/latency-budget.md` and enforce in code—not slide decks.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm reranker latency budget.
 
-## Deadline propagation
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-Pass `deadline` through the stack:
+## Root cause in plain language
 
-```typescript
-interface RequestContext {
-  traceId: string;
-  deadlineMs: number; // absolute monotonic deadline
-}
+Teams usually discover Reranker Latency Budget in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-function remainingMs(ctx: RequestContext): number {
-  return Math.max(0, ctx.deadlineMs - performance.now());
-}
+Keep side effects at the edges and make every write idempotent. Reranker Latency Budget in LLM services without retry semantics is a future incident write-up.
 
-async function ragQuery(ctx: RequestContext, query: string): Promise<RagResult> {
-  const embed = await withTimeout(embedQuery(query), remainingMs(ctx) * 0.15);
-  const hits = await withTimeout(retrieve(embed, 100), remainingMs(ctx) * 0.25);
+Acceptance check: an on-call engineer can explain system state for llm reranker latency budget from one dashboard and one runbook page.
 
-  const rerankBudget = Math.min(remainingMs(ctx) * 0.25, 150);
-  const ranked = await rerankWithBudget(query, hits, rerankBudget, ctx);
+Concretely, being able to harden LLM services around reranker latency budget forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-  return assembleContext(ranked, remainingMs(ctx));
-}
-```
-
-Child stages receive **fractions of remaining time**, not fixed slices—prevents earlier spikes from stealing rerank budget silently.
-
-## Adaptive top-k: spend where marginal gain exists
-
-Score dispersion from bi-encoder tells you whether reranking is worth full cost:
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
 ```python
-import numpy as np
-
-def adaptive_rerank_k(scores: list[float], max_k: int = 50, min_k: int = 10) -> int:
-    if len(scores) <= min_k:
-        return len(scores)
-    top = np.array(scores[:max_k])
-    # Normalized gap between rank-5 and rank-20
-    spread = top[4] - top[19] if len(top) >= 20 else top[0] - top[-1]
-    if spread > 0.12:  # tune from offline eval
-        return min_k  # clear winners — cheap rerank
-    if spread > 0.06:
-        return 25
-    return max_k  # ambiguous — spend budget
-```
-
-Log chosen `k` and `spread` per query. Product analytics correlates `k` distribution with thumbs-down rate.
-
-## Rerank executor with cancellation
-
-```python
-import asyncio
+# Reranker Latency Budget in LLM services
 from dataclasses import dataclass
 
-@dataclass
-class RerankResult:
-    doc_ids: list[str]
-    degraded: bool
-    latency_ms: float
+@dataclass(frozen=True)
+class LlmRerankerLatencyRequest:
+    tenant_id: str
+    idempotency_key: str
 
-async def rerank_with_budget(
-    query: str,
-    docs: list[dict],
-    budget_ms: float,
-    client,
-) -> RerankResult:
-    t0 = asyncio.get_event_loop().time()
-    k = adaptive_rerank_k([d["score"] for d in docs])
-    subset = docs[:k]
-
-    try:
-        ranked = await asyncio.wait_for(
-            client.rerank(query, [d["text"] for d in subset]),
-            timeout=budget_ms / 1000,
-        )
-        ordered = [subset[i]["id"] for i in ranked.indices[:10]]
-        return RerankResult(
-            doc_ids=ordered,
-            degraded=False,
-            latency_ms=(asyncio.get_event_loop().time() - t0) * 1000,
-        )
-    except asyncio.TimeoutError:
-        fallback = [d["id"] for d in sorted(subset, key=lambda x: -x["score"])[:10]]
-        return RerankResult(
-            doc_ids=fallback,
-            degraded=True,
-            latency_ms=budget_ms,
-        )
+async def run_llm_reranker_latency_bud(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("llm-reranker-latency-budget"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Emit `rerank_degraded_total` counter—alert when degrade rate exceeds 5% for 15 minutes.
+## The fix that held under load
 
-## Batching without blowing p95
+Teams usually discover Reranker Latency Budget in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Self-hosted cross-encoders (sentence-transformers, ONNX runtime) benefit from micro-batching:
+Keep side effects at the edges and make every write idempotent. Reranker Latency Budget in LLM services without retry semantics is a future incident write-up.
 
-```python
-class RerankBatcher:
-    def __init__(self, max_batch=16, max_wait_ms=15):
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.max_batch = max_batch
-        self.max_wait_ms = max_wait_ms
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Reranker Latency Budget in LLM services that needs a hero is not done.
 
-    async def rerank(self, query: str, pairs: list[str]) -> list[float]:
-        fut = asyncio.get_event_loop().create_future()
-        await self.queue.put((query, pairs, fut))
-        return await fut
+My never-again list for llm reranker latency budget: treating llm reranker latency budget as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-    async def run_worker(self, model):
-        while True:
-            batch = []
-            deadline = asyncio.get_event_loop().time() + self.max_wait_ms / 1000
-            while len(batch) < self.max_batch:
-                timeout = max(0, deadline - asyncio.get_event_loop().time())
-                try:
-                    item = await asyncio.wait_for(self.queue.get(), timeout=timeout)
-                    batch.append(item)
-                except asyncio.TimeoutError:
-                    break
-            if not batch:
-                continue
-            # model forward on concatenated batch — implementation specific
-            ...
-```
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-Separate metrics: `rerank_batch_size`, `rerank_queue_wait_ms`, `rerank_inference_ms`. High queue wait under low inference means increase `max_wait_ms` cautiously or add GPU replicas.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating llm reranker latency budget as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Hosted rerank APIs (Cohere, Jina, etc.)
+## Tests and probes that catch regressions
 
-Vendor latency includes network RTT—budget 40–60 ms overhead on top of advertised model time. Co-locate agent workers in the same region as rerank endpoint. Cache rerank results for identical `(query_hash, doc_set_hash)` within TTL for FAQ-heavy agents; invalidate on corpus update.
+Teams usually discover Reranker Latency Budget in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Compare cost: hosted rerank per 1k queries vs GPU amortized—finance cares when agent traffic 10×.
+Put a metric on the user-visible effect of llm reranker latency budget before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Quality guardrails when degrading
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm reranker latency budget.
 
-Degraded path must not silently ship garbage:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Reranker Latency Budget in LLM services cannot answer, it is not production-ready.
 
-1. Log feature flag `rerank_degraded` on response metadata for offline eval joins
-2. Weekly sample degraded queries for human review
-3. Auto-raise budget temporarily if degrade correlates with support ticket volume
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-Run offline nDCG@10 with full rerank vs bi-encoder-only on golden sets—know your quality floor before enabling adaptive k.
+## Runbook lines that save minutes
 
-## Load testing rerank saturation
+I treat Reranker Latency Budget in LLM services as an operations problem first. The goal is to harden LLM services around reranker latency budget, not to collect frameworks.
 
-Scenario matrix:
+Keep side effects at the edges and make every write idempotent. Reranker Latency Budget in LLM services without retry semantics is a future incident write-up.
 
-- Steady 500 QPS with p95 budget 800 ms
-- Spike 3× with retrieval cache cold
-- Single query with max_k=100 and adversarial long documents
+Acceptance check: an on-call engineer can explain system state for llm reranker latency budget from one dashboard and one runbook page.
 
-Watch GPU SM utilization and batch queue depth—not just HTTP 500 rate. Rerank timeouts manifest as **good-enough wrong answers**, not errors.
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-## Instrumentation checklist
+Related reading:
 
-Traces should include spans:
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-- `retrieve` with `hit_count`, `index_name`
-- `rerank` with `k`, `degraded`, `inference_ms`, `queue_ms`
-- `generate` with `prompt_tokens`
+## Platform guardrails afterward
 
-SLO burn on parent `agent.query` span when rerank child exceeds 150 ms for 5% of traffic.
+I treat Reranker Latency Budget in LLM services as an operations problem first. The goal is to harden LLM services around reranker latency budget, not to collect frameworks.
 
-## Token budget interaction
+Put a metric on the user-visible effect of llm reranker latency budget before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Reranking longer documents increases cross-encoder input tokens—latency and cost rise together. Truncate candidate text to 512 tokens per side with sentence-aware cutoffs before rerank scoring. Log `truncated_pair_count` when truncation fires; eval teams compare truncated vs full-text nDCG quarterly.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm reranker latency budget.
 
-If your agent passes reranked chunks directly to the LLM, rerank latency savings mean nothing when generation blows the context window. Tie rerank `top_n` output to remaining **generation token budget**—return fewer, higher-confidence chunks when the user query already consumed retrieval budget.
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-## Cold start and model warm-up
+## Practical defaults for Reranker Latency Budget in LLM services
 
-Self-hosted reranker pods cold-start in 3–8 seconds on scale-from-zero platforms. Agent traffic spikes after marketing launches hit cold GPUs first—p95 explodes while average looks fine. Keep minimum replicas ≥2 during business hours; run synthetic rerank warmup queries every 60 seconds on each pod (`/health/warm` endpoint that runs a dummy forward pass).
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm reranker latency budget, that means making failure visible early.
 
-For serverless GPU, accept higher baseline cost or route interactive traffic to always-warm pools and batch analytics to spot instances.
+Keep side effects at the edges and make every write idempotent. Reranker Latency Budget in LLM services without retry semantics is a future incident write-up.
 
-## Eval loop closing the budget
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Reranker Latency Budget in LLM services that needs a hero is not done.
 
-Define two offline metrics tracked weekly:
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
 
-- **Latency compliance**: % of golden queries where simulated pipeline meets 800 ms with production budgets
-- **Quality delta**: nDCG@10 full rerank minus degraded path
+Default deny, explicit timeouts, and one dashboard row for llm reranker latency budget. Expand only when the metric demands it.
 
-Raise rerank budget only when quality delta exceeds 4 points and latency compliance stays above 98%. Lower budget when compliance drops below 95% regardless of quality—users abandon before reading perfect answers.
+## Review questions before merging llm reranker latency budget work
 
-Ship feature flags per tenant tier: enterprise gets full rerank budget; free tier gets adaptive k capped at 15. Meter `rerank_ms * qps` per tier for COGS reporting.
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm reranker latency budget, that means making failure visible early.
 
-## Multi-query agent turns
+Put a metric on the user-visible effect of llm reranker latency budget before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Sub-agents and decomposition patterns issue three retrieval calls per user message. Budget per **turn**, not per sub-query—or split the 120 ms rerank slice across calls (40 ms each) with hard fallback on the third. Parent orchestrator passes shared `deadlineMs`; child calls must not reset deadlines locally.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Reranker Latency Budget in LLM services that needs a hero is not done.
+
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and treating llm reranker latency budget as a pure library problem. Missing that note blocks merge.
+
+## Field notes after thirty days of llm reranker latency budget
+
+I treat Reranker Latency Budget in LLM services as an operations problem first. The goal is to harden LLM services around reranker latency budget, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Reranker Latency Budget in LLM services without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm reranker latency budget.
+
+Slug-specific note (llm-reranker-latency-budget): prioritize budget behavior under load and verify with a fixture named `llm-reranker-latency-budget-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-reranker-latency-budget` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Cohere Rerank API documentation](https://docs.cohere.com/reference/rerank) — latency characteristics and batch limits for hosted rerankers
-- [Sentence Transformers — Cross-Encoders](https://www.sbert.net/examples/applications/cross-encoder/README.html) — self-hosted rerank modeling options
-- [ONNX Runtime — Performance tuning](https://onnxruntime.ai/docs/performance/tune-performance.html) — optimizing cross-encoder inference on CPU/GPU
-- [Google SRE — Implementing SLOs](https://sre.google/workbook/implementing-slos/) — budgeting error budgets across pipeline stages
-- [Pinecone — Hybrid search and reranking patterns](https://docs.pinecone.io/guides/search/hybrid-search) — retrieval+r rerank integration in vector stacks
+- Internal runbook seed: `llm-reranker-latency-budget`
+- https://12factor.net/
+- https://martinfowler.com/

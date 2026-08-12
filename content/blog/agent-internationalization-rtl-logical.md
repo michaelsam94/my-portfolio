@@ -1,294 +1,159 @@
 ---
-title: "AI Agents: Internationalization Rtl Logical"
+title: "Agent reliability via internationalization rtl logical"
 slug: "agent-internationalization-rtl-logical"
-description: "Internationalization for agent UIs with RTL locales and CSS logical properties — bidirectional chat layouts, mirrored icons, locale-aware formatting, and testing Arabic and Hebrew agent surfaces without breaking LTR defaults."
+description: "Agent reliability via internationalization rtl logical: how to ship agent internationalization rtl logical with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-07-02"
-dateModified: "2026-07-02"
-tags: ["AI", "Agent", "Internationalization"]
-keywords: "internationalization, RTL, logical properties, CSS inline-start, agent UI, bidirectional text, i18n, locale, Arabic, Hebrew, chat layout"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, internationalization, rtl, logical, production, engineering"
 faq:
-  - q: "Should agent chat UIs use physical CSS (left/right) or logical properties?"
-    a: "Use logical properties — inline-start, inline-end, margin-inline, padding-inline, border-inline-start — so one stylesheet serves LTR and RTL. Physical left/right hardcodes direction and breaks when locale switches or when mixed-direction content (English product names in Arabic UI) appears inside bubbles."
-  - q: "How do I handle RTL for streaming agent responses?"
-    a: "Set dir on the message container from locale, not per-token. Stream text into a pre-established directional context; do not recompute dir on every chunk. For markdown rendering, sanitize and preserve Unicode bidi controls; avoid injecting LTR-only CSS into rendered HTML from the model."
-  - q: "Which agent UI elements should mirror in RTL vs stay fixed?"
-    a: "Mirror asymmetric navigation (back arrows, chevrons, send button alignment, tool call timelines). Do not mirror symmetric icons (play, search, close), numbers, code blocks, or latinate model output unless wrapped in dir=ltr spans. Media controls and charts generally stay LTR; labels use logical alignment."
-  - q: "How should agents format dates, numbers, and currencies per locale?"
-    a: "Use Intl APIs (Intl.DateTimeFormat, Intl.NumberFormat, Intl.RelativeTimeFormat) with the user's locale from auth or browser — never hardcode en-US. Store UTC in the backend; format at render. Currency follows user or tenant locale policy, not server region."
+  - q: "What is Agent reliability via internationalization rtl logical?"
+    a: "Agent reliability via internationalization rtl logical is the production approach to ship agent internationalization rtl logical with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via internationalization rtl logical?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent internationalization rtl logical, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via internationalization rtl logical?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The agent dashboard shipped in English with `margin-left: 12px` on every chat bubble and a send icon pointing right. Enterprise rollout added Arabic and Hebrew tenants; messages aligned to the wrong edge, tool-call timelines read backwards, and mixed English SKUs inside RTL bubbles collapsed into unreadable bidi tangles. Fixing it required neither a full rewrite nor separate RTL CSS files — it required logical properties, explicit `dir` on conversational containers, and locale-aware formatting wired through the same component tree.
+**Agent reliability via internationalization rtl logical** means you ship agent internationalization rtl logical with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Internationalization for agent products is not translation alone. RTL locales expose every physical `left`/`right` assumption in chat layouts, streaming markdown, tool traces, and citation chips. Logical CSS and directional context make one UI code path serve global users.
+This write-up is specific to `agent-internationalization-rtl-logical` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## RTL fundamentals for conversational UI
+## Decision guide for Agent reliability via internationalization rtl logical
 
-**Direction** (`dir=rtl` or `dir=ltr`) sets the inline axis: start is right in RTL, left in LTR.
+I treat Agent reliability via internationalization rtl logical as an operations problem first. The goal is to ship agent internationalization rtl logical with human override paths, not to collect frameworks.
 
-**Writing mode** defaults to horizontal-tb; vertical scripts are rare in agent UIs but `writing-mode` matters for CJK density tweaks.
+Put a metric on the user-visible effect of agent internationalization rtl logical before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-**Unicode bidi** algorithm reorders mixed scripts automatically — but only if the DOM establishes correct directional isolates. An Arabic sentence containing `"SKU-90210-X"` needs surrounding context; otherwise Latin segments jump.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent internationalization rtl logical.
 
-Agent chat differs from marketing pages:
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-- Continuous streaming updates text node content
-- User and assistant bubbles share a thread with opposing alignment conventions
-- Tool calls embed JSON, code, and citations with strong LTR bias
-- Timestamps and avatars anchor to thread edges
+## When to refuse this approach
 
-Each pattern needs deliberate `dir` and logical layout — not accidental inheritance from `<html dir="ltr">`.
+Teams usually discover Agent reliability via internationalization rtl logical after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-## Logical properties replace physical ones
+Keep side effects at the edges and make every write idempotent. Agent reliability via internationalization rtl logical without retry semantics is a future incident write-up.
 
-Map physical habits to logical equivalents:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent internationalization rtl logical.
 
-| Physical | Logical |
-|----------|---------|
-| `margin-left` | `margin-inline-start` |
-| `margin-right` | `margin-inline-end` |
-| `padding-left` | `padding-inline-start` |
-| `text-align: left` | `text-align: start` |
-| `left: 0` | `inset-inline-start: 0` |
-| `border-left` | `border-inline-start` |
-| `float: left` | avoid floats; use flex/grid |
+Concretely, being able to ship agent internationalization rtl logical with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```css
-/* agent-chat/message.css */
-.agent-message-row {
-  display: flex;
-  flex-direction: row;
-  gap: 0.75rem;
-  padding-inline: 1rem;
-  margin-block-end: 0.5rem;
-}
-
-.agent-message-row--user {
-  flex-direction: row-reverse; /* avatar + bubble; mirrors in RTL automatically */
-}
-
-.agent-bubble {
-  border-inline-start: 3px solid var(--accent);
-  padding-inline: 1rem;
-  padding-block: 0.75rem;
-  text-align: start;
-  max-inline-size: 42rem;
-}
-
-.agent-composer {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-inline: 1rem;
-  padding-block: 0.75rem;
-  border-block-start: 1px solid var(--border);
-}
-
-.agent-composer__input {
-  flex: 1;
-  text-align: start;
-}
-
-.agent-composer__send {
-  /* Icon mirrored via transform when dir=rtl if asymmetric */
-  margin-inline-start: 0.25rem;
-}
-```
-
-With logical properties, switching locale updates `dir` on `<html>` or a locale root — components reflow without duplicate rulesets.
-
-## Establishing directional context in React
-
-Set `dir` and `lang` together from the active locale:
-
-```tsx
-// i18n/LocaleRoot.tsx
-import { useLocale } from "./useLocale";
-
-const RTL_LOCALES = new Set(["ar", "he", "fa", "ur"]);
-
-export function LocaleRoot({ children }: { children: React.ReactNode }) {
-  const { locale } = useLocale();
-  const dir = RTL_LOCALES.has(locale.split("-")[0]) ? "rtl" : "ltr";
-
-  return (
-    <div lang={locale} dir={dir} className="agent-app-root">
-      {children}
-    </div>
-  );
-}
-```
-
-Per-message override for known LTR payloads (code, JSON tool results):
-
-```tsx
-function ToolResultBlock({ content }: { content: string }) {
-  return (
-    <pre dir="ltr" className="agent-tool-result">
-      <code>{content}</code>
-    </pre>
-  );
-}
-```
-
-Do not set `dir="ltr"` on the entire assistant bubble when the natural language answer is Arabic — only isolate LTR subtrees.
-
-## Streaming agent responses without bidi bugs
-
-Streaming complicates bidi: browsers reshuffle glyphs as chunks arrive.
-
-Guidelines:
-
-1. Create the bubble element with correct `dir` before first token.
-2. Append chunks to a single text node or marked span; avoid splitting words across elements.
-3. For markdown renderers, run bidi isolation on finished blocks where possible; debounce re-parse during stream if needed.
-4. Never strip Unicode isolates (U+2066–U+2069) in sanitization unless you replace them with HTML isolates.
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
 ```typescript
-// stream/appendToken.ts
-export function appendStreamToken(
-  container: HTMLElement,
-  token: string,
-  localeDir: "ltr" | "rtl",
-) {
-  if (!container.dataset.initialized) {
-    container.dir = localeDir;
-    container.dataset.initialized = "true";
+// Agent reliability via internationalization rtl logical
+export async function handle_agent_internationalization_rtl_logical(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-internationalization-rtl-logical");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-  container.insertAdjacentText("beforeend", token);
 }
 ```
 
-If the model emits markdown with hardcoded `style="text-align:left"`, strip or override in post-processing — LLM output often assumes LTR English layout.
+## Minimal production setup
 
-## Mirroring rules for agent chrome
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent internationalization rtl logical, that means making failure visible early.
 
-**Mirror:** back arrows, disclosure chevrons, thread indentation gutters, progress timelines for multi-step tool plans, slide-over panels that enter from the inline-start edge.
+Put a metric on the user-visible effect of agent internationalization rtl logical before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-**Do not mirror:** symmetric icons, logos, maps, charts, video controls, checkmarks (usually symmetric), numeric keypads.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via internationalization rtl logical that needs a hero is not done.
 
-For asymmetric SVG icons:
+My never-again list for agent internationalization rtl logical: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```css
-[dir="rtl"] .icon-chevron-next {
-  transform: scaleX(-1);
-}
-```
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-Prefer SVG `transform` over separate RTL assets unless the icon encodes direction semantically (e.g., text cursor).
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Tool-call traces read chronologically top-to-bottom; order does not mirror — only horizontal alignment and connector lines use logical positioning.
+## Cost, complexity, and ownership
 
-## Locale-aware formatting with Intl
+I treat Agent reliability via internationalization rtl logical as an operations problem first. The goal is to ship agent internationalization rtl logical with human override paths, not to collect frameworks.
 
-Agents surface times ("updated 3 minutes ago"), currency in billing tools, and large token counts.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-```typescript
-// i18n/format.ts
-export function formatRelativeTime(
-  date: Date,
-  locale: string,
-): string {
-  const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (Math.abs(diffSec) < 60) return rtf.format(diffSec, "second");
-  const diffMin = Math.round(diffSec / 60);
-  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
-  const diffHr = Math.round(diffMin / 60);
-  return rtf.format(diffHr, "hour");
-}
+Acceptance check: an on-call engineer can explain system state for agent internationalization rtl logical from one dashboard and one runbook page.
 
-export function formatNumber(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale).format(value);
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via internationalization rtl logical cannot answer, it is not production-ready.
 
-Server-side agent logs stay UTC. User-facing timestamps in the UI convert with `Intl.DateTimeFormat` and the tenant timezone preference — not the server's `TZ`.
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-## Translation keys and pluralization
+## Migration without dual-running forever
 
-Agent UI strings — "Send", "Regenerate", "Tool running…" — belong in ICU MessageFormat catalogs, not inline English.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent internationalization rtl logical, that means making failure visible early.
 
-```json
-{
-  "composer.send": "Send",
-  "tool.status.running": "{count, plural, =0 {No tools running} one {# tool running} other {# tools running}}",
-  "citation.source": "Source {index}"
-}
-```
+Put a metric on the user-visible effect of agent internationalization rtl logical before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-RTL does not affect translation file structure; the same keys serve all locales. Avoid concatenating strings with variables in code (`"You have " + n + " messages"`) — plural and gender rules vary.
+Acceptance check: an on-call engineer can explain system state for agent internationalization rtl logical from one dashboard and one runbook page.
 
-LLM system prompts are separate from UI i18n: localize the **interface**, and optionally run the model in the user's language — but do not assume translation of dynamic model output via UI string tables.
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-## Mixed-direction citations and mentions
+Related reading:
 
-RAG citations often embed English URLs and titles in Arabic answers. Wrap citations:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-```html
-<span dir="rtl" lang="ar">راجع </span>
-<cite dir="ltr" lang="en">API Reference v2.3</cite>
-<span dir="rtl" lang="ar"> للتفاصيل.</span>
-```
+## Definition of done
 
-In components, use `unicode-bidi: isolate` on citation chips:
+Teams usually discover Agent reliability via internationalization rtl logical after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-```css
-.agent-citation {
-  unicode-bidi: isolate;
-  direction: ltr; /* URLs and latinate titles */
-  display: inline-block;
-  margin-inline: 0.25rem;
-}
-```
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Testing RTL agent surfaces
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via internationalization rtl logical that needs a hero is not done.
 
-Automated:
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-- Visual regression with `dir=rtl` snapshot per critical screen (Storybook stories with locale decorator)
-- axe-core i18n rules for `lang` attribute presence
-- Unit tests asserting logical CSS classes exist — no `ml-` Tailwind physical utilities on layout primitives unless mapped to logical plugin
+## Practical defaults for Agent reliability via internationalization rtl logical
 
-Manual checklist:
+I treat Agent reliability via internationalization rtl logical as an operations problem first. The goal is to ship agent internationalization rtl logical with human override paths, not to collect frameworks.
 
-- [ ] User and assistant bubbles align to correct inline edges
-- [ ] Composer send control reachable thumb zone on mobile RTL
-- [ ] Streaming long Arabic message without cursor jump
-- [ ] Tool JSON blocks readable LTR inside RTL thread
-- [ ] Date and number formats match locale (ar-SA vs ar-EG)
-- [ ] Keyboard focus order follows visual reading order
+Put a metric on the user-visible effect of agent internationalization rtl logical before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Pseudo-locale (`en-XA` with lengthened strings) catches truncation; RTL screenshots catch alignment.
+Acceptance check: an on-call engineer can explain system state for agent internationalization rtl logical from one dashboard and one runbook page.
 
-## Tailwind and design tokens
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-If using Tailwind, enable logical utilities or use plugins mapping `ms-` / `me-` / `ps-` / `pe-` consistently. Mixing physical `ml-4` on some components undoes locale switching.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-Design tokens for spacing should name `inline-sm`, `block-md` — not `left-gutter`.
+## Review questions before merging agent internationalization rtl logical work
 
-## Agent-specific pitfalls
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent internationalization rtl logical, that means making failure visible early.
 
-**Suggested prompt chips** in LTR English below an RTL composer confuse scanning order — localize chips and lay out with flex `wrap` on logical axis.
+Put a metric on the user-visible effect of agent internationalization rtl logical before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-**Voice input and IME** composition must not fight `dir` changes mid-composition.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent internationalization rtl logical.
 
-**PDF or email export** from agent sessions needs explicit `dir` in HTML templates; browser screen RTL does not transfer to attachments automatically.
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
 
-**Accessibility:** screen readers use `lang` and `dir` for pronunciation. Missing `lang` on Arabic UI is a WCAG failure independent of visual RTL.
+Default deny, explicit timeouts, and one dashboard row for agent internationalization rtl logical. Expand only when the metric demands it.
 
-## Performance and hydration in SSR agents
+## Field notes after thirty days of agent internationalization rtl logical
 
-Next.js and similar frameworks must emit correct `dir`/`lang` on first HTML byte — otherwise RTL users see LTR flash (FOUC). Read locale from cookie or `Accept-Language` on server; pass to root layout.
+I treat Agent reliability via internationalization rtl logical as an operations problem first. The goal is to ship agent internationalization rtl logical with human override paths, not to collect frameworks.
 
-Hydration mismatch occurs when client locale differs from server guess — prefer explicit user preference over browser default once logged in.
+Keep side effects at the edges and make every write idempotent. Agent reliability via internationalization rtl logical without retry semantics is a future incident write-up.
 
-## Closing
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via internationalization rtl logical that needs a hero is not done.
 
-Internationalization with RTL and logical properties is structural, not cosmetic. Agent chat UIs stream dynamic bidi text, embed LTR tool artifacts, and must mirror chrome without breaking numbers or code. One component tree with logical CSS, explicit directional isolates, and Intl formatting serves LTR and RTL tenants — provided you never shipped physical left/right as the layout foundation.
+Slug-specific note (agent-internationalization-rtl-logical): prioritize logical behavior under load and verify with a fixture named `agent-internationalization-rtl-logical-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- [MDN: CSS logical properties and values](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_logical_properties_and_values)
-- [W3C Internationalization: Structural markup and right-to-left text](https://www.w3.org/International/questions/qa-html-dir)
-- [Unicode TR9: Bidirectional Algorithm](https://unicode.org/reports/tr9/)
-- [FormatJS / ICU MessageFormat syntax](https://formatjs.io/docs/core-concepts/icu-syntax/)
-- [RTL styling on web.dev](https://web.dev/articles/building-rtl-aware-web-components)
+- Internal runbook seed: `agent-internationalization-rtl-logical`
+- https://12factor.net/
+- https://martinfowler.com/

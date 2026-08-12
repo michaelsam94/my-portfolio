@@ -1,131 +1,158 @@
 ---
 title: "Hotjar Consent Wiring"
 slug: "hotjar-consent-wiring"
-description: "Hotjar Consent Wiring: how to ship it with clear ownership and rollback in production flutter systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Hotjar Consent Wiring: how to operationalize hotjar consent with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-09"
 dateModified: "2026-08-12"
 tags:
-  - "Flutter"
-  - "Mobile"
-keywords: "hotjar, consent, wiring, flutter, production, engineering"
+  - "Engineering"
+  - "Hotjar"
+keywords: "hotjar, consent, wiring, production, engineering"
 faq:
   - q: "What is Hotjar Consent Wiring?"
-    a: "Hotjar Consent Wiring is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Hotjar Consent Wiring is the production approach to operationalize hotjar consent with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Hotjar Consent Wiring?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with hotjar consent wiring, prioritize it."
   - q: "What is the most common mistake with Hotjar Consent Wiring?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Hotjar Consent Wiring** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Hotjar Consent Wiring** means you operationalize hotjar consent with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Below is how I implement and operate it in Flutter systems using Flutter, Dart: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `hotjar-consent-wiring` in a product context, using Prometheus, Postgres for the mechanics while keeping ownership human.
 
-## Where Hotjar Consent Wiring actually shows up
+## What Hotjar Consent Wiring changes in day-two ops
 
-Most write-ups on Hotjar Consent Wiring stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For hotjar consent wiring, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for hotjar consent wiring from one dashboard and one runbook page.
 
-## A design that makes it routine to ship it with clear ownership and rollback
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
-Most write-ups on Hotjar Consent Wiring stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Designing so you can operationalize hotjar consent with clear ownership
 
-Make Hotjar Consent Wiring error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Hotjar Consent Wiring — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For hotjar consent wiring, that means making failure visible early.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Hotjar Consent Wiring without retry semantics is a future incident write-up.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for hotjar consent wiring from one dashboard and one runbook page.
 
-```dart
-class FlutterRepository {
-  Future<Result> run(Request req) async {
-    // Hotjar Consent Wiring
-    return Result.ok(await _client.post('/v1/action', body: req.toJson()));
+Concretely, being able to operationalize hotjar consent with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
+
+```typescript
+// Hotjar Consent Wiring
+export async function handle_hotjar_consent_wiring(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("hotjar-consent-wiring");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-## The failure mode I see in reviews
+## Failure modes specific to hotjar consent wiring
 
-If you only remember one thing about Hotjar Consent Wiring: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+I treat Hotjar Consent Wiring as an operations problem first. The goal is to operationalize hotjar consent with clear ownership, not to collect frameworks.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Put a metric on the user-visible effect of hotjar consent wiring before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hotjar consent wiring.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Hotjar Consent Wiring error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for hotjar consent wiring: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Instrumentation that answers the on-call question
+## Signals worth paging on
 
-If you only remember one thing about Hotjar Consent Wiring: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For hotjar consent wiring, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hotjar consent wiring.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Hotjar Consent Wiring designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Hotjar Consent Wiring cannot answer, it is not production-ready.
 
-## Rollout checklist
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
-I have watched teams under-specify Hotjar Consent Wiring and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## Rollout sequence with Prometheus
 
-Make Hotjar Consent Wiring error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Hotjar Consent Wiring — you only deployed it.
+Teams usually discover Hotjar Consent Wiring after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Hotjar Consent Wiring changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hotjar consent wiring.
+
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## What I would not do again
+## What I would delete after month one
 
-If you only remember one thing about Hotjar Consent Wiring: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For hotjar consent wiring, that means making failure visible early.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Keep side effects at the edges and make every write idempotent. Hotjar Consent Wiring without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for hotjar consent wiring from one dashboard and one runbook page.
 
-## Practical defaults I use for Hotjar Consent Wiring
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
-I have watched teams under-specify Hotjar Consent Wiring and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## Practical defaults for Hotjar Consent Wiring
 
-Make Hotjar Consent Wiring error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Hotjar Consent Wiring — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For hotjar consent wiring, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of hotjar consent wiring before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Hotjar Consent Wiring that needs a hero is not done.
 
-## Review questions before merging Hotjar Consent Wiring work
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
-I have watched teams under-specify Hotjar Consent Wiring and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Default deny, explicit timeouts, and one dashboard row for hotjar consent wiring. Expand only when the metric demands it.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging hotjar consent wiring work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Teams usually discover Hotjar Consent Wiring after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-A month in, prune unused paths. Hotjar Consent Wiring accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Put a metric on the user-visible effect of hotjar consent wiring before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Hotjar Consent Wiring
+Acceptance check: an on-call engineer can explain system state for hotjar consent wiring from one dashboard and one runbook page.
 
-Most write-ups on Hotjar Consent Wiring stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Default deny, explicit timeouts, and one dashboard row for hotjar consent wiring. Expand only when the metric demands it.
 
-Prefer small diffs with a kill switch. Hotjar Consent Wiring changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of hotjar consent wiring
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Hotjar Consent Wiring error rate. Expand only when the metric says you must.
+I treat Hotjar Consent Wiring as an operations problem first. The goal is to operationalize hotjar consent with clear ownership, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Hotjar Consent Wiring without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on hotjar consent wiring.
+
+Slug-specific note (hotjar-consent-wiring): prioritize wiring behavior under load and verify with a fixture named `hotjar-consent-wiring-smoke`.
+
+After a month, delete unused flags and dual paths. `hotjar-consent-wiring` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `hotjar-consent-wiring`
 - https://12factor.net/
+- https://martinfowler.com/

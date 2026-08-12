@@ -1,217 +1,159 @@
 ---
-title: "AI Agents: Write Through Cache Consistency"
+title: "Write Through Cache Consistency for production agents"
 slug: "agent-write-through-cache-consistency"
-description: "Keep agent session state and tool caches consistent with write-through patterns: Redis + Postgres dual writes, read-your-writes guarantees, and invalidation when agents mutate shared knowledge."
+description: "Write Through Cache Consistency for production agents: how to make agent write through cache consistency observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-11"
-dateModified: "2026-07-17"
-tags: ["AI Agents", "Cache", "Consistency", "Architecture"]
-keywords: "write through cache agent session, agent state consistency Redis, read your writes agent, cache invalidation RAG"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, write, through, cache, consistency, production, engineering"
 faq:
-  - q: "Write-through vs write-behind for agent session state?"
-    a: "Write-through: update cache and DB synchronously on every agent turn — simpler read-your-writes for multi-tab UX. Write-behind: higher write throughput but stale reads if user switches device before flush — poor fit for conversational agents."
-  - q: "What agent data belongs in cache vs authoritative store?"
-    a: "Cache: hot session context, tool result memoization, embedding lookup for recent chunks. Authoritative: billing events, audit logs, KB document versions — never cache-only."
-  - q: "How do you invalidate RAG cache when documents update?"
-    a: "Versioned keys: `chunk:{doc_id}:{content_hash}`. On ingest publish, bump doc version — old cache entries miss naturally. Broadcast invalidation event for eager purge on large reindex."
-  - q: "Does prompt caching change write-through design?"
-    a: "Provider prompt caches are read-only from your side. Your write-through layer still owns session facts and tool memo keys locally — don't conflate OpenAI prefix cache with application cache consistency."
+  - q: "What is Write Through Cache Consistency for production agents?"
+    a: "Write Through Cache Consistency for production agents is the production approach to make agent write through cache consistency observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Write Through Cache Consistency for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent write through cache consistency, prioritize it."
+  - q: "What is the most common mistake with Write Through Cache Consistency for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Write Through Cache Consistency for production agents** means you make agent write through cache consistency observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-User asks the agent to update a CRM record, then immediately asks "what did we just set the status to?" If session state went to Redis async while Postgres lagged — or worse, edge cache served another pod's stale view — the agent confidently lies. **Write-through caching** synchronizes cache and authoritative store on every mutation so agent reads see what writes committed, at the cost of write latency you must budget in p95 turn time.
+This write-up is specific to `agent-write-through-cache-consistency` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Cache patterns compared for agents
+## Incident pattern involving agent write through cache consistency
 
-| Pattern | Read latency | Write latency | Consistency | Agent fit |
-|---------|--------------|---------------|-------------|-----------|
-| Cache-aside | Low | Low | Eventual | OK for RAG chunks |
-| Write-through | Low | Higher | Strong | Session state |
-| Write-behind | Low | Lowest | Eventual | Risky for chat |
-| Read-through | Low | N/A | Depends | Tool memo reads |
+I treat Write Through Cache Consistency for production agents as an operations problem first. The goal is to make agent write through cache consistency observable and interruptible, not to collect frameworks.
 
-Agent **session memory** and **post-tool state** → write-through. Immutable **retrieved chunks** → cache-aside with version keys.
+Put a metric on the user-visible effect of agent write through cache consistency before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Write-through session store
+Acceptance check: an on-call engineer can explain system state for agent write through cache consistency from one dashboard and one runbook page.
 
-```python
-class AgentSessionStore:
-    def __init__(self, redis, pg):
-        self.redis = redis
-        self.pg = pg
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
-    def append_turn(self, session_id: str, turn: Turn) -> None:
-        key = f"session:{session_id}"
-        with self.pg.transaction():
-            self.pg.execute(
-                "INSERT INTO session_turns (session_id, seq, role, content) VALUES (%s, %s, %s, %s)",
-                (session_id, turn.seq, turn.role, turn.content),
-            )
-            self.redis.rpush(key, turn.to_json())
-            self.redis.expire(key, 86400 * 7)
-            # Invalidate derived summary cache
-            self.redis.delete(f"session:{session_id}:summary")
-```
+## Root cause in plain language
 
-Both succeed or transaction rolls back — no orphaned Redis state.
+Teams usually discover Write Through Cache Consistency for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Read-your-writes across pods
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Sticky sessions are fragile on K8s. Options:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent write through cache consistency.
 
-1. **Redis as primary read path** after write-through (Postgres for recovery).
-2. **Version token** returned to client, sent on next request:
+Concretely, being able to make agent write through cache consistency observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
 ```python
-def get_session(session_id: str, min_version: int | None) -> Session:
-    data = redis.lrange(f"session:{session_id}", 0, -1)
-    version = pg.get_version(session_id)
-    if min_version and version < min_version:
-        raise StaleReadError()  # client retries 100ms
-    return Session.from_turns(data, version=version)
+# Write Through Cache Consistency for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentWriteThroughRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_write_through_cach(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-write-through-cache-consistency"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Client includes `If-Match: session-version-42` header.
+## The fix that held under load
 
-## Tool result memoization
+Teams usually discover Write Through Cache Consistency for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Expensive idempotent tools (market data fetch) memo with write-through to avoid stale **external** truth:
+Put a metric on the user-visible effect of agent write through cache consistency before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-```python
-def cached_tool_call(tool: str, args_hash: str, ttl: int, fn):
-    key = f"toolmemo:{tool}:{args_hash}"
-    hit = redis.get(key)
-    if hit:
-        return json.loads(hit)
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent write through cache consistency.
 
-    result = fn()
-    with pg.transaction():
-        pg.log_tool_result(tool, args_hash, result)
-        redis.setex(key, ttl, json.dumps(result))
-    return result
-```
+My never-again list for agent write through cache consistency: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-TTL short (60–300s) for semi-fresh data; invalidate on known market close events.
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
-## RAG chunk cache — cache-aside with versioning
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Don't write-through megabyte embeddings every ingest:
+## Tests and probes that catch regressions
 
-```python
-def get_chunk_embedding(chunk_id: str, content_hash: str) -> vector:
-    key = f"emb:{chunk_id}:{content_hash}"
-    cached = redis.get(key)
-    if cached:
-        return deserialize(cached)
+I treat Write Through Cache Consistency for production agents as an operations problem first. The goal is to make agent write through cache consistency observable and interruptible, not to collect frameworks.
 
-    vec = embed_service.encode(chunk_id)
-    redis.setex(key, 86400, serialize(vec))  # no PG write — PG has chunks table
-    return vec
-```
+Put a metric on the user-visible effect of agent write through cache consistency before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Document update → new `content_hash` → automatic miss. Old keys expire via TTL.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Write Through Cache Consistency for production agents that needs a hero is not done.
 
-## Invalidation broadcast on KB reindex
+Review prompts I use: what happens twice, what happens never, what happens partially? If Write Through Cache Consistency for production agents cannot answer, it is not production-ready.
 
-Large reindex flips collection version:
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
-```python
-def on_reindex_complete(tenant_id: str, new_version: int):
-    pg.set_kb_version(tenant_id, new_version)
-    redis.publish(f"kb_invalidate:{tenant_id}", new_version)
-    # Workers subscribe and purge local Caffeine caches
-```
+## Runbook lines that save minutes
 
-Agent retrieval checks `kb_version` in session — mismatch triggers re-fetch even if chunk cache hit.
+I treat Write Through Cache Consistency for production agents as an operations problem first. The goal is to make agent write through cache consistency observable and interruptible, not to collect frameworks.
 
-## Consistency vs agent latency budget
+Put a metric on the user-visible effect of agent write through cache consistency before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Write-through adds ~2–8ms Redis + PG on hot path. Measure:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Write Through Cache Consistency for production agents that needs a hero is not done.
 
-```python
-with metrics.timer("session_append_ms"):
-    store.append_turn(session_id, turn)
-```
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
-If p95 exceeds SLO, consider:
+Related reading:
 
-- Async summary compression (write-through turns only, not derived artifacts)
-- Partitioned Redis cluster by tenant
-- Cockroach/Spanner for single-node SQL latency
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-Don't revert to write-behind without UX acceptance of stale reads.
+## Platform guardrails afterward
 
-## Failure handling
+I treat Write Through Cache Consistency for production agents as an operations problem first. The goal is to make agent write through cache consistency observable and interruptible, not to collect frameworks.
 
-| Failure | Behavior |
-|---------|----------|
-| Redis down | Fall back to PG read (degraded latency) |
-| PG down | Fail turn append — don't write Redis alone |
-| Partial dual-write bug | Reconciliation job compares counts |
+Put a metric on the user-visible effect of agent write through cache consistency before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Nightly:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Write Through Cache Consistency for production agents that needs a hero is not done.
 
-```sql
-SELECT session_id FROM session_turns
-GROUP BY session_id
-HAVING count(*) != redis_turn_count(session_id);  -- pseudo
-```
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
 
-## Testing
+## Practical defaults for Write Through Cache Consistency for production agents
 
-Integration test two concurrent pods:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent write through cache consistency, that means making failure visible early.
 
-```python
-def test_read_your_writes_cross_pod(store_a, store_b):
-    store_a.append_turn("s1", turn1)
-    session = store_b.get_session("s1", min_version=1)
-    assert len(session.turns) == 1
-```
+Keep side effects at the edges and make every write idempotent. Write Through Cache Consistency for production agents without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent write through cache consistency from one dashboard and one runbook page.
+
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-write-through-cache-consistency` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent write through cache consistency work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent write through cache consistency, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent write through cache consistency.
+
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-write-through-cache-consistency` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent write through cache consistency
+
+Teams usually discover Write Through Cache Consistency for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent write through cache consistency.
+
+Slug-specific note (agent-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `agent-write-through-cache-consistency-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-write-through-cache-consistency` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Redis — Cache consistency patterns](https://redis.io/docs/manual/patterns/)
-- [Martin Kleppmann — Designing Data-Intensive Applications (cache chapter)](https://dataintensive.net/)
-- [AWS — Caching best practices](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html)
-- [Jepsen — distributed cache consistency analyses](https://jepsen.io/analyses)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
+- Internal runbook seed: `agent-write-through-cache-consistency`
+- https://12factor.net/
+- https://martinfowler.com/

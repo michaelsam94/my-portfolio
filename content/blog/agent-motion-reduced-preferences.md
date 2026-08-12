@@ -1,245 +1,159 @@
 ---
-title: "AI Agents: Motion Reduced Preferences"
+title: "Operating agents with motion reduced preferences"
 slug: "agent-motion-reduced-preferences"
-description: "Agent UIs that stream, pulse, and animate can trigger vestibular symptoms. Honor prefers-reduced-motion at every layer—from CSS to tool status indicators—without stripping useful feedback."
+description: "Operating agents with motion reduced preferences: how to bound tool calls and blast radius for motion reduced preferences — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-30"
-dateModified: "2026-06-30"
-tags: ["AI", "Agent", "Motion"]
-keywords: "prefers-reduced-motion, vestibular accessibility, agent UI, streaming chat animation, WCAG motion, reduced motion React, a11y CSS"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, motion, reduced, preferences, production, engineering"
 faq:
-  - q: "Does prefers-reduced-motion mean removing all animation?"
-    a: "No. It means replacing motion that conveys no essential information, and swapping continuous or large movement for instant state changes or subtle opacity shifts. Progress can remain visible through text and static bars rather than pulsing shimmer effects."
-  - q: "Where do agent interfaces most often violate motion preferences?"
-    a: "Streaming token fade-ins, bouncing typing indicators, parallax tool cards, auto-scrolling message lists, and celebratory confetti on task completion. Each feels minor in isolation; together they dominate the viewport during long sessions."
-  - q: "Should reduced motion follow OS setting or an in-app toggle?"
-    a: "Both. Respect the OS media query by default, and expose an in-app override stored in user preferences so browser support gaps and remote-desktop quirks do not leave people stuck with animations they cannot tolerate."
-  - q: "How do we test agent motion accessibility?"
-    a: "Automated tests can assert CSS variables and class toggles under emulated media queries. Manual testing with Reduce Motion enabled on macOS/iOS is mandatory for streaming layouts because scroll anchoring bugs only appear during live token arrival."
+  - q: "What is Operating agents with motion reduced preferences?"
+    a: "Operating agents with motion reduced preferences is the production approach to bound tool calls and blast radius for motion reduced preferences. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with motion reduced preferences?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent motion reduced preferences, prioritize it."
+  - q: "What is the most common mistake with Operating agents with motion reduced preferences?"
+    a: "The usual failure is treating agent motion reduced preferences as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The first bug report did not mention accessibility. It said the agent chat "made me dizzy" during long troubleshooting sessions. Repro steps: open the copilot, watch the typing indicator bounce for ninety seconds while a tool call spinner pulsed, let the message list auto-scroll with elastic easing as tokens streamed in. The engineer who picked up the ticket could not reproduce—until they enabled **Reduce Motion** in macOS settings and realized the product never listened to it.
+**Operating agents with motion reduced preferences** means you bound tool calls and blast radius for motion reduced preferences — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like treating agent motion reduced preferences as a pure library problem start paging people.
 
-`prefers-reduced-motion` is not a niche media query. It is a medical accommodation for vestibular disorders, migraine triggers, and ADHD-related distraction sensitivity. Agent interfaces are motion-heavy by design: they signal liveness while waiting on slow models and tools. That liveness must not come at the cost of users who need stillness.
+This write-up is specific to `agent-motion-reduced-preferences` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## What the platform actually exposes
+## Explaining Operating agents with motion reduced preferences to a skeptical teammate
 
-Browsers surface the user's OS preference through CSS and JavaScript:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent motion reduced preferences, that means making failure visible early.
 
-```css
-/* Global agent shell tokens */
-:root {
-  --motion-duration-fast: 180ms;
-  --motion-duration-medium: 320ms;
-  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --typing-indicator: typing-bounce 1.2s ease-in-out infinite;
-  --stream-reveal: token-fade-in var(--motion-duration-fast) var(--motion-ease);
-}
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent motion reduced preferences as a pure library problem.
 
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --motion-duration-fast: 0ms;
-    --motion-duration-medium: 0ms;
-    --typing-indicator: none;
-    --stream-reveal: none;
+Acceptance check: an on-call engineer can explain system state for agent motion reduced preferences from one dashboard and one runbook page.
+
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
+
+## Making it routine to bound tool calls and blast radius for motion reduced preferences
+
+Teams usually discover Operating agents with motion reduced preferences after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
+
+Put a metric on the user-visible effect of agent motion reduced preferences before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
+
+Concretely, being able to bound tool calls and blast radius for motion reduced preferences forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
+
+```typescript
+// Operating agents with motion reduced preferences
+export async function handle_agent_motion_reduced_preferences(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-motion-reduced-preferences");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-JavaScript can read the same preference for React components that animate via libraries rather than CSS:
+## Code seams that keep refactors cheap
 
-```typescript
-// hooks/usePrefersReducedMotion.ts
-import { useEffect, useState } from "react";
+Teams usually discover Operating agents with motion reduced preferences after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-export function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent motion reduced preferences as a pure library problem.
 
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with motion reduced preferences that needs a hero is not done.
 
-  return reduced;
-}
-```
+My never-again list for agent motion reduced preferences: treating agent motion reduced preferences as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Safari and Chromium differ on when `change` fires across tabs—persist an explicit user override in local storage or your account profile and merge it with the media query result.
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-## Agent-specific motion hotspots
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent motion reduced preferences as a pure library problem |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Standard marketing sites animate hero sections once. Agent sessions loop motion for minutes or hours. Prioritize these surfaces:
+## Table stakes vs later polish
 
-### Streaming text reveal
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent motion reduced preferences, that means making failure visible early.
 
-Token-by-token fade-in looks polished but creates constant flicker in the peripheral vision. Under reduced motion, render accumulated text immediately on each chunk boundary without opacity transitions:
+Keep side effects at the edges and make every write idempotent. Operating agents with motion reduced preferences without retry semantics is a future incident write-up.
 
-```tsx
-// components/AgentMessage.tsx
-import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
 
-type Props = { content: string; isStreaming: boolean };
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with motion reduced preferences cannot answer, it is not production-ready.
 
-export function AgentMessage({ content, isStreaming }: Props) {
-  const reducedMotion = usePrefersReducedMotion();
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-  if (reducedMotion) {
-    return (
-      <div className="agent-message" aria-live="polite">
-        <p>{content}</p>
-        {isStreaming && (
-          <span className="sr-only">Response in progress</span>
-        )}
-      </div>
-    );
-  }
+## Regressions that show up after launch
 
-  return (
-    <div className="agent-message agent-message--animated" aria-live="polite">
-      <p className="agent-message__stream">{content}</p>
-    </div>
-  );
-}
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent motion reduced preferences, that means making failure visible early.
 
-Pair with `aria-live="polite"` so screen reader users hear progress without visual motion.
+Put a metric on the user-visible effect of agent motion reduced preferences before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-### Typing and tool-status indicators
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with motion reduced preferences that needs a hero is not done.
 
-Replace bouncing dots with a static label: "Agent is thinking" or "Running `search_logs` (12s)." Show elapsed time as text; it helps every user, not only those avoiding motion.
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-```css
-.tool-status--reduced {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
+Related reading:
 
-.tool-status--reduced::before {
-  content: "";
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--color-accent);
-  /* static dot — no pulse keyframes */
-}
-```
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-### Auto-scroll behavior
+## Twelve-month maintenance load
 
-Auto-scrolling chat is motion. When reduced motion is active, pin scroll position unless the user is already at the bottom—avoid animated `scrollIntoView({ behavior: "smooth" })`.
+I treat Operating agents with motion reduced preferences as an operations problem first. The goal is to bound tool calls and blast radius for motion reduced preferences, not to collect frameworks.
 
-```typescript
-export function scrollChatContainer(
-  el: HTMLElement | null,
-  reducedMotion: boolean
-) {
-  if (!el) return;
-  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  if (!atBottom) return; // respect reading position
+Put a metric on the user-visible effect of agent motion reduced preferences before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-  if (reducedMotion) {
-    el.scrollTop = el.scrollHeight;
-  } else {
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }
-}
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
 
-### Celebratory feedback
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-Confetti and success Lottie animations on completed agent tasks are high-amplitude motion. Swap for inline success text and optional sound off by default.
+## Practical defaults for Operating agents with motion reduced preferences
 
-## Central motion policy in design tokens
+Teams usually discover Operating agents with motion reduced preferences after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Scattershot `@media` blocks rot quickly. Define a motion tier system consumed by all agent components:
+Keep side effects at the edges and make every write idempotent. Operating agents with motion reduced preferences without retry semantics is a future incident write-up.
 
-| Tier | Default | Reduced motion |
-|------|---------|----------------|
-| **Essential** | Focus rings, opacity on disabled controls | Unchanged (accessibility-required) |
-| **Informative** | Progress bars, step transitions | Instant jumps, no easing |
-| **Decorative** | Shimmer skeletons, parallax | Removed entirely |
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
 
-```typescript
-// design/motionPolicy.ts
-export type MotionTier = "essential" | "informative" | "decorative";
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-export function motionAllowed(tier: MotionTier, reduced: boolean): boolean {
-  if (tier === "essential") return true;
-  if (reduced) return false;
-  return true;
-}
+Default deny, explicit timeouts, and one dashboard row for agent motion reduced preferences. Expand only when the metric demands it.
 
-export function durationMs(tier: MotionTier, reduced: boolean): number {
-  if (!motionAllowed(tier, reduced)) return 0;
-  return tier === "informative" ? 200 : 0;
-}
-```
+## Review questions before merging agent motion reduced preferences work
 
-Storybook stories should include a **Reduced motion** toolbar toggle that sets a global decorator, not a one-off CSS hack per component.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent motion reduced preferences, that means making failure visible early.
 
-## Server-rendered and email agents
+Put a metric on the user-visible effect of agent motion reduced preferences before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Not all agent UX is SPA. If you send actionable emails or SSE-powered static pages, inline styles cannot rely on media queries alone. Respect `Sec-CH-Prefers-Reduced-Motion` client hint where available, and honor stored user preference from your profile API when rendering HTML on the server:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
 
-```python
-# render/agent_panel_html.py
-def render_status_banner(user, tool_name: str) -> str:
-    reduced = user.preferences.reduced_motion or user.client_hints.reduced_motion
-    if reduced:
-        return f'<p class="status">Running {tool_name}…</p>'
-    return f'<p class="status animated-pulse">Running {tool_name}…</p>'
-```
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-## Testing matrix
+After a month, delete unused flags and dual paths. `agent-motion-reduced-preferences` accumulates temporary bridges faster than teams expect.
 
-| Test | Pass criteria |
-|------|---------------|
-| Emulate `(prefers-reduced-motion: reduce)` in Playwright | No `animation-name` other than `none` on chat surfaces |
-| macOS Reduce Motion manual pass | No parallax, bounce, or smooth scroll during 5-minute session |
-| Screen reader + reduced motion | `aria-live` announces streaming without requiring visual motion |
-| In-app toggle | Overrides OS setting both directions; persists reload |
-| Performance | Removing decorative motion lowers main-thread time on low-end laptops |
+## Field notes after thirty days of agent motion reduced preferences
 
-Automated snapshot tests fail on animation frames—prefer computed-style assertions:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent motion reduced preferences, that means making failure visible early.
 
-```typescript
-test("agent chat disables decorative animation when reduced", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/agent");
-  const animation = await page.locator(".typing-indicator").evaluate(
-    (el) => getComputedStyle(el).animationName
-  );
-  expect(animation).toBe("none");
-});
-```
+Put a metric on the user-visible effect of agent motion reduced preferences before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Organizational habits that stick
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent motion reduced preferences.
 
-- Add **motion review** to design crit checklist alongside color contrast.
-- Document allowed keyframes in the design system; anything not listed is disallowed by default.
-- Track support tickets tagged vestibular/motion—spikes after a flashy release mean regression.
-- Train PMs that "delightful" micro-interactions in agent waiting states accumulate.
+Slug-specific note (agent-motion-reduced-preferences): prioritize preferences behavior under load and verify with a fixture named `agent-motion-reduced-preferences-smoke`.
 
-## Canvas, voice, and multimodal agent surfaces
-
-Voice agents introduce motion on waveform visualizers and speaking avatars. Under reduced motion, replace oscillating waveforms with a static microphone icon and captioned transcript updates. Lip-synced avatars should freeze mouth movement while audio continues—users still hear progress without visual oscillation.
-
-When agents render charts or diagrams (code execution tools, data viz), avoid animated draw-on effects. Render the final SVG frame immediately; let users expand sections manually. Map libraries often animate pan/zoom by default—pass `preferReducedMotion: true` into chart configs where supported.
-
-Multimodal chat that embeds video previews should not autoplay loops in reduced-motion mode. Poster frames plus explicit play buttons respect both bandwidth and vestibular needs.
-
-## Performance side effects worth measuring
-
-Teams sometimes discover that disabling decorative motion improves battery life on laptops during hour-long agent sessions. Track CPU utilization before and after a reduced-motion rollout; the data helps justify accessibility work to stakeholders who only speak performance.
-
-Motion reduced preferences are not a CSS footnote—they are part of how agent products respect sustained attention. Stream status, tool progress, and completion feedback can be clear and calm at the same time. Build the still version first; add motion only where it teaches something essential, and gate it behind policies that survive your next UI refresh.
+Default deny, explicit timeouts, and one dashboard row for agent motion reduced preferences. Expand only when the metric demands it.
 
 ## Resources
 
-- [MDN: prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion) — media query reference and user preference semantics
-- [WCAG 2.2: Animation from Interactions (2.3.3)](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html) — related accessibility guidance
-- [WebAIM: Reducing Motion](https://webaim.org/articles/motion/) — practical overview for vestibular sensitivity
-- [Apple Human Interface Guidelines: Motion](https://developer.apple.com/design/human-interface-guidelines/motion) — platform expectations for Reduce Motion settings
-- [React Aria: usePrefersReducedMotion](https://react-spectrum.adobe.com/react-aria/usePrefersReducedMotion.html) — battle-tested hook patterns for component libraries
+- Internal runbook seed: `agent-motion-reduced-preferences`
+- https://12factor.net/
+- https://martinfowler.com/

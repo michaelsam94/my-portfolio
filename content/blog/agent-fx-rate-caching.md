@@ -1,215 +1,159 @@
 ---
-title: "AI Agents: Fx Rate Caching"
+title: "Agent systems: fx rate caching"
 slug: "agent-fx-rate-caching"
-description: "Caching foreign exchange rates for agent billing, expense tools, and multi-currency reasoning — TTL strategies, ECB/OANDA providers, stale-while-revalidate, and audit requirements for financial agents."
+description: "Agent systems: fx rate caching: how to keep agent side effects idempotent around fx rate caching — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-09-06"
-dateModified: "2025-09-06"
-tags: ["AI", "Agent"]
-keywords: "FX rate caching, foreign exchange, agent billing, currency conversion, stale-while-revalidate, Redis cache, multi-currency, financial agents"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, fx, rate, caching, production, engineering"
 faq:
-  - q: "How stale can cached FX rates be for agent billing tools?"
-    a: "Payment capture and invoicing typically require rates no older than the provider's official daily fix or the transaction timestamp window your finance team defines — often 24 hours for reporting, minutes for trading-adjacent flows. Document the staleness bound in API responses and never silently use expired rates for money movement without explicit user or policy consent."
-  - q: "Should agents call FX APIs directly or use a centralized rate service?"
-    a: "Centralize. A dedicated rate service with one cache layer avoids every tool and sub-agent hammering OANDA or ECB endpoints, enforces consistent rounding rules, and gives finance a single audit trail. Agents consume your internal /rates API, not third-party URLs."
-  - q: "What cache key structure works for multi-tenant FX lookups?"
-    a: "Key on (base_currency, quote_currency, rate_source, rate_date_or_bucket). Include provider and as-of timestamp in the value payload, not just the numeric rate. Tenants sharing a global cache is fine for market rates; tenant-specific spreads belong in a separate layer applied after cache hit."
-  - q: "How do you handle weekends and market holidays when caches go stale?"
-    a: "Major reference rates (ECB daily fix) do not update on weekends. Cache TTL should extend through known non-trading periods, and responses should flag rate_type=last_official_close with the fixing date. Agents reasoning about 'today's rate' on Saturday must cite Friday's close explicitly."
+  - q: "What is Agent systems: fx rate caching?"
+    a: "Agent systems: fx rate caching is the production approach to keep agent side effects idempotent around fx rate caching. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: fx rate caching?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent fx rate caching, prioritize it."
+  - q: "What is the most common mistake with Agent systems: fx rate caching?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Agents that reason about money — expense categorization, cross-border invoicing, travel reimbursement, procurement comparisons — inevitably call `convert 450 EUR to USD` somewhere in the tool chain. Without caching, every turn hits an external FX API. With naive caching, finance discovers weeks later that refunds used Friday's rate on Monday's settlements. **FX rate caching** for agent systems is a contract between market data reality, user expectations, and audit requirements — not a Redis tutorial with a five-minute TTL copied from a blog post.
+**Agent systems: fx rate caching** means you keep agent side effects idempotent around fx rate caching — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Financial agents amplify ordinary caching mistakes. A human opening a currency app once a day tolerates slight staleness. An agent loop invoking a `get_exchange_rate` tool forty times in a multi-step reconciliation burns API quota, adds latency to every turn, and may read subtly different rates if the cache is keyed wrong. Worse: two tools in the same agent run hit different cache entries and produce inconsistent totals the model presents as fact.
+This write-up is specific to `agent-fx-rate-caching` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Reference rates versus tradable rates
+## What Agent systems: fx rate caching changes in day-two ops
 
-Not all FX numbers are interchangeable. Agent tools must declare which rate type they serve:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
 
-| Rate type | Source examples | Typical use in agents |
-|-----------|-----------------|----------------------|
-| Mid-market reference | ECB daily, Open Exchange Rates | Expense reports, estimates |
-| Bid/ask tradable | Bank treasury, Stripe FX | Payment capture, refunds |
-| Historical fix | WM/Reuters 4pm fix | Accounting period close |
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Mixing mid-market in a quote and bid/ask in settlement creates reconciliation gaps finance will attribute to "the AI." Cache keys must include `rate_type` and `provider`. Responses must surface both numeric rate and metadata the model can cite to users.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: fx rate caching that needs a hero is not done.
 
-```json
-{
-  "base": "EUR",
-  "quote": "USD",
-  "rate": "1.08734",
-  "rate_type": "mid",
-  "provider": "ecb",
-  "as_of": "2025-09-05T14:15:00Z",
-  "fixing_date": "2025-09-05",
-  "cache_hit": true,
-  "max_staleness_seconds": 86400
-}
-```
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
 
-Agents prompting users should prefer natural language grounded in `fixing_date`: "Using ECB mid-market rate as of 5 Sep 2025 (1 EUR = 1.0873 USD)."
+## Designing so you can keep agent side effects idempotent around fx rate caching
 
-## Cache architecture for agent platforms
+I treat Agent systems: fx rate caching as an operations problem first. The goal is to keep agent side effects idempotent around fx rate caching, not to collect frameworks.
 
-Centralize behind an internal **Rate Service** rather than embedding provider clients in each tool:
+Put a metric on the user-visible effect of agent fx rate caching before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```
-  Agent tools / LLM function calls
-           │
-           ▼
-    ┌──────────────┐     miss     ┌─────────────┐
-    │  Rate API    │ ───────────► │ Redis cache │
-    │  (your svc)  │ ◄─────────── │  (cluster)  │
-    └──────┬───────┘     hit      └─────────────┘
-           │ miss + lock
-           ▼
-    ┌──────────────┐
-    │ ECB / OANDA  │
-    │  provider    │
-    └──────────────┘
-```
+Acceptance check: an on-call engineer can explain system state for agent fx rate caching from one dashboard and one runbook page.
 
-The Rate API applies rounding policy (banker's rounding, decimal places per currency pair), tenant spreads if applicable, and staleness policy before returning to tools.
+Concretely, being able to keep agent side effects idempotent around fx rate caching forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```typescript
-interface RateRequest {
-  base: string;
-  quote: string;
-  rateType: "mid" | "bid" | "ask";
-  asOf?: Date; // historical lookup
-}
-
-interface CachedRate {
-  rate: string;
-  asOf: string;
-  provider: string;
-  fetchedAt: number;
-}
-
-const TTL_BY_TYPE: Record<string, number> = {
-  mid: 3600,       // 1 hour intraday refresh
-  bid: 300,        // 5 min for payment-adjacent
-  ask: 300,
-};
-
-async function getRate(req: RateRequest): Promise<CachedRate> {
-  const key = `fx:${req.rateType}:${req.base}:${req.quote}:${floorHour(req.asOf)}`;
-  const cached = await redis.get<CachedRate>(key);
-  if (cached && !isExpired(cached, TTL_BY_TYPE[req.rateType])) {
-    return { ...cached, cache_hit: true };
-  }
-
-  return singleflight(key, async () => {
-    const fresh = await provider.fetch(req);
-    const normalized = applyRounding(fresh, req.base, req.quote);
-    await redis.set(key, normalized, { ex: TTL_BY_TYPE[req.rateType] * 2 });
-    return { ...normalized, cache_hit: false };
-  });
-}
-```
-
-**Singleflight** (or Redis lock with short TTL) prevents cache stampede when a popular pair expires during a traffic spike — common when many agents batch-process month-end expenses simultaneously.
-
-## Stale-while-revalidate for external provider outages
-
-Hard expiry that blocks requests when OANDA times out breaks agent flows mid-conversation. **Stale-while-revalidate (SWR)** serves the last known good rate while async refresh runs, with explicit staleness signalled:
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
 
 ```python
-async def get_rate_swr(pair: CurrencyPair) -> RateResponse:
-    entry = await cache.get(pair.key)
-    now = time.time()
+# Agent systems: fx rate caching
+from dataclasses import dataclass
 
-    if entry is None:
-        return await fetch_and_cache(pair)
+@dataclass(frozen=True)
+class AgentFxRateCachinRequest:
+    tenant_id: str
+    idempotency_key: str
 
-    age = now - entry.fetched_at
-    if age < pair.soft_ttl:
-        return entry.to_response(stale=False)
-
-    if age < pair.hard_ttl:
-        asyncio.create_task(refresh_pair(pair))  # background revalidate
-        return entry.to_response(stale=True, stale_seconds=int(age))
-
-    # hard expired — must refresh synchronously or fail closed
-    try:
-        return await fetch_and_cache(pair)
-    except ProviderUnavailable:
-        if pair.allow_stale_on_outage:
-            return entry.to_response(stale=True, outage_fallback=True)
-        raise RateUnavailable("FX provider down; cannot quote settlement amount")
+async def run_agent_fx_rate_caching(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-fx-rate-caching"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-`allow_stale_on_outage` should default **false** for payment tools and **true** for informational estimates — policy per tool, not global. The agent system prompt or tool description must tell the model how to phrase stale-rate caveats.
+## Failure modes specific to agent fx rate caching
 
-## Historical rates for accounting agents
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
 
-Agents closing books ask for "USD/EUR on 2025-06-30," not spot. Historical lookups cache **immutably** — a past fixing never changes once published. Key by date; TTL is infinite after provider confirms finality.
+Keep side effects at the edges and make every write idempotent. Agent systems: fx rate caching without retry semantics is a future incident write-up.
 
-Separate hot cache (today's intraday bucket) from cold storage (historical table or object store). Postgres with `(pair, fixing_date)` primary key works for years of daily fixes at negligible size. Agents scanning twelve months of statements query historical service, not live provider historical API on every row.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent fx rate caching.
 
-## Multi-currency agent tool design
+My never-again list for agent fx rate caching: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-One fat `convert_currency` tool beats three overlapping tools (`get_rate`, `convert`, `list_currencies`). The tool should accept amount, base, quote, and `purpose: "estimate" | "settlement"` to route staleness policy.
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
 
-```python
-def convert(amount: Decimal, base: str, quote: str, purpose: str) -> dict:
-    rate_resp = rate_service.get_rate(
-        base, quote,
-        rate_type="mid" if purpose == "estimate" else "bid",
-        allow_stale=(purpose == "estimate"),
-    )
-    converted = (amount * Decimal(rate_resp.rate)).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_EVEN
-    )
-    return {
-        "input": {"amount": str(amount), "currency": base},
-        "output": {"amount": str(converted), "currency": quote},
-        "rate_metadata": rate_resp.to_dict(),
-        "purpose": purpose,
-    }
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Log every conversion with `rate_metadata` for audit. Finance disputes trace to a specific fixing, not "the agent guessed."
+## Signals worth paging on
 
-## Rounding and precision traps
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
 
-Float arithmetic in agent tools causes cent-level drift across line items. Use `Decimal` end-to-end; cache string-encoded rates from provider JSON without float conversion. Document **banker's rounding** (ROUND_HALF_EVEN) to match finance systems.
+Keep side effects at the edges and make every write idempotent. Agent systems: fx rate caching without retry semantics is a future incident write-up.
 
-Edge case: **zero-decimal currencies** (JPY, KRW). Applying two-decimal rounding before multiply errors totals. Rounding policy belongs in one module consumed by all tools — not reimplemented per agent workflow.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: fx rate caching that needs a hero is not done.
 
-## Compliance and audit trail
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: fx rate caching cannot answer, it is not production-ready.
 
-Regulated contexts require proving which rate was used, when it was fetched, and from which provider. Store immutable **conversion records** append-only:
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
 
-| Field | Purpose |
-|-------|---------|
-| `run_id` / `tool_call_id` | Link to agent session |
-| `tenant_id` | Isolation |
-| `pair`, `rate`, `provider`, `as_of` | Reproduce calculation |
-| `stale`, `cache_hit` | Explain user-visible caveats |
-| `purpose` | Estimate vs settlement |
+## Rollout sequence with Temporal
 
-Retention aligns with financial record policy — often seven years. Cache entries expiring from Redis do not delete audit records.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
 
-## Testing FX cache behavior
+Put a metric on the user-visible effect of agent fx rate caching before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Clock injection tests verify TTL boundaries: at `soft_ttl - 1`, response is fresh; at `soft_ttl + 1`, SWR triggers background refresh. Provider mock failures verify fail-closed settlement vs fail-open estimates.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent fx rate caching.
 
-Consistency test: parallel tool calls in one agent run return identical rate metadata for the same pair and bucket. Fuzz currency pair normalization (`usd` vs `USD`, invalid ISO codes).
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
 
-## Observability
+Related reading:
 
-Metrics: `fx_cache_hit_ratio`, `fx_provider_latency_ms`, `fx_stale_served_total`, `fx_singleflight_coalesced`. Alert on provider error rate and cache hit ratio drop (symptom of key churn or TTL misconfiguration).
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Dashboard panel: staleness histogram at serve time — p95 staleness creeping up signals refresh job failure before users notice wrong "today" labels.
+## What I would delete after month one
 
-## Closing
+Teams usually discover Agent systems: fx rate caching after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-FX rate caching for agents is financial infrastructure disguised as a performance optimization. Centralize rates behind one service, key caches by pair + type + time bucket, separate estimate staleness from settlement fail-closed behavior, and return metadata the model can cite. The expensive failure mode is not a cache miss — it is two tools in one answer using different rates, or a settlement executed on an undeclared stale quote.
+Keep side effects at the edges and make every write idempotent. Agent systems: fx rate caching without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent fx rate caching from one dashboard and one runbook page.
+
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
+
+## Practical defaults for Agent systems: fx rate caching
+
+Teams usually discover Agent systems: fx rate caching after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for agent fx rate caching from one dashboard and one runbook page.
+
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-fx-rate-caching` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent fx rate caching work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for agent fx rate caching from one dashboard and one runbook page.
+
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Field notes after thirty days of agent fx rate caching
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent fx rate caching, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent fx rate caching before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent fx rate caching from one dashboard and one runbook page.
+
+Slug-specific note (agent-fx-rate-caching): prioritize caching behavior under load and verify with a fixture named `agent-fx-rate-caching-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- [European Central Bank: Euro Foreign Exchange Reference Rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html)
-- [ISO 4217 Currency Codes](https://www.iso.org/iso-4217-currency-codes.html)
-- [Stripe: FX Quotes API](https://docs.stripe.com/payments/currencies/localize-prices/fx-quotes-api)
-- [Open Exchange Rates Documentation](https://docs.openexchangeRates.org/)
-- [Martin Fowler: Patterns of Distributed Systems — Single Leader Replication (applies to rate authority)](https://martinfowler.com/articles/patterns-of-distributed-systems/single-leader-replication.html)
+- Internal runbook seed: `agent-fx-rate-caching`
+- https://12factor.net/
+- https://martinfowler.com/

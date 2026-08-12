@@ -1,131 +1,158 @@
 ---
-title: "Authz Watcher"
+title: "Authz-watcher engineering checklist"
 slug: "authz-watcher"
-description: "Authz Watcher: how to make retries and timeouts intentional in production platform systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-watcher engineering checklist: how to ship authz watcher behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-16"
 dateModified: "2026-08-12"
 tags:
-  - "Platform"
-  - "DX"
-keywords: "authz, watcher, platform, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, watcher, production, engineering"
 faq:
-  - q: "What is Authz Watcher?"
-    a: "Authz Watcher is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Watcher?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Watcher?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-watcher engineering checklist?"
+    a: "Authz-watcher engineering checklist is the production approach to ship authz watcher behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-watcher engineering checklist?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with authz watcher, prioritize it."
+  - q: "What is the most common mistake with Authz-watcher engineering checklist?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Watcher** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Authz-watcher engineering checklist** means you ship authz watcher behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Below is how I implement and operate it in Platform systems using GitHub Actions, Docker: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-watcher` in a product context, using Postgres, Redis, Prometheus for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Watcher
+## Decision guide for Authz-watcher engineering checklist
 
-I have watched teams under-specify Authz Watcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Teams usually discover Authz-watcher engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Make Authz Watcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Watcher — you only deployed it.
+Put a metric on the user-visible effect of authz watcher before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for authz watcher from one dashboard and one runbook page.
 
-## When this is the wrong tool
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
-If you only remember one thing about Authz Watcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## When to refuse this approach
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Teams usually discover Authz-watcher engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. Authz-watcher engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz watcher from one dashboard and one runbook page.
+
+Concretely, being able to ship authz watcher behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Authz-watcher engineering checklist
+export async function handle_authz_watcher(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Watcher
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-watcher");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Authz Watcher stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz-watcher engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of authz watcher before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz watcher.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Authz Watcher error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz watcher: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-I have watched teams under-specify Authz Watcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For authz watcher, that means making failure visible early.
 
-Make Authz Watcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Watcher — you only deployed it.
+Put a metric on the user-visible effect of authz watcher before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz watcher.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Watcher designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-watcher engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
-I have watched teams under-specify Authz Watcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Migration without dual-running forever
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For authz watcher, that means making failure visible early.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Authz-watcher engineering checklist without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz watcher.
+
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-If you only remember one thing about Authz Watcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For authz watcher, that means making failure visible early.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+With Postgres, Redis, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-watcher engineering checklist that needs a hero is not done.
 
-## Practical defaults I use for Authz Watcher
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
-I have watched teams under-specify Authz Watcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Practical defaults for Authz-watcher engineering checklist
 
-Make Authz Watcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Watcher — you only deployed it.
+I treat Authz-watcher engineering checklist as an operations problem first. The goal is to ship authz watcher behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Authz-watcher engineering checklist without retry semantics is a future incident write-up.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Watcher error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-watcher engineering checklist that needs a hero is not done.
 
-## Review questions before merging Authz Watcher work
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
-If you only remember one thing about Authz Watcher: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Default deny, explicit timeouts, and one dashboard row for authz watcher. Expand only when the metric demands it.
 
-Make Authz Watcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Watcher — you only deployed it.
+## Review questions before merging authz watcher work
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Authz-watcher engineering checklist as an operations problem first. The goal is to ship authz watcher behind flags with a rollback, not to collect frameworks.
 
-A month in, prune unused paths. Authz Watcher accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Keep side effects at the edges and make every write idempotent. Authz-watcher engineering checklist without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Watcher
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-watcher engineering checklist that needs a hero is not done.
 
-I have watched teams under-specify Authz Watcher and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
 
-Make Authz Watcher error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Watcher — you only deployed it.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-Prefer small diffs with a kill switch. Authz Watcher changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of authz watcher
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Watcher error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For authz watcher, that means making failure visible early.
+
+Put a metric on the user-visible effect of authz watcher before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz watcher.
+
+Slug-specific note (authz-watcher): prioritize watcher behavior under load and verify with a fixture named `authz-watcher-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-watcher`
 - https://12factor.net/
+- https://martinfowler.com/

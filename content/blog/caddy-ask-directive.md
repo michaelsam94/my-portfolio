@@ -1,129 +1,158 @@
 ---
 title: "Caddy Ask Directive"
 slug: "caddy-ask-directive"
-description: "Caddy Ask Directive: how to avoid the demo-only happy path in production dataeng systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Caddy Ask Directive: how to measure caddy ask before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-19"
 dateModified: "2026-08-12"
 tags:
-  - "Data"
   - "Engineering"
-keywords: "caddy, ask, directive, dataeng, production, engineering"
+  - "Caddy"
+keywords: "caddy, ask, directive, production, engineering"
 faq:
   - q: "What is Caddy Ask Directive?"
-    a: "Caddy Ask Directive is a production approach to avoid the demo-only happy path. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Caddy Ask Directive is the production approach to measure caddy ask before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Caddy Ask Directive?"
-    a: "Invest when on-call already feels this pain weekly. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with caddy ask directive, prioritize it."
   - q: "What is the most common mistake with Caddy Ask Directive?"
-    a: "The usual failure is dual-writing without an outbox. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Caddy Ask Directive** means you avoid the demo-only happy path — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when on-call already feels this pain weekly; that is usually also when shortcuts like dual-writing without an outbox start paging people.
+**Caddy Ask Directive** means you measure caddy ask before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in DataEng systems using Spark, Airflow: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `caddy-ask-directive` in a product context, using Postgres, Prometheus, Redis for the mechanics while keeping ownership human.
 
-## Incident story: when Caddy Ask Directive bit us
+## Incident pattern involving caddy ask directive
 
-Most write-ups on Caddy Ask Directive stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For caddy ask directive, that means making failure visible early.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of caddy ask directive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on caddy ask directive.
 
-## Root cause in one paragraph
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
-I have watched teams under-specify Caddy Ask Directive and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Root cause in plain language
 
-Make Caddy Ask Directive error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Caddy Ask Directive — you only deployed it.
+Teams usually discover Caddy Ask Directive after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Caddy Ask Directive changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Postgres, Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Practically, being able to avoid the demo-only happy path means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on caddy ask directive.
 
-```sql
--- Caddy Ask Directive
-INSERT INTO example_events (tenant_id, event_id, payload)
-VALUES ($1, $2, $3)
-ON CONFLICT (tenant_id, event_id) DO NOTHING;
+Concretely, being able to measure caddy ask before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
+
+```typescript
+// Caddy Ask Directive
+export async function handle_caddy_ask_directive(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("caddy-ask-directive");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Fix that survived the next traffic spike
+## The fix that held under load
 
-I have watched teams under-specify Caddy Ask Directive and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Production systems punish vague ownership and unmeasured happy paths. For caddy ask directive, that means making failure visible early.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for caddy ask directive from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: dual-writing without an outbox; skipping Caddy Ask Directive error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for caddy ask directive: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; dual-writing without an outbox |
-| Durable path | on-call already feels this pain weekly | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Tests that would have caught it
+## Tests and probes that catch regressions
 
-I have watched teams under-specify Caddy Ask Directive and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Teams usually discover Caddy Ask Directive after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-In DataEng stacks I lean on Spark, Airflow for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Keep side effects at the edges and make every write idempotent. Caddy Ask Directive without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for caddy ask directive from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Caddy Ask Directive designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Caddy Ask Directive cannot answer, it is not production-ready.
 
-## Runbook additions worth keeping
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
-Most write-ups on Caddy Ask Directive stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+## Runbook lines that save minutes
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Caddy Ask Directive after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Caddy Ask Directive changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of caddy ask directive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Caddy Ask Directive that needs a hero is not done.
+
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Prevention in the platform
+## Platform guardrails afterward
 
-I have watched teams under-specify Caddy Ask Directive and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Production systems punish vague ownership and unmeasured happy paths. For caddy ask directive, that means making failure visible early.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of caddy ask directive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on caddy ask directive.
 
-## Practical defaults I use for Caddy Ask Directive
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
-I have watched teams under-specify Caddy Ask Directive and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Practical defaults for Caddy Ask Directive
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For caddy ask directive, that means making failure visible early.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With Postgres, Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-A month in, prune unused paths. Caddy Ask Directive accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Acceptance check: an on-call engineer can explain system state for caddy ask directive from one dashboard and one runbook page.
 
-## Review questions before merging Caddy Ask Directive work
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
-Most write-ups on Caddy Ask Directive stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+After a month, delete unused flags and dual paths. `caddy-ask-directive` accumulates temporary bridges faster than teams expect.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging caddy ask directive work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Production systems punish vague ownership and unmeasured happy paths. For caddy ask directive, that means making failure visible early.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Caddy Ask Directive error rate. Expand only when the metric says you must.
+Put a metric on the user-visible effect of caddy ask directive before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Caddy Ask Directive
+Acceptance check: an on-call engineer can explain system state for caddy ask directive from one dashboard and one runbook page.
 
-Most write-ups on Caddy Ask Directive stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
 
-Make Caddy Ask Directive error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Caddy Ask Directive — you only deployed it.
+Default deny, explicit timeouts, and one dashboard row for caddy ask directive. Expand only when the metric demands it.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of caddy ask directive
 
-A month in, prune unused paths. Caddy Ask Directive accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat Caddy Ask Directive as an operations problem first. The goal is to measure caddy ask before optimizing it, not to collect frameworks.
+
+With Postgres, Prometheus, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Acceptance check: an on-call engineer can explain system state for caddy ask directive from one dashboard and one runbook page.
+
+Slug-specific note (caddy-ask-directive): prioritize directive behavior under load and verify with a fixture named `caddy-ask-directive-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for caddy ask directive. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `caddy-ask-directive`
 - https://12factor.net/
+- https://martinfowler.com/

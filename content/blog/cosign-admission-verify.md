@@ -1,131 +1,158 @@
 ---
 title: "Cosign Admission Verify"
 slug: "cosign-admission-verify"
-description: "Cosign Admission Verify: how to keep failure modes explicit and tested in production testing systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Cosign Admission Verify: how to operationalize cosign admission with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-04"
 dateModified: "2026-08-12"
 tags:
-  - "Testing"
-  - "Quality"
-keywords: "cosign, admission, verify, testing, production, engineering"
+  - "Engineering"
+  - "Cosign"
+keywords: "cosign, admission, verify, production, engineering"
 faq:
   - q: "What is Cosign Admission Verify?"
-    a: "Cosign Admission Verify is a production approach to keep failure modes explicit and tested. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Cosign Admission Verify is the production approach to operationalize cosign admission with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Cosign Admission Verify?"
-    a: "Invest when traffic or tenants are about to scale. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with cosign admission verify, prioritize it."
   - q: "What is the most common mistake with Cosign Admission Verify?"
-    a: "The usual failure is skipping metrics until after launch. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is treating cosign admission verify as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Cosign Admission Verify** means you keep failure modes explicit and tested — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when traffic or tenants are about to scale; that is usually also when shortcuts like skipping metrics until after launch start paging people.
+**Cosign Admission Verify** means you operationalize cosign admission with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like treating cosign admission verify as a pure library problem start paging people.
 
-Below is how I implement and operate it in Testing systems using Playwright, Vitest: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `cosign-admission-verify` in a product context, using OpenTelemetry, Postgres, Prometheus for the mechanics while keeping ownership human.
 
-## Where Cosign Admission Verify actually shows up
+## What Cosign Admission Verify changes in day-two ops
 
-If you only remember one thing about Cosign Admission Verify: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can keep failure modes explicit and tested.
+Production systems punish vague ownership and unmeasured happy paths. For cosign admission verify, that means making failure visible early.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of cosign admission verify before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for cosign admission verify from one dashboard and one runbook page.
 
-## A design that makes it routine to keep failure modes explicit and tested
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
-I have watched teams under-specify Cosign Admission Verify and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+## Designing so you can operationalize cosign admission with clear ownership
 
-Make Cosign Admission Verify error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Cosign Admission Verify — you only deployed it.
+I treat Cosign Admission Verify as an operations problem first. The goal is to operationalize cosign admission with clear ownership, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Cosign Admission Verify changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of cosign admission verify before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Practically, being able to keep failure modes explicit and tested means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on cosign admission verify.
+
+Concretely, being able to operationalize cosign admission with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Cosign Admission Verify
+export async function handle_cosign_admission_verify(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Cosign Admission Verify
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("cosign-admission-verify");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## The failure mode I see in reviews
+## Failure modes specific to cosign admission verify
 
-Most write-ups on Cosign Admission Verify stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+I treat Cosign Admission Verify as an operations problem first. The goal is to operationalize cosign admission with clear ownership, not to collect frameworks.
 
-Make Cosign Admission Verify error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Cosign Admission Verify — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Cosign Admission Verify without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for cosign admission verify from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: skipping metrics until after launch; skipping Cosign Admission Verify error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for cosign admission verify: treating cosign admission verify as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; skipping metrics until after launch |
-| Durable path | traffic or tenants are about to scale | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating cosign admission verify as a pure library problem |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Instrumentation that answers the on-call question
+## Signals worth paging on
 
-Most write-ups on Cosign Admission Verify stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For cosign admission verify, that means making failure visible early.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of cosign admission verify before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Cosign Admission Verify changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on cosign admission verify.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Cosign Admission Verify designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Cosign Admission Verify cannot answer, it is not production-ready.
 
-## Rollout checklist
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
-I have watched teams under-specify Cosign Admission Verify and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+## Rollout sequence with OpenTelemetry
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Cosign Admission Verify after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of cosign admission verify before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on cosign admission verify.
+
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## What I would not do again
+## What I would delete after month one
 
-Most write-ups on Cosign Admission Verify stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+I treat Cosign Admission Verify as an operations problem first. The goal is to operationalize cosign admission with clear ownership, not to collect frameworks.
 
-In Testing stacks I lean on Playwright, Vitest for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when skipping metrics until after launch.
+Keep side effects at the edges and make every write idempotent. Cosign Admission Verify without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for cosign admission verify from one dashboard and one runbook page.
 
-## Practical defaults I use for Cosign Admission Verify
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
-Most write-ups on Cosign Admission Verify stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Cosign Admission Verify
 
-Make Cosign Admission Verify error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Cosign Admission Verify — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For cosign admission verify, that means making failure visible early.
 
-Write the acceptance check in product language: when traffic or tenants are about to scale, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating cosign admission verify as a pure library problem.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Cosign Admission Verify error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Cosign Admission Verify that needs a hero is not done.
 
-## Review questions before merging Cosign Admission Verify work
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
-I have watched teams under-specify Cosign Admission Verify and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to keep failure modes explicit and tested.
+Default deny, explicit timeouts, and one dashboard row for cosign admission verify. Expand only when the metric demands it.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging cosign admission verify work
 
-Prefer small diffs with a kill switch. Cosign Admission Verify changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Cosign Admission Verify as an operations problem first. The goal is to operationalize cosign admission with clear ownership, not to collect frameworks.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on skipping metrics until after launch. If it is missing, the PR is incomplete.
+Put a metric on the user-visible effect of cosign admission verify before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Cosign Admission Verify
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on cosign admission verify.
 
-Most write-ups on Cosign Admission Verify stop at the demo. This one starts from situations where traffic or tenants are about to scale, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
 
-The anti-pattern is skipping metrics until after launch. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Default deny, explicit timeouts, and one dashboard row for cosign admission verify. Expand only when the metric demands it.
 
-Prefer small diffs with a kill switch. Cosign Admission Verify changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of cosign admission verify
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Cosign Admission Verify error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For cosign admission verify, that means making failure visible early.
+
+With OpenTelemetry, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating cosign admission verify as a pure library problem.
+
+Acceptance check: an on-call engineer can explain system state for cosign admission verify from one dashboard and one runbook page.
+
+Slug-specific note (cosign-admission-verify): prioritize verify behavior under load and verify with a fixture named `cosign-admission-verify-smoke`.
+
+After a month, delete unused flags and dual paths. `cosign-admission-verify` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `cosign-admission-verify`
 - https://12factor.net/
+- https://martinfowler.com/

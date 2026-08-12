@@ -1,225 +1,159 @@
 ---
-title: "AI Agents: Forecasting Prophet Arima"
+title: "Agent systems: forecasting prophet arima"
 slug: "agent-forecasting-prophet-arima"
-description: "Choose and operate Prophet vs ARIMA for capacity and demand forecasting—seasonality detection, stationarity checks, backtesting discipline, and production monitoring when models drift."
+description: "Agent systems: forecasting prophet arima: how to keep agent side effects idempotent around forecasting prophet arima — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-27"
-dateModified: "2025-03-27"
-tags: ["AI", "Agent", "Forecasting"]
-keywords: "Prophet, ARIMA, time series forecasting, seasonality, backtesting, capacity planning, MLOps"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, forecasting, prophet, arima, production, engineering"
 faq:
-  - q: "When should I prefer Prophet over ARIMA?"
-    a: "Prophet handles multiple seasonalities, missing data, and holiday regressors with less manual tuning—good for business metrics with calendar effects. ARIMA suits shorter series with stable autocorrelation structure where you want tighter statistical control and faster inference at scale."
-  - q: "How much history do I need before ARIMA is viable?"
-    a: "Rule of thumb: at least two full seasonal cycles plus burn-in—often 24+ monthly points or 14+ daily points with weekly seasonality. Below that, prefer simple baselines (seasonal naive, ETS) and widen prediction intervals instead of overfitting p,d,q."
-  - q: "Why do my Prophet forecasts drift after a product launch?"
-    a: "Changepoints and trend flexibility absorb structural breaks; unchecked they extrapolate launch spikes as permanent trend. Cap changepoint prior scale, add saturation, or segment series at known regime changes and retrain."
-  - q: "What metrics should gate production forecast deploys?"
-    a: "Use rolling-origin backtests with MAPE, sMAPE, or MASE against baselines, plus coverage of prediction intervals. Promote models only when they beat seasonal naive on holdout slices relevant to capacity decisions—not on a single lucky split."
+  - q: "What is Agent systems: forecasting prophet arima?"
+    a: "Agent systems: forecasting prophet arima is the production approach to keep agent side effects idempotent around forecasting prophet arima. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: forecasting prophet arima?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent forecasting prophet arima, prioritize it."
+  - q: "What is the most common mistake with Agent systems: forecasting prophet arima?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Capacity planners ask for a number; engineering needs an interval. Agent platforms burn tokens on bursty workloads, queue depths swing with marketing launches, and finance wants next quarter's spend—often from the same daily active user series. Prophet and ARIMA are the two workhorses teams reach for first. Both can produce plausible charts; only one usually survives backtesting on *your* seasonality, missing data, and regime changes.
+**Agent systems: forecasting prophet arima** means you keep agent side effects idempotent around forecasting prophet arima — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-This guide compares Prophet and ARIMA as production forecasting tools: when each wins, how to implement a disciplined backtest harness, and how to monitor deployed models so silent drift does not leave autoscalers wrong-footed.
+This write-up is specific to `agent-forecasting-prophet-arima` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Problem shape: what you are actually forecasting
+## Fitting Agent systems: forecasting prophet arima into an existing system
 
-Before picking a library, write down the **decision the forecast drives**:
+I treat Agent systems: forecasting prophet arima as an operations problem first. The goal is to keep agent side effects idempotent around forecasting prophet arima, not to collect frameworks.
 
-- **Autoscaler headroom** — need hourly p95 with tight short horizon (24–72h)
-- **FinOps commit planning** — monthly totals with wide uncertainty acceptable
-- **Staffing for support queues** — weekly seasonality + holiday spikes
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Collect **granularity**, **history length**, **missingness**, and **known exogenous events** (releases, holidays, price changes). A series with 90 daily points and a COVID-era level shift is a different problem than three years of clean hourly CPU utilization.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-Establish **baselines** before sophisticated models:
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-1. **Seasonal naive** — last week same hour, or last year same day
-2. **Rolling mean** — trailing 7-day average
-3. **Linear trend on log scale** — surprisingly hard to beat for mature products
+## Contracts and ownership boundaries
 
-If Prophet or ARIMA cannot consistently beat seasonal naive on rolling backtests, fix data or segmentation before tuning hyperparameters.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent forecasting prophet arima, that means making failure visible early.
 
-## ARIMA in production
+Put a metric on the user-visible effect of agent forecasting prophet arima before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-ARIMA(p,d,q) models autocorrelation structure after differencing to achieve stationarity. `(p,d,q)` orders come from ACF/PACF inspection, `auto.arima`-style search, or domain defaults—often `(1,1,1)` or seasonal SARIMA `(p,d,q)(P,D,Q,s)`.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-**Strengths:**
+Concretely, being able to keep agent side effects idempotent around forecasting prophet arima forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-- Fast inference once fitted; compact state suits edge deployment
-- Well-understood diagnostics (Ljung-Box on residuals)
-- Strong for short horizons when series is stationary after differencing
-
-**Weaknesses:**
-
-- Single seasonal period per model unless SARIMA
-- Sensitive to outliers and level shifts
-- Manual order selection does not scale to thousands of SKU-level series without automation
-
-Example pipeline with `statsmodels`:
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
 ```python
-import pandas as pd
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-from statsmodels.tsa.stattools import adfuller
+# Agent systems: forecasting prophet arima
+from dataclasses import dataclass
 
-def is_stationary(series: pd.Series, alpha: float = 0.05) -> bool:
-    pvalue = adfuller(series.dropna())[1]
-    return pvalue < alpha
+@dataclass(frozen=True)
+class AgentForecastingPrRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def fit_sarima(
-    y: pd.Series,
-    order: tuple[int, int, int] = (1, 1, 1),
-    seasonal_order: tuple[int, int, int, int] = (1, 1, 1, 24),
-):
-    model = SARIMAX(
-        y,
-        order=order,
-        seasonal_order=seasonal_order,
-        enforce_stationarity=False,
-        enforce_invertibility=False,
-    )
-    return model.fit(disp=False)
-
-def forecast(fitted, horizon: int):
-    return fitted.get_forecast(steps=horizon).summary_frame(alpha=0.05)
+async def run_agent_forecasting_prophe(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-forecasting-prophet-arima"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Check **residual whiteness** after every fit. Structured residual autocorrelation means your orders or exogenous regressors are wrong—not that you need a bigger neural net.
+## State, storage, and retention
 
-For **many parallel series** (per-tenant usage), wrap order search with limits on `(p,q)` to cap fit time, cache results, and fall back to ETS when ADF tests fail or series are too short.
+I treat Agent systems: forecasting prophet arima as an operations problem first. The goal is to keep agent side effects idempotent around forecasting prophet arima, not to collect frameworks.
 
-## Prophet in production
+Put a metric on the user-visible effect of agent forecasting prophet arima before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Prophet decomposes into trend, seasonality, and holidays with Bayesian changepoints. It tolerates missing timestamps and multiple seasonalities (`daily`, `weekly`, `yearly`) when configured explicitly.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-**Strengths:**
+My never-again list for agent forecasting prophet arima: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-- Holiday and promo regressors without hand-built dummy matrices
-- Robust default settings for business metrics with calendar effects
-- Interpretable components for stakeholder slides
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-**Weaknesses:**
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-- Heavier fit than ARIMA; not ideal for sub-second online loops on millions of series
-- Changepoint flexibility can overfit short post-launch windows
-- Uncertainty intervals assume Gaussian residuals—tail risk underestimated for spike-heavy workloads
+## Security defaults that are non-negotiable
 
-```python
-import pandas as pd
-from prophet import Prophet
+Teams usually discover Agent systems: forecasting prophet arima after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-def fit_prophet(df: pd.DataFrame, holidays: pd.DataFrame | None = None):
-    m = Prophet(
-        yearly_seasonality=True,
-        weekly_seasonality=True,
-        daily_seasonality=False,
-        changepoint_prior_scale=0.05,
-        interval_width=0.9,
-        holidays=holidays,
-    )
-    m.fit(df)  # columns: ds, y
-    return m
+Keep side effects at the edges and make every write idempotent. Agent systems: forecasting prophet arima without retry semantics is a future incident write-up.
 
-def predict(m: Prophet, periods: int, freq: str = "D"):
-    future = m.make_future_dataframe(periods=periods, freq=freq)
-    return m.predict(future)
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-Tune **`changepoint_prior_scale`**: lower values (0.01–0.05) for stable mature products; higher only when you expect frequent trend breaks and have enough history to support them. Use **`cap` and `floor`** logistic growth when metrics saturate (market size, cluster CPU ceiling).
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: forecasting prophet arima cannot answer, it is not production-ready.
 
-## Head-to-head selection matrix
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-| Signal characteristic | Lean Prophet | Lean ARIMA/SARIMA |
-|-----------------------|--------------|-------------------|
-| Multiple seasonalities | ✓ | Needs SARIMA extensions |
-| Rich holiday calendar | ✓ | Manual dummies |
-| < 100 observations | Baselines first | Short-order SARIMA |
-| Millions of series, low latency | Batch Prophet nightly | Parallel ARIMA/ETS |
-| Frequent level shifts | Segment + Prophet | Reset + SARIMA |
-| Need residual diagnostics for auditors | Either with Ljung-Box | ✓ familiar tooling |
+## SLOs and dashboards
 
-Hybrid shops often run **Prophet for executive dashboards** and **SARIMA for hourly autoscaler feeds** on the same underlying metric warehouse—consistency in data beats consistency in algorithm.
+Teams usually discover Agent systems: forecasting prophet arima after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Backtesting discipline
+Put a metric on the user-visible effect of agent forecasting prophet arima before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Single train/test splits lie. Use **rolling-origin evaluation**:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-```python
-import numpy as np
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-def rolling_backtest(y, fit_fn, horizon: int, min_train: int, step: int = 1):
-    errors = []
-    for end in range(min_train, len(y) - horizon + 1, step):
-        train = y.iloc[:end]
-        test = y.iloc[end : end + horizon]
-        fitted = fit_fn(train)
-        pred = fitted.forecast(horizon)
-        errors.append(np.mean(np.abs(test.values - pred.values)))
-    return np.mean(errors)
-```
+Related reading:
 
-Report **MASE** (mean absolute scaled error) vs seasonal naive so scale-free comparisons across tenants make sense. Track **interval coverage**: if 90% intervals contain only 70% of holdout points, your uncertainty is miscalibrated—dangerous for capacity buffers.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Segment backtests by **regime**: pre/post pricing change, weekday vs weekend agent traffic, holiday weeks. A model that wins on average but fails every Black Friday should not drive autoscale max.
+## First-week validation plan
 
-## Feature store and exogenous regressors
+Teams usually discover Agent systems: forecasting prophet arima after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Agent platforms benefit from regressors beyond calendar time:
+Put a metric on the user-visible effect of agent forecasting prophet arima before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-- Marketing send volume
-- Model upgrade deployment flags
-- Price tier mix shifts
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent forecasting prophet arima.
 
-Prophet accepts `add_regressor`; SARIMA accepts exogenous `exog` with aligned timestamps. Missing exog at forecast time is a production footgun—validate future regressor schedules or impute with explicit flags.
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-Store **model artifacts** with training data hash, hyperparameters, backtest scores, and git SHA. Reproducibility matters when finance asks why March's forecast differed from February's run.
+## Practical defaults for Agent systems: forecasting prophet arima
 
-## Serving forecasts in production
+I treat Agent systems: forecasting prophet arima as an operations problem first. The goal is to keep agent side effects idempotent around forecasting prophet arima, not to collect frameworks.
 
-Batch nightly jobs fit and write forecasts to object storage or a metrics table; online APIs read precomputed values—not refit on every request.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```python
-# Pseudocode: forecast artifact schema
-{
-  "series_id": "token_usage_tenant_42",
-  "model": "prophet_0.05_cp",
-  "generated_at": "2025-03-27T06:00:00Z",
-  "horizon": 168,
-  "points": [{"ts": "...", "yhat": 1.2e6, "yhat_lower": 1.0e6, "yhat_upper": 1.4e6}],
-  "backtest_mase": 0.82,
-  "baseline_mase": 1.0
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: forecasting prophet arima that needs a hero is not done.
 
-Expose **fallback**: if artifact stale (> 26h) or missing, serve seasonal naive and page the pipeline owner. Autoscalers should never consume NaN silently.
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-## Monitoring and retraining triggers
+Default deny, explicit timeouts, and one dashboard row for agent forecasting prophet arima. Expand only when the metric demands it.
 
-Deploy monitors on:
+## Review questions before merging agent forecasting prophet arima work
 
-- **Forecast error vs realized** — trailing 7-day MAPE or MASE
-- **Residual autocorrelation** — spikes indicate regime change
-- **Prediction interval coverage** — collapses when variance shifts
-- **Training runtime and memory** — Prophet fits balloon with wide history
+Teams usually discover Agent systems: forecasting prophet arima after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Retrain when error crosses threshold **or** on schedule (weekly for hourly series, monthly for financial). Avoid daily refit on noisy metrics—it chases noise and thrashes autoscale targets.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Log **human overrides** when operators adjust caps manually; supervised corrections become labels for later model improvements or segmentation rules.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent forecasting prophet arima.
 
-## Common mistakes
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
 
-- **Leaking future information** via global normalization or smoothing across train/test boundary
-- **Ignoring zero-inflation** — agent idle hours cluster at zero; consider separate models for P(active) and E(usage | active)
-- **One global model for heterogeneous tenants** — mixture of small and whale tenants averages away peaks that cause outages
-- **Optimizing MAPE on near-zero series** — use sMAPE or MASE instead
+Default deny, explicit timeouts, and one dashboard row for agent forecasting prophet arima. Expand only when the metric demands it.
 
-## The takeaway
+## Field notes after thirty days of agent forecasting prophet arima
 
-Prophet and ARIMA are not rivals—they are tools for different series shapes and operational constraints. Start with baselines and rolling backtests, segment at structural breaks, calibrate uncertainty honestly, and serve forecasts as versioned artifacts with staleness guards. Capacity decisions built on charts without interval coverage guarantees are optimism wearing a spreadsheet.
+Teams usually discover Agent systems: forecasting prophet arima after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: forecasting prophet arima without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent forecasting prophet arima from one dashboard and one runbook page.
+
+Slug-specific note (agent-forecasting-prophet-arima): prioritize arima behavior under load and verify with a fixture named `agent-forecasting-prophet-arima-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Facebook Prophet Documentation](https://facebook.github.io/prophet/)
-- [statsmodels SARIMAX](https://www.statsmodels.org/stable/generated/statsmodels.tsa.statespace.sarimax.SARIMAX.html)
-- [Forecasting: Principles and Practice (Hyndman)](https://otexts.com/fpp3/)
-- [M4 Competition — accuracy measures](https://github.com/Mcompetitions/M4-methods)
-- [scikit-learn time series split patterns](https://scikit-learn.org/stable/modules/cross_validation.html#time-series-split)
+- Internal runbook seed: `agent-forecasting-prophet-arima`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,207 +1,159 @@
 ---
-title: "AI Agents: Forensics Log Preservation"
+title: "Forensics Log Preservation for production agents"
 slug: "agent-forensics-log-preservation"
-description: "Preserve logs for incident forensics with WORM storage, hash-chained audit trails, legal hold workflows, and chain-of-custody metadata that survives counsel review."
+description: "Forensics Log Preservation for production agents: how to make agent forensics log preservation observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-24"
-dateModified: "2025-11-24"
-tags: ["AI", "Agent", "Forensics"]
-keywords: "forensics, log preservation, chain of custody, WORM, legal hold, immutable audit, incident response"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, forensics, log, preservation, production, engineering"
 faq:
-  - q: "When should we trigger forensic log preservation?"
-    a: "At the first credible indicator of compromise, data exfiltration, insider threat, or litigation hold notice—not after root cause is confirmed. Preservation is about preventing spoliation; delayed snapshots lose volatile evidence and undermine legal defensibility."
-  - q: "Does encryption at rest satisfy forensic preservation requirements?"
-    a: "Encryption protects confidentiality but does not prevent tampering or deletion. Pair encryption with immutability controls, append-only retention policies, and cryptographic integrity proofs such as hash chains or signed batches."
-  - q: "How long must AI agent prompt and completion logs be retained?"
-    a: "Retention follows regulatory and contractual obligations—often 90 days to seven years—not model convenience. Separate hot search indexes from cold WORM archives and document mapping from product logs to legal categories."
-  - q: "Can we preserve logs without copying production databases?"
-    a: "Yes. Stream structured events to an isolated forensics sink with separate credentials, network paths, and access controls. Never rely on replicas that share admin credentials with production."
+  - q: "What is Forensics Log Preservation for production agents?"
+    a: "Forensics Log Preservation for production agents is the production approach to make agent forensics log preservation observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Forensics Log Preservation for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent forensics log preservation, prioritize it."
+  - q: "What is the most common mistake with Forensics Log Preservation for production agents?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The incident commander asked for logs from Tuesday at 14:07 UTC. Operations pulled CloudWatch exports—but retention was seven days, the suspicious API gateway logs had rolled off, and someone had run a cleanup script on the staging mirror that shared the same S3 bucket prefix. Legal followed up with a preservation notice. Without immutable copies and chain-of-custody metadata, the investigation became a debate about spoliation instead of attacker TTPs.
+**Forensics Log Preservation for production agents** means you make agent forensics log preservation observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Forensic log preservation is not longer retention by default. It is a **deliberate workflow**: identify relevant sources, freeze them in tamper-evident storage, restrict access, document who touched what, and keep hot search paths separate from cold legal archives. AI agent platforms add high-volume prompt, tool-call, and embedding audit streams—preservation design must scale without bankrupting storage or leaking PII into uncontrolled buckets.
+This write-up is specific to `agent-forensics-log-preservation` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Preservation vs. ordinary retention
+## Incident pattern involving agent forensics log preservation
 
-| Ordinary retention | Forensic preservation |
-|--------------------|----------------------|
-| TTL-driven deletion | Legal or incident hold blocks deletion |
-| Optimized for cost | Optimized for integrity and provability |
-| Broad operational access | Least-privilege, break-glass only |
-| May aggregate or sample | Point-in-time copies with scope defined |
+I treat Forensics Log Preservation for production agents as an operations problem first. The goal is to make agent forensics log preservation observable and interruptible, not to collect frameworks.
 
-Retention policies answer \"how long we keep logs.\" Preservation answers \"these specific records must not change until counsel releases them.\"
+Put a metric on the user-visible effect of agent forensics log preservation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Trigger preservation on:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Forensics Log Preservation for production agents that needs a hero is not done.
 
-- Confirmed or suspected unauthorized access
-- Data exfiltration indicators (DLP, anomaly alerts)
-- HR or insider threat escalations
-- Regulatory inquiry or litigation hold notices
-- Critical agent misbehavior (policy bypass, tool abuse at scale)
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-Document **scope**: time range, systems, tenant IDs, user accounts, and log types (auth, API, agent transcript, vector query audit).
+## Root cause in plain language
 
-## Architecture: isolated forensics sink
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent forensics log preservation, that means making failure visible early.
 
-Never preserve by extending TTL on production indexes alone—admin credentials can still purge them. Stream to a **forensics account** or bucket with:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-- Separate cloud account or subscription with distinct break-glass roles
-- Object Lock (COMPLIANCE mode) or equivalent WORM
-- No shared root keys with production
-- VPC endpoints or private links; no public read ACLs
+Acceptance check: an on-call engineer can explain system state for agent forensics log preservation from one dashboard and one runbook page.
+
+Concretely, being able to make agent forensics log preservation observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
 ```python
-import hashlib
-import json
-from datetime import datetime, timezone
+# Forensics Log Preservation for production agents
+from dataclasses import dataclass
 
-def hash_record(record: dict) -> str:
-    canonical = json.dumps(record, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()
+@dataclass(frozen=True)
+class AgentForensicsLogRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def append_chained_batch(records: list[dict], prev_hash: str) -> dict:
-    entries = []
-    chain = prev_hash
-    for r in records:
-        entry_hash = hashlib.sha256(
-            (chain + hash_record(r)).encode()
-        ).hexdigest()
-        entries.append({**r, "_prev": chain, "_hash": entry_hash})
-        chain = entry_hash
-    return {
-        "batch_id": datetime.now(timezone.utc).isoformat(),
-        "prev_batch_hash": prev_hash,
-        "final_hash": chain,
-        "records": entries,
-    }
+async def run_agent_forensics_log_pres(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-forensics-log-preservation"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Verify chains during export: any mutation breaks the link between `_prev` and `_hash`. Store batch manifests separately from payload objects so investigators can validate integrity without loading terabytes.
+## The fix that held under load
 
-## Point-in-time capture workflow
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent forensics log preservation, that means making failure visible early.
 
-Runbook steps (automate where possible):
+Keep side effects at the edges and make every write idempotent. Forensics Log Preservation for production agents without retry semantics is a future incident write-up.
 
-1. **Open preservation ticket** — incident ID, scope, approver, legal contact
-2. **Snapshot identifiers** — list hosts, services, log groups, DB audit tables, agent session stores
-3. **Issue hold flags** — disable TTL jobs, S3 lifecycle transitions, and index rollovers in scope
-4. **Copy to WORM** — use server-side copy with Object Lock retain-until date
-5. **Record manifest** — file paths, byte counts, SHA-256 of each object, capture tool version
-6. **Restrict IAM** — only forensics role + legal read-only; deny deletes even for admins
-7. **Notify stakeholders** — security, legal, platform owner
+Acceptance check: an on-call engineer can explain system state for agent forensics log preservation from one dashboard and one runbook page.
 
-For databases, use **native audit exports** or logical dumps with consistent timestamps—not live replicas still receiving writes unless you freeze writes explicitly.
+My never-again list for agent forensics log preservation: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```bash
-# Example: S3 Object Lock compliance copy (AWS CLI sketch)
-aws s3 cp s3://prod-logs/alb/2025/11/24/ \
-  s3://forensics-hold/inc-2025-1142/alb/2025/11/24/ \
-  --recursive \
-  --storage-class GLACIER_IR
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-aws s3api put-object-retention \
-  --bucket forensics-hold \
-  --key inc-2025-1142/manifest.json \
-  --retention Mode=COMPLIANCE,RetainUntilDate=2028-11-24T00:00:00Z
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Adjust storage class and retention dates to counsel guidance—not engineering convenience.
+## Tests and probes that catch regressions
 
-## Agent-specific log sources
+Teams usually discover Forensics Log Preservation for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-AI agent stacks generate evidence ordinary web logs miss:
+Keep side effects at the edges and make every write idempotent. Forensics Log Preservation for production agents without retry semantics is a future incident write-up.
 
-- **Prompt and completion payloads** (often redacted or tokenized)
-- **Tool invocation arguments and responses**
-- **Retrieval queries and document IDs** from RAG pipelines
-- **Policy engine decisions** (allow/deny with rule ID)
-- **Embedding and reranker scores** when abuse involves data leakage
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent forensics log preservation.
 
-Preservation scope should name each stream. If prompts contain PII, preserve **tokenized forms** where full text is not legally required—but document the tokenization scheme so investigators can correlate with vault records under separate controlled access.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Forensics Log Preservation for production agents cannot answer, it is not production-ready.
 
-Separate **hot investigation indexes** (OpenSearch, ClickHouse) from **cold WORM archives**. Hot paths speed triage; cold paths satisfy multi-year hold. Sync manifests between them so index entries map to immutable object keys.
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-## Chain of custody metadata
+## Runbook lines that save minutes
 
-Every access to preserved material generates an audit entry:
+Teams usually discover Forensics Log Preservation for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-```json
-{
-  "event": "forensics.access",
-  "timestamp": "2025-11-24T18:22:01Z",
-  "actor": "analyst@corp.example",
-  "role": "incident-responder",
-  "ticket": "INC-2025-1142",
-  "action": "download",
-  "object_key": "inc-2025-1142/alb/2025/11/24/access.log.gz",
-  "object_sha256": "abc123...",
-  "client_ip": "10.0.44.12",
-  "justification": "TTP correlation window 14:00-15:00 UTC"
-}
-```
+Keep side effects at the edges and make every write idempotent. Forensics Log Preservation for production agents without retry semantics is a future incident write-up.
 
-Store custody logs in the same immutability tier or a parallel WORM stream. Export packages for external counsel should include manifest, hash list, and custody log excerpt.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent forensics log preservation.
 
-## Legal hold integration
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-Integrate with legal hold systems (ServiceNow, eDiscovery platforms) so hold release is **explicit**:
+Related reading:
 
-- Hold placed → automation extends Object Lock retain-until or blocks lifecycle
-- Hold released → ticketed approval triggers normal retention resume
-- Partial release → narrow scope by prefix or tenant, not blanket delete
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Train engineers: \"delete user data\" GDPR requests may **conflict** with legal hold. Runbooks must route conflicts to legal before any purge job executes.
+## Platform guardrails afterward
 
-## PII, minimization, and counsel review
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent forensics log preservation, that means making failure visible early.
 
-Preservation copies everything in scope—including secrets if you are not careful. Mitigate:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-- Redact or tokenize at ingest where full content is unnecessary
-- Encrypt with keys held by security/legal for high-sensitivity bundles
-- Never preserve production secrets vault dumps unless scope explicitly requires
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Forensics Log Preservation for production agents that needs a hero is not done.
 
-Document **data classification** on manifests. External sharing flows through counsel, not Slack uploads.
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-## Testing preservation before incidents
+## Practical defaults for Forensics Log Preservation for production agents
 
-Quarterly drills:
+I treat Forensics Log Preservation for production agents as an operations problem first. The goal is to make agent forensics log preservation observable and interruptible, not to collect frameworks.
 
-1. Simulate hold on a synthetic tenant in staging forensics bucket
-2. Verify production admins cannot delete held objects
-3. Restore random sample and validate hash chain
-4. Measure time from trigger to complete manifest—target under 30 minutes for tier-1 sources
+Keep side effects at the edges and make every write idempotent. Forensics Log Preservation for production agents without retry semantics is a future incident write-up.
 
-Game-day failures to fix proactively: shared IAM paths, lifecycle rules that ignore hold flags, log agents that buffer unsent events in ephemeral disk.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent forensics log preservation.
 
-## Operational metrics
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-Track:
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-- **Time-to-preserve p95** after incident declaration
-- **Coverage ratio** — preserved sources / sources in scope
-- **Integrity check pass rate** on scheduled validations
-- **Hold storage cost** — finance should expect step-change spend during long matters
+## Review questions before merging agent forensics log preservation work
 
-Alert when preservation jobs fail or when production TTL jobs attempt to delete objects under active hold—those alerts go to security and legal channels, not only platform on-call.
+Teams usually discover Forensics Log Preservation for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Common failure modes
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-| Failure | Consequence |
-|---------|-------------|
-| Shared bucket prefixes | \"Cleanup\" in prod deletes holds |
-| No manifest hashes | Cannot prove evidence untampered |
-| Over-broad scope | Cost explosion + PII exposure |
-| Under-broad scope | Missing agent tool-call logs |
-| Reactive only workflow | Rolled-off logs before hold |
+Acceptance check: an on-call engineer can explain system state for agent forensics log preservation from one dashboard and one runbook page.
 
-## The takeaway
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
 
-Forensic log preservation protects investigations and legal defensibility—not convenience archives. Stream to isolated WORM storage, hash-chain or sign batches, automate hold workflows with explicit release, and include agent audit trails in scope definitions. Test quarterly; the first real incident is the wrong time to discover your seven-day TTL outran your response time.
+After a month, delete unused flags and dual paths. `agent-forensics-log-preservation` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent forensics log preservation
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent forensics log preservation, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent forensics log preservation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent forensics log preservation from one dashboard and one runbook page.
+
+Slug-specific note (agent-forensics-log-preservation): prioritize preservation behavior under load and verify with a fixture named `agent-forensics-log-preservation-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-forensics-log-preservation` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [NIST SP 800-86 — Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
-- [AWS S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
-- [Google Cloud Bucket Lock](https://cloud.google.com/storage/docs/bucket-lock)
-- [SANS Incident Handler's Handbook — Evidence Handling](https://www.sans.org/white-papers/incident-handlers-handbook/)
-- [ISO/IEC 27037 — Digital evidence identification and collection](https://www.iso.org/standard/44381.html)
+- Internal runbook seed: `agent-forensics-log-preservation`
+- https://12factor.net/
+- https://martinfowler.com/

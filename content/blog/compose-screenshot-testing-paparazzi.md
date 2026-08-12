@@ -1,112 +1,157 @@
 ---
-title: "Screenshot Testing with Paparazzi"
+title: "Shipping compose screenshot testing paparazzi without regret"
 slug: "compose-screenshot-testing-paparazzi"
-description: "Screenshot Testing with Paparazzi: production patterns for compose teams — design, implementation, testing, security, and operations."
+description: "Shipping compose screenshot testing paparazzi without regret: how to measure compose screenshot before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-08-07"
-dateModified: "2024-08-07"
-tags: ["Compose", "Screenshot"]
-keywords: "compose, screenshot, testing, paparazzi, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "Testing"
+keywords: "compose, screenshot, testing, paparazzi, production, engineering"
 faq:
-  - q: "What is Screenshot Testing with Paparazzi?"
-    a: "Screenshot Testing with Paparazzi covers the engineering practices, APIs, and tradeoffs teams use when implementing this capability in a production Compose UI. It is not a single library call — it is how the surface behaves under real users, releases, and failure modes."
-  - q: "When should teams prioritize Screenshot Testing with Paparazzi?"
-    a: "Prioritize it when recomposition counts and jank stats show regression, when the feature is on your critical user journey, or when you are about to scale traffic/devices/tenants and the current approach will not survive the load. Defer only if metrics are flat and the code path is genuinely unused."
-  - q: "What are common mistakes with Screenshot Testing with Paparazzi?"
-    a: "Copying a tutorial without matching your constraints, skipping measurement until after launch, mixing UI and IO without test seams, and treating edge cases (offline, rotation, permissions) as follow-ups. Another pattern: shipping the demo path without rollback or feature flags."
-  - q: "How does Screenshot Testing with Paparazzi fit a modern Compose stack?"
-    a: "Modern tooling (Compose UI) adds automation, but ownership stays human: you still need explicit contracts, tested migrations, and runbooks. Screenshot Testing with Paparazzi should be observable in production and safe to change in small diffs."
+  - q: "What is Shipping compose screenshot testing paparazzi without regret?"
+    a: "Shipping compose screenshot testing paparazzi without regret is the production approach to measure compose screenshot before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping compose screenshot testing paparazzi without regret?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with compose screenshot testing paparazzi, prioritize it."
+  - q: "What is the most common mistake with Shipping compose screenshot testing paparazzi without regret?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Screenshot Testing with Paparazzi is one of those topics that looks straightforward in a slide deck and gets complicated the first time traffic spikes or an auditor asks how you know it works. In compose systems, the difference between "we implemented it" and "we can operate it" shows up in metrics, incident history, and how confidently new engineers change the code.
-## Problem framing
+**Shipping compose screenshot testing paparazzi without regret** means you measure compose screenshot before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-When screenshot testing with paparazzi is underspecified, every surface team invents a partial fix — inconsistent UX, duplicated platform code, or "works on my device" bugs that explode in production. The symptom on dashboards is usually recomposition counts and jank stats, but the root cause is missing shared patterns.
+This write-up is specific to `compose-screenshot-testing-paparazzi` in a product context, using Postgres, OpenTelemetry for the mechanics while keeping ownership human.
 
-The cost is slower releases and fearful refactors. Engineers re-learn the same platform edges (permissions, lifecycle, threading) on every feature. Product loses predictability because nobody can say what will break when you touch related code.
+## Incident pattern involving compose screenshot testing paparazzi
 
-Solid Compose engineering turns screenshot testing with paparazzi from a recurring argument into a documented pattern with tests and an owner.
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Design principles that survive production
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-**Explicit contracts.** Whether the boundary is HTTP, gRPC, SQL, or an internal module API, the contract should be machine-checkable and versioned. Ambiguity is where compose screenshot testing paparazzi bugs hide.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping compose screenshot testing paparazzi without regret that needs a hero is not done.
 
-**Observability first.** Logs, metrics, and traces are not "phase two." If you cannot answer "what happened?" for screenshot testing with paparazzi, you do not yet understand the behavior you shipped.
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
 
-**Fail closed, degrade gracefully.** Authentication, authorization, validation, and quota checks should deny by default. Partial availability beats corrupt state — users forgive slowness more than wrong answers.
+## Root cause in plain language
 
-**Idempotency and replay safety.** Networks retry. Users double-click. Jobs re-run. Design compose screenshot testing paparazzi flows so duplicates are harmless or detectable.
+Production systems punish vague ownership and unmeasured happy paths. For compose screenshot testing paparazzi, that means making failure visible early.
 
-## Implementation patterns
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-A practical baseline for screenshot testing with paparazzi in compose stacks:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on compose screenshot testing paparazzi.
 
-1. **Model the happy path minimally** — ship the smallest flow that satisfies the user story with correct semantics.
-2. **Add failure paths next** — timeouts, retries with jitter, circuit breaking, and compensating actions.
-3. **Instrument before optimizing** — measure p50/p95 latency, error budgets, and saturation; tune from evidence.
-4. **Document operational playbooks** — what to check, what to rollback, who owns downstream dependencies.
+Concretely, being able to measure compose screenshot before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-For code structure, keep side effects at the edges and core logic pure where possible. Pure functions are trivial to test; IO at the boundary is trivial to mock. That split makes compose screenshot testing paparazzi changes safer because business rules stay isolated from transport details.
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
 
 ```kotlin
-// Isolate compose screenshot testing paparazzi logic for testability
-interface ScreenshotTestingwithPaparazziGateway {
+// Shipping compose screenshot testing paparazzi without regret
+interface Gateway_compose_screensh {
   suspend fun execute(input: Request): Result<Response>
 }
 
-class DefaultScreenshotTestingwithPaparazziGateway(
+class DefaultGateway(
   private val client: HttpClient,
   private val metrics: Metrics,
-) : ScreenshotTestingwithPaparazziGateway {
-  override suspend fun execute(input: Request): Result<Response> = runCatching {
-    metrics.count(" compose-screenshot-testing-paparazzi.attempt")
-    client.post("/v1/testing-paparazzi") {
-      setBody(input)
-      timeout { request = 2_000 }
-    }.body()
+) : Gateway_compose_screensh {
+  override suspend fun execute(input: Request) = runCatching {
+    metrics.count("compose-screenshot-testing-paparazzi.attempt")
+    client.post(input)
   }.onFailure { metrics.count("compose-screenshot-testing-paparazzi.error") }
 }
 ```
 
+## The fix that held under load
 
-## Operational concerns
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Runbooks for screenshot testing with paparazzi should fit on one page: symptoms, dashboards, mitigation, rollback. If mitigation requires a senior engineer's tribal knowledge, the system is not operable yet.
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Production compose screenshot testing paparazzi work is mostly operability: dashboards, alerts, runbooks, and ownership. Define SLOs that reflect user experience — availability, latency, correctness — not vanity metrics. Alerts should page on symptoms (SLO burn) and ticket on causes (error logs), avoiding noise that trains teams to ignore pages.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on compose screenshot testing paparazzi.
 
-Rollouts for screenshot testing with paparazzi benefit from progressive delivery: canary by percentage or by tenant cohort, with automatic rollback when error rate or latency regresses beyond thresholds. Pair deploys with feature flags so you can disable logic paths without redeploying.
+My never-again list for compose screenshot testing paparazzi: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Capacity planning ties directly to cost and reliability. Measure peak QPS, payload sizes, fan-out factor, and dependency limits. Load test with production-shaped traffic; synthetic "hello world" tests miss queue backlogs and downstream contention.
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
 
-## Security and compliance angles
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Even when screenshot testing with paparazzi is not "security software," it participates in your trust boundary. Apply least privilege to service accounts, rotate credentials, and validate all inputs at the trust perimeter. For regulated workloads, maintain an audit trail that answers who changed what, when, and from where.
+## Tests and probes that catch regressions
 
-Secrets belong in managed stores — not environment variables checked into templates. For PII-adjacent flows, minimize retention and prefer tokenization over copying raw fields. Document data flows for compose screenshot testing paparazzi so security reviews do not rely on tribal knowledge.
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Testing strategy
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Unit tests cover pure logic: validation, mapping, state transitions, and edge cases. Contract tests protect API boundaries that screenshot testing with paparazzi depends on. Integration tests with real containers — databases, brokers, sandboxes — catch configuration mistakes mocks hide.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping compose screenshot testing paparazzi without regret that needs a hero is not done.
 
-For critical compose paths, add property-based or fuzz testing where generative input explores weird combinations. Replay production traffic (sanitized) into staging before large refactors. Chaos experiments — dependency latency, partial outages — validate that retries and fallbacks actually work.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping compose screenshot testing paparazzi without regret cannot answer, it is not production-ready.
 
-## Migration and evolution
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
 
-Legacy systems rarely block greenfield designs; they constrain sequencing. Strangle compose screenshot testing paparazzi functionality behind a stable interface, migrate callers incrementally, and delete old paths once traffic drops to zero. Maintain a migration tracker with explicit decommission dates so "temporary" bridges do not ossify.
+## Runbook lines that save minutes
 
-Versioning policy should be boring: additive changes only in minor versions, breaking changes only with deprecation windows and communication. Where screenshot testing with paparazzi spans mobile, web, and backend, coordinate release trains so clients never lead servers into incompatible states.
+Production systems punish vague ownership and unmeasured happy paths. For compose screenshot testing paparazzi, that means making failure visible early.
 
-## Related concepts
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Screenshot Testing with Paparazzi intersects with broader compose topics — see companion notes on [compose-screenshot patterns](https://blog.michaelsam94.com/compose-screenshot/) and [production observability](https://blog.michaelsam94.com/designing-for-observability-slos/) when wiring metrics and alerts. Treat those links as adjacent reading, not prerequisites: the goal here is a self-contained operational understanding you can apply without chasing every rabbit hole.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on compose screenshot testing paparazzi.
 
-## The takeaway
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
 
-Screenshot Testing with Paparazzi rewards disciplined boring engineering: clear contracts, measurable SLOs, secure defaults, and rollout paths that fail safely. The teams that struggle usually lack visibility or ownership, not intelligence. Start with the user-visible outcome, instrument it, iterate with small diffs, and document the failure modes you actually hit — that is how compose screenshot testing paparazzi becomes a maintainable asset instead of incident fuel.
+Related reading:
+
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+
+## Platform guardrails afterward
+
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
+
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on compose screenshot testing paparazzi.
+
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
+
+## Practical defaults for Shipping compose screenshot testing paparazzi without regret
+
+I treat Shipping compose screenshot testing paparazzi without regret as an operations problem first. The goal is to measure compose screenshot before optimizing it, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Shipping compose screenshot testing paparazzi without regret without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping compose screenshot testing paparazzi without regret that needs a hero is not done.
+
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
+
+## Review questions before merging compose screenshot testing paparazzi work
+
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
+
+Put a metric on the user-visible effect of compose screenshot testing paparazzi before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for compose screenshot testing paparazzi from one dashboard and one runbook page.
+
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
+
+After a month, delete unused flags and dual paths. `compose-screenshot-testing-paparazzi` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of compose screenshot testing paparazzi
+
+Teams usually discover Shipping compose screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
+
+Keep side effects at the edges and make every write idempotent. Shipping compose screenshot testing paparazzi without regret without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for compose screenshot testing paparazzi from one dashboard and one runbook page.
+
+Slug-specific note (compose-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `compose-screenshot-testing-paparazzi-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for compose screenshot testing paparazzi. Expand only when the metric demands it.
 
 ## Resources
 
-- [developer.android.com/jetpack/compose](https://developer.android.com/jetpack/compose)
-
-- [m3.material.io](https://m3.material.io/)
-
-- [developer.android.com/develop/ui/compose/performance](https://developer.android.com/develop/ui/compose/performance)
+- Internal runbook seed: `compose-screenshot-testing-paparazzi`
+- https://12factor.net/
+- https://martinfowler.com/

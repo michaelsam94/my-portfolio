@@ -1,127 +1,158 @@
 ---
-title: "Authz Detector"
+title: "Authz detector patterns that survive production"
 slug: "authz-detector"
-description: "Authz Detector: how to ship it with clear ownership and rollback in production android systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz detector patterns that survive production: how to operationalize authz detector with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-16"
 dateModified: "2026-08-12"
 tags:
-  - "Android"
-  - "Mobile"
-keywords: "authz, detector, android, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, detector, production, engineering"
 faq:
-  - q: "What is Authz Detector?"
-    a: "Authz Detector is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Detector?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Detector?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz detector patterns that survive production?"
+    a: "Authz detector patterns that survive production is the production approach to operationalize authz detector with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz detector patterns that survive production?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with authz detector, prioritize it."
+  - q: "What is the most common mistake with Authz detector patterns that survive production?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Detector** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Authz detector patterns that survive production** means you operationalize authz detector with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Below is how I implement and operate it in Android systems using Kotlin, CameraX: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-detector` in a product context, using Prometheus, Postgres, Redis for the mechanics while keeping ownership human.
 
-## Building Authz Detector into an existing system
+## Fitting Authz detector patterns that survive production into an existing system
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For authz detector, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Authz detector patterns that survive production without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz detector patterns that survive production that needs a hero is not done.
 
-## Contracts and ownership
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
-Most write-ups on Authz Detector stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Contracts and ownership boundaries
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Prefer small diffs with a kill switch. Authz Detector changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Prometheus, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz detector from one dashboard and one runbook page.
 
-```kotlin
-interface KotlinGateway { suspend fun execute(input: Request): Result<Response> }
-// Authz Detector
+Concretely, being able to operationalize authz detector with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
+
+```typescript
+// Authz detector patterns that survive production
+export async function handle_authz_detector(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("authz-detector");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Data and state implications
+## State, storage, and retention
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Make Authz Detector error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Detector — you only deployed it.
+Put a metric on the user-visible effect of authz detector before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz detector patterns that survive production that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Authz Detector error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz detector: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Security notes that are not optional
+## Security defaults that are non-negotiable
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Make Authz Detector error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Detector — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz detector patterns that survive production without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for authz detector from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Detector designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz detector patterns that survive production cannot answer, it is not production-ready.
 
-## Observability and SLOs
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## SLOs and dashboards
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Prefer small diffs with a kill switch. Authz Detector changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of authz detector before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz detector.
+
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Week-one validation plan
+## First-week validation plan
 
-Most write-ups on Authz Detector stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Make Authz Detector error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Detector — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz detector patterns that survive production without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for authz detector from one dashboard and one runbook page.
 
-## Practical defaults I use for Authz Detector
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
-Most write-ups on Authz Detector stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Authz detector patterns that survive production
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz detector before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Acceptance check: an on-call engineer can explain system state for authz detector from one dashboard and one runbook page.
 
-## Review questions before merging Authz Detector work
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+After a month, delete unused flags and dual paths. `authz-detector` accumulates temporary bridges faster than teams expect.
 
-In Android stacks I lean on Kotlin, CameraX for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+## Review questions before merging authz detector work
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Teams usually discover Authz detector patterns that survive production after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Keep side effects at the edges and make every write idempotent. Authz detector patterns that survive production without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Detector
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz detector.
 
-I have watched teams under-specify Authz Detector and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `authz-detector` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of authz detector
 
-A month in, prune unused paths. Authz Detector accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Production systems punish vague ownership and unmeasured happy paths. For authz detector, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Authz detector patterns that survive production without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for authz detector from one dashboard and one runbook page.
+
+Slug-specific note (authz-detector): prioritize detector behavior under load and verify with a fixture named `authz-detector-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-detector`
 - https://12factor.net/
+- https://martinfowler.com/

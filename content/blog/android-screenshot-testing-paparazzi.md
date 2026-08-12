@@ -1,256 +1,158 @@
 ---
-title: "Screenshot Testing with Paparazzi"
+title: "Shipping android screenshot testing paparazzi without regret"
 slug: "android-screenshot-testing-paparazzi"
-description: "Screenshot test Android UIs with Paparazzi on the JVM: setup, recording golden images, CI integration, and handling flaky visual tests."
+description: "Shipping android screenshot testing paparazzi without regret: how to ship android screenshot behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-07-16"
-dateModified: "2026-07-16"
-tags: ["Android", "Testing", "Jetpack Compose", "CI"]
-keywords: "Paparazzi screenshot testing, Android visual regression tests, JVM screenshot tests, Paparazzi Compose, golden image testing Android"
+dateModified: "2026-08-12"
+tags:
+  - "Android"
+  - "Testing"
+keywords: "android, screenshot, testing, paparazzi, production, engineering"
 faq:
-  - q: "What is Paparazzi for Android testing?"
-    a: "Paparazzi renders Android layouts and Compose UI on the JVM without an emulator or device. It captures screenshots as golden images and compares future renders against them to detect visual regressions. Tests run in seconds on any machine — no AVD required."
-  - q: "How is Paparazzi different from emulator screenshot tests?"
-    a: "Paparazzi runs on the JVM using Android resource loading and layout inflation without a real Android runtime. It's faster (milliseconds per test vs seconds on emulator) and runs in standard JVM test tasks. Emulator tests are needed for interactions; Paparazzi is for visual regression of static UI states."
-  - q: "How do you update Paparazzi golden images?"
-    a: "Run ./gradlew recordPaparazziDebug to regenerate all golden images after intentional UI changes. Review the diffs in git before committing. In CI, verifyPaparazziDebug compares renders against committed golden images and fails on any pixel difference."
+  - q: "What is Shipping android screenshot testing paparazzi without regret?"
+    a: "Shipping android screenshot testing paparazzi without regret is the production approach to ship android screenshot behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping android screenshot testing paparazzi without regret?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with android screenshot testing paparazzi, prioritize it."
+  - q: "What is the most common mistake with Shipping android screenshot testing paparazzi without regret?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Shipping android screenshot testing paparazzi without regret** means you ship android screenshot behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Paparazzi screenshot tests run on the JVM in milliseconds, need no emulator, and catch visual regressions that unit tests miss — a button that's 4px misaligned, a theme color that changed, text that's clipped after a font update. I've added Paparazzi to Compose projects and watched it catch UI breaks that slipped through code review because "the logic is correct" but the layout shifted. The setup takes an afternoon; the ongoing cost is reviewing golden image diffs in PRs, which is exactly the kind of review that should be automated.
+This write-up is specific to `android-screenshot-testing-paparazzi` in a product context, using Android, Prometheus, Postgres for the mechanics while keeping ownership human.
 
-## Setup
+## A pragmatic path to Shipping android screenshot testing paparazzi without regret
+
+Teams usually discover Shipping android screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Keep side effects at the edges and make every write idempotent. Shipping android screenshot testing paparazzi without regret without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for android screenshot testing paparazzi from one dashboard and one runbook page.
+
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
+
+## Start from the user-visible symptom
+
+I treat Shipping android screenshot testing paparazzi without regret as an operations problem first. The goal is to ship android screenshot behind flags with a rollback, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Shipping android screenshot testing paparazzi without regret without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping android screenshot testing paparazzi without regret that needs a hero is not done.
+
+Concretely, being able to ship android screenshot behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
 ```kotlin
-// app/build.gradle.kts
-plugins {
-    id("app.cash.paparazzi") version "1.3.4"
+// Shipping android screenshot testing paparazzi without regret
+interface Gateway_android_screensh {
+  suspend fun execute(input: Request): Result<Response>
 }
 
-dependencies {
-    testImplementation(libs.paparazzi)
-}
-```
-
-```kotlin
-// gradle/libs.versions.toml
-paparazzi = { module = "app.cash.paparazzi:paparazzi", version = "1.3.4" }
-```
-
-No emulator, no device, no Android instrumentation test runner. Pure JVM `test` task.
-
-## Basic screenshot test
-
-```kotlin
-class HomeScreenTest {
-    @get:Rule
-    val paparazzi = Paparazzi()
-
-    @Test
-    fun homeScreen_default() {
-        paparazzi.snapshot {
-            AppTheme {
-                HomeScreen(
-                    uiState = HomeUiState(
-                        greeting = "Good morning",
-                        items = previewItems,
-                    )
-                )
-            }
-        }
-    }
+class DefaultGateway(
+  private val client: HttpClient,
+  private val metrics: Metrics,
+) : Gateway_android_screensh {
+  override suspend fun execute(input: Request) = runCatching {
+    metrics.count("android-screenshot-testing-paparazzi.attempt")
+    client.post(input)
+  }.onFailure { metrics.count("android-screenshot-testing-paparazzi.error") }
 }
 ```
 
-Paparazzi renders the Composable, captures a PNG, and compares against the golden image in `src/test/snapshots/`.
+## Implementation details for android screenshot testing paparazzi
 
-## Recording golden images
+Production systems punish vague ownership and unmeasured happy paths. For android screenshot testing paparazzi, that means making failure visible early.
 
-First run or after intentional UI changes:
+Keep side effects at the edges and make every write idempotent. Shipping android screenshot testing paparazzi without regret without retry semantics is a future incident write-up.
 
-```bash
-./gradlew recordPaparazziDebug
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping android screenshot testing paparazzi without regret that needs a hero is not done.
 
-This generates/updates PNG files in `src/test/snapshots/images/`. Commit them to git.
+My never-again list for android screenshot testing paparazzi: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-CI verification:
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-```bash
-./gradlew verifyPaparazziDebug
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Fails if any render differs from the golden image. Diffs are saved to `src/test/snapshots/delta/` for review.
+## Flags, canaries, and kill switches
 
-## Testing multiple states
+Production systems punish vague ownership and unmeasured happy paths. For android screenshot testing paparazzi, that means making failure visible early.
 
-```kotlin
-@Test
-fun homeScreen_loading() {
-    paparazzi.snapshot {
-        AppTheme { HomeScreen(uiState = HomeUiState(isLoading = true)) }
-    }
-}
+With Android, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-@Test
-fun homeScreen_empty() {
-    paparazzi.snapshot {
-        AppTheme { HomeScreen(uiState = HomeUiState(items = emptyList())) }
-    }
-}
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on android screenshot testing paparazzi.
 
-@Test
-fun homeScreen_error() {
-    paparazzi.snapshot {
-        AppTheme { HomeScreen(uiState = HomeUiState(error = "Network error")) }
-    }
-}
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping android screenshot testing paparazzi without regret cannot answer, it is not production-ready.
 
-Test every visually distinct state: loading, empty, error, populated, edge cases (long text, many items).
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-## Device config variations
+## Proving it worked
 
-Test across screen sizes and themes:
+Production systems punish vague ownership and unmeasured happy paths. For android screenshot testing paparazzi, that means making failure visible early.
 
-```kotlin
-@Test
-fun homeScreen_darkMode() {
-    paparazzi.unsafeUpdateConfig(
-        paparazzi.context.resources.configuration.apply {
-            uiMode = Configuration.UI_MODE_NIGHT_YES
-        }
-    )
-    paparazzi.snapshot {
-        AppTheme(darkTheme = true) { HomeScreen(uiState = previewState) }
-    }
-}
-```
+With Android, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Or use parameterized tests for width/height combinations.
+Acceptance check: an on-call engineer can explain system state for android screenshot testing paparazzi from one dashboard and one runbook page.
 
-## CI integration
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-```yaml
-# GitHub Actions
-- name: Verify screenshots
-  run: ./gradlew verifyPaparazziDebug
+Related reading:
 
-- name: Upload diffs on failure
-  if: failure()
-  uses: actions/upload-artifact@v4
-  with:
-    name: paparazzi-diffs
-    path: "**/snapshots/delta/"
-```
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Paparazzi runs in standard JVM test tasks — no KVM, no emulator, no special CI setup. It runs on macOS, Linux, and Windows identically.
+## Follow-ups teams usually skip
 
-## Handling dynamic content
+Production systems punish vague ownership and unmeasured happy paths. For android screenshot testing paparazzi, that means making failure visible early.
 
-Paparazzi renders at a fixed point in time, but some UI is inherently dynamic:
+With Android, Prometheus, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-- **Dates/times**: inject fixed timestamps in preview/test state
-- **Images from network**: use local test drawables, not Coil async loading
-- **Animations**: Paparazzi captures static frames — disable animations
-- **Random content**: use deterministic preview data
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on android screenshot testing paparazzi.
 
-```kotlin
-// Bad: renders differently each run
-Text("Last updated: ${Instant.now()}")
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-// Good: fixed in test
-Text("Last updated: Jan 15, 2026")
-```
+## Practical defaults for Shipping android screenshot testing paparazzi without regret
 
-## Paparazzi vs Roborazzi
+Teams usually discover Shipping android screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-| Feature | Paparazzi | [Roborazzi](https://blog.michaelsam94.com/android-roborazzi-screenshot-tests/) |
-|---------|-----------|-------------|
-| Rendering engine | Layoutlib (Paparazzi) | Robolectric + Compose |
-| Compose support | Yes | Yes (better Compose integration) |
-| View system support | XML layouts + Compose | Compose-first |
-| Speed | Very fast | Fast |
-| Maintainer | Cash App | Taku Semba |
+Put a metric on the user-visible effect of android screenshot testing paparazzi before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Both run on JVM without emulators. Paparazzi is more mature for XML layouts; Roborazzi has better Compose rendering fidelity. Try both on your project and pick based on render accuracy.
+Acceptance check: an on-call engineer can explain system state for android screenshot testing paparazzi from one dashboard and one runbook page.
 
-## Review workflow
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-1. Developer changes UI code
-2. CI runs `verifyPaparazziDebug` — fails with diff
-3. Developer runs `recordPaparazziDebug` locally
-4. Reviews generated PNG diffs in git
-5. Commits updated golden images with the UI change PR
-6. Reviewer checks both code and screenshot diffs
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Treat golden image changes with the same scrutiny as code changes — they're visual contract changes.
+## Review questions before merging android screenshot testing paparazzi work
 
-## Flaky test prevention
+Teams usually discover Shipping android screenshot testing paparazzi without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Paparazzi failures that aren't real UI regressions waste review time. Eliminate sources of nondeterminism systematically:
+Put a metric on the user-visible effect of android screenshot testing paparazzi before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-**Fonts:** Paparazzi bundles Roboto, but custom fonts must be declared in test resources. Missing font files fall back silently — text metrics shift by pixels.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping android screenshot testing paparazzi without regret that needs a hero is not done.
 
-**Density and locale:** Lock both in every test:
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-```kotlin
-@Paparazzi(
-    deviceConfig = DeviceConfig.NIGHTLY.copy(locale = "en-US"),
-)
-class CheckoutScreenTest { ... }
-```
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-**Hardware bitmaps:** `Bitmap.Config.HARDWARE` cannot be captured — use software bitmaps in test or `@Preview` composables.
+## Field notes after thirty days of android screenshot testing paparazzi
 
-**System bars and insets:** Pass explicit `WindowInsets` in test rather than relying on device defaults that differ between Paparazzi versions.
+I treat Shipping android screenshot testing paparazzi without regret as an operations problem first. The goal is to ship android screenshot behind flags with a rollback, not to collect frameworks.
 
-## Scaling screenshot tests across modules
+Put a metric on the user-visible effect of android screenshot testing paparazzi before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Monorepo with 40 feature modules — centralize configuration:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on android screenshot testing paparazzi.
 
-```kotlin
-// :testing-screenshots module
-fun Paparazzi.defaultConfig() = Paparazzi(
-    deviceConfig = DeviceConfig.PIXEL_5,
-    theme = "android:Theme.Material3.DayNight",
-    renderingMode = SessionParams.RenderingMode.SHRINK,
-)
-```
+Slug-specific note (android-screenshot-testing-paparazzi): prioritize paparazzi behavior under load and verify with a fixture named `android-screenshot-testing-paparazzi-smoke`.
 
-Run `verifyPaparazzi` only on affected modules in CI using Gradle task graph analysis. Full-suite verify on `main` nightly; PRs verify changed modules only.
-
-Store golden images in git LFS if repo size exceeds 500 MB — but prefer per-module snapshot dirs to limit LFS churn.
-
-## Accessibility and screenshot coverage
-
-Screenshot tests complement but don't replace accessibility testing. Still add:
-
-- Semantic tree assertions for TalkBack labels on critical flows
-- Color contrast checks for text-on-background combinations Paparazzi captures but doesn't evaluate
-
-When a golden image changes, ask: "Would this pass WCAG AA?" Visual diff approval is not accessibility approval.
-
-## When Paparazzi isn't enough
-
-Paparazzi renders layoutlib output — not identical to real devices for:
-
-- OpenGL/Canvas custom drawing with GPU shaders
-- WebView content
-- System UI overlays and edge-to-edge with dynamic scrims
-
-For those cases, add a small Maestro or emulator screenshot suite as a secondary gate, not a replacement. Paparazzi catches 90% of Compose/XML regressions at 1% of the CI cost.
-
-## Production checklist
-
-- [ ] Fixed timestamps in all preview/test composables
-- [ ] Custom fonts bundled in `src/test/resources`
-- [ ] Golden images reviewed in PR diffs, not auto-approved
-- [ ] Per-module verify on affected modules in CI
-- [ ] Accessibility semantics tested separately from screenshots
+After a month, delete unused flags and dual paths. `android-screenshot-testing-paparazzi` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Paparazzi documentation](https://cashapp.github.io/paparazzi/)
-- [Paparazzi GitHub repository](https://github.com/cashapp/paparazzi)
-- [Testing Compose UIs](https://developer.android.com/jetpack/compose/testing)
-- [Roborazzi screenshot tests](https://blog.michaelsam94.com/android-roborazzi-screenshot-tests/)
-- [Compose preview tooling](https://blog.michaelsam94.com/compose-preview-tooling-multipreview/)
+- Internal runbook seed: `android-screenshot-testing-paparazzi`
+- https://12factor.net/
+- https://martinfowler.com/

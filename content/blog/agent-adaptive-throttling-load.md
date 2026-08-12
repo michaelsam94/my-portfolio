@@ -1,290 +1,159 @@
 ---
-title: "AI Agents: Adaptive Throttling Load"
+title: "Operating agents with adaptive throttling load"
 slug: "agent-adaptive-throttling-load"
-description: "Static rate limits fail when traffic spikes or dependencies slow down — adaptive throttling uses live latency and error signals to shed load before cascading failures take down your API."
+description: "Operating agents with adaptive throttling load: how to bound tool calls and blast radius for adaptive throttling load — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-01"
-dateModified: "2025-12-01"
-tags: ["AI", "Agent", "Adaptive"]
-keywords: "adaptive throttling, load shedding, rate limiting, AIMD, token bucket, circuit breaker, backpressure, overload protection"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, adaptive, throttling, load, production, engineering"
 faq:
-  - q: "How is adaptive throttling different from a fixed rate limit?"
-    a: "Fixed limits (100 req/s per API key) ignore system health. Adaptive throttling adjusts permitted throughput based on real-time signals — p99 latency, error rates, queue depth, CPU — allowing higher throughput when healthy and tightening automatically when the service degrades."
-  - q: "What signals should drive throttle decisions?"
-    a: "Use symptoms, not causes: request latency percentiles, 5xx rate, saturation of thread pools, GPU memory for inference endpoints, and upstream dependency health. Avoid throttling on CPU alone — a batch job can spike CPU while request latency stays flat."
-  - q: "Should throttling return 429 or queue requests?"
-    a: "Return 429 or 503 with Retry-After when latency SLO is at risk — queuing unbounded requests amplifies tail latency and memory pressure. Short bounded queues (50–200ms wait) work for idempotent reads; fail fast for expensive LLM inference and writes."
-  - q: "Can adaptive throttling work with LLM inference endpoints?"
-    a: "Yes. Track time-to-first-token, tokens/sec, and GPU KV-cache utilization. Shed load by rejecting new sessions before degrading in-flight requests. Offer degraded model tiers (smaller model, shorter context) as a throttle stage before hard rejection."
+  - q: "What is Operating agents with adaptive throttling load?"
+    a: "Operating agents with adaptive throttling load is the production approach to bound tool calls and blast radius for adaptive throttling load. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with adaptive throttling load?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent adaptive throttling load, prioritize it."
+  - q: "What is the most common mistake with Operating agents with adaptive throttling load?"
+    a: "The usual failure is treating agent adaptive throttling load as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Every API team sets rate limits. Most are static numbers someone picked during a design review — 100 requests per minute per key, 10 concurrent connections, a token bucket sized for normal Tuesday traffic.
+**Operating agents with adaptive throttling load** means you bound tool calls and blast radius for adaptive throttling load — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like treating agent adaptive throttling load as a pure library problem start paging people.
 
-Then Black Friday arrives, a dependency slows from 40ms to 800ms, or a viral feature doubles QPS. Static limits either block healthy traffic (set too low) or allow a death spiral (set too high). Workers pile up, garbage collection pauses grow, the database connection pool exhausts, and every request — including health checks — starts timing out.
+This write-up is specific to `agent-adaptive-throttling-load` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-Adaptive throttling closes the loop: the limit moves with system capacity rather than a spreadsheet guess.
+## Short answer: Operating agents with adaptive throttling load
 
-## Feedback control, not magic
+Teams usually discover Operating agents with adaptive throttling load after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Think of adaptive throttling as a thermostat. You set a target (p99 latency < 300ms), measure the process variable (current p99), and adjust the control output (accepted request rate).
+Keep side effects at the edges and make every write idempotent. Operating agents with adaptive throttling load without retry semantics is a future incident write-up.
 
-```
-         ┌──────────────┐
-  setpoint ──►│  Controller  │──► admission rate
-  (SLO target) │  (AIMD / PID) │
-         ▲     └──────┬───────┘
-         │            │
-         └────────────┘
-              measured p99 / error rate
-```
+Acceptance check: an on-call engineer can explain system state for agent adaptive throttling load from one dashboard and one runbook page.
 
-Unlike a circuit breaker that trips open and stays open, adaptive throttles **gradually** reduce admission, probe recovery, and ramp back — similar to TCP congestion control.
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-## Signals that should drive decisions
+## Constraints before abstractions
 
-Prioritize **user-visible symptoms**:
+I treat Operating agents with adaptive throttling load as an operations problem first. The goal is to bound tool calls and blast radius for adaptive throttling load, not to collect frameworks.
 
-| Signal | Why it matters | Caveat |
-|--------|----------------|--------|
-| p99 request latency | Direct SLO proxy | Noisy on low traffic — use min sample window |
-| 5xx / timeout rate | User pain | Lagging indicator; combine with latency |
-| Active in-flight requests | Queue buildup predictor | Set max concurrency per worker |
-| Thread pool saturation | Rejection imminent | JVM, Node worker pools |
-| GPU memory / batch queue | LLM-specific | TTFT spikes before OOM |
-| Upstream dependency latency | Early warning | Throttle before your pool fills |
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent adaptive throttling load as a pure library problem.
 
-Do not throttle on CPU alone. A background compaction job can hit 90% CPU while API latency is fine. Conversely, latency can explode at moderate CPU when locks contend.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with adaptive throttling load that needs a hero is not done.
 
-## AIMD: the workhorse algorithm
+Concretely, being able to bound tool calls and blast radius for adaptive throttling load forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Additive Increase, Multiplicative Decrease is the classic adaptive pattern from TCP:
-
-- **Increase** allowed rate slowly when healthy (+N req/s every window)
-- **Decrease** multiplicatively when unhealthy (rate × 0.5 on breach)
-
-```go
-type AdaptiveLimiter struct {
-    currentLimit float64 // requests per second
-    minLimit     float64
-    maxLimit     float64
-    increaseStep float64
-    decreaseFactor float64
-    mu           sync.Mutex
-}
-
-func (l *AdaptiveLimiter) Adjust(p99Ms float64, errorRate float64, targetP99 float64) {
-    l.mu.Lock()
-    defer l.mu.Unlock()
-
-    healthy := p99Ms < targetP99 && errorRate < 0.01
-
-    if healthy {
-        l.currentLimit = math.Min(l.currentLimit+l.increaseStep, l.maxLimit)
-    } else {
-        l.currentLimit = math.Max(l.currentLimit*l.decreaseFactor, l.minLimit)
-    }
-}
-
-func (l *AdaptiveLimiter) Allow() bool {
-    l.mu.Lock()
-    limit := l.currentLimit
-    l.mu.Unlock()
-    return l.tokenBucket.TryAcquire(1.0 / limit)
-}
-```
-
-Run the adjust loop every 1–5 seconds with smoothed metrics (exponential moving average over 30–60s). Raw per-second p99 flickers and causes limit oscillation.
-
-## Layered admission control
-
-Apply throttles at multiple layers; inner layers protect precious resources:
-
-```
-Client → Edge (CDN/WAF) → Gateway (global limit) → Service (adaptive) → Dependency pool
-```
-
-**Edge:** block obvious abuse, geo anomalies, credential stuffing — static rules.
-
-**Gateway:** global concurrency cap as last resort — protects the fleet.
-
-**Service adaptive:** the AIMD loop on latency/error — most granular.
-
-**Dependency pool:** separate limits on DB connections, LLM provider tokens, embedding batch size.
-
-A request rejected at the gateway saves a DB round trip. A request rejected at the service after auth still wasted JWT validation — order cheap checks before expensive ones, but authenticate before user-specific rate limits to prevent key sharing abuse.
-
-## Token bucket vs sliding window vs concurrency
-
-Adaptive throttling adjusts the **rate parameter**; you still need a **shape**:
-
-- **Token bucket**: allows bursts; good for interactive APIs
-- **Sliding window log**: precise; higher memory cost
-- **Concurrency semaphore**: limits in-flight work — often the binding constraint for LLM inference
-
-For GPU-backed endpoints, concurrency limits beat RPS limits. One request streaming 8k tokens occupies the GPU for seconds; counting requests per second misleads.
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
 ```typescript
-class ConcurrencyGate {
-  private inFlight = 0;
-
-  constructor(
-    private maxConcurrent: number,
-    private adaptiveController: AdaptiveLimiter
-  ) {}
-
-  async acquire(): Promise<ReleaseFn> {
-    const effectiveMax = Math.floor(
-      this.maxConcurrent * this.adaptiveController.getCapacityRatio()
-    );
-
-    if (this.inFlight >= effectiveMax) {
-      throw new ThrottledError("server_busy", {
-        retryAfterMs: estimateWaitTime(this.inFlight, effectiveMax),
-      });
-    }
-
-    this.inFlight++;
-    return () => {
-      this.inFlight--;
-    };
+// Operating agents with adaptive throttling load
+export async function handle_agent_adaptive_throttling_load(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-adaptive-throttling-load");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-`getCapacityRatio()` returns currentLimit / maxLimit from the AIMD controller, scaling concurrency smoothly.
+## Reference implementation notes (OpenTelemetry)
 
-## Graceful degradation tiers
+I treat Operating agents with adaptive throttling load as an operations problem first. The goal is to bound tool calls and blast radius for adaptive throttling load, not to collect frameworks.
 
-Hard 429s frustrate users. Tiered responses convert throttle events into partial service:
+Keep side effects at the edges and make every write idempotent. Operating agents with adaptive throttling load without retry semantics is a future incident write-up.
 
-1. **Tier A (healthy):** full feature set, normal models
-2. **Tier B (elevated load):** disable non-essential features (recommendations, rich previews)
-3. **Tier C (stressed):** smaller LLM, truncated context, cached responses only
-4. **Tier D (critical):** 429/503 with Retry-After
+Acceptance check: an on-call engineer can explain system state for agent adaptive throttling load from one dashboard and one runbook page.
 
-```typescript
-async function handleChatRequest(req: ChatRequest): Promise<ChatResponse> {
-  const loadTier = loadController.currentTier();
+My never-again list for agent adaptive throttling load: treating agent adaptive throttling load as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-  switch (loadTier) {
-    case "A":
-      return fullPipeline(req);
-    case "B":
-      return fullPipeline({ ...req, skipRag: true });
-    case "C":
-      return degradedPipeline(req, { model: "small", maxTokens: 512 });
-    case "D":
-      throw new ServiceUnavailableError({ retryAfter: 30 });
-  }
-}
-```
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-Product must pre-define tiers. Engineers should not invent degradation behavior during an incident.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent adaptive throttling load as a pure library problem |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Per-tenant fairness under global stress
+## Quick path vs durable path
 
-Global adaptive limits prevent fleet collapse but allow one tenant to consume the entire budget. Add **weighted fair queuing**:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent adaptive throttling load, that means making failure visible early.
 
-- Each tenant has a base quota
-- Unused quota expires (prevent hoarding)
-- During global throttle, no tenant exceeds 2× their fair share
+Put a metric on the user-visible effect of agent adaptive throttling load before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-```python
-def admit(tenant_id: str, global_limit: float) -> bool:
-    tenant_limit = tenant_quotas.get(tenant_id, default_quota)
-    tenant_usage = usage_counter.rate(tenant_id)
-    global_usage = usage_counter.rate("global")
+Acceptance check: an on-call engineer can explain system state for agent adaptive throttling load from one dashboard and one runbook page.
 
-    if global_usage >= global_limit:
-        # under global stress, enforce fair share strictly
-        fair_share = global_limit / active_tenant_count()
-        return tenant_usage < fair_share
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with adaptive throttling load cannot answer, it is not production-ready.
 
-    return tenant_usage < tenant_limit
-```
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-Enterprise contracts may guarantee minimum throughput — reserve capacity headroom in your maxLimit calculation.
+## Edge cases demos miss
 
-## Client behavior on 429 and 503
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent adaptive throttling load, that means making failure visible early.
 
-Throttling only works if clients back off. Return:
+Put a metric on the user-visible effect of agent adaptive throttling load before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-```
-HTTP/1.1 429 Too Many Requests
-Retry-After: 2
-X-RateLimit-Remaining: 0
-Content-Type: application/problem+json
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with adaptive throttling load that needs a hero is not done.
 
-{"type":"throttled","title":"Server busy","retryAfterMs":2000}
-```
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-Document exponential backoff with jitter in your SDK:
+Related reading:
 
-```typescript
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 5): Promise<T> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (!(e instanceof ThrottledError) || attempt === maxAttempts - 1) throw e;
-      const delay = e.retryAfterMs ?? Math.min(1000 * 2 ** attempt, 30000);
-      await sleep(delay + Math.random() * 500);
-    }
-  }
-  throw new Error("unreachable");
-}
-```
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Without jitter, synchronized client retries create **retry storms** that recreate the overload.
+## Merge checklist
 
-## Observability for throttle decisions
+Teams usually discover Operating agents with adaptive throttling load after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Dashboard panels operators need during incidents:
+Put a metric on the user-visible effect of agent adaptive throttling load before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-- Current admission rate vs max (the AIMD limit over time)
-- Rejected request rate by tier and tenant
-- p99 latency overlaid with throttle events
-- In-flight concurrency vs pool size
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent adaptive throttling load.
 
-Log every throttle decision at debug sampling (1%) in normal operation, 100% during elevated tiers. Include `loadTier`, `currentLimit`, `p99`, and `errorRate` as structured fields.
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-Alert when rejection rate exceeds 5% for five minutes — users notice before your error budget math catches up.
+## Practical defaults for Operating agents with adaptive throttling load
 
-## Testing adaptive behavior
+I treat Operating agents with adaptive throttling load as an operations problem first. The goal is to bound tool calls and blast radius for adaptive throttling load, not to collect frameworks.
 
-Unit test the controller with synthetic metric feeds:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent adaptive throttling load as a pure library problem.
 
-```go
-func TestAIMDDecreaseOnLatencyBreach(t *testing.T) {
-    lim := NewAdaptiveLimiter(1000, 100, 10000, 50, 0.5)
-    lim.Adjust(p99Ms: 600, errorRate: 0, targetP99: 300)
-    assert.Equal(t, 500.0, lim.CurrentLimit())
-}
-```
+Acceptance check: an on-call engineer can explain system state for agent adaptive throttling load from one dashboard and one runbook page.
 
-Integration tests with k6 or Locust:
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-1. Baseline load at SLO
-2. Spike to 3× expected QPS
-3. Assert p99 stays bounded and rejection rate rises
-4. Drop load, assert recovery within N windows
+After a month, delete unused flags and dual paths. `agent-adaptive-throttling-load` accumulates temporary bridges faster than teams expect.
 
-Chaos experiments: inject 500ms latency into dependency calls and verify throttle engages before connection pool exhaustion.
+## Review questions before merging agent adaptive throttling load work
 
-## When not to adapt
+I treat Operating agents with adaptive throttling load as an operations problem first. The goal is to bound tool calls and blast radius for adaptive throttling load, not to collect frameworks.
 
-Adaptive throttling adds complexity. Skip it when:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent adaptive throttling load as a pure library problem.
 
-- Traffic is flat and predictable with hard contractual SLAs per tenant (static quotas suffice)
-- The service is purely async/batch with unbounded queueing acceptable
-- You have autos scaling faster than overload develops (rare for stateful or GPU workloads)
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with adaptive throttling load that needs a hero is not done.
 
-For most synchronous APIs and inference endpoints serving variable LLM load, adaptive admission is cheaper than outage pages.
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
 
-Static rate limits are a fence. Adaptive throttling is cruise control — it slows before the engine redlines and speeds up when the road clears. Wire it to latency and error signals you already collect, tier degradation before hard failure, and teach clients to backoff. Your on-call will spend fewer nights draining connection pools.
+In review, require a short failure note covering retry, partial deploy, and treating agent adaptive throttling load as a pure library problem. Missing that note blocks merge.
+
+## Field notes after thirty days of agent adaptive throttling load
+
+I treat Operating agents with adaptive throttling load as an operations problem first. The goal is to bound tool calls and blast radius for adaptive throttling load, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with adaptive throttling load without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with adaptive throttling load that needs a hero is not done.
+
+Slug-specific note (agent-adaptive-throttling-load): prioritize load behavior under load and verify with a fixture named `agent-adaptive-throttling-load-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent adaptive throttling load. Expand only when the metric demands it.
 
 ## Resources
 
-- [Google SRE Book: Handling Overload (Chapter 21)](https://sre.google/sre-book/handling-overload/)
-- [Netflix: Performance Under Load (Adaptive concurrency)](https://netflixtechblog.com/performance-under-load-3e6fa9a60581)
-- [Envoy Proxy: Global rate limiting](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/other_features/global_rate_limiting)
-- [AWS Architecture Blog: Token bucket rate limiting](https://aws.amazon.com/blogs/architecture/rate-limiting-strategies-for-serverless-applications/)
-- [Martin Fowler: Circuit Breaker pattern](https://martinfowler.com/bliki/CircuitBreaker.html)
+- Internal runbook seed: `agent-adaptive-throttling-load`
+- https://12factor.net/
+- https://martinfowler.com/

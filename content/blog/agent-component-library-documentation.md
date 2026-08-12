@@ -1,361 +1,159 @@
 ---
-title: "Component Library Documentation Agents Can Actually Use"
+title: "Agent systems: component library documentation"
 slug: "agent-component-library-documentation"
-description: "Document design-system components for human and agent consumers: Storybook MDX, prop schemas, usage constraints, MCP tool surfaces, and CI drift detection."
+description: "Agent systems: component library documentation: how to keep agent side effects idempotent around component library documentation — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-12"
-dateModified: "2026-06-12"
-tags: ["Design Systems", "Documentation", "AI Agents", "Storybook"]
-keywords: "component library documentation, Storybook agent integration, design system docs, component prop schema, agent UI generation"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, component, library, documentation, production, engineering"
 faq:
-  - q: "Why do agents need different component documentation than human developers?"
-    a: "Agents do not browse Storybook visually — they consume structured text: prop types, allowed enum values, composition rules, and anti-patterns. Docs must be machine-parseable JSON Schema or TypeScript AST exports alongside human MDX. Missing 'do not nest X inside Y' constraints cause agents to generate invalid trees that type-check but break layout or a11y."
-  - q: "Should component docs live in Storybook, a separate portal, or repo markdown?"
-    a: "Storybook remains the source for live examples and visual states. Export a parallel `docs/api/` JSON bundle from the same source files for agents and IDE plugins. CI builds both; drift between them fails the pipeline. Avoid duplicate hand-written markdown that diverges from props."
-  - q: "How do you expose component libraries to coding agents via MCP?"
-    a: "Publish an MCP tool server that lists components, returns prop schemas, validates JSX snippets against composition rules, and links to Storybook story IDs. Agents call `list_components`, `get_component_spec`, and `validate_tree` before emitting UI code. Cache specs — they change less often than LLM context windows shift."
-  - q: "What metadata reduces agent-generated UI bugs the most?"
-    a: "Required vs optional props, default values, slot/children constraints, responsive breakpoints, accessibility roles, and paired components (Dialog requires DialogHeader). Rank constraints by failure frequency from production bug tickets — document those first in `agentHints` blocks."
+  - q: "What is Agent systems: component library documentation?"
+    a: "Agent systems: component library documentation is the production approach to keep agent side effects idempotent around component library documentation. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: component library documentation?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent component library documentation, prioritize it."
+  - q: "What is the most common mistake with Agent systems: component library documentation?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent systems: component library documentation** means you keep agent side effects idempotent around component library documentation — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Coding agents that build dashboards and internal tools from your design system will hallucinate props, invent variant names, and nest components in ways that break layout — unless documentation is structured for **machine consumption** as well as humans. A beautiful Storybook with screenshot-only pages helps designers; agents need typed contracts, composition grammars, and validation tools that reject invalid trees before merge.
+This write-up is specific to `agent-component-library-documentation` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-The goal is a single source of truth that renders human docs, exports agent-readable specs, and gates CI when either drifts from component source.
+## What Agent systems: component library documentation changes in day-two ops
 
-## Documentation layers
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-Think in four layers, each generated from code where possible:
+Keep side effects at the edges and make every write idempotent. Agent systems: component library documentation without retry semantics is a future incident write-up.
 
-```
-Layer 1: Source (React/Vue/Svelte components + TypeScript props)
-    ↓
-Layer 2: Human docs (Storybook MDX, descriptions, do/don't)
-    ↓
-Layer 3: Agent spec bundle (JSON Schema per component + composition rules)
-    ↓
-Layer 4: Runtime validation (MCP tools, ESLint rules, snapshot tests)
-```
+Acceptance check: an on-call engineer can explain system state for agent component library documentation from one dashboard and one runbook page.
 
-Layer 3 is what most design systems lack. Adding it transforms agent output from guesswork to constrained synthesis.
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-## Storybook as human layer
+## Designing so you can keep agent side effects idempotent around component library documentation
 
-Keep interactive examples in Storybook 8+ with autodocs from prop types:
+I treat Agent systems: component library documentation as an operations problem first. The goal is to keep agent side effects idempotent around component library documentation, not to collect frameworks.
 
-```tsx
-// Button.stories.tsx
-import type { Meta, StoryObj } from "@storybook/react";
-import { Button } from "./Button";
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-const meta: Meta<typeof Button> = {
-  title: "Components/Button",
-  component: Button,
-  tags: ["autodocs"],
-  parameters: {
-    docs: {
-      description: {
-        component:
-          "Primary action control. Use `variant=\"primary\"` for one main action per surface. Do not stack more than two primary buttons.",
-      },
-    },
-  },
-  argTypes: {
-    variant: {
-      control: "select",
-      options: ["primary", "secondary", "ghost", "danger"],
-    },
-    size: { control: "select", options: ["sm", "md", "lg"] },
-  },
-};
-export default meta;
-type Story = StoryObj<typeof Button>;
+Acceptance check: an on-call engineer can explain system state for agent component library documentation from one dashboard and one runbook page.
 
-export const Primary: Story = { args: { variant: "primary", children: "Save" } };
-export const Danger: Story = { args: { variant: "danger", children: "Delete" } };
+Concretely, being able to keep agent side effects idempotent around component library documentation forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
+
+```python
+# Agent systems: component library documentation
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentComponentLibrRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_component_library_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-component-library-documentation"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-MDX for narrative constraints agents cannot infer from types alone:
+## Failure modes specific to agent component library documentation
 
-```mdx
-{/* Button.mdx */}
-import { Meta, Canvas } from "@storybook/blocks";
-import * as Stories from "./Button.stories";
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-<Meta of={Stories} />
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-## Agent hints
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent component library documentation.
 
-- Maximum one `variant="primary"` per `<Card>` or `<Dialog>`.
-- Never use `danger` without confirmation dialog parent.
-- `disabled` buttons must include `aria-disabled` — handled by component; do not wrap in `<a>`.
-```
+My never-again list for agent component library documentation: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-The `## Agent hints` section is extracted at build time into the spec bundle (see below).
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-## Agent spec bundle generation
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Export machine-readable specs from TypeScript using `react-docgen-typescript` or `ts-morph`:
+## Signals worth paging on
 
-```typescript
-// scripts/build-component-spec.ts
-import docgen from "react-docgen-typescript";
-import fs from "fs";
-import path from "path";
-import { parseAgentHints } from "./parse-agent-hints";
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-const parser = docgen.withCustomConfig("./tsconfig.json", {
-  propFilter: (prop) => !prop.parent?.fileName.includes("node_modules"),
-});
+Put a metric on the user-visible effect of agent component library documentation before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-const componentsDir = "./src/components";
-const out: Record<string, ComponentSpec> = {};
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: component library documentation that needs a hero is not done.
 
-for (const file of fs.readdirSync(componentsDir)) {
-  if (!file.endsWith(".tsx")) continue;
-  const filePath = path.join(componentsDir, file);
-  const docs = parser.parse(filePath);
-  const exportName = docs[0].displayName;
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: component library documentation cannot answer, it is not production-ready.
 
-  out[exportName] = {
-    description: docs[0].description,
-    props: Object.fromEntries(
-      Object.entries(docs[0].props).map(([name, p]) => [
-        name,
-        {
-          type: p.type.name,
-          required: p.required,
-          defaultValue: p.defaultValue?.value ?? null,
-          description: p.description,
-        },
-      ])
-    ),
-    agentHints: parseAgentHints(filePath.replace(".tsx", ".mdx")),
-    stories: listStoryIds(exportName),
-  };
-}
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-fs.writeFileSync("./docs/api/components.json", JSON.stringify(out, null, 2));
-```
+## Rollout sequence with Temporal
 
-Example output fragment:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-```json
-{
-  "Button": {
-    "description": "Primary action control.",
-    "props": {
-      "variant": {
-        "type": "enum",
-        "required": false,
-        "defaultValue": "secondary",
-        "enum": ["primary", "secondary", "ghost", "danger"]
-      },
-      "size": {
-        "type": "enum",
-        "required": false,
-        "defaultValue": "md",
-        "enum": ["sm", "md", "lg"]
-      },
-      "children": { "type": "ReactNode", "required": true }
-    },
-    "agentHints": [
-      "Maximum one variant=primary per Card or Dialog",
-      "Never use danger without confirmation dialog parent"
-    ],
-    "stories": ["Components/Button/Primary", "Components/Button/Danger"]
-  }
-}
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: component library documentation without retry semantics is a future incident write-up.
 
-Commit `components.json` or publish as npm package `@corp/design-system-spec`.
+Acceptance check: an on-call engineer can explain system state for agent component library documentation from one dashboard and one runbook page.
 
-## Composition rules as a grammar
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-Prop types alone miss parent-child legality. Define explicit composition rules:
+Related reading:
 
-```typescript
-// docs/api/composition-rules.ts
-export const compositionRules: CompositionRule[] = [
-  {
-    parent: "Dialog",
-    requiredChildren: ["DialogHeader", "DialogBody"],
-    optionalChildren: ["DialogFooter"],
-    forbiddenChildren: ["Dialog"],
-  },
-  {
-    parent: "Card",
-    maxChildren: { component: "Button", props: { variant: "primary" }, count: 1 },
-  },
-  {
-    parent: "FormField",
-    requiredChildren: ["Label"],
-    acceptsTextInput: true,
-  },
-];
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-export function validateTree(node: UiNode): ValidationError[] {
-  const errors: ValidationError[] = [];
-  const rule = compositionRules.find((r) => r.parent === node.type);
-  if (!rule) return errors;
+## What I would delete after month one
 
-  for (const req of rule.requiredChildren ?? []) {
-    if (!node.children?.some((c) => c.type === req)) {
-      errors.push({ code: "MISSING_CHILD", message: `${node.type} requires ${req}` });
-    }
-  }
-  // ... maxChildren, forbiddenChildren
-  return errors;
-}
-```
+I treat Agent systems: component library documentation as an operations problem first. The goal is to keep agent side effects idempotent around component library documentation, not to collect frameworks.
 
-Agents call `validate_tree` before returning JSX. Humans get the same rules via ESLint custom plugin in IDE.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-## MCP tool surface for agents
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent component library documentation.
 
-Expose design system docs through MCP so Cursor and other agents fetch authoritative specs:
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-```typescript
-// mcp-design-system/server.ts
-import { Server } from "@modelcontextprotocol/sdk/server";
-import spec from "../docs/api/components.json";
-import { validateTree } from "../docs/api/composition-rules";
+## Practical defaults for Agent systems: component library documentation
 
-const server = new Server({ name: "design-system", version: "1.0.0" });
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-server.tool("list_components", {}, async () => ({
-  content: [{ type: "text", text: JSON.stringify(Object.keys(spec)) }],
-}));
+Put a metric on the user-visible effect of agent component library documentation before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-server.tool("get_component_spec", { component: { type: "string" } }, async ({ component }) => {
-  const entry = spec[component];
-  if (!entry) throw new Error(`Unknown component: ${component}`);
-  return { content: [{ type: "text", text: JSON.stringify(entry, null, 2) }] };
-});
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent component library documentation.
 
-server.tool("validate_tree", { tree: { type: "object" } }, async ({ tree }) => {
-  const errors = validateTree(tree as UiNode);
-  return {
-    content: [{
-      type: "text",
-      text: errors.length ? JSON.stringify(errors) : "valid",
-    }],
-  };
-});
-```
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-Cursor rule snippet for teams:
+Default deny, explicit timeouts, and one dashboard row for agent component library documentation. Expand only when the metric demands it.
 
-```
-Before generating UI with @corp/design-system:
-1. Call get_component_spec for each component used.
-2. Call validate_tree on the proposed JSX AST.
-3. Do not use props not listed in spec.
-4. Apply all agentHints verbatim.
-```
+## Review questions before merging agent component library documentation work
 
-## CI drift detection
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent component library documentation, that means making failure visible early.
 
-Pipeline stages:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```yaml
-jobs:
-  docs-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npm run build:component-spec
-      - run: git diff --exit-code docs/api/components.json
-      - run: npm run storybook:build
-      - run: npm run test:composition-rules
-```
+Acceptance check: an on-call engineer can explain system state for agent component library documentation from one dashboard and one runbook page.
 
-Failing `git diff` on `components.json` forces engineers to regenerate specs when props change — agents never read stale `variant` enums.
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-Add snapshot tests for each Storybook story's default args — catches visual/API drift:
+After a month, delete unused flags and dual paths. `agent-component-library-documentation` accumulates temporary bridges faster than teams expect.
 
-```typescript
-import { composeStories } from "@storybook/react";
-import * as ButtonStories from "./Button.stories";
+## Field notes after thirty days of agent component library documentation
 
-const { Primary } = composeStories(ButtonStories);
+I treat Agent systems: component library documentation as an operations problem first. The goal is to keep agent side effects idempotent around component library documentation, not to collect frameworks.
 
-test("Primary story args match spec defaults", () => {
-  const spec = require("../../docs/api/components.json").Button;
-  expect(Primary.args.variant).toBe(spec.props.variant.defaultValue ?? "secondary");
-});
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: component library documentation without retry semantics is a future incident write-up.
 
-## Writing effective agent hints
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: component library documentation that needs a hero is not done.
 
-Prioritize hints from production failure modes:
+Slug-specific note (agent-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `agent-component-library-documentation-smoke`.
 
-| Bug pattern | Agent hint |
-|-------------|------------|
-| Double primary CTA | Max one primary button per surface |
-| Modal without focus trap | Dialog must include DialogHeader |
-| Icon-only button no label | IconButton requires `aria-label` |
-| Table horizontal scroll on mobile | DataTable needs `responsive=\"stack\"` below md breakpoint |
-
-Format hints as imperative, testable statements — not prose paragraphs. Limit to 5–7 per component; link to MDX for edge cases.
-
-Anti-pattern documentation matters as much as happy paths:
-
-```json
-{
-  "Button": {
-    "antiPatterns": [
-      { "pattern": "<Button><Link href=\"/x\">", "reason": "Use LinkButton instead for navigation" },
-      { "pattern": "variant=\"primary\" size=\"sm\" for destructive", "reason": "Use danger variant" }
-    ]
-  }
-}
-```
-
-## Versioning and changelog for agents
-
-When design system ships breaking prop renames, agents trained on old specs generate broken code. Publish semver with machine-readable changelog:
-
-```json
-{
-  "version": "4.2.0",
-  "breaking": [],
-  "deprecated": [
-    { "component": "Button", "prop": "kind", "replacement": "variant", "removeIn": "5.0.0" }
-  ]
-}
-```
-
-MCP tool `get_changelog(since_version)` lets agents upgrade generated code during refactors.
-
-## Measuring documentation quality
-
-Track agent-specific metrics:
-
-- **Spec fetch rate**: MCP `get_component_spec` calls per agent session
-- **Validation failure rate**: `validate_tree` errors / generations
-- **Post-merge fix rate**: PRs tagged `agent-generated` needing follow-up commits
-- **Undocumented prop usage**: ESLint rule catching props absent from spec
-
-Drop components with high validation failure rates into doc sprint queue — usually missing hints or wrong enum export.
-
-## Human docs still matter
-
-Agents do not replace Storybook for design review. Keep:
-
-- Visual regression via Chromatic or Percy
-- Accessibility manual notes on complex organisms
-- Figma code connect links in MDX
-
-The spec bundle supplements; it does not delete designer-facing narrative.
-
-## The takeaway
-
-Component library documentation for the agent era is a build artifact: TypeScript props → JSON spec + composition grammar + MCP tools + CI drift gates. Invest once in extraction pipelines; every agent session thereafter reads the same contracts humans see in Storybook. Undocumented constraints become `agentHints`; repeated agent failures become new rules in `validate_tree`.
+Default deny, explicit timeouts, and one dashboard row for agent component library documentation. Expand only when the metric demands it.
 
 ## Resources
 
-- [Storybook autodocs](https://storybook.js.org/docs/writing-docs/autodocs)
-- [react-docgen-typescript](https://github.com/styleguidist/react-docgen-typescript)
-- [Model Context Protocol specification](https://modelcontextprotocol.io/)
-- [Adobe Spectrum — documenting for API consumers](https://spectrum.adobe.com/page/design-system-documentation/)
-- [ESLint custom rules for design system enforcement](https://eslint.org/docs/latest/extend/custom-rules)
+- Internal runbook seed: `agent-component-library-documentation`
+- https://12factor.net/
+- https://martinfowler.com/

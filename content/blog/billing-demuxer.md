@@ -1,129 +1,158 @@
 ---
-title: "Billing Demuxer"
+title: "Billing-demuxer engineering checklist"
 slug: "billing-demuxer"
-description: "Billing Demuxer: how to ship it with clear ownership and rollback in production analytics systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Billing-demuxer engineering checklist: how to ship billing demuxer behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-07-12"
 dateModified: "2026-08-12"
 tags:
-  - "Data"
-  - "Product"
-keywords: "billing, demuxer, analytics, production, engineering"
+  - "Engineering"
+  - "Billing"
+keywords: "billing, demuxer, production, engineering"
 faq:
-  - q: "What is Billing Demuxer?"
-    a: "Billing Demuxer is a production approach to ship it with clear ownership and rollback. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Billing Demuxer?"
-    a: "Invest when the feature is on a critical user journey. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Billing Demuxer?"
-    a: "The usual failure is copying a tutorial without matching constraints. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Billing-demuxer engineering checklist?"
+    a: "Billing-demuxer engineering checklist is the production approach to ship billing demuxer behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Billing-demuxer engineering checklist?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with billing demuxer, prioritize it."
+  - q: "What is the most common mistake with Billing-demuxer engineering checklist?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Billing Demuxer** means you ship it with clear ownership and rollback — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when the feature is on a critical user journey; that is usually also when shortcuts like copying a tutorial without matching constraints start paging people.
+**Billing-demuxer engineering checklist** means you ship billing demuxer behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Below is how I implement and operate it in Analytics systems using dbt, Segment: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `billing-demuxer` in a product context, using Postgres, Prometheus for the mechanics while keeping ownership human.
 
-## Decision guide for Billing Demuxer
+## Decision guide for Billing-demuxer engineering checklist
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Billing-demuxer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of billing demuxer before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Billing Demuxer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing demuxer.
 
-## When this is the wrong tool
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
-I have watched teams under-specify Billing Demuxer and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship it with clear ownership and rollback.
+## When to refuse this approach
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Teams usually discover Billing-demuxer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Prefer small diffs with a kill switch. Billing Demuxer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Practically, being able to ship it with clear ownership and rollback means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-demuxer engineering checklist that needs a hero is not done.
 
-```sql
--- Billing Demuxer
-INSERT INTO example_events (tenant_id, event_id, payload)
-VALUES ($1, $2, $3)
-ON CONFLICT (tenant_id, event_id) DO NOTHING;
+Concretely, being able to ship billing demuxer behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
+
+```typescript
+// Billing-demuxer engineering checklist
+export async function handle_billing_demuxer(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("billing-demuxer");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+I treat Billing-demuxer engineering checklist as an operations problem first. The goal is to ship billing demuxer behind flags with a rollback, not to collect frameworks.
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing demuxer.
 
-I also keep a short 'never again' list beside the code: copying a tutorial without matching constraints; skipping Billing Demuxer error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for billing demuxer: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; copying a tutorial without matching constraints |
-| Durable path | the feature is on a critical user journey | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For billing demuxer, that means making failure visible early.
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing demuxer.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Billing Demuxer designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Billing-demuxer engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Migration without dual-running forever
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Billing-demuxer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Prefer small diffs with a kill switch. Billing Demuxer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of billing demuxer before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-demuxer engineering checklist that needs a hero is not done.
+
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-If you only remember one thing about Billing Demuxer: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship it with clear ownership and rollback.
+Production systems punish vague ownership and unmeasured happy paths. For billing demuxer, that means making failure visible early.
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+Keep side effects at the edges and make every write idempotent. Billing-demuxer engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-demuxer engineering checklist that needs a hero is not done.
 
-## Practical defaults I use for Billing Demuxer
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Billing-demuxer engineering checklist
 
-The anti-pattern is copying a tutorial without matching constraints. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For billing demuxer, that means making failure visible early.
 
-Write the acceptance check in product language: when the feature is on a critical user journey, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Billing Demuxer error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for billing demuxer from one dashboard and one runbook page.
 
-## Review questions before merging Billing Demuxer work
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+After a month, delete unused flags and dual paths. `billing-demuxer` accumulates temporary bridges faster than teams expect.
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+## Review questions before merging billing demuxer work
 
-Prefer small diffs with a kill switch. Billing Demuxer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Billing-demuxer engineering checklist as an operations problem first. The goal is to ship billing demuxer behind flags with a rollback, not to collect frameworks.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on copying a tutorial without matching constraints. If it is missing, the PR is incomplete.
+Put a metric on the user-visible effect of billing demuxer before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Field notes after the first month of Billing Demuxer
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Billing-demuxer engineering checklist that needs a hero is not done.
 
-Most write-ups on Billing Demuxer stop at the demo. This one starts from situations where the feature is on a critical user journey, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
 
-In Analytics stacks I lean on dbt, Segment for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when copying a tutorial without matching constraints.
+After a month, delete unused flags and dual paths. `billing-demuxer` accumulates temporary bridges faster than teams expect.
 
-Prefer small diffs with a kill switch. Billing Demuxer changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of billing demuxer
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Billing Demuxer error rate. Expand only when the metric says you must.
+Teams usually discover Billing-demuxer engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
+
+Keep side effects at the edges and make every write idempotent. Billing-demuxer engineering checklist without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for billing demuxer from one dashboard and one runbook page.
+
+Slug-specific note (billing-demuxer): prioritize demuxer behavior under load and verify with a fixture named `billing-demuxer-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for billing demuxer. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `billing-demuxer`
 - https://12factor.net/
+- https://martinfowler.com/

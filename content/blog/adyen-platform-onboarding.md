@@ -1,131 +1,158 @@
 ---
-title: "Adyen Platform Onboarding"
+title: "A practical guide to adyen platform onboarding"
 slug: "adyen-platform-onboarding"
-description: "Adyen Platform Onboarding: how to avoid the demo-only happy path in production go systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "A practical guide to adyen platform onboarding: how to measure adyen platform before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-22"
 dateModified: "2026-08-12"
 tags:
-  - "Go"
-  - "Backend"
-keywords: "adyen, platform, onboarding, go, production, engineering"
+  - "Engineering"
+  - "Adyen"
+keywords: "adyen, platform, onboarding, production, engineering"
 faq:
-  - q: "What is Adyen Platform Onboarding?"
-    a: "Adyen Platform Onboarding is a production approach to avoid the demo-only happy path. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Adyen Platform Onboarding?"
-    a: "Invest when on-call already feels this pain weekly. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Adyen Platform Onboarding?"
-    a: "The usual failure is dual-writing without an outbox. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is A practical guide to adyen platform onboarding?"
+    a: "A practical guide to adyen platform onboarding is the production approach to measure adyen platform before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in A practical guide to adyen platform onboarding?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with adyen platform onboarding, prioritize it."
+  - q: "What is the most common mistake with A practical guide to adyen platform onboarding?"
+    a: "The usual failure is treating adyen platform onboarding as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Adyen Platform Onboarding** means you avoid the demo-only happy path — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when on-call already feels this pain weekly; that is usually also when shortcuts like dual-writing without an outbox start paging people.
+**A practical guide to adyen platform onboarding** means you measure adyen platform before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like treating adyen platform onboarding as a pure library problem start paging people.
 
-Below is how I implement and operate it in Go systems using Go, pgx: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `adyen-platform-onboarding` in a product context, using Postgres, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Adyen Platform Onboarding: production checklist
+## A practical guide to adyen platform onboarding: production checklist
 
-Most write-ups on Adyen Platform Onboarding stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+I treat A practical guide to adyen platform onboarding as an operations problem first. The goal is to measure adyen platform before optimizing it, not to collect frameworks.
 
-Make Adyen Platform Onboarding error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Adyen Platform Onboarding — you only deployed it.
+Keep side effects at the edges and make every write idempotent. A practical guide to adyen platform onboarding without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Adyen Platform Onboarding changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on adyen platform onboarding.
 
-## Inputs, outputs, and invariants
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
-I have watched teams under-specify Adyen Platform Onboarding and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Inputs, outputs, invariants
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover A practical guide to adyen platform onboarding after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of adyen platform onboarding before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Practically, being able to avoid the demo-only happy path means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to adyen platform onboarding that needs a hero is not done.
 
-```go
-func (s *Service) Handle(ctx context.Context, req Request) error {
-  ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-  defer cancel()
-  // Adyen Platform Onboarding
-  return s.repo.Save(ctx, req)
+Concretely, being able to measure adyen platform before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
+
+```typescript
+// A practical guide to adyen platform onboarding
+export async function handle_adyen_platform_onboarding(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("adyen-platform-onboarding");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Concurrency and retry behavior
+## Concurrency, retries, and timeouts
 
-I have watched teams under-specify Adyen Platform Onboarding and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+I treat A practical guide to adyen platform onboarding as an operations problem first. The goal is to measure adyen platform before optimizing it, not to collect frameworks.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating adyen platform onboarding as a pure library problem.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on adyen platform onboarding.
 
-I also keep a short 'never again' list beside the code: dual-writing without an outbox; skipping Adyen Platform Onboarding error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for adyen platform onboarding: treating adyen platform onboarding as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; dual-writing without an outbox |
-| Durable path | on-call already feels this pain weekly | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating adyen platform onboarding as a pure library problem |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Human workflows (support, ops, audit)
+## Support and audit workflows
 
-Most write-ups on Adyen Platform Onboarding stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover A practical guide to adyen platform onboarding after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Keep side effects at the edges and make every write idempotent. A practical guide to adyen platform onboarding without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on adyen platform onboarding.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Adyen Platform Onboarding designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If A practical guide to adyen platform onboarding cannot answer, it is not production-ready.
 
-## Load and capacity notes
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
-I have watched teams under-specify Adyen Platform Onboarding and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Capacity and load notes
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Teams usually discover A practical guide to adyen platform onboarding after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Adyen Platform Onboarding changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating adyen platform onboarding as a pure library problem.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to adyen platform onboarding that needs a hero is not done.
+
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
 Related reading:
 
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Definition of done
+## Ship gate
 
-I have watched teams under-specify Adyen Platform Onboarding and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Teams usually discover A practical guide to adyen platform onboarding after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Make Adyen Platform Onboarding error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Adyen Platform Onboarding — you only deployed it.
+Keep side effects at the edges and make every write idempotent. A practical guide to adyen platform onboarding without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for adyen platform onboarding from one dashboard and one runbook page.
 
-## Practical defaults I use for Adyen Platform Onboarding
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
-If you only remember one thing about Adyen Platform Onboarding: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## Practical defaults for A practical guide to adyen platform onboarding
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Production systems punish vague ownership and unmeasured happy paths. For adyen platform onboarding, that means making failure visible early.
 
-Prefer small diffs with a kill switch. Adyen Platform Onboarding changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. A practical guide to adyen platform onboarding without retry semantics is a future incident write-up.
 
-A month in, prune unused paths. Adyen Platform Onboarding accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on adyen platform onboarding.
 
-## Review questions before merging Adyen Platform Onboarding work
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
-Most write-ups on Adyen Platform Onboarding stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and treating adyen platform onboarding as a pure library problem. Missing that note blocks merge.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+## Review questions before merging adyen platform onboarding work
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+I treat A practical guide to adyen platform onboarding as an operations problem first. The goal is to measure adyen platform before optimizing it, not to collect frameworks.
 
-A month in, prune unused paths. Adyen Platform Onboarding accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Put a metric on the user-visible effect of adyen platform onboarding before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Adyen Platform Onboarding
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. A practical guide to adyen platform onboarding that needs a hero is not done.
 
-If you only remember one thing about Adyen Platform Onboarding: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
 
-In Go stacks I lean on Go, pgx for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+After a month, delete unused flags and dual paths. `adyen-platform-onboarding` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of adyen platform onboarding
 
-A month in, prune unused paths. Adyen Platform Onboarding accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Production systems punish vague ownership and unmeasured happy paths. For adyen platform onboarding, that means making failure visible early.
+
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating adyen platform onboarding as a pure library problem.
+
+Acceptance check: an on-call engineer can explain system state for adyen platform onboarding from one dashboard and one runbook page.
+
+Slug-specific note (adyen-platform-onboarding): prioritize onboarding behavior under load and verify with a fixture named `adyen-platform-onboarding-smoke`.
+
+After a month, delete unused flags and dual paths. `adyen-platform-onboarding` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `adyen-platform-onboarding`
 - https://12factor.net/
+- https://martinfowler.com/

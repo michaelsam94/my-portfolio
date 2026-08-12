@@ -1,363 +1,159 @@
 ---
-title: "RAG: Component Library Documentation"
+title: "RAG pipelines: component library documentation"
 slug: "rag-component-library-documentation"
-description: "Document RAG UI component libraries with Storybook—streaming response renderers, citation blocks, source preview cards, and retrieval status indicators with live props and accessibility notes."
+description: "RAG pipelines: component library documentation: how to improve retrieval precision for component library documentation — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-11"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Component"]
-keywords: "component library, Storybook, RAG UI, design system, citation component, streaming text, documentation, React components"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, component, library, documentation, production, engineering"
 faq:
-  - q: "What RAG-specific components need documentation beyond standard design systems?"
-    a: "RAG products have unique UI patterns: streaming markdown response renderers, citation/source attribution blocks, retrieved chunk preview cards, confidence indicators, retrieval loading states, and query input with suggestion chips. Standard button and form docs don't cover these— they need dedicated stories with realistic RAG data fixtures."
-  - q: "How should Storybook document streaming response components?"
-    a: "Use play functions and args to simulate streaming token arrival—show partial response, mid-stream, and complete states. Document aria-live behavior for screen readers. Include stories for markdown edge cases: code blocks, tables, and inline citations that RAG responses commonly contain."
-  - q: "What accessibility documentation belongs in RAG component stories?"
-    a: "Document APCA contrast values for each theme variant, aria-live region configuration for streaming text, keyboard navigation for citation links, and focus management when new retrieval results append. Include axe-core automated checks in Storybook test runner for every story."
+  - q: "What is RAG pipelines: component library documentation?"
+    a: "RAG pipelines: component library documentation is the production approach to improve retrieval precision for component library documentation. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in RAG pipelines: component library documentation?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with rag component library documentation, prioritize it."
+  - q: "What is the most common mistake with RAG pipelines: component library documentation?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Engineers kept reimplementing citation blocks slightly differently in every RAG feature—margin off by 2px, source link color not matching dark mode, streaming cursor behavior inconsistent. The component library had Button, Input, and Modal documented in Storybook. It did not have CitationBlock, StreamingResponse, or RetrievalStatus. Six months of UI inconsistency ended when RAG-specific components got first-class Storybook documentation with realistic fixtures, interaction tests, and accessibility notes baked into every story.
+**RAG pipelines: component library documentation** means you improve retrieval precision for component library documentation — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Component library documentation for RAG products must cover retrieval-specific UI patterns that generic design systems omit. Storybook is the standard vehicle—stories become living documentation, visual regression baselines, and accessibility test fixtures.
+This write-up is specific to `rag-component-library-documentation` in a rag context, using pgvector, OpenSearch, OpenTelemetry for the mechanics while keeping ownership human.
 
-## RAG component inventory
+## What RAG pipelines: component library documentation changes in day-two ops
 
-Components unique to or heavily customized for RAG interfaces:
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag component library documentation, that means making failure visible early.
 
-| Component | Variants to document |
-|-----------|---------------------|
-| `StreamingResponse` | Empty, streaming, complete, error |
-| `CitationBlock` | Single source, multi-source, collapsed |
-| `SourcePreviewCard` | With snippet, without snippet, unavailable |
-| `RetrievalStatus` | Searching, found N sources, no results, failed |
-| `QueryInput` | Default, with suggestions, with history |
-| `ConfidenceBadge` | High, medium, low, unknown |
-| `MarkdownRenderer` | Code, tables, lists, inline citations |
-| `ChunkHighlight` | Relevant passage highlighted in source |
-| `FeedbackWidget` | Thumbs up/down on response quality |
+With pgvector, OpenSearch, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Each needs stories for light/dark theme and mobile viewport.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: component library documentation that needs a hero is not done.
 
-## Storybook story structure for RAG components
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-```tsx
-// components/CitationBlock/CitationBlock.stories.tsx
-import type { Meta, StoryObj } from "@storybook/react";
-import { CitationBlock } from "./CitationBlock";
-import { ragFixtures } from "../../fixtures/rag";
+## Designing so you can improve retrieval precision for component library documentation
 
-const meta: Meta<typeof CitationBlock> = {
-  title: "RAG/CitationBlock",
-  component: CitationBlock,
-  parameters: {
-    layout: "padded",
-    docs: {
-      description: {
-        component:
-          "Displays retrieved source attribution for RAG response chunks. " +
-          "Meets APCA Lc 60+ for citation text. Supports keyboard navigation.",
-      },
-    },
-  },
-  tags: ["autodocs"],
-  argTypes: {
-    source: { description: "Retrieved document source metadata" },
-    snippet: { description: "Relevant chunk excerpt" },
-    collapsed: { control: "boolean" },
-  },
-};
+I treat RAG pipelines: component library documentation as an operations problem first. The goal is to improve retrieval precision for component library documentation, not to collect frameworks.
 
-export default meta;
-type Story = StoryObj<typeof CitationBlock>;
+Keep side effects at the edges and make every write idempotent. RAG pipelines: component library documentation without retry semantics is a future incident write-up.
 
-export const SingleSource: Story = {
-  args: {
-    source: ragFixtures.sources[0],
-    snippet: ragFixtures.snippets.refundPolicy,
-    collapsed: false,
-  },
-};
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag component library documentation.
 
-export const MultipleSources: Story = {
-  args: {
-    sources: ragFixtures.sources.slice(0, 3),
-    collapsed: true,
-  },
-};
+Concretely, being able to improve retrieval precision for component library documentation forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-export const DarkMode: Story = {
-  args: SingleSource.args,
-  parameters: { backgrounds: { default: "dark" } },
-  decorators: [(Story) => <div className="dark"><Story /></div>],
-};
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
+
+```python
+# RAG pipelines: component library documentation
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class RagComponentLibrarRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_rag_component_library_do(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("rag-component-library-documentation"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Realistic RAG fixtures
+## Failure modes specific to rag component library documentation
 
-Centralize test data reflecting production RAG output:
+I treat RAG pipelines: component library documentation as an operations problem first. The goal is to improve retrieval precision for component library documentation, not to collect frameworks.
 
-```typescript
-// fixtures/rag.ts
-export const ragFixtures = {
-  sources: [
-    {
-      id: "doc-refund-policy-v3",
-      title: "Refund Policy — Updated March 2026",
-      url: "https://docs.example.com/refund-policy",
-      corpusVersion: "v47",
-      confidence: 0.92,
-    },
-    {
-      id: "doc-shipping-faq",
-      title: "Shipping FAQ",
-      url: "https://docs.example.com/shipping",
-      corpusVersion: "v47",
-      confidence: 0.78,
-    },
-  ],
-  snippets: {
-    refundPolicy:
-      "Customers may request a full refund within 30 days of purchase. " +
-      "Digital products are eligible if not yet downloaded.",
-    shipping:
-      "Standard shipping takes 5–7 business days. Express shipping available.",
-  },
-  streamingResponse: {
-    partial: "Based on our refund policy, you can request a ",
-    complete:
-      "Based on our refund policy, you can request a full refund within " +
-      "30 days of purchase for digital products not yet downloaded.",
-  },
-  retrievalStates: {
-    searching: { status: "searching" as const, query: "refund policy" },
-    found: { status: "found" as const, count: 3, query: "refund policy" },
-    empty: { status: "empty" as const, query: "xyzzy nonsense query" },
-    error: { status: "error" as const, message: "Retrieval service unavailable" },
-  },
-};
-```
+With pgvector, OpenSearch, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Fixtures evolve with corpus—version fixture file when response format changes.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag component library documentation.
 
-## Streaming response stories with play functions
+My never-again list for rag component library documentation: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Simulate token-by-token arrival:
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-```tsx
-// components/StreamingResponse/StreamingResponse.stories.tsx
-export const StreamingAnimation: Story = {
-  args: { text: "", isStreaming: true },
-  play: async ({ canvasElement, args }) => {
-    const tokens = ragFixtures.streamingResponse.complete.split(" ");
-    const canvas = within(canvasElement);
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-    for (const token of tokens) {
-      args.text += token + " ";
-      args.isStreaming = true;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    args.isStreaming = false;
-  },
-};
+## Signals worth paging on
 
-export const StreamingComplete: Story = {
-  args: {
-    text: ragFixtures.streamingResponse.complete,
-    isStreaming: false,
-    citations: ragFixtures.sources.slice(0, 2),
-  },
-};
-```
+I treat RAG pipelines: component library documentation as an operations problem first. The goal is to improve retrieval precision for component library documentation, not to collect frameworks.
 
-Document expected aria-live behavior in story description:
+Keep side effects at the edges and make every write idempotent. RAG pipelines: component library documentation without retry semantics is a future incident write-up.
 
-```tsx
-parameters: {
-  docs: {
-    description: {
-      story:
-        "During streaming, aria-live='polite' announces new content to screen readers. " +
-        "Complete state moves citations into focusable region.",
-    },
-  },
-},
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: component library documentation that needs a hero is not done.
 
-## Accessibility documentation in stories
+Review prompts I use: what happens twice, what happens never, what happens partially? If RAG pipelines: component library documentation cannot answer, it is not production-ready.
 
-Embed contrast and a11y info in docs:
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-```tsx
-// components/CitationBlock/CitationBlock.a11y.stories.tsx
-export const AccessibilityNotes: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story: `
-**Contrast (APCA):**
-- Citation text on light bg: Lc 78 ✓
-- Citation text on dark bg: Lc 82 ✓
+## Rollout sequence with pgvector
 
-**Keyboard:**
-- Tab to source link
-- Enter opens source in new tab
+Teams usually discover RAG pipelines: component library documentation after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-**Screen reader:**
-- Source announced as "Source 1 of 2: Refund Policy"
-        `,
-      },
-    },
-  },
-  args: SingleSource.args,
-};
-```
+Keep side effects at the edges and make every write idempotent. RAG pipelines: component library documentation without retry semantics is a future incident write-up.
 
-Automated axe checks in test runner:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: component library documentation that needs a hero is not done.
 
-```tsx
-// .storybook/test-runner.ts
-import { injectAxe, checkA11y } from "axe-playwright";
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-export async function preVisit(page) {
-  await injectAxe(page);
-}
+Related reading:
 
-export async function postVisit(page, context) {
-  await checkA11y(page, "#storybook-root", {
-    detailedReport: true,
-  });
-}
-```
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## MDX documentation pages
+## What I would delete after month one
 
-Long-form component docs alongside stories:
+Teams usually discover RAG pipelines: component library documentation after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-```mdx
-{/* components/CitationBlock/CitationBlock.mdx */}
-import { Meta, Story, Canvas, Controls } from "@storybook/blocks";
-import * as CitationBlockStories from "./CitationBlock.stories";
+Put a metric on the user-visible effect of rag component library documentation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-<Meta of={CitationBlockStories} />
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag component library documentation.
 
-# CitationBlock
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-Displays retrieved source attribution in RAG responses.
+## Practical defaults for RAG pipelines: component library documentation
 
-## Usage
+I treat RAG pipelines: component library documentation as an operations problem first. The goal is to improve retrieval precision for component library documentation, not to collect frameworks.
 
-\`\`\`tsx
-<CitationBlock
-  source={retrievedSource}
-  snippet={chunkText}
-  onSourceClick={(url) => window.open(url)}
-/>
-\`\`\`
+Put a metric on the user-visible effect of rag component library documentation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## When to use
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag component library documentation.
 
-- Always show citations when RAG response includes retrieved context
-- Collapse to count badge when >3 sources
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-## Do not
+After a month, delete unused flags and dual paths. `rag-component-library-documentation` accumulates temporary bridges faster than teams expect.
 
-- Hide citations behind hover (accessibility)
-- Use color alone to indicate source confidence
+## Review questions before merging rag component library documentation work
 
-<Canvas of={CitationBlockStories.SingleSource} />
-<Controls of={CitationBlockStories.SingleSource} />
-```
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag component library documentation, that means making failure visible early.
 
-## Visual regression with Chromatic
+Put a metric on the user-visible effect of rag component library documentation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-RAG components have many theme/state combinations—automate visual diff:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. RAG pipelines: component library documentation that needs a hero is not done.
 
-```yaml
-# chromatic.config.json
-{
-  "projectToken": "chroma_xxx",
-  "buildScriptName": "build-storybook",
-  "onlyChanged": true,
-  "externals": ["public/**"]
-}
-```
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-CI on every PR:
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
-```yaml
-- name: Publish to Chromatic
-  run: npx chromatic --exit-zero-on-changes
-```
+## Field notes after thirty days of rag component library documentation
 
-Catches citation block dark mode regression before merge.
+Teams usually discover RAG pipelines: component library documentation after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Component API consistency
+Put a metric on the user-visible effect of rag component library documentation before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Document standard props across RAG components:
+Acceptance check: an on-call engineer can explain system state for rag component library documentation from one dashboard and one runbook page.
 
-```typescript
-// types/rag-component-props.ts
-interface RAGComponentBase {
-  /** Theme variant */
-  variant?: "light" | "dark" | "auto";
-  /** Corpus version for debugging display */
-  corpusVersion?: string;
-  /** Test ID for e2e */
-  "data-testid"?: string;
-}
+Slug-specific note (rag-component-library-documentation): prioritize documentation behavior under load and verify with a fixture named `rag-component-library-documentation-smoke`.
 
-interface CitationBlockProps extends RAGComponentBase {
-  source: RetrievedSource;
-  snippet?: string;
-  collapsed?: boolean;
-  onSourceClick?: (url: string) => void;
-}
-```
-
-Consistent API patterns reduce documentation burden—once `variant` is documented for one component, others follow.
-
-## Contribution guidelines
-
-Document how to add new RAG components:
-
-1. Create component in `components/RAG/`
-2. Add fixtures to `fixtures/rag.ts`
-3. Write stories: default, variants, dark mode, mobile, a11y
-4. Add MDX page with usage guidelines
-5. Verify axe checks pass
-6. Submit Chromatic review
-
-PR template checklist:
-
-```markdown
-- [ ] Storybook stories for all variants
-- [ ] Realistic RAG fixtures (not lorem ipsum)
-- [ ] Dark mode story
-- [ ] Accessibility notes in docs
-- [ ] axe checks pass
-- [ ] Chromatic review approved
-```
-
-## Keeping docs current with RAG pipeline changes
-
-RAG response format evolves—citation structure adds fields, streaming protocol changes. Documentation drift causes UI bugs:
-
-- **Fixture versioning:** `ragFixtures v2` when API response schema changes
-- **Storybook CI:** build Storybook on every PR, fail on TypeScript errors in stories
-- **Link to API schema:** document which corpus/response version fixtures represent
-- **Quarterly review:** design + engineering audit stories against production UI
-
-Component library documentation is the contract between RAG backend response format and frontend rendering. Invest in RAG-specific stories—not just generic design tokens—to keep retrieval UI consistent and accessible.
-
-## Design-dev handoff with Storybook links
-
-Link Storybook URLs in Figma component descriptions and Jira tickets. Designers reference specific story URLs when specifying RAG UI behavior; engineers implement against the same story. Reduces "that's not what I meant" rework on citation block layouts. Publish Storybook to static hosting on every main branch merge—product and support teams use it as UI reference without local dev setup.
-
-## Versioning component library with RAG API schema
-
-When RAG API response schema increments (new citation fields, confidence format change), release component library minor version with updated prop types. Document breaking changes in Storybook changelog page. Consumers (frontend apps) pin component library version aligned with RAG API version they target—version mismatch causes rendering bugs for new citation metadata fields. Semantic versioning: patch for visual fixes, minor for new optional props, major for breaking prop changes.
+Default deny, explicit timeouts, and one dashboard row for rag component library documentation. Expand only when the metric demands it.
 
 ## Resources
 
-- Storybook autodocs and MDX documentation
-- Storybook test runner with axe-playwright
-- Chromatic visual regression for Storybook
-- Inclusive Components by Heydon Pickering
+- Internal runbook seed: `rag-component-library-documentation`
+- https://12factor.net/
+- https://martinfowler.com/

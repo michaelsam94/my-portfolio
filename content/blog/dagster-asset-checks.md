@@ -1,129 +1,158 @@
 ---
-title: "Dagster Asset Checks"
+title: "Dagster Asset Checks: production notes"
 slug: "dagster-asset-checks"
-description: "Dagster Asset Checks: how to avoid the demo-only happy path in production rust systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Dagster Asset Checks: production notes: how to operationalize dagster asset with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-29"
 dateModified: "2026-08-12"
 tags:
-  - "Rust"
-  - "Systems"
-keywords: "dagster, asset, checks, rust, production, engineering"
+  - "Engineering"
+  - "Dagster"
+keywords: "dagster, asset, checks, production, engineering"
 faq:
-  - q: "What is Dagster Asset Checks?"
-    a: "Dagster Asset Checks is a production approach to avoid the demo-only happy path. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Dagster Asset Checks?"
-    a: "Invest when on-call already feels this pain weekly. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Dagster Asset Checks?"
-    a: "The usual failure is dual-writing without an outbox. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Dagster Asset Checks: production notes?"
+    a: "Dagster Asset Checks: production notes is the production approach to operationalize dagster asset with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Dagster Asset Checks: production notes?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with dagster asset checks, prioritize it."
+  - q: "What is the most common mistake with Dagster Asset Checks: production notes?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Dagster Asset Checks** means you avoid the demo-only happy path — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when on-call already feels this pain weekly; that is usually also when shortcuts like dual-writing without an outbox start paging people.
+**Dagster Asset Checks: production notes** means you operationalize dagster asset with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Below is how I implement and operate it in Rust systems using Axum, Tokio: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `dagster-asset-checks` in a product context, using Redis, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Building Dagster Asset Checks into an existing system
+## Fitting Dagster Asset Checks: production notes into an existing system
 
-If you only remember one thing about Dagster Asset Checks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+I treat Dagster Asset Checks: production notes as an operations problem first. The goal is to operationalize dagster asset with clear ownership, not to collect frameworks.
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Keep side effects at the edges and make every write idempotent. Dagster Asset Checks: production notes without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for dagster asset checks from one dashboard and one runbook page.
 
-## Contracts and ownership
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
-I have watched teams under-specify Dagster Asset Checks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+## Contracts and ownership boundaries
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Dagster Asset Checks: production notes as an operations problem first. The goal is to operationalize dagster asset with clear ownership, not to collect frameworks.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of dagster asset checks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Practically, being able to avoid the demo-only happy path means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Dagster Asset Checks: production notes that needs a hero is not done.
 
-```rust
-pub async fn handle(state: &State, input: Input) -> Result<Output, AppError> {
-  // Dagster Asset Checks
-  state.repo.execute(input.validate()?).await.map_err(AppError::from)
+Concretely, being able to operationalize dagster asset with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
+
+```typescript
+// Dagster Asset Checks: production notes
+export async function handle_dagster_asset_checks(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("dagster-asset-checks");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Data and state implications
+## State, storage, and retention
 
-I have watched teams under-specify Dagster Asset Checks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+I treat Dagster Asset Checks: production notes as an operations problem first. The goal is to operationalize dagster asset with clear ownership, not to collect frameworks.
 
-Make Dagster Asset Checks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Dagster Asset Checks — you only deployed it.
+Put a metric on the user-visible effect of dagster asset checks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on dagster asset checks.
 
-I also keep a short 'never again' list beside the code: dual-writing without an outbox; skipping Dagster Asset Checks error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for dagster asset checks: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; dual-writing without an outbox |
-| Durable path | on-call already feels this pain weekly | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Security notes that are not optional
+## Security defaults that are non-negotiable
 
-If you only remember one thing about Dagster Asset Checks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Production systems punish vague ownership and unmeasured happy paths. For dagster asset checks, that means making failure visible early.
 
-Make Dagster Asset Checks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Dagster Asset Checks — you only deployed it.
+Put a metric on the user-visible effect of dagster asset checks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Dagster Asset Checks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Dagster Asset Checks: production notes that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Dagster Asset Checks designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Dagster Asset Checks: production notes cannot answer, it is not production-ready.
 
-## Observability and SLOs
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
-If you only remember one thing about Dagster Asset Checks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## SLOs and dashboards
 
-Make Dagster Asset Checks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Dagster Asset Checks — you only deployed it.
+Teams usually discover Dagster Asset Checks: production notes after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Dagster Asset Checks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Dagster Asset Checks: production notes without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for dagster asset checks from one dashboard and one runbook page.
+
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
 Related reading:
 
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Week-one validation plan
+## First-week validation plan
 
-I have watched teams under-specify Dagster Asset Checks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Production systems punish vague ownership and unmeasured happy paths. For dagster asset checks, that means making failure visible early.
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Keep side effects at the edges and make every write idempotent. Dagster Asset Checks: production notes without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for dagster asset checks from one dashboard and one runbook page.
 
-## Practical defaults I use for Dagster Asset Checks
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
-If you only remember one thing about Dagster Asset Checks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## Practical defaults for Dagster Asset Checks: production notes
 
-Make Dagster Asset Checks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Dagster Asset Checks — you only deployed it.
+Teams usually discover Dagster Asset Checks: production notes after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of dagster asset checks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-A month in, prune unused paths. Dagster Asset Checks accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on dagster asset checks.
 
-## Review questions before merging Dagster Asset Checks work
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
-I have watched teams under-specify Dagster Asset Checks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+After a month, delete unused flags and dual paths. `dagster-asset-checks` accumulates temporary bridges faster than teams expect.
 
-Make Dagster Asset Checks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Dagster Asset Checks — you only deployed it.
+## Review questions before merging dagster asset checks work
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Production systems punish vague ownership and unmeasured happy paths. For dagster asset checks, that means making failure visible early.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on dual-writing without an outbox. If it is missing, the PR is incomplete.
+Put a metric on the user-visible effect of dagster asset checks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Dagster Asset Checks
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on dagster asset checks.
 
-Most write-ups on Dagster Asset Checks stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
 
-In Rust stacks I lean on Axum, Tokio for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+After a month, delete unused flags and dual paths. `dagster-asset-checks` accumulates temporary bridges faster than teams expect.
 
-Prefer small diffs with a kill switch. Dagster Asset Checks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of dagster asset checks
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Dagster Asset Checks error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For dagster asset checks, that means making failure visible early.
+
+With Redis, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Acceptance check: an on-call engineer can explain system state for dagster asset checks from one dashboard and one runbook page.
+
+Slug-specific note (dagster-asset-checks): prioritize checks behavior under load and verify with a fixture named `dagster-asset-checks-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for dagster asset checks. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `dagster-asset-checks`
 - https://12factor.net/
+- https://martinfowler.com/

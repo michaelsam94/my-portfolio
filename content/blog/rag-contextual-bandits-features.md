@@ -1,273 +1,159 @@
 ---
-title: "Feature Engineering for Contextual Bandits"
+title: "Grounded generation with contextual bandits features"
 slug: "rag-contextual-bandits-features"
-description: "Build context vectors that make agent routing bandits work — intent signals, latency features, cost proxies, delayed rewards, and cold-start priors for prompt and model selection."
+description: "Grounded generation with contextual bandits features: how to operate chunking/indexing for contextual bandits features — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-07-26"
-dateModified: "2026-07-17"
-tags: ["AI Agents", "Bandits", "ML", "Routing"]
-keywords: "contextual bandits features, agent model routing, LinUCB features, Thompson sampling context, exploration exploitation agent"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, contextual, bandits, features, production, engineering"
 faq:
-  - q: "What belongs in the context vector vs the reward signal?"
-    a: "Context is everything known before the arm is pulled: intent, tenant tier, input length, time of day. Reward is observed after: task success, latency, cost, thumbs-down. Never put post-hoc outcomes in context — that leaks the label and inflates offline metrics."
-  - q: "How many features before LinUCB or logistic Thompson sampling breaks down?"
-    a: "Stay under 50–100 well-chosen features for linear models; use regularization and feature hashing beyond that. High-cardinality raw text belongs in embeddings reduced to 8–16 dimensions, not one-hot token IDs."
-  - q: "How do you handle delayed rewards in agent bandits?"
-    a: "Log pull events immediately; attach rewards when the session ends or after a timeout (e.g., 30 minutes). Use propensity-weighted updates for late-arriving labels and cap staleness — ignore rewards arriving more than 24h after pull unless task completion inherently delayed."
+  - q: "What is Grounded generation with contextual bandits features?"
+    a: "Grounded generation with contextual bandits features is the production approach to operate chunking/indexing for contextual bandits features. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Grounded generation with contextual bandits features?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with rag contextual bandits features, prioritize it."
+  - q: "What is the most common mistake with Grounded generation with contextual bandits features?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Grounded generation with contextual bandits features** means you operate chunking/indexing for contextual bandits features — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-You deployed LinUCB to pick between four system prompts and three model tiers. Offline replay looked great. Online, the bandit keeps routing billing questions to the creative-writing prompt because both share the word "account" in the context vector. **Contextual bandits are only as good as their features** — the arm selection math is solved; the engineering work is building a context representation that reflects what actually drives reward for RAG workloads.
+This write-up is specific to `rag-contextual-bandits-features` in a rag context, using Postgres, pgvector, OpenSearch for the mechanics while keeping ownership human.
 
-This post covers feature design for RAG routing bandits: which signals to include, how to encode them, how delayed rewards interact with context timestamps, and how to validate that your feature vector is not leaking future information.
+## Decision guide for Grounded generation with contextual bandits features
 
-## What agent bandits optimize
+I treat Grounded generation with contextual bandits features as an operations problem first. The goal is to operate chunking/indexing for contextual bandits features, not to collect frameworks.
 
-Production agent bandits typically choose among **arms** like:
+Keep side effects at the edges and make every write idempotent. Grounded generation with contextual bandits features without retry semantics is a future incident write-up.
 
-- System prompt variants
-- Model tier (fast/cheap vs capable/expensive)
-- Retrieval depth (top-k, reranker on/off)
-- Tool routing policy (aggressive vs conservative)
-- Fallback chain ordering
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag contextual bandits features.
 
-The **context** is observed at decision time — before the arm is pulled. The **reward** arrives after the agent completes work: task success, user thumbs, latency SLA, token cost, escalation to human.
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-```
-Session start
-    │
-    ▼
-Extract context x ──► Bandit.select_arm(x) ──► arm k
-    │
-    ▼
-Agent runs with arm k configuration
-    │
-    ▼
-Observe reward r (possibly delayed)
-    │
-    ▼
-Bandit.update(x, k, r)
-```
+## When to refuse this approach
 
-If `x` omits intent or tenant constraints, the bandit learns spurious correlations. If `x` includes the model's own confidence score from a prior turn, you leak outcome information.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag contextual bandits features, that means making failure visible early.
 
-## Feature categories that matter for RAG systems
+Put a metric on the user-visible effect of rag contextual bandits features before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-### Intent and task type
+Acceptance check: an on-call engineer can explain system state for rag contextual bandits features from one dashboard and one runbook page.
 
-The strongest predictor of which prompt or model works is **what the user is trying to do**. Sources:
+Concretely, being able to operate chunking/indexing for contextual bandits features forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-- Classifier output (support / billing / code / research) with calibrated probabilities
-- Embedding of first user message reduced via PCA to 8–16 dims
-- Detected language and locale
-- Presence of attachments (PDF, image, CSV)
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-```python
-# features/intent.py
-from dataclasses import dataclass
-import numpy as np
-
-@dataclass
-class IntentFeatures:
-    p_support: float
-    p_billing: float
-    p_code: float
-    p_research: float
-    embedding_pca: np.ndarray  # shape (16,)
-    has_attachment: float
-    language_en: float
-
-    def to_vector(self) -> np.ndarray:
-        return np.concatenate([
-            [self.p_support, self.p_billing, self.p_code, self.p_research,
-             self.has_attachment, self.language_en],
-            self.embedding_pca,
-        ])
+```typescript
+// Grounded generation with contextual bandits features
+export async function handle_rag_contextual_bandits_features(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("rag-contextual-bandits-features");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Use classifier **probabilities**, not argmax labels. Hard labels discard uncertainty that the bandit can exploit.
+## Minimal production setup
 
-### Input scale and complexity
+Teams usually discover Grounded generation with contextual bandits features after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Token count, tool count available, and estimated retrieval difficulty predict latency-sensitive arm choices:
+Put a metric on the user-visible effect of rag contextual bandits features before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-- `log1p(input_tokens)` — user message + attached doc size estimate
-- `log1p(rag_candidates)` — chunks retrieved before rerank
-- `tool_count_available` — capped at 20
-- `requires_code_execution` — binary from intent classifier
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag contextual bandits features.
 
-Large inputs often reward capable models; simple FAQs reward fast models. Without scale features, bandits over-index on intent alone.
+My never-again list for rag contextual bandits features: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-### Tenant and policy constraints
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-B2B agents need **hard constraints** encoded as features or as arm filters:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-- `tenant_tier` — one-hot: free, pro, enterprise
-- `data_residency_eu` — binary; filters non-EU model arms entirely
-- `pii_present` — binary from DLP scan; boosts conservative tool arms
-- `sla_latency_ms` — contractual p95 target
+## Cost, complexity, and ownership
 
-Some constraints should **filter ineligible arms** before bandit selection rather than enter the context vector. A bandit cannot learn "never send HIPAA tenants to external model X" from reward alone without expensive violations.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag contextual bandits features, that means making failure visible early.
 
-### Temporal and load features
+Keep side effects at the edges and make every write idempotent. Grounded generation with contextual bandits features without retry semantics is a future incident write-up.
 
-- `hour_of_day_sin/cos` — cyclic encoding
-- `queue_depth_normalized` — current inference queue
-- `recent_error_rate_arm_family` — rolling 5-min error rate for model provider
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with contextual bandits features that needs a hero is not done.
 
-Under load, cheap arms may maximize reward even for complex intent because latency penalties dominate user satisfaction.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Grounded generation with contextual bandits features cannot answer, it is not production-ready.
 
-### Session continuity
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-- `turn_index` — multi-turn sessions differ from first message
-- `prior_task_success` — binary, prior turn outcome
-- `tools_invoked_count` — depth of retrieval loop so far
+## Migration without dual-running forever
 
-Do not include **current arm identity** from prior turns as a feature unless you are running a separate "switching cost" experiment — it creates path dependence that confounds arm comparison.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag contextual bandits features, that means making failure visible early.
 
-## Building the context vector
+Put a metric on the user-visible effect of rag contextual bandits features before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Concatenate normalized feature groups with documented schema versioning:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with contextual bandits features that needs a hero is not done.
 
-```python
-# features/context_builder.py
-import numpy as np
-from datetime import datetime
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-FEATURE_SCHEMA_VERSION = 3
+Related reading:
 
-def build_context(session: dict) -> np.ndarray:
-    intent = extract_intent_features(session["first_message"])
-    scale = extract_scale_features(session)
-    tenant = extract_tenant_features(session["tenant_id"])
-    temporal = extract_temporal_features(datetime.utcnow())
-    continuity = extract_continuity_features(session)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-    vector = np.concatenate([
-        intent.to_vector(),       # 22 dims
-        scale.to_vector(),        # 6 dims
-        tenant.to_vector(),       # 8 dims
-        temporal.to_vector(),     # 4 dims
-        continuity.to_vector(),   # 3 dims
-    ])  # total 43 dims
+## Definition of done
 
-    assert vector.shape[0] == 43, f"schema v{FEATURE_SCHEMA_VERSION} mismatch"
-    return vector
-```
+I treat Grounded generation with contextual bandits features as an operations problem first. The goal is to operate chunking/indexing for contextual bandits features, not to collect frameworks.
 
-**Normalize continuous features** to zero mean and unit variance using stats from training traffic — refreshed weekly. Store normalization params alongside the bandit checkpoint.
+Keep side effects at the edges and make every write idempotent. Grounded generation with contextual bandits features without retry semantics is a future incident write-up.
 
-**Version the schema.** When you add features, bump `FEATURE_SCHEMA_VERSION` and either retrain from scratch or pad old vectors with zeros — never silently change dimension order.
+Acceptance check: an on-call engineer can explain system state for rag contextual bandits features from one dashboard and one runbook page.
 
-## Reward design for RAG bandits
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-Multi-objective rewards need explicit weighting:
+## Practical defaults for Grounded generation with contextual bandits features
 
-```python
-def compute_reward(outcome: dict) -> float:
-    success = 1.0 if outcome["task_completed"] else 0.0
-    latency_penalty = min(outcome["latency_ms"] / 30_000, 1.0) * 0.2
-    cost_penalty = min(outcome["token_cost_usd"] / 0.50, 1.0) * 0.15
-    human_escalation = 1.0 if outcome["escalated"] else 0.0
+Teams usually discover Grounded generation with contextual bandits features after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-    thumbs = outcome.get("user_rating")  # -1, 0, 1 or None
-    thumbs_bonus = (thumbs or 0) * 0.25
+Put a metric on the user-visible effect of rag contextual bandits features before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-    return success + thumbs_bonus - latency_penalty - cost_penalty - 0.5 * human_escalation
-```
+Acceptance check: an on-call engineer can explain system state for rag contextual bandits features from one dashboard and one runbook page.
 
-Log **component rewards** separately for debugging. A bandit optimizing composite reward may shift arms for reasons product cannot explain unless you decompose.
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-Clip rewards to [-1, 2] or similar bounded range. Unbounded cost penalties destabilize LinUCB confidence intervals.
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
-## Delayed rewards and propensity logging
+## Review questions before merging rag contextual bandits features work
 
-Agent task success may arrive minutes later. Pattern:
+Teams usually discover Grounded generation with contextual bandits features after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-```python
-# bandit/event_log.py
-@dataclass
-class PullEvent:
-    event_id: str
-    context: np.ndarray
-    arm: str
-    context_schema_version: int
-    timestamp: float
-    propensity: float  # P(arm | context) under current policy
+Keep side effects at the edges and make every write idempotent. Grounded generation with contextual bandits features without retry semantics is a future incident write-up.
 
-def update_on_reward(event_id: str, reward: float, bandit: LinUCB):
-    event = pull_log.get(event_id)
-    if event is None:
-        return
-    age_hours = (time.time() - event.timestamp) / 3600
-    if age_hours > 24:
-        metrics.increment("bandit.stale_reward_dropped")
-        return
-    bandit.update(event.context, event.arm, reward)
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with contextual bandits features that needs a hero is not done.
 
-Log **propensity** — the probability the pulled arm was selected — for offline IPS (inverse propensity scoring) evaluation when you change the policy. Without propensity, offline replays lie.
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-## Cold start for new arms
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
-Adding a prompt arm with zero history starves exploration. Mitigations:
+## Field notes after thirty days of rag contextual bandits features
 
-1. **Optimistic prior** — initialize arm reward estimate at 75th percentile of existing arms per intent slice
-2. **Minimum traffic floor** — 5% of pulls matching arm's target intent until N≥200
-3. **Similarity transfer** — if new prompt embedding is close to arm A, seed prior from A's stats for overlapping intent buckets
+Teams usually discover Grounded generation with contextual bandits features after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-```python
-def seed_arm_prior(new_arm: str, prompt_embedding: np.ndarray, arms: dict) -> float:
-    similarities = {
-        name: cosine_sim(prompt_embedding, meta.embedding)
-        for name, meta in arms.items()
-    }
-    best_match = max(similarities, key=similarities.get)
-    if similarities[best_match] > 0.85:
-        return arms[best_match].mean_reward * 0.9
-    return global_mean_reward + 0.1  # slight optimism
-```
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-## Feature leakage checklist
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag contextual bandits features.
 
-Before shipping, audit for these leaks:
+Slug-specific note (rag-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `rag-contextual-bandits-features-smoke`.
 
-| Leak | Symptom |
-|------|---------|
-| Post-hoc model confidence in context | Offline AUC too good; online flat |
-| Outcome-derived "complexity" score | Bandit ignores intent features |
-| Same-session reward in context of next pull | Within-session overfitting |
-| Arm ID unless modeling switching | Incumbent arm always wins |
-| Unnormalized token counts | Dominates linear model weights |
-
-Run **permutation importance** offline: shuffle each feature column, measure reward prediction drop. Features with zero importance are candidates for removal — they add noise and dimensionality.
-
-## Evaluation without lying to yourself
-
-1. **IPS offline evaluation** using logged propensities from production
-2. **Holdout intent buckets** — entire intent classes reserved for final validation
-3. **Switchback tests** — alternate bandit on/off by hour to measure global lift
-4. **Slice dashboards** — reward by intent, tenant tier, input length quartile
-
-Require **minimum sample size per arm-intent cell** before declaring an arm winner. "Billing + enterprise + long doc" may have 40 sessions/week — too thin for confident elimination.
-
-## Operational ownership
-
-Feature pipelines for bandits need the same SLOs as payment code:
-
-- **Freshness** — context features computed in <50ms at session start
-- **Schema contracts** — protobuf or JSON schema with CI validation
-- **Backfill jobs** — when adding features, recompute context for last 7 days of pull logs for offline replay
-- **Kill switch** — feature flag to revert to static champion arm without redeploy
-
-Alert when feature distributions drift (PSI > 0.2 on input_tokens or intent probabilities). Drift often precedes bandit reward collapse after product or taxonomy changes.
-
-## The takeaway
-
-Contextual bandits for RAG routing fail in production when teams treat feature engineering as an afterthought. Build context from intent probabilities, input scale, tenant constraints, and session continuity — never from outcomes. Normalize, version, and log propensities. Design composite rewards with interpretable components. Cold-start new arms deliberately. The bandit algorithm is the easy part; the context vector is where uplift lives or dies.
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
 ## Resources
 
-- [Li et al. — A Contextual-Bandit Approach to Personalized News (LinUCB)](https://arxiv.org/abs/1003.0146)
-- [Chapelle & Li — An Empirical Evaluation of Thompson Sampling](https://arxiv.org/abs/1209.3352)
-- [Google — Counterfactual Learning for Bandits (IPS)](https://developers.google.com/machine-learning/recommendation/dnn/recommendation-systems)
-- [Vowpal Wabbit — Contextual Bandit documentation](https://vowpalwabbit.org/docs/vowpal_wabbit/python/latest/examples/contextual_bandits.html)
-- [Netflix — Artwork Personalization bandit features (engineering blog)](https://netflixtechblog.com/artwork-personalization-c589f174ad76)
+- Internal runbook seed: `rag-contextual-bandits-features`
+- https://12factor.net/
+- https://martinfowler.com/

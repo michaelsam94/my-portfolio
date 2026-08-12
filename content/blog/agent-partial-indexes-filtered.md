@@ -1,253 +1,159 @@
 ---
-title: "AI Agents: Partial Indexes Filtered"
+title: "Operating agents with partial indexes filtered"
 slug: "agent-partial-indexes-filtered"
-description: "Filtered partial indexes keep agent memory and tool-run tables fast by indexing only hot rows — active sessions, pending approvals, and unsynced embeddings — without maintaining dead weight."
+description: "Operating agents with partial indexes filtered: how to bound tool calls and blast radius for partial indexes filtered — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-12-01"
-dateModified: "2024-12-01"
-tags: ["AI", "Agent", "Partial"]
-keywords: "partial index PostgreSQL, filtered index, agent memory schema, pgvector index, hot row indexing, agent session metadata"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, partial, indexes, filtered, production, engineering"
 faq:
-  - q: "What is a partial (filtered) index in PostgreSQL?"
-    a: "A partial index indexes only rows matching a WHERE predicate — for example `WHERE status = 'active'`. Queries that include the same predicate can use a smaller, faster index while cold archived rows stay on the heap unindexed."
-  - q: "Why are partial indexes especially useful for agent workloads?"
-    a: "Agent tables skew heavily toward a small hot set: open sessions, queued tool runs, and embeddings awaiting sync. The long tail of completed runs is huge but rarely queried. Partial indexes target the hot set without paying write amplification on every archived insert."
-  - q: "Can I combine partial indexes with pgvector?"
-    a: "Yes. Create a partial HNSW or IVFFlat index on `(embedding) WHERE status = 'ready' AND deleted_at IS NULL`. Queries must repeat those predicates in SQL or the planner may ignore the index."
-  - q: "When should I avoid partial indexes?"
-    a: "Skip them when query predicates drift constantly, when more than ~30% of rows match the filter anyway, or when ORMs generate SQL that omits the indexed predicate — an unused partial index is just maintenance overhead with extra confusion in EXPLAIN plans."
+  - q: "What is Operating agents with partial indexes filtered?"
+    a: "Operating agents with partial indexes filtered is the production approach to bound tool calls and blast radius for partial indexes filtered. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with partial indexes filtered?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent partial indexes filtered, prioritize it."
+  - q: "What is the most common mistake with Operating agents with partial indexes filtered?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Agent platforms accumulate rows faster than intuition suggests. A single coding agent run inserts tool call records, retrieval traces, token accounting rows, and embedding queue entries. After ninety days, less than 2% of those rows answer production queries — yet they dominated index size on a project I debugged last winter, where every lookup on `session_id` scanned a bloated B-tree that mostly pointed at archived conversations.
+**Operating agents with partial indexes filtered** means you bound tool calls and blast radius for partial indexes filtered — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Partial indexes — PostgreSQL calls them *partial*, SQL Server says *filtered*, the idea is the same — index **a slice of the table** defined by a predicate. For agent infrastructure, that slice is almost always the hot path: active sessions, pending work, live embeddings.
+This write-up is specific to `agent-partial-indexes-filtered` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## Anatomy of agent table skew
+## Short answer: Operating agents with partial indexes filtered
 
-Typical shapes:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partial indexes filtered, that means making failure visible early.
 
-| Table | Hot slice | Cold tail |
-|-------|-----------|-----------|
-| `agent_sessions` | `status IN ('active','awaiting_user')` | millions of `closed` |
-| `tool_invocations` | `state = 'pending_approval'` | completed / failed history |
-| `embedding_jobs` | `synced_at IS NULL` | successfully synced docs |
-| `memory_facts` | `valid_until IS NULL OR valid_until > now()` | expired memories |
+Keep side effects at the edges and make every write idempotent. Operating agents with partial indexes filtered without retry semantics is a future incident write-up.
 
-Without partial indexes, you choose between indexing everything (slow writes, fat indexes) or indexing nothing (slow reads on the hot slice). Partial indexes split the difference deliberately.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with partial indexes filtered that needs a hero is not done.
 
-## Creating filtered indexes for session lookup
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-```sql
--- Full index (avoid): every closed session bloats the tree
--- CREATE INDEX agent_sessions_user_idx ON agent_sessions (user_id, updated_at DESC);
+## Constraints before abstractions
 
--- Partial: only sessions the agent runtime actually lists
-CREATE INDEX CONCURRENTLY agent_sessions_user_active_idx
-  ON agent_sessions (user_id, updated_at DESC)
-  WHERE status IN ('active', 'awaiting_user');
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partial indexes filtered, that means making failure visible early.
 
--- Pending tool approvals — tiny index, high selectivity
-CREATE INDEX CONCURRENTLY tool_invocations_pending_idx
-  ON tool_invocations (session_id, created_at)
-  WHERE state = 'pending_approval';
+Put a metric on the user-visible effect of agent partial indexes filtered before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partial indexes filtered.
+
+Concretely, being able to bound tool calls and blast radius for partial indexes filtered forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
+
+```typescript
+// Operating agents with partial indexes filtered
+export async function handle_agent_partial_indexes_filtered(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-partial-indexes-filtered");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Application queries must mirror the predicate:
+## Reference implementation notes (OpenTelemetry)
 
-```sql
-SELECT id, agent_name, updated_at
-FROM agent_sessions
-WHERE user_id = $1
-  AND status IN ('active', 'awaiting_user')
-ORDER BY updated_at DESC
-LIMIT 20;
-```
+I treat Operating agents with partial indexes filtered as an operations problem first. The goal is to bound tool calls and blast radius for partial indexes filtered, not to collect frameworks.
 
-If a developer drops the `status` filter "to simplify the query," PostgreSQL falls back to a sequential scan or a less selective index. Code review should treat predicate omission as a performance bug.
+Put a metric on the user-visible effect of agent partial indexes filtered before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Partial indexes with pgvector
+Acceptance check: an on-call engineer can explain system state for agent partial indexes filtered from one dashboard and one runbook page.
 
-Vector search on all historical embeddings is wasteful when only `ready` rows are searchable:
+My never-again list for agent partial indexes filtered: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-ALTER TABLE document_chunks
-  ADD COLUMN embedding vector(1536),
-  ADD COLUMN index_status text NOT NULL DEFAULT 'pending';
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-CREATE INDEX CONCURRENTLY document_chunks_embedding_ready_idx
-  ON document_chunks
-  USING hnsw (embedding vector_cosine_ops)
-  WHERE index_status = 'ready' AND deleted_at IS NULL;
-```
+## Quick path vs durable path
 
-Retrieval query:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partial indexes filtered, that means making failure visible early.
 
-```sql
-SELECT chunk_id, doc_id, 1 - (embedding <=> $1::vector) AS score
-FROM document_chunks
-WHERE index_status = 'ready'
-  AND deleted_at IS NULL
-  AND tenant_id = $2
-ORDER BY embedding <=> $1::vector
-LIMIT 10;
-```
+Keep side effects at the edges and make every write idempotent. Operating agents with partial indexes filtered without retry semantics is a future incident write-up.
 
-When a chunk is soft-deleted, it falls out of the partial index automatically on the next vacuum — no separate vector deletion job unless your provider requires explicit tombstone handling.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partial indexes filtered.
 
-## Predicate design rules
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with partial indexes filtered cannot answer, it is not production-ready.
 
-**Match real query filters, not aspirational ones.** The predicate should appear in every production query that needs the index. If analytics sometimes scans all statuses, give analytics a separate reporting replica — do not widen the partial predicate to accommodate rare reports.
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-**Prefer stable enum values over time functions.** `WHERE status = 'active'` is planner-friendly. `WHERE last_seen > now() - interval '7 days'` works but requires index definitions that align with how you express the filter, and autovacuum stats get noisier.
+## Edge cases demos miss
 
-**Keep predicates sargable.** Avoid functions on indexed columns inside the partial WHERE unless you also express queries identically.
+I treat Operating agents with partial indexes filtered as an operations problem first. The goal is to bound tool calls and blast radius for partial indexes filtered, not to collect frameworks.
 
-**Watch selectivity.** Partial indexes shine when the filtered set is under ~10–20% of the table. Beyond ~30%, a full index is often simpler and nearly as small relative to heap size.
+Keep side effects at the edges and make every write idempotent. Operating agents with partial indexes filtered without retry semantics is a future incident write-up.
 
-## Measuring before and after
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partial indexes filtered.
 
-Workflow that caught a silent regression:
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT id FROM agent_sessions
-WHERE user_id = 'usr_abc'
-  AND status IN ('active', 'awaiting_user')
-ORDER BY updated_at DESC
-LIMIT 20;
-```
+Related reading:
 
-Before partial index: `Seq Scan` with filter removing 480,000 rows. After: `Index Scan using agent_sessions_user_active_idx` with `Buffers: shared hit=4`.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Track index size:
+## Merge checklist
 
-```sql
-SELECT indexrelname, pg_size_pretty(pg_relation_size(indexrelid))
-FROM pg_stat_user_indexes
-WHERE relname = 'agent_sessions';
-```
+I treat Operating agents with partial indexes filtered as an operations problem first. The goal is to bound tool calls and blast radius for partial indexes filtered, not to collect frameworks.
 
-The partial index should be orders of magnitude smaller than a full `(user_id, updated_at)` index on the same table.
+Keep side effects at the edges and make every write idempotent. Operating agents with partial indexes filtered without retry semantics is a future incident write-up.
 
-## Write amplification and ingest pipelines
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partial indexes filtered.
 
-Each index adds work on INSERT/UPDATE. Partial indexes reduce that work for cold rows:
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-- Archiving a session (`status = 'closed'`) removes it from the partial index on the next update — one index touch instead of maintaining a hot-tree entry forever.
-- Completed embedding jobs stop touching the HNSW graph once `index_status` flips to `ready`... actually wait, they stay in the ready index. Better pattern: move synced jobs to `index_status = 'archived'` excluded from the partial index, keeping the HNSW graph small.
+## Practical defaults for Operating agents with partial indexes filtered
 
-```sql
-UPDATE embedding_jobs
-SET index_status = 'archived', synced_at = now()
-WHERE id = $1;
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partial indexes filtered, that means making failure visible early.
 
-Batch archival jobs prevent the hot partial index from creeping toward full-table coverage.
+Keep side effects at the edges and make every write idempotent. Operating agents with partial indexes filtered without retry semantics is a future incident write-up.
 
-## ORM footguns
+Acceptance check: an on-call engineer can explain system state for agent partial indexes filtered from one dashboard and one runbook page.
 
-Django example — force the filter into the queryset manager:
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-```python
-class ActiveSessionManager(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(
-            status__in=["active", "awaiting_user"]
-        )
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-class AgentSession(models.Model):
-    objects = models.Manager()  # full table for admin
-    active = ActiveSessionManager()
+## Review questions before merging agent partial indexes filtered work
 
-    class Meta:
-        indexes = [
-            models.Index(
-                fields=["user_id", "-updated_at"],
-                name="sessions_user_active_idx",
-                condition=models.Q(status__in=["active", "awaiting_user"]),
-            )
-        ]
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent partial indexes filtered, that means making failure visible early.
 
-Prisma and TypeORM lack native partial index DSL — use migration SQL. Document the predicate in a comment block above the model so the next migration does not accidentally recreate a full index with the same name.
+Put a metric on the user-visible effect of agent partial indexes filtered before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Unique constraints on hot subsets
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with partial indexes filtered that needs a hero is not done.
 
-Partial **unique** indexes enforce invariants only where they matter:
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-```sql
--- One active run per session
-CREATE UNIQUE INDEX CONCURRENTLY one_active_run_per_session
-  ON agent_runs (session_id)
-  WHERE finished_at IS NULL;
-```
+Default deny, explicit timeouts, and one dashboard row for agent partial indexes filtered. Expand only when the metric demands it.
 
-This beats application-level checks race-prone under concurrent tool loops.
+## Field notes after thirty days of agent partial indexes filtered
 
-## Monitoring and maintenance
+Teams usually discover Operating agents with partial indexes filtered after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Alert when:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-- `idx_scan` on partial indexes flatlines while related endpoint latency climbs — predicate mismatch
-- Partial index size approaches full index size — hot slice definition is too wide
-- Autovacuum lag on tables with heavy partial index updates during bulk imports
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent partial indexes filtered.
 
-Reindex partial indexes after large bulk status flips (`UPDATE ... SET status = 'closed' WHERE ...` touching 40% of rows). `REINDEX INDEX CONCURRENTLY` avoids long write locks.
+Slug-specific note (agent-partial-indexes-filtered): prioritize filtered behavior under load and verify with a fixture named `agent-partial-indexes-filtered-smoke`.
 
-## Comparison to partitioning
-
-Partitioning splits physical storage by key; partial indexes filter logically within one table. They complement each other:
-
-- Partition by month for retention drops
-- Partial index within the current month partition for `status = 'active'`
-
-Do not partition solely for hot/cold when a partial index solves read latency with less operational overhead.
-
-## Worked example: agent memory facts table
-
-Consider `memory_facts` where agents store extracted preferences (`"user prefers dark mode"`) with optional expiry:
-
-```sql
-CREATE TABLE memory_facts (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id   text NOT NULL,
-  tenant_id    text NOT NULL,
-  fact_key     text NOT NULL,
-  fact_value   text NOT NULL,
-  valid_until  timestamptz,
-  created_at   timestamptz NOT NULL DEFAULT now()
-);
-
--- Hot path: fetch live facts for prompt assembly
-CREATE INDEX CONCURRENTLY memory_facts_session_live_idx
-  ON memory_facts (session_id, fact_key)
-  WHERE valid_until IS NULL OR valid_until > now();
-
--- Hot path: tenant-scoped dedupe while fact is live
-CREATE UNIQUE INDEX CONCURRENTLY memory_facts_dedupe_live_idx
-  ON memory_facts (tenant_id, session_id, fact_key)
-  WHERE valid_until IS NULL;
-```
-
-Prompt assembly query:
-
-```sql
-SELECT fact_key, fact_value
-FROM memory_facts
-WHERE session_id = $1
-  AND (valid_until IS NULL OR valid_until > now());
-```
-
-When a fact expires, a nightly job sets `valid_until = now()` on stale rows. Those rows fall out of the partial index on update — no explicit index delete step. Expired facts remain queryable for audit via sequential scan on reporting replicas with different indexes, keeping OLTP paths lean.
-
-## Bottom line
-
-Filtered partial indexes are a precision instrument for agent metadata tables where the hot row count is tiny and the historical pile is enormous. Define predicates from production query text, verify with `EXPLAIN ANALYZE`, and treat ORM queries that omit the filter as defects. The index maintenance you do not do on archived agent runs is latency budget returned to live sessions.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- [PostgreSQL partial indexes documentation](https://www.postgresql.org/docs/current/indexes-partial.html)
-- [pgvector indexing options](https://github.com/pgvector/pgvector#indexing)
-- [PostgreSQL EXPLAIN guide](https://www.postgresql.org/docs/current/using-explain.html)
-- [Use The Index, Luke — partial indexes](https://use-the-index-luke.com/sql/where-clause/partial-indexes)
-- [PostgreSQL index-only scans and visibility map](https://www.postgresql.org/docs/current/indexes-index-only-scans.html)
+- Internal runbook seed: `agent-partial-indexes-filtered`
+- https://12factor.net/
+- https://martinfowler.com/

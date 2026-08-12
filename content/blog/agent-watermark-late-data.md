@@ -1,199 +1,159 @@
 ---
-title: "Event-Time Watermarks for Late Agent Telemetry"
+title: "Watermark Late Data for production agents"
 slug: "agent-watermark-late-data"
-description: "Handle late-arriving agent usage and trace events in stream processors: watermark generation, allowed lateness, side outputs, and reconciling billing windows with incomplete watermarks."
+description: "Watermark Late Data for production agents: how to make agent watermark late data observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-21"
-dateModified: "2026-07-17"
-tags: ["AI Agents", "Stream Processing", "Flink", "Data Engineering"]
-keywords: "watermark late data agent, event time stream processing, allowed lateness billing, Flink watermark agent telemetry"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, watermark, late, data, production, engineering"
 faq:
-  - q: "Why do agent telemetry events arrive late?"
-    a: "Mobile clients buffer offline runs, edge gateways batch uploads, cross-region replication lag, and retried tool webhooks all delay event-time timestamps vs processing-time arrival. Billing and SLO dashboards keyed on event time need watermark discipline."
-  - q: "What allowed lateness fits agent usage billing?"
-    a: "24–72 hours for token metering reconciliation is common — mobile offline plus retry windows. Real-time dashboards use shorter lateness (5–15 min) with correction streams for billing-grade totals."
-  - q: "Side output or update existing window on late data?"
-    a: "Billing aggregates: emit side output to correction topic, apply delta adjustments with idempotency keys. Don't mutate closed Stripe submission windows silently — finance needs audit trail."
-  - q: "Processing time vs event time for agent SLOs?"
-    a: "SLO user-facing latency uses processing time alerts. Tenant invoice totals and 'usage this month' UI use event time with watermarks — label UI 'subject to reconciliation' until watermark passes period close."
+  - q: "What is Watermark Late Data for production agents?"
+    a: "Watermark Late Data for production agents is the production approach to make agent watermark late data observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Watermark Late Data for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent watermark late data, prioritize it."
+  - q: "What is the most common mistake with Watermark Late Data for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Watermark Late Data for production agents** means you make agent watermark late data observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Agent run `run_abc` completed at 23:58 UTC on the last day of the billing cycle — but the usage event lands in Kafka at 00:04 because the mobile client was offline. Without **event-time watermarks**, your Flink job attributes those tokens to next month, finance misses quota true-ups, and the customer disputes an invoice that looks correct from the processor's clock but wrong from contract event time. Late data is normal in agent telemetry; watermarks make lateness explicit.
+This write-up is specific to `agent-watermark-late-data` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Event time vs processing time
+## Incident pattern involving agent watermark late data
 
-| Clock | Meaning | Agent example |
-|-------|---------|---------------|
-| Event time | When run actually completed | `occurred_at` in usage JSON |
-| Processing time | When stream processor sees it | Kafka consumer timestamp |
-| Ingestion time | When gateway accepted event | API `received_at` |
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
 
-Billing contracts usually follow **event time** in tenant timezone or UTC — document which in MSA.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Watermark intuition
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Watermark Late Data for production agents that needs a hero is not done.
 
-Watermark `W` at time `T` means: "we believe no events with event_time < T - allowed_lateness will arrive."
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
 
-```
-event timeline ─────────────────────────────────────►
+## Root cause in plain language
 
-events:     ●  ●    ● ●     ● (late!)
-            │  │    │ │     │
-watermark:  ───W1──────W2──────W3──►
+Teams usually discover Watermark Late Data for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-When W passes window [Apr 1 00:00, Apr 1 01:00), close window
-Late event after close → side output
-```
+Keep side effects at the edges and make every write idempotent. Watermark Late Data for production agents without retry semantics is a future incident write-up.
 
-## Flink implementation sketch
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Watermark Late Data for production agents that needs a hero is not done.
 
-```java
-DataStream<UsageEvent> events = env
-    .fromSource(kafkaSource, WatermarkStrategy
-        .<UsageEvent>forBoundedOutOfOrderness(Duration.ofHours(24))
-        .withTimestampAssigner((e, ts) -> e.getOccurredAt().toEpochMilli()),
-        "usage-source");
+Concretely, being able to make agent watermark late data observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-events
-    .keyBy(e -> e.getTenantId())
-    .window(TumblingEventTimeWindows.of(Time.hours(1)))
-    .allowedLateness(Time.hours(24))
-    .sideOutputLateData(LATE_TAG)
-    .aggregate(new TokenSumAggregator())
-    .addSink(billingSink);
-
-DataStream<UsageEvent> late = events.getSideOutput(LATE_TAG);
-late.addSink(correctionSink);
-```
-
-`allowedLateness(24h)` keeps windows updatable; after lateness expires, truly late events only go to side output.
-
-## Idempotent correction stream
-
-Late events must not double-count:
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
 
 ```python
-def apply_correction(event: UsageEvent):
-    key = f"corr:{event.idempotency_key}"
-    if ledger.exists(key):
+# Watermark Late Data for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentWatermarkLateRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_watermark_late_dat(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
         return
-    period = billing_period(event.occurred_at, event.tenant_tz)
-    if period.is_closed():
-        stripe.adjustment.create(
-            customer=event.tenant_id,
-            quantity=event.quantity,
-            description=f"Late event {event.event_id} for {period}",
-        )
-    else:
-        ledger.add_to_open_period(event)
-    ledger.mark(key)
+    with deps.tracer.start_as_current_span("agent-watermark-late-data"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Closed period → Stripe credit/charge adjustment with ticket link.
+## The fix that held under load
 
-## Watermark generation strategies
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
 
-| Strategy | Use when | Risk |
-|----------|----------|------|
-| Bounded out-of-orderness (fixed delay) | Stable max lag known (24h) | Over-waits if lag spikes |
-| Custom per-source watermark | Mobile vs datacenter sources differ | Complex ops |
-| Idleness detection | Sparse tenants | Premature close — tune idle timeout |
+Put a metric on the user-visible effect of agent watermark late data before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Per-tenant idleness: if no events for 7 days, don't advance global watermark on that key alone in global windows — use session windows or `KeyedProcessFunction`.
+Acceptance check: an on-call engineer can explain system state for agent watermark late data from one dashboard and one runbook page.
 
-## Agent telemetry sources and typical lag
+My never-again list for agent watermark late data: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Source | p99 lag | Notes |
-|--------|---------|-------|
-| Gateway sync | <5s | Baseline |
-| Mobile offline queue | 1–48h | Airplane mode completions |
-| Tool webhook retry | 1–6h | Exponential backoff |
-| Cross-region replicate | 30s–5m | Config dependent |
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
 
-Set `maxOutOfOrderness` to p99.9 observed lag from metrics, not mean.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Reconciling billing UI
+## Tests and probes that catch regressions
 
-Show two numbers during month-end close:
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
 
-```typescript
-interface UsageSummary {
-  provisionalTokens: number;  // watermark not passed period end
-  finalizedTokens: number;    // after watermark + lateness
-  reconciliationPending: boolean;
-}
-```
+Keep side effects at the edges and make every write idempotent. Watermark Late Data for production agents without retry semantics is a future incident write-up.
 
-Customer portal copy: "Usage finalized 72h after month end."
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent watermark late data.
 
-## Monitoring
+Review prompts I use: what happens twice, what happens never, what happens partially? If Watermark Late Data for production agents cannot answer, it is not production-ready.
 
-- `watermark_lag_ms` = processing_time - watermark
-- `late_events_rate` by source
-- `correction_amount_sum` by tenant (spike → upstream bug)
-- `window_close_delay` histogram
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
 
-Alert if watermark lag exceeds 2× configured bound — job stuck or clock skew.
+## Runbook lines that save minutes
 
-## Comparison to batch reconciliation
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
 
-Nightly batch job re-scans raw lake still required as **audit backstop**:
+Keep side effects at the edges and make every write idempotent. Watermark Late Data for production agents without retry semantics is a future incident write-up.
 
-```sql
-SELECT tenant_id, date_trunc('hour', occurred_at) AS hr, sum(quantity)
-FROM raw_usage_events
-GROUP BY 1, 2
-EXCEPT
-SELECT tenant_id, hr, total FROM stream_aggregates;
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Watermark Late Data for production agents that needs a hero is not done.
 
-Stream watermarks optimize real-time; batch diff catches processor bugs.
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
+
+Related reading:
+
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+
+## Platform guardrails afterward
+
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Acceptance check: an on-call engineer can explain system state for agent watermark late data from one dashboard and one runbook page.
+
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
+
+## Practical defaults for Watermark Late Data for production agents
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent watermark late data, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Watermark Late Data for production agents without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Watermark Late Data for production agents that needs a hero is not done.
+
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-watermark-late-data` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent watermark late data work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent watermark late data, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Watermark Late Data for production agents that needs a hero is not done.
+
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-watermark-late-data` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent watermark late data
+
+I treat Watermark Late Data for production agents as an operations problem first. The goal is to make agent watermark late data observable and interruptible, not to collect frameworks.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent watermark late data.
+
+Slug-specific note (agent-watermark-late-data): prioritize data behavior under load and verify with a fixture named `agent-watermark-late-data-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- [Apache Flink — Event Time and Watermarks](https://nightlies.apache.org/flink/flink-docs-stable/docs/concepts/time/)
-- [Google Dataflow — Stream processing with windows](https://cloud.google.com/dataflow/docs/concepts/streaming-pipelines)
-- [Vijay Gabbar — Stream Processing with Apache Flink (book)](https://www.oreilly.com/library/view/stream-processing-with/9781491974028/)
-- [Kafka — event-time semantics in Kafka Streams](https://docs.confluent.io/platform/current/streams/concepts.html)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
+- Internal runbook seed: `agent-watermark-late-data`
+- https://12factor.net/
+- https://martinfowler.com/

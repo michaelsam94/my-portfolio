@@ -1,279 +1,159 @@
 ---
-title: "AI Agents: Ip Reputation Scoring"
+title: "Agent systems: ip reputation scoring"
 slug: "agent-ip-reputation-scoring"
-description: "Ip Reputation Scoring: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Agent systems: ip reputation scoring: how to keep agent side effects idempotent around ip reputation scoring — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-06"
-dateModified: "2025-12-06"
-tags: ["AI", "Agent"]
-keywords: "agent, ip, reputation, scoring, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, ip, reputation, scoring, production, engineering"
 faq:
-  - q: "Why do agent platforms need IP reputation scoring beyond standard WAF rules?"
-    a: "Agents expose expensive tool endpoints—LLM calls, code execution, database writes—that attackers probe with credential stuffing and prompt injection at scale. IP reputation adds a cheap first gate before token spend, complementing auth and rate limits with signals about datacenter origin, historical abuse, and botnet membership."
-  - q: "Should agents block or challenge low-reputation IPs automatically?"
-    a: "Default to challenge (CAPTCHA, proof-of-work, or stricter rate limits) for ambiguous scores; block only high-confidence bad IPs from curated feeds. Hard blocks on noisy feeds cause false positives for corporate NAT and mobile carriers—agents lose legitimate users silently if you block without observability."
-  - q: "How do you combine IP reputation with agent session identity?"
-    a: "Score the effective reputation as min(ip_score, account_score) after authentication, or blend with device signals. Pre-auth, IP reputation gates ingress; post-auth, user reputation should dominate so one bad IP does not permanently stain a verified account without separate fraud review."
-  - q: "What latency budget is realistic for IP lookup in agent request paths?"
-    a: "Target sub-5 ms p99 with local LRU cache and async refresh from threat intel feeds. Never block the hot path on synchronous third-party API calls—serve stale cache with TTL and background updates; fail open with alert if feeds are unreachable unless you operate in high-security mode."
+  - q: "What is Agent systems: ip reputation scoring?"
+    a: "Agent systems: ip reputation scoring is the production approach to keep agent side effects idempotent around ip reputation scoring. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: ip reputation scoring?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent ip reputation scoring, prioritize it."
+  - q: "What is the most common mistake with Agent systems: ip reputation scoring?"
+    a: "The usual failure is treating agent ip reputation scoring as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Within six hours of launching a public coding agent, 40% of unauthenticated `/api/agent/run` traffic originated from ASNs associated with residential proxy rotation and known scanner blocklists. Rate limiting alone burned cloud budget—each request still hit auth parsing and partial orchestration. IP reputation scoring dropped that noise by 78% before any LLM token was spent, while legitimate corporate NAT users passed via cached neutral scores and stepped-up challenges only on anomaly spikes.
+**Agent systems: ip reputation scoring** means you keep agent side effects idempotent around ip reputation scoring — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like treating agent ip reputation scoring as a pure library problem start paging people.
 
-IP reputation scoring assigns a risk signal to source addresses using threat feeds, historical behavior, ASN heuristics, and your own telemetry. For agent platforms, it is an **economics and abuse** control—not a substitute for authentication. This deep dive covers signal sources, scoring architecture, cache design, integration with agent middleware, and the operational tradeoffs between fail-open and fail-closed postures.
+This write-up is specific to `agent-ip-reputation-scoring` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Signal sources and score composition
+## What Agent systems: ip reputation scoring changes in day-two ops
 
-Composite scores work better than single feeds:
+I treat Agent systems: ip reputation scoring as an operations problem first. The goal is to keep agent side effects idempotent around ip reputation scoring, not to collect frameworks.
 
-| Signal | Weight (example) | Notes |
-|--------|------------------|-------|
-| Commercial threat intel (Spamhaus, etc.) | High for listed IPs | False positives on shared NAT |
-| Historical agent abuse (your logs) | Highest when present | First-party ground truth |
-| ASN classification (hosting vs ISP) | Medium | Datacenter egress often higher risk for consumer agents |
-| Geo velocity | Medium | Same account impossible travel |
-| Request pattern heuristics | Low pre-auth | Synergy with rate limits |
+Put a metric on the user-visible effect of agent ip reputation scoring before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-```
-Request ──▶ Edge middleware ──▶ IP reputation service ──▶ {score, labels, ttl}
-                  │                      │
-                  │                      ├── local cache (Redis)
-                  │                      └── async feed ingest
-                  ▼
-         allow | challenge | throttle | block
-                  │
-                  ▼
-            Agent orchestrator
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ip reputation scoring that needs a hero is not done.
 
-Normalize scores to 0–100 for policy consistency. Store **labels** (`TOR_EXIT`, `SCANNER`, `DATACENTER`, `FIRST_PARTY_ABUSE`) for explainability in security dashboards—not just a number.
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-## Scoring service implementation
+## Designing so you can keep agent side effects idempotent around ip reputation scoring
+
+Teams usually discover Agent systems: ip reputation scoring after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Put a metric on the user-visible effect of agent ip reputation scoring before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ip reputation scoring that needs a hero is not done.
+
+Concretely, being able to keep agent side effects idempotent around ip reputation scoring forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
 ```python
+# Agent systems: ip reputation scoring
 from dataclasses import dataclass
-from enum import Enum
-import time
 
+@dataclass(frozen=True)
+class AgentIpReputationRequest:
+    tenant_id: str
+    idempotency_key: str
 
-class Action(Enum):
-    ALLOW = "allow"
-    CHALLENGE = "challenge"
-    THROTTLE = "throttle"
-    BLOCK = "block"
-
-
-@dataclass
-class ReputationResult:
-    ip: str
-    score: int  # 0 = benign, 100 = malicious
-    labels: list[str]
-    cached: bool
-    as_of: float
-
-
-class IpReputationScorer:
-    def __init__(self, cache, feeds, first_party_store):
-        self.cache = cache
-        self.feeds = feeds
-        self.first_party = first_party_store
-
-    def score(self, ip: str) -> ReputationResult:
-        cached = self.cache.get(ip)
-        if cached and not self._expired(cached):
-            return cached
-
-        labels = []
-        score = 0
-
-        if self.first_party.is_banned(ip):
-            labels.append("FIRST_PARTY_ABUSE")
-            score = max(score, 95)
-
-        for feed in self.feeds:
-            hit = feed.lookup(ip)
-            if hit:
-                labels.extend(hit.labels)
-                score = max(score, hit.severity)
-
-        asn = self.feeds.asn_info(ip)
-        if asn and asn.category == "hosting":
-            labels.append("DATACENTER")
-            score = max(score, 35)
-
-        result = ReputationResult(
-            ip=ip,
-            score=min(score, 100),
-            labels=sorted(set(labels)),
-            cached=False,
-            as_of=time.time(),
-        )
-        self.cache.set(ip, result, ttl=self._ttl_for(score))
-        return result
-
-    def _ttl_for(self, score: int) -> int:
-        if score >= 80:
-            return 3600
-        if score >= 40:
-            return 900
-        return 300
-
-    def _expired(self, result: ReputationResult) -> bool:
-        age = time.time() - result.as_of
-        return age > self._ttl_for(result.score)
+async def run_agent_ip_reputation_scor(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-ip-reputation-scoring"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-First-party bans override commercial feeds—your incident data is authoritative.
+## Failure modes specific to agent ip reputation scoring
 
-## Policy mapping and agent-specific thresholds
+Teams usually discover Agent systems: ip reputation scoring after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Agent endpoints cost money. Tighter thresholds on unauthenticated routes:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ip reputation scoring as a pure library problem.
 
-```typescript
-import { Action, ReputationResult } from "./reputation";
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ip reputation scoring.
 
-interface PolicyContext {
-  route: string;
-  authenticated: boolean;
-  tenantTier: "free" | "paid" | "enterprise";
-}
+My never-again list for agent ip reputation scoring: treating agent ip reputation scoring as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-export function decideAction(
-  rep: ReputationResult,
-  ctx: PolicyContext,
-): Action {
-  const { score, labels } = rep;
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-  if (labels.includes("FIRST_PARTY_ABUSE")) return Action.BLOCK;
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent ip reputation scoring as a pure library problem |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-  if (!ctx.authenticated && ctx.route.startsWith("/api/agent/")) {
-    if (score >= 75) return Action.BLOCK;
-    if (score >= 45) return Action.CHALLENGE;
-    if (score >= 25) return Action.THROTTLE;
-  }
+## Signals worth paging on
 
-  if (ctx.authenticated && ctx.tenantTier === "enterprise") {
-    // Prefer friction over false blocks for paying customers
-    if (score >= 85) return Action.CHALLENGE;
-    return Action.ALLOW;
-  }
+I treat Agent systems: ip reputation scoring as an operations problem first. The goal is to keep agent side effects idempotent around ip reputation scoring, not to collect frameworks.
 
-  if (score >= 90) return Action.BLOCK;
-  if (score >= 60) return Action.CHALLENGE;
-  return Action.ALLOW;
-}
-```
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ip reputation scoring as a pure library problem.
 
-Log every `BLOCK` and `CHALLENGE` with IP, labels, route, and session ID for false-positive review.
+Acceptance check: an on-call engineer can explain system state for agent ip reputation scoring from one dashboard and one runbook page.
 
-## Caching and feed ingestion
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: ip reputation scoring cannot answer, it is not production-ready.
 
-Synchronous feed API calls on every request do not scale. Pattern:
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-1. **Edge cache** — Redis with millions of keys; LRU eviction for long tail
-2. **Background ingester** — refresh hot IPs every 5 min; cold on first touch
-3. **Bloom filter** — fast negative for clearly benign ranges (optional)
+## Rollout sequence with Temporal
 
-Fail-open vs fail-closed when feeds are stale:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ip reputation scoring, that means making failure visible early.
 
-- **Fail-open (default)** — allow with alert if feeds down >15 min; avoids outage
-- **Fail-closed** — block unauthenticated agent runs only; requires on-call runbook
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ip reputation scoring as a pure library problem.
 
-Document the business choice explicitly—security vs availability.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: ip reputation scoring that needs a hero is not done.
 
-## IPv6, NAT, and carrier-grade CGNAT
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-IPv6 /64 allocations behave differently from IPv4 /32. Scoring entire /64 too aggressively blocks mobile users; too loosely misses rotating addresses within a subnet.
+Related reading:
 
-Practices:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-- Store reputation at /64 granularity for IPv6 with higher challenge threshold
-- Exempt known enterprise egress ranges via allowlist file
-- Decay scores over time—yesterday's scanner IP may be reassigned
+## What I would delete after month one
 
-```python
-def normalize_ip_key(ip: str) -> str:
-    import ipaddress
-    addr = ipaddress.ip_address(ip)
-    if isinstance(addr, ipaddress.IPv6Address):
-        network = ipaddress.ip_network(f"{addr}/64", strict=False)
-        return str(network)
-    return str(addr)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ip reputation scoring, that means making failure visible early.
 
-## Integration with agent observability
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent ip reputation scoring as a pure library problem.
 
-Metrics to emit:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ip reputation scoring.
 
-- `ip_reputation_decisions_total{action, route}`
-- `ip_reputation_score_histogram`
-- `ip_reputation_cache_hit_rate`
-- `ip_reputation_feed_lag_seconds`
-- `estimated_tokens_saved` — blocked requests × avg tokens that would have run
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-Correlate with `agent_tool_invocations` to prove ROI to finance—not just security.
+## Practical defaults for Agent systems: ip reputation scoring
 
-## Privacy and compliance
+I treat Agent systems: ip reputation scoring as an operations problem first. The goal is to keep agent side effects idempotent around ip reputation scoring, not to collect frameworks.
 
-IP addresses are personal data in GDPR contexts. Retention policies: aggregate scores after 30 days; delete raw IP logs per DPA. Document legitimate interest for abuse prevention.
+Keep side effects at the edges and make every write idempotent. Agent systems: ip reputation scoring without retry semantics is a future incident write-up.
 
-Do not sell reputation data derived from user traffic without consent.
+Acceptance check: an on-call engineer can explain system state for agent ip reputation scoring from one dashboard and one runbook page.
 
-## Testing and false-positive management
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-- **Fixture IPs** — known Tor exits, your office NAT, major cloud provider ranges
-- **Replay** — sanitized production logs through scorer; measure block rate drift after feed updates
-- **Appeal path** — support workflow to allowlist false positives with expiry
-- **Game day** — disable primary feed; verify fail-open behavior
+Default deny, explicit timeouts, and one dashboard row for agent ip reputation scoring. Expand only when the metric demands it.
 
-Run A/B on challenge vs block thresholds before tightening production policy.
+## Review questions before merging agent ip reputation scoring work
 
-## Agent prompt injection and IP reputation
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ip reputation scoring, that means making failure visible early.
 
-IP reputation does not detect prompt injection from benign IPs—the complement is content moderation and tool sandboxing. Reputation reduces **volume** of automated probing so downstream defenses see signal, not noise.
+Keep side effects at the edges and make every write idempotent. Agent systems: ip reputation scoring without retry semantics is a future incident write-up.
 
-Combine with per-tenant rate limits and token budgets for defense in depth.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent ip reputation scoring.
 
-## Feeding first-party abuse back into scores
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-Commercial feeds lag your own attack patterns. Close the loop:
+In review, require a short failure note covering retry, partial deploy, and treating agent ip reputation scoring as a pure library problem. Missing that note blocks merge.
 
-1. **Detection** — rate limit trips, tool sandbox escapes, prompt injection classifiers fire
-2. **Label** — mark `(ip, asn, fingerprint)` tuples in abuse store with decay TTL
-3. **Promotion** — repeated offenses within 24h elevate to `FIRST_PARTY_ABUSE`
-4. **Review** — weekly export of blocked IPs for false-positive appeals
+## Field notes after thirty days of agent ip reputation scoring
 
-```python
-def record_abuse_event(ip: str, event_type: str, store) -> None:
-    store.increment(f"abuse:{ip}", window_hours=24)
-    count = store.get_count(f"abuse:{ip}")
-    if count >= 5 and event_type in ("tool_escape", "credential_stuff"):
-        store.ban(ip, reason="FIRST_PARTY_ABUSE", ttl_hours=72)
-        notify_security_dashboard(ip, count, event_type)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent ip reputation scoring, that means making failure visible early.
 
-Decay matters—café Wi-Fi NAT should not stay banned for months after one abusive client. TTL bans with exponential backoff for repeat offenders balance abuse prevention and user experience.
+Put a metric on the user-visible effect of agent ip reputation scoring before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Deployment at the edge vs origin
+Acceptance check: an on-call engineer can explain system state for agent ip reputation scoring from one dashboard and one runbook page.
 
-Low-latency scoring belongs at CDN edge when possible (Cloudflare, Fastly compute). Origin scoring adds RTT on every agent request.
+Slug-specific note (agent-ip-reputation-scoring): prioritize scoring behavior under load and verify with a fixture named `agent-ip-reputation-scoring-smoke`.
 
-Pattern:
-
-- Edge: coarse decision from cached score + ASN allow/deny lists
-- Origin: refine with account context post-auth
-
-Keep edge and origin policy versions in sync via config hash header—debug "edge allowed, origin blocked" mismatches quickly during incidents.
-
-Document which decisions are edge-final vs origin-final in runbooks so on-call does not chase the wrong layer.
-
-## The takeaway
-
-IP reputation scoring protects agent economics by filtering high-volume abuse before expensive orchestration. Compose first-party abuse data with threat feeds, cache aggressively, map scores to allow/challenge/throttle/block with tier-aware policies, and measure false positives relentlessly. It is a gate—not authentication—and must fail gracefully when feeds lag.
+After a month, delete unused flags and dual paths. `agent-ip-reputation-scoring` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Spamhaus IP blocklist documentation](https://www.spamhaus.org/blocklists/)
-- [MaxMind minFraud and GeoIP](https://dev.maxmind.com/)
-- [Cloudflare IP reputation and Bot Management](https://developers.cloudflare.com/bots/)
-- [OWASP Automated Threats to Web Applications](https://owasp.org/www-project-automated-threats-to-web-applications/)
-- [Companion: Rate Limit Token Bucket](/agent-rate-limit-token-bucket/)
-- [Companion: Behavioral Anomaly Login](/agent-behavioral-anomaly-login/)
+- Internal runbook seed: `agent-ip-reputation-scoring`
+- https://12factor.net/
+- https://martinfowler.com/

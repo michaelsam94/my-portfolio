@@ -1,246 +1,159 @@
 ---
-title: "AI Agents: Performance Budget Ci Gate"
+title: "Agent systems: performance budget ci gate"
 slug: "agent-performance-budget-ci-gate"
-description: "Enforce web performance budgets in CI with Lighthouse, bundle analysis, and flaky-test controls—so regressions fail pulls before users feel them."
+description: "Agent systems: performance budget ci gate: how to keep agent side effects idempotent around performance budget ci gate — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-07-11"
-dateModified: "2026-07-11"
-tags: ["AI", "Agent", "Performance"]
-keywords: "performance budget, CI gate, Lighthouse CI, bundle size, Core Web Vitals, regression prevention"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, performance, budget, ci, gate, production, engineering"
 faq:
-  - q: "Which metrics belong in a performance budget?"
-    a: "Start with field-aligned Core Web Vitals—LCP, INP, CLS—plus transfer size for JavaScript and CSS on critical routes. Add TTFB for SSR apps and main-thread blocking time if your product is interaction-heavy. Avoid vanity scores alone; budget real user metrics proxies lab can approximate."
-  - q: "Should performance gates block merges on first failure?"
-    a: "Use warn-only for two sprints while baselines stabilize, then enforce on protected branches. First failures should post a diff comment with the metric, delta, and likely file—developers fix faster when the bot names the offending chunk."
-  - q: "How do you reduce Lighthouse CI flakiness?"
-    a: "Pin Chromium version, run three medians and compare the median not the best, throttle CPU and network consistently, warm caches identically, and disable unrelated animations in test accounts. Never run perf jobs on shared runners without resource isolation if variance exceeds 5%."
-  - q: "What if a legitimate feature exceeds the budget?"
-    a: "Require an explicit budget bump in the same PR with product sign-off in the commit message or linked ticket. Budgets are contracts; silent erosion recreates the problem you built the gate to stop."
+  - q: "What is Agent systems: performance budget ci gate?"
+    a: "Agent systems: performance budget ci gate is the production approach to keep agent side effects idempotent around performance budget ci gate. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: performance budget ci gate?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent performance budget ci gate, prioritize it."
+  - q: "What is the most common mistake with Agent systems: performance budget ci gate?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Performance regressions rarely arrive as a single 800 KB dependency. They arrive as twelve "small" changes across three teams: a marketing pixel here, a chart library there, an icon pack imported with `import *`. By the time Real User Monitoring shows LCP climbing, the diff that caused it is six releases ago and nobody owns the rollback.
+**Agent systems: performance budget ci gate** means you keep agent side effects idempotent around performance budget ci gate — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-A performance budget CI gate turns "we should check Lighthouse before release" into a mechanical merge blocker on critical routes. This article covers choosing budgets, wiring Lighthouse CI and bundle checks into GitHub Actions, and keeping the signal trustworthy enough that engineers do not `#skip-perf` every other PR.
+This write-up is specific to `agent-performance-budget-ci-gate` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Budgets are per-route contracts, not global scores
+## Fitting Agent systems: performance budget ci gate into an existing system
 
-One global "Performance score > 90" fails teams building both a marketing homepage and a logged-in dashboard with WebSockets. Define budgets per URL or user journey:
+Teams usually discover Agent systems: performance budget ci gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-| Route | LCP (lab) | JS transfer | CSS transfer | Notes |
-|-------|-----------|-------------|--------------|-------|
-| `/` | ≤ 2.2s | ≤ 180 KB | ≤ 40 KB | SSR hero image priority |
-| `/app/dashboard` | ≤ 2.8s | ≤ 420 KB | ≤ 60 KB | Code-split charts |
-| `/checkout` | ≤ 2.0s | ≤ 150 KB | ≤ 30 KB | Zero third-party scripts |
+Keep side effects at the edges and make every write idempotent. Agent systems: performance budget ci gate without retry semantics is a future incident write-up.
 
-Derive numbers from **field data** (CrUX, RUM) at p75, then tighten 10–15% in lab to account for throttling variance. If you lack field data, ship RUM first—budgets without production baselines are guesses.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: performance budget ci gate that needs a hero is not done.
 
-Also budget **JavaScript execution time** on interaction-heavy SPAs. Transfer size alone misses hydrated frameworks that parse large JSON on the main thread.
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-## Repository layout for budget as code
+## Contracts and ownership boundaries
 
-Commit budgets beside the app so changes are reviewed like any other config:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent performance budget ci gate, that means making failure visible early.
 
-```
-perf/
-  budgets.json          # thresholds per URL
-  lighthouserc.js       # LHCI config
-  urls.txt              # paths to test
-scripts/
-  check-bundle-size.mjs # webpack/vite stats gate
-```
+Put a metric on the user-visible effect of agent performance budget ci gate before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-`budgets.json` example consumable by custom scripts and LHCI assertions:
+Acceptance check: an on-call engineer can explain system state for agent performance budget ci gate from one dashboard and one runbook page.
 
-```json
-{
-  "/": {
-    "resourceSizes": [
-      { "resourceType": "script", "budget": 184320 },
-      { "resourceType": "stylesheet", "budget": 40960 }
-    ],
-    "timings": [
-      { "metric": "largest-contentful-paint", "budget": 2200 },
-      { "metric": "cumulative-layout-shift", "budget": 0.1 }
-    ]
-  }
-}
+Concretely, being able to keep agent side effects idempotent around performance budget ci gate forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
+
+```python
+# Agent systems: performance budget ci gate
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentPerformanceBuRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_performance_budget(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-performance-budget-ci-gate"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Document how to run locally: `npm run perf:check` should mirror CI within 5% variance.
+## State, storage, and retention
 
-## Lighthouse CI in GitHub Actions
+Teams usually discover Agent systems: performance budget ci gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Pin versions. Unpinned `@lhci/cli@latest` is a flaky-test factory.
+Put a metric on the user-visible effect of agent performance budget ci gate before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```yaml
-# .github/workflows/performance.yml
-name: Performance Budget
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent performance budget ci gate.
 
-on:
-  pull_request:
-    branches: [main]
+My never-again list for agent performance budget ci gate: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-jobs:
-  lighthouse:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-      - run: npm ci
-      - run: npm run build
-      - run: npm run start:ci &  # production server on :3000
-      - run: npx wait-on http://127.0.0.1:3000
+## Security defaults that are non-negotiable
 
-      - name: Run Lighthouse CI
-        run: npx @lhci/cli@0.14.0 autorun
-        env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+I treat Agent systems: performance budget ci gate as an operations problem first. The goal is to keep agent side effects idempotent around performance budget ci gate, not to collect frameworks.
 
-      - name: Bundle size gate
-        run: node scripts/check-bundle-size.mjs
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: performance budget ci gate without retry semantics is a future incident write-up.
 
-`lighthouserc.js`:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: performance budget ci gate that needs a hero is not done.
 
-```javascript
-module.exports = {
-  ci: {
-    collect: {
-      url: ["http://127.0.0.1:3000/", "http://127.0.0.1:3000/app/dashboard"],
-      numberOfRuns: 3,
-      settings: {
-        preset: "desktop",
-        throttling: {
-          rttMs: 40,
-          throughputKbps: 10240,
-          cpuSlowdownMultiplier: 1,
-        },
-      },
-    },
-    assert: {
-      assertions: {
-        "largest-contentful-paint": ["error", { maxNumericValue: 2800 }],
-        "total-blocking-time": ["warn", { maxNumericValue: 200 }],
-        "resource-summary:script:size": ["error", { maxNumericValue: 430000 }],
-      },
-    },
-    upload: {
-      target: "temporary-public-storage",
-    },
-  },
-};
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: performance budget ci gate cannot answer, it is not production-ready.
 
-LHCI compares median of three runs. Use `error` for merge blockers, `warn` for metrics still stabilizing.
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-## Bundle size script that names the offender
+## SLOs and dashboards
 
-Developers ignore "budget exceeded." They fix "added 92 KB via `recharts` in `DashboardChart.tsx`."
+I treat Agent systems: performance budget ci gate as an operations problem first. The goal is to keep agent side effects idempotent around performance budget ci gate, not to collect frameworks.
 
-```javascript
-// scripts/check-bundle-size.mjs
-import { readFileSync } from "node:fs";
-import gzipSize from "gzip-size";
+Keep side effects at the edges and make every write idempotent. Agent systems: performance budget ci gate without retry semantics is a future incident write-up.
 
-const budgets = JSON.parse(readFileSync("perf/budgets.json", "utf8"));
-const stats = JSON.parse(readFileSync("dist/stats.json", "utf8")); // webpack --json
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: performance budget ci gate that needs a hero is not done.
 
-const mainChunk = stats.assets.find((a) => a.name.startsWith("main"));
-const size = gzipSize.sync(readFileSync(`dist/${mainChunk.name}`));
-const budget = budgets["/app/dashboard"].resourceSizes.find(
-  (r) => r.resourceType === "script"
-).budget;
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-if (size > budget) {
-  const modules = stats.modules
-    .filter((m) => m.size > 5000)
-    .sort((a, b) => b.size - a.size)
-    .slice(0, 5)
-    .map((m) => `  ${m.size} bytes  ${m.name}`)
-    .join("\n");
+Related reading:
 
-  console.error(
-    `JS gzip ${size} exceeds budget ${budget} by ${size - budget} bytes\nTop modules:\n${modules}`
-  );
-  process.exit(1);
-}
-```
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Ensure production build emits `stats.json` in CI only—do not ship it to users.
+## First-week validation plan
 
-## Controlling flake and false positives
+Teams usually discover Agent systems: performance budget ci gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Flaky perf CI erodes trust faster than no CI. Mitigations:
+Keep side effects at the edges and make every write idempotent. Agent systems: performance budget ci gate without retry semantics is a future incident write-up.
 
-- **Dedicated runner labels** or self-hosted agents with fixed CPU for perf jobs
-- **Median of N runs** (3 minimum; 5 for noisy SPAs)
-- **Seed data** — fixed test user, frozen clock, disabled feature-flag randomness
-- **Block third-party network** in CI or use mock ad/analytics endpoints; external scripts dominate variance
-- **Compare against base branch** — fail only if delta exceeds threshold (e.g., LCP +300ms vs main) when absolute budgets are tight
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: performance budget ci gate that needs a hero is not done.
 
-```javascript
-// Pseudo: delta gate — fail if PR regresses main median by >5%
-const mainLcp = await fetchMainBranchArtifact("lcp-median");
-const prLcp = currentRun.medianLcp;
-if (prLcp > mainLcp * 1.05) {
-  fail(`LCP regressed ${prLcp - mainLcp}ms vs main (${mainLcp}ms)`);
-}
-```
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-Store main-branch artifacts from the last green deploy.
+## Practical defaults for Agent systems: performance budget ci gate
 
-## Team workflow integration
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent performance budget ci gate, that means making failure visible early.
 
-1. **Design review** — new routes add a row to `budgets.json` before UI ships.
-2. **PR template** — checkbox: "Perf CI green or budget updated with ticket."
-3. **Bot comment** — LHCI posts comparison table; required review for infra team only when budget file changes.
-4. **Release** — sync lab budgets quarterly against CrUX p75 movement.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-When product requests a heavy widget, the negotiation is numeric: "Accept 40 KB JS increase on dashboard—bump budget in same PR with VP sign-off."
+Acceptance check: an on-call engineer can explain system state for agent performance budget ci gate from one dashboard and one runbook page.
 
-## What to gate in CI vs monitor in production
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-| Signal | CI gate | Production monitor |
-|--------|---------|-------------------|
-| LCP on critical routes | Yes (lab proxy) | RUM p75 alert |
-| INP | Warn in CI | RUM primary |
-| CLS | Yes | RUM |
-| JS bundle size | Yes | Optional |
-| API latency | No (use contract tests) | APM SLO |
-| CDN cache hit ratio | No | Dashboard |
+After a month, delete unused flags and dual paths. `agent-performance-budget-ci-gate` accumulates temporary bridges faster than teams expect.
 
-CI catches preventable diffs; RUM catches configuration and traffic shifts lab never sees.
+## Review questions before merging agent performance budget ci gate work
 
-## When the gate fails mid-sprint
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent performance budget ci gate, that means making failure visible early.
 
-Triage order:
+Put a metric on the user-visible effect of agent performance budget ci gate before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-1. Re-run job once—variance vs real regression
-2. Check if failure is third-party (compare network waterfall to main)
-3. Identify chunk diff via stats.json
-4. Fix, lazy-load, or remove—budget bump is last resort
+Acceptance check: an on-call engineer can explain system state for agent performance budget ci gate from one dashboard and one runbook page.
 
-Keep a public `#perf-ci` channel with last month's false-positive rate. Transparency keeps enforcement credible.
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
 
-## Extending gates to preview deployments
+After a month, delete unused flags and dual paths. `agent-performance-budget-ci-gate` accumulates temporary bridges faster than teams expect.
 
-Static CI on localhost misses CDN configuration, Brotli compression, and edge caching. Optionally run **scheduled** Lighthouse against staging or preview URLs with the same budgets but looser thresholds (+10%). Nightly drift catches infra regressions PR gates cannot see—misconfigured cache headers, accidental `no-store` on static assets, TLS middleboxes adding latency.
+## Field notes after thirty days of agent performance budget ci gate
 
-Do not block PRs on preview-only jobs; preview environments vary in cold-start behavior. Use them for trend graphs and Slack alerts, not merge gates.
+I treat Agent systems: performance budget ci gate as an operations problem first. The goal is to keep agent side effects idempotent around performance budget ci gate, not to collect frameworks.
 
-## Accessibility and performance overlap
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Focus management, layout shifts from lazy-loaded fonts, and modal scroll lock bugs hurt both CLS and accessibility scores. When perf CI flags CLS regression, check whether the fix is purely visual (reserve space for ads) or structural (missing dimensions on images). Teams that treat CLS as a design-system concern fix faster than teams that treat it as a Lighthouse chore.
+Acceptance check: an on-call engineer can explain system state for agent performance budget ci gate from one dashboard and one runbook page.
 
-Performance budget CI gates work when budgets reflect real user journeys, scripts tell engineers exactly what grew, and flake is fought as seriously as test flake. The outcome is not a green Lighthouse badge—it is one less silent multi-release slowdown reaching production.
+Slug-specific note (agent-performance-budget-ci-gate): prioritize gate behavior under load and verify with a fixture named `agent-performance-budget-ci-gate-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent performance budget ci gate. Expand only when the metric demands it.
 
 ## Resources
 
-- [web.dev: Performance budgets](https://web.dev/articles/performance-budgets-101)
-- [Lighthouse CI documentation](https://github.com/GoogleChrome/lighthouse-ci/blob/main/docs/getting-started.md)
-- [Google Chrome: Core Web Vitals](https://web.dev/articles/vitals)
-- [webpack-bundle-analyzer](https://github.com/webpack-contrib/webpack-bundle-analyzer)
-- [Calibre: How to set useful performance budgets](https://calibreapp.com/docs/budgets/performance-budgets)
+- Internal runbook seed: `agent-performance-budget-ci-gate`
+- https://12factor.net/
+- https://martinfowler.com/

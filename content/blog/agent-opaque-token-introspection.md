@@ -1,233 +1,159 @@
 ---
-title: "AI Agents: Opaque Token Introspection"
+title: "Agent reliability via opaque token introspection"
 slug: "agent-opaque-token-introspection"
-description: "How agent gateways validate opaque OAuth2 access tokens via RFC 7662 introspection — caching, audience checks, revocation latency, and fail-closed middleware without parsing JWT claims locally."
+description: "Agent reliability via opaque token introspection: how to ship agent opaque token introspection with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-09-24"
-dateModified: "2025-09-24"
-tags: ["AI Agents", "OAuth2", "Security", "Authentication"]
-keywords: "opaque token introspection, RFC 7662, OAuth2 agent gateway, token validation cache, authorization server introspection endpoint"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, opaque, token, introspection, production, engineering"
 faq:
-  - q: "When should an agent platform use opaque tokens instead of JWTs?"
-    a: "Choose opaque tokens when you need immediate server-side revocation, short-lived sessions with centralized policy, or when embedding claims in a JWT would leak tenant metadata to clients. Agent orchestrators that call third-party APIs on behalf of users often receive opaque tokens from enterprise IdPs — introspection is the only validation path."
-  - q: "What does RFC 7662 introspection return?"
-    a: "A JSON object with `active` (boolean), and when active: `scope`, `client_id`, `username`, `sub`, `exp`, `iat`, `aud`, and custom claims your authorization server attaches. Inactive tokens return `{ \"active\": false }` with HTTP 200 — not 401."
-  - q: "How do you cache introspection without serving revoked tokens?"
-    a: "Cache positive results keyed by token hash with TTL capped at min(remaining token lifetime, your max cache window — typically 30–60 seconds). Never cache `active: false`. On logout or admin revocation webhooks, purge cache entries by `sub` or `jti` if your IdP exposes them."
-  - q: "Should introspection failures fail open or closed?"
-    a: "Fail closed for agent tool execution — an agent that cannot prove caller identity must not invoke side-effecting tools. Fail open only for read-only telemetry with explicit feature flags, and never for billing, deployment, or data-deletion paths."
+  - q: "What is Agent reliability via opaque token introspection?"
+    a: "Agent reliability via opaque token introspection is the production approach to ship agent opaque token introspection with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via opaque token introspection?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent opaque token introspection, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via opaque token introspection?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent reliability via opaque token introspection** means you ship agent opaque token introspection with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-A support engineer once traced a phantom refund to an agent run that executed forty minutes after the user clicked Sign Out. The access token looked valid in application logs — because the gateway cached a positive introspection result for five minutes while the authorization server had already marked the session inactive. Opaque tokens hide their payload; introspection is how you learn whether a bearer string still represents an authorized principal. Get caching, audience binding, or error handling wrong and your agent platform becomes a pipeline that executes tools for ghosts.
+This write-up is specific to `agent-opaque-token-introspection` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## What opaque tokens actually are
+## A pragmatic path to Agent reliability via opaque token introspection
 
-An opaque access token is an uninterpretable reference — often a random 256-bit value — issued by an authorization server (Auth0, Okta, Keycloak, Azure AD, a homegrown OAuth2 deployment). Resource servers cannot validate it locally the way they decode a JWT and verify a signature against a JWKS endpoint. They must call the introspection endpoint:
+Teams usually discover Agent reliability via opaque token introspection after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-```
-POST /oauth/introspect
-Authorization: Basic <client_id:client_secret>
-Content-Type: application/x-www-form-urlencoded
+Keep side effects at the edges and make every write idempotent. Agent reliability via opaque token introspection without retry semantics is a future incident write-up.
 
-token=<access_token>&token_type_hint=access_token
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via opaque token introspection that needs a hero is not done.
 
-The response tells you whether the token is **active** and, if so, which scopes, subject, audience, and expiry apply. For agent platforms, that subject maps to the human or service account whose permissions constrain tool calls.
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
 
-JWT advocates will note introspection adds a network hop. That is the trade: centralized revocation beats local verification when sessions must die immediately after password reset, device loss, or SOC-mandated kill switches.
+## Start from the user-visible symptom
 
-## Where introspection sits in an agent gateway
+I treat Agent reliability via opaque token introspection as an operations problem first. The goal is to ship agent opaque token introspection with human override paths, not to collect frameworks.
 
-```
-Client                Agent gateway              Auth server           Tool executor
-  │                        │                          │                      │
-  │  Bearer opaque token   │                          │                      │
-  │ ──────────────────────►│                          │                      │
-  │                        │  POST /introspect        │                      │
-  │                        │ ────────────────────────►│                      │
-  │                        │◄──────────────────────── │  { active, scope }   │
-  │                        │  bind sub → tool policy  │                      │
-  │                        │ ───────────────────────────────────────────────►│
-  │◄────────────────────── │  streamed response       │                      │
-```
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Every inbound request to `/v1/agents/run` should introspect **once** at the edge middleware, attach normalized claims to request context, and never re-introspect on every internal microservice hop unless you lack a trusted internal identity layer.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via opaque token introspection that needs a hero is not done.
 
-## Reference middleware (Node.js)
+Concretely, being able to ship agent opaque token introspection with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
 
 ```typescript
-import { createHash } from "crypto";
-
-interface IntrospectionResult {
-  active: boolean;
-  sub?: string;
-  scope?: string;
-  aud?: string | string[];
-  exp?: number;
-  client_id?: string;
-}
-
-const CACHE_TTL_MS = 45_000;
-
-function tokenCacheKey(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-async function introspect(
-  token: string,
-  authServerUrl: string,
-  clientId: string,
-  clientSecret: string
-): Promise<IntrospectionResult> {
-  const body = new URLSearchParams({ token, token_type_hint: "access_token" });
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-  const res = await fetch(`${authServerUrl}/oauth/introspect`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-    signal: AbortSignal.timeout(2_000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`introspection_http_${res.status}`);
+// Agent reliability via opaque token introspection
+export async function handle_agent_opaque_token_introspection(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-opaque-token-introspection");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-  return res.json() as Promise<IntrospectionResult>;
-}
-
-export function requireActiveToken(
-  cache: Map<string, { result: IntrospectionResult; expiresAt: number }>,
-  expectedAudience: string
-) {
-  return async (req: Request, ctx: { claims?: IntrospectionResult }) => {
-    const auth = req.headers.get("authorization");
-    if (!auth?.startsWith("Bearer ")) {
-      return Response.json({ error: "missing_token" }, { status: 401 });
-    }
-    const token = auth.slice(7);
-    const key = tokenCacheKey(token);
-    const now = Date.now();
-
-    let result = cache.get(key)?.expiresAt > now ? cache.get(key)!.result : undefined;
-
-    if (!result) {
-      try {
-        result = await introspect(
-          token,
-          process.env.AUTH_SERVER_URL!,
-          process.env.INTROSPECT_CLIENT_ID!,
-          process.env.INTROSPECT_CLIENT_SECRET!
-        );
-      } catch {
-        // Fail closed — do not execute tools on auth uncertainty
-        return Response.json({ error: "introspection_unavailable" }, { status: 503 });
-      }
-      if (result.active) {
-        const ttl = Math.min(
-          CACHE_TTL_MS,
-          result.exp ? Math.max(0, result.exp * 1000 - now) : CACHE_TTL_MS
-        );
-        cache.set(key, { result, expiresAt: now + ttl });
-      }
-    }
-
-    if (!result.active) {
-      return Response.json({ error: "token_inactive" }, { status: 401 });
-    }
-
-    const aud = result.aud;
-    const audiences = Array.isArray(aud) ? aud : aud ? [aud] : [];
-    if (audiences.length && !audiences.includes(expectedAudience)) {
-      return Response.json({ error: "wrong_audience" }, { status: 403 });
-    }
-
-    ctx.claims = result;
-    return null; // continue pipeline
-  };
 }
 ```
 
-Three details easy to miss: hash tokens before using them as cache keys (never log raw bearer values), cap cache TTL by remaining `exp`, and validate `aud` against your agent API identifier — tokens valid for another resource server must not invoke your tools.
+## Implementation details for agent opaque token introspection
 
-## Scope-to-tool mapping
+Teams usually discover Agent reliability via opaque token introspection after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Introspection tells you **who** and **what scopes**; your agent registry decides **which tools** those scopes unlock. Keep that mapping in version-controlled configuration, not scattered `if` statements:
+Put a metric on the user-visible effect of agent opaque token introspection before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-```yaml
-# tool-policy.yaml
-tools:
-  stripe.refund:
-    required_scopes: ["billing:write"]
-  github.merge_pr:
-    required_scopes: ["repos:write"]
-  slack.post_message:
-    required_scopes: ["chat:write"]
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via opaque token introspection that needs a hero is not done.
 
-At runtime, split `scope` on spaces and require intersection with each tool's `required_scopes` before enqueueing execution. When product adds a destructive tool, you add a scope line — auditable in PR review.
+My never-again list for agent opaque token introspection: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Caching layers beyond process memory
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
 
-Single-node `Map` caches fail under horizontal scaling — each pod holds different state, and revocation takes longest on cold pods. Production setups use Redis with the same key scheme:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```python
-import hashlib
-import json
-import redis
+## Flags, canaries, and kill switches
 
-r = redis.Redis.from_url("redis://cache:6379/0")
+Teams usually discover Agent reliability via opaque token introspection after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-def cache_get(token: str) -> dict | None:
-    key = "intro:" + hashlib.sha256(token.encode()).hexdigest()
-    raw = r.get(key)
-    return json.loads(raw) if raw else None
+Put a metric on the user-visible effect of agent opaque token introspection before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-def cache_set(token: str, payload: dict, ttl_sec: int) -> None:
-    if not payload.get("active"):
-        return  # never cache inactive
-    key = "intro:" + hashlib.sha256(token.encode()).hexdigest()
-    r.setex(key, ttl_sec, json.dumps(payload))
+Acceptance check: an on-call engineer can explain system state for agent opaque token introspection from one dashboard and one runbook page.
 
-def purge_subject(subject: str) -> None:
-    # Called from IdP logout webhook — maintain reverse index sub → keys if needed
-    for key in r.scan_iter(f"intro:sub:{subject}:*"):
-        r.delete(key)
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via opaque token introspection cannot answer, it is not production-ready.
 
-Wire your IdP's session-revocation webhook (Okta `user.session.end`, Auth0 `guardian` events) to call `purge_subject`. Without that hook, cache TTL is your only revocation bound.
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
 
-## Operational failure modes
+## Proving it worked
 
-| Symptom | Likely cause | Mitigation |
-|---------|--------------|------------|
-| 503 spikes on agent runs | Auth server slow/down | Circuit breaker; short negative cache forbidden; degrade read-only paths only |
-| Users stay "logged in" after logout | Cache TTL too long | Cap at 30s; webhook purge; never cache inactive |
-| Cross-tenant tool calls | Missing `aud` check | Bind audience at gateway; reject mismatched tokens |
-| Introspection storm at scale | Per-microservice calls | Introspect once at gateway; propagate signed internal identity |
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent opaque token introspection, that means making failure visible early.
 
-Instrument `introspection_latency_ms`, `introspection_cache_hit_ratio`, and `token_inactive_rejected_total`. Alert when cache hit ratio drops suddenly — often means token rotation or an attack spray of random bearer strings.
+Put a metric on the user-visible effect of agent opaque token introspection before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-## Introspection versus JWT local validation
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent opaque token introspection.
 
-| Concern | Opaque + introspection | JWT + JWKS |
-|---------|------------------------|------------|
-| Revocation latency | Bounded by cache TTL + webhook purge | Until `exp`; denylist optional |
-| Network dependency | Per cache miss | JWKS fetch periodically |
-| Token size | Small reference | Larger; claims visible to client |
-| Custom claims | Auth server controlled | Embedded; rotation needs key mgmt |
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
 
-Hybrid stacks issue JWTs to first-party SPAs and opaque tokens to confidential agent clients — your gateway middleware should branch on token shape (`eyJ` prefix heuristic is insufficient; inspect `token_type` from introspection or use separate auth routes).
+Related reading:
 
-## Closing note
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Opaque token introspection is not exotic OAuth trivia — it is the front door for enterprise agent deployments where security teams refuse client-visible JWT claims and demand instant session kill. Treat introspection as part of your availability story: timeout budgets, fail-closed semantics, audience enforcement, and cache invalidation wired to real logout events. The phantom refund incident ended with a forty-five-second cache cap and an Okta webhook that flushes Redis keys by `sub`. Boring changes; no more ghost agents.
+## Follow-ups teams usually skip
+
+Teams usually discover Agent reliability via opaque token introspection after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for agent opaque token introspection from one dashboard and one runbook page.
+
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
+
+## Practical defaults for Agent reliability via opaque token introspection
+
+I treat Agent reliability via opaque token introspection as an operations problem first. The goal is to ship agent opaque token introspection with human override paths, not to collect frameworks.
+
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via opaque token introspection that needs a hero is not done.
+
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-opaque-token-introspection` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent opaque token introspection work
+
+I treat Agent reliability via opaque token introspection as an operations problem first. The goal is to ship agent opaque token introspection with human override paths, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Agent reliability via opaque token introspection without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent opaque token introspection from one dashboard and one runbook page.
+
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Field notes after thirty days of agent opaque token introspection
+
+Teams usually discover Agent reliability via opaque token introspection after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for agent opaque token introspection from one dashboard and one runbook page.
+
+Slug-specific note (agent-opaque-token-introspection): prioritize introspection behavior under load and verify with a fixture named `agent-opaque-token-introspection-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- [RFC 7662 — OAuth 2.0 Token Introspection](https://datatracker.ietf.org/doc/html/rfc7662)
-- [OAuth 2.0 Bearer Token Usage (RFC 6750)](https://datatracker.ietf.org/doc/html/rfc6750)
-- [Keycloak Token Introspection Endpoint](https://www.keycloak.org/docs/latest/securing_apps/#_token-introspection-endpoint)
-- [Auth0 Token Introspection](https://auth0.com/docs/secure/tokens/token-introspection)
-- [OWASP OAuth 2.0 Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html)
+- Internal runbook seed: `agent-opaque-token-introspection`
+- https://12factor.net/
+- https://martinfowler.com/

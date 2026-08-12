@@ -1,274 +1,159 @@
 ---
-title: "AI Agents: Logical Replication Conflicts"
+title: "Operating agents with logical replication conflicts"
 slug: "agent-logical-replication-conflicts"
-description: "Logical Replication Conflicts: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Operating agents with logical replication conflicts: how to bound tool calls and blast radius for logical replication conflicts — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-12-15"
-dateModified: "2024-12-15"
-tags: ["AI", "Agent", "Logical"]
-keywords: "agent, logical, replication, conflicts, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, logical, replication, conflicts, production, engineering"
 faq:
-  - q: "When do PostgreSQL logical replication conflicts occur?"
-    a: "Conflicts arise when a change applied on the subscriber cannot be replayed — typically duplicate primary keys, updated rows missing on the subscriber, or DELETE/UPDATE on rows that do not exist. They appear in multi-master setups, after subscriber lag with divergent writes, or when agents and batch jobs write to both sides."
-  - q: "Should agent conversation state use logical replication?"
-    a: "Only if you accept conflict resolution rules upfront. High-churn agent session tables with concurrent writes on multiple regions need primary keys scoped per region, last-write-wins policies, or a single writer with read replicas — not naive bidirectional replication."
-  - q: "What is the difference between pglogical conflict handlers and PostgreSQL 16+ built-in?"
-    a: "PostgreSQL 16 improved logical replication with conflict logging and options on subscribers. Extensions like pglogical historically offered custom conflict handlers. Prefer native logical replication on supported versions; verify your handler policy matches product semantics before enabling multi-master."
-  - q: "How do you detect replication conflicts before users notice?"
-    a: "Monitor pg_stat_subscription_conflicts, replication lag, and subscriber error logs. Alert on any conflict count increase — do not wait for missing agent messages. Run periodic row-count checksums between publisher and subscriber on critical tables."
+  - q: "What is Operating agents with logical replication conflicts?"
+    a: "Operating agents with logical replication conflicts is the production approach to bound tool calls and blast radius for logical replication conflicts. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with logical replication conflicts?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent logical replication conflicts, prioritize it."
+  - q: "What is the most common mistake with Operating agents with logical replication conflicts?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Your agent platform replicates conversation history to a read region using PostgreSQL logical replication. A user switches devices mid-session; both clients append messages. The publisher and subscriber diverge. Replication halts with `duplicate key value violates unique constraint` on `messages_pkey`, and the EU read path serves stale threads until someone manually skips the transaction.
+**Operating agents with logical replication conflicts** means you bound tool calls and blast radius for logical replication conflicts — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Logical replication conflicts are not exotic edge cases — they are the predictable outcome of applying row changes on a subscriber that already mutated the same keys. Agent stacks amplify the risk: high insert rates on session tables, tool-call audit rows keyed by request ID, embedding metadata updated in place, and multi-region failover drills that briefly create two writers.
+This write-up is specific to `agent-logical-replication-conflicts` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-This article explains conflict mechanics in PostgreSQL logical replication, patterns that prevent them in agent data models, detection and remediation, and when to choose unidirectional replication instead.
+## Short answer: Operating agents with logical replication conflicts
 
-## How logical replication applies changes
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-Unlike physical streaming replication (byte-for-byte WAL), **logical replication** decodes WAL into row-level changes and applies INSERT/UPDATE/DELETE on subscribers via apply workers.
+Keep side effects at the edges and make every write idempotent. Operating agents with logical replication conflicts without retry semantics is a future incident write-up.
 
-```
-Publisher (primary)                    Subscriber (standby / region)
-     │                                        │
-     │  INSERT message id=42                  │
-     ├───────────────────────────────────────►│ apply OK
-     │                                        │
-     │  (lag: subscriber offline)             │ local INSERT id=42 (conflict path)
-     │                                        │
-     │  INSERT message id=42 (replay)         │
-     ├───────────────────────────────────────►│ ERROR: duplicate key
-```
+Acceptance check: an on-call engineer can explain system state for agent logical replication conflicts from one dashboard and one runbook page.
 
-Default behavior on conflict: the apply worker **errors and stops** the subscription until an operator intervenes. Agent products feel this as frozen conversation sync and growing replication lag.
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-Common conflict types:
+## Constraints before abstractions
 
-| Conflict | Scenario |
-|----------|----------|
-| **insert_exists** | Same primary key inserted on subscriber during lag |
-| **update_missing** | UPDATE on publisher for row deleted on subscriber |
-| **update_conflict** | Concurrent updates to same row with different values |
-| **delete_missing** | DELETE on publisher for row already absent on subscriber |
+Teams usually discover Operating agents with logical replication conflicts after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-## Schema design that reduces agent-table conflicts
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-### Single writer, many readers
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with logical replication conflicts that needs a hero is not done.
 
-The default safe pattern for agent state:
+Concretely, being able to bound tool calls and blast radius for logical replication conflicts forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-- One **publisher** region accepts writes.
-- Subscribers are read-only; application routing sends writes only to publisher.
-- Failover promotes a subscriber to publisher; brief read-only window during cutover.
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-No concurrent writes on subscribers means no insert/update conflicts from application logic — only replay ordering issues during failover if old publisher still accepts writes (split brain).
-
-### Partition keys by region or tenant
-
-If you must write locally for latency, partition so keys never collide:
-
-```sql
-CREATE TABLE agent_messages (
-  region_code   text NOT NULL,
-  message_id    uuid NOT NULL,
-  session_id    uuid NOT NULL,
-  content       jsonb NOT NULL,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (region_code, message_id)
-);
+```typescript
+// Operating agents with logical replication conflicts
+export async function handle_agent_logical_replication_conflicts(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-logical-replication-conflicts");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Each region generates `message_id` locally; replication merges disjoint keyspaces without primary key clashes. Cross-region session reads aggregate via federated queries or sync jobs — not bidirectional row replay on the same PK.
+## Reference implementation notes (OpenTelemetry)
 
-### Use natural keys with idempotency
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent logical replication conflicts, that means making failure visible early.
 
-Agent tool calls should use client-supplied idempotency keys:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-```sql
-CREATE TABLE agent_tool_invocations (
-  idempotency_key text PRIMARY KEY,
-  session_id      uuid NOT NULL,
-  tool_name       text NOT NULL,
-  payload         jsonb,
-  result          jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
-```
+Acceptance check: an on-call engineer can explain system state for agent logical replication conflicts from one dashboard and one runbook page.
 
-Retries and duplicate agent steps become `INSERT ... ON CONFLICT DO NOTHING` on publisher — subscribers replay identical upserts without conflict if apply order matches.
+My never-again list for agent logical replication conflicts: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Monitoring conflicts and lag
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-PostgreSQL exposes conflict counters:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```sql
-SELECT subname, confl_insert_exists, confl_update_missing,
-       confl_update_conflict, confl_delete_missing
-FROM pg_stat_subscription_stats;
-```
+## Quick path vs durable path
 
-Alert when any counter increases:
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-```yaml
-# prometheus postgres_exporter custom query alert
-- alert: LogicalReplicationConflict
-  expr: increase(pg_stat_subscription_conflicts_total[5m]) > 0
-  labels:
-    severity: critical
-  annotations:
-    summary: "Logical replication conflict on {{ $labels.subname }}"
-```
+Put a metric on the user-visible effect of agent logical replication conflicts before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Track **replication lag** in bytes and seconds:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent logical replication conflicts.
 
-```sql
-SELECT slot_name,
-       pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag_bytes
-FROM pg_replication_slots
-WHERE slot_type = 'logical';
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with logical replication conflicts cannot answer, it is not production-ready.
 
-Agent session tables lagging minutes mean users see stale tool results in read regions — conflict risk rises if any write path touches subscribers.
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-## Conflict resolution policies
+## Edge cases demos miss
 
-PostgreSQL 16+ subscribers can log conflicts and continue depending on configuration — verify exact settings for your version in official docs. Conceptually, policies include:
+Teams usually discover Operating agents with logical replication conflicts after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-**error (default)** — stop replication; safest for financial agent audit tables where silent overwrite is unacceptable.
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-**skip** — discard conflicting change; dangerous for agent messages unless paired with compensating sync.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with logical replication conflicts that needs a hero is not done.
 
-**last-update-wins** — compare commit timestamps or `updated_at`; acceptable for ephemeral session metadata, not for billing events.
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-Example subscriber-side handling concept (extension or custom apply):
+Related reading:
 
-```sql
--- Illustrative: prefer publisher version on update_conflict
--- Production: use version-native settings or pglogical handlers
-ALTER SUBSCRIPTION agent_events_sub
-  SET (binary = false);
--- Enable conflict logging to table for audit
-CREATE TABLE replication_conflicts (
-  id bigserial PRIMARY KEY,
-  conflict_time timestamptz DEFAULT now(),
-  table_name text,
-  conflict_type text,
-  row_data jsonb,
-  resolution text
-);
-```
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Every resolution should land in `replication_conflicts` for agent compliance review — "why did message 42 disappear in EU?"
+## Merge checklist
 
-## Failover without split brain
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-Agent platforms drill regional failover. Logical replication breaks when **two publishers** accept writes:
+Put a metric on the user-visible effect of agent logical replication conflicts before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-1. Enable **write fence** — revoke app credentials on old primary via consensus (etcd, Patroni, RDS promotion).
-2. Wait until subscriber catches up or explicitly resync.
-3. Promote subscriber; re-point DNS and connection pools.
-4. Recreate subscription from new publisher to old region (now subscriber) if bidirectional.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent logical replication conflicts.
 
-Patroni + logical replication pattern:
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-```yaml
-# patroni.yml excerpt — tag for logical slots
-postgresql:
-  parameters:
-    wal_level: logical
-    max_replication_slots: 10
-    max_wal_senders: 10
-```
+## Practical defaults for Operating agents with logical replication conflicts
 
-After promotion, verify slot health:
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-```sql
-SELECT * FROM pg_replication_slots WHERE active IS FALSE;
--- inactive slots accumulate WAL — drop or restart carefully
-```
+Keep side effects at the edges and make every write idempotent. Operating agents with logical replication conflicts without retry semantics is a future incident write-up.
 
-## Resync after conflict stop
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with logical replication conflicts that needs a hero is not done.
 
-When apply worker halts on duplicate key:
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-1. Identify offending LSN from subscriber logs.
-2. Compare row on publisher vs subscriber:
+Default deny, explicit timeouts, and one dashboard row for agent logical replication conflicts. Expand only when the metric demands it.
 
-```sql
--- on publisher
-SELECT * FROM agent_messages WHERE message_id = '42';
+## Review questions before merging agent logical replication conflicts work
 
--- on subscriber
-SELECT * FROM agent_messages WHERE message_id = '42';
-```
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-3. Choose remediation:
-   - **Delete subscriber row**, restart replication (publisher wins).
-   - **Skip transaction** with pg_replication_origin or advanced slot advance (risky — document LSN).
-   - **Full table resync** for small agent config tables: `COPY` + truncate subscriber partition.
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-For large conversation history, prefer **per-partition resync** by `session_id` range rather than full truncate.
+Acceptance check: an on-call engineer can explain system state for agent logical replication conflicts from one dashboard and one runbook page.
 
-```bash
-# pg_dump data-only for one partition, restore to subscriber
-pg_dump --data-only --table=agent_messages_2024_12 \
-  -h publisher.internal -U repl agent_db \
-  | psql -h subscriber.internal -U repl agent_db
-```
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-## Agent-specific tables and replication fit
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-| Table | Replication pattern | Conflict risk |
-|-------|---------------------|---------------|
-| `sessions` | Unidirectional | Low if single writer |
-| `messages` | Append-only on publisher | Medium during failover |
-| `tool_invocations` | Idempotent PK | Low with idempotency keys |
-| `embedding_metadata` | UPDATE heavy | High — avoid multi-master |
-| `user_settings` | LWW on `updated_at` | Medium — explicit policy |
+## Field notes after thirty days of agent logical replication conflicts
 
-Vector index tables often live outside Postgres (Pinecone, pgvector on separate sync). Replicate **metadata** only; rebuild indexes from snapshot after major conflict recovery.
+I treat Operating agents with logical replication conflicts as an operations problem first. The goal is to bound tool calls and blast radius for logical replication conflicts, not to collect frameworks.
 
-## Testing conflict scenarios
+Keep side effects at the edges and make every write idempotent. Operating agents with logical replication conflicts without retry semantics is a future incident write-up.
 
-**Integration test** with two write paths in staging (never prod):
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with logical replication conflicts that needs a hero is not done.
 
-```python
-def test_insert_exists_conflict(subscriber_conn, publisher_conn):
-    publisher_conn.execute(
-        "INSERT INTO agent_messages (region_code, message_id, session_id, content) "
-        "VALUES ('eu', 'test-uuid', 'sess-1', '{}')"
-    )
-    subscriber_conn.execute(
-        "INSERT INTO agent_messages (region_code, message_id, session_id, content) "
-        "VALUES ('eu', 'test-uuid', 'sess-1', '{\"local\": true}')"
-    )
-    # advance replication; assert conflict logged and policy applied
-```
+Slug-specific note (agent-logical-replication-conflicts): prioritize conflicts behavior under load and verify with a fixture named `agent-logical-replication-conflicts-smoke`.
 
-**Failover game-day** — promote subscriber, write 100 agent messages, verify old primary read-only, no duplicate PK in unified read.
-
-**Checksum job** nightly:
-
-```sql
-SELECT count(*), sum(hashtext(content::text)) FROM agent_messages;
-```
-
-Compare publisher vs subscriber; drift triggers resync before conflicts stop replication.
-
-## When not to use logical replication for agents
-
-- **Strong cross-region consistency** for every message — use single region + CDN edge cache or CRDT-backed store.
-- **High-frequency counter updates** (token usage meters) — use Redis or dedicated metering with async aggregate to Postgres.
-- **Bidirectional editing** of same session — product-level merge, not database replay.
-
-Logical replication excels at **read scaling** and **analytics copy** of agent audit data to warehouse subscribers — not as implicit multi-master without conflict design.
-
-## The takeaway
-
-Logical replication conflicts surface when subscribers apply changes that collide with local row state — common during lag, failover, or mistaken multi-writer setups. Agent platforms should default to single-writer schemas, idempotent keys on tool tables, partition strategies that isolate regions, and alerting on `pg_stat_subscription_conflicts` before users see stale chat. When conflicts occur, treat resolution as a audited operational act with explicit publisher-wins or LWW semantics — not a silent skip that erases agent history.
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
 ## Resources
 
-- [PostgreSQL logical replication documentation](https://www.postgresql.org/docs/current/logical-replication.html) — publications, subscriptions, conflicts
-- [pg_stat_subscription_stats](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-SUBSCRIPTION-STATS) — conflict counters
-- [Patroni high availability](https://patroni.readthedocs.io/) — failover coordination for Postgres
-- [Debezium PostgreSQL connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) — CDC alternative for analytics paths
-- [CRDTs and collaborative state](https://crdt.tech/) — when application-level merge beats row replay
+- Internal runbook seed: `agent-logical-replication-conflicts`
+- https://12factor.net/
+- https://martinfowler.com/

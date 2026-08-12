@@ -1,131 +1,158 @@
 ---
 title: "Modular Monolith Archunit"
 slug: "modular-monolith-archunit"
-description: "Modular Monolith Archunit: how to measure the user-visible signal first in production testing systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Modular Monolith Archunit: how to operationalize modular monolith with clear ownership — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-28"
 dateModified: "2026-08-12"
 tags:
-  - "Testing"
-  - "Quality"
-keywords: "modular, monolith, archunit, testing, production, engineering"
+  - "Engineering"
+  - "Modular"
+keywords: "modular, monolith, archunit, production, engineering"
 faq:
   - q: "What is Modular Monolith Archunit?"
-    a: "Modular Monolith Archunit is a production approach to measure the user-visible signal first. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Modular Monolith Archunit is the production approach to operationalize modular monolith with clear ownership. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Modular Monolith Archunit?"
-    a: "Invest when auditors or enterprise buyers ask how you know it works. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with modular monolith archunit, prioritize it."
   - q: "What is the most common mistake with Modular Monolith Archunit?"
-    a: "The usual failure is treating edge cases as follow-ups. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Modular Monolith Archunit** means you measure the user-visible signal first — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when auditors or enterprise buyers ask how you know it works; that is usually also when shortcuts like treating edge cases as follow-ups start paging people.
+**Modular Monolith Archunit** means you operationalize modular monolith with clear ownership — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in Testing systems using Playwright, Vitest: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `modular-monolith-archunit` in a product context, using OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Where Modular Monolith Archunit actually shows up
+## What Modular Monolith Archunit changes in day-two ops
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+I treat Modular Monolith Archunit as an operations problem first. The goal is to operationalize modular monolith with clear ownership, not to collect frameworks.
 
-Make Modular Monolith Archunit error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Modular Monolith Archunit — you only deployed it.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on modular monolith archunit.
 
-## A design that makes it routine to measure the user-visible signal first
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Designing so you can operationalize modular monolith with clear ownership
 
-In Testing stacks I lean on Playwright, Vitest for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Production systems punish vague ownership and unmeasured happy paths. For modular monolith archunit, that means making failure visible early.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Modular Monolith Archunit without retry semantics is a future incident write-up.
 
-Practically, being able to measure the user-visible signal first means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Modular Monolith Archunit that needs a hero is not done.
+
+Concretely, being able to operationalize modular monolith with clear ownership forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Modular Monolith Archunit
+export async function handle_modular_monolith_archunit(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Modular Monolith Archunit
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("modular-monolith-archunit");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## The failure mode I see in reviews
+## Failure modes specific to modular monolith archunit
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+I treat Modular Monolith Archunit as an operations problem first. The goal is to operationalize modular monolith with clear ownership, not to collect frameworks.
 
-In Testing stacks I lean on Playwright, Vitest for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on modular monolith archunit.
 
-I also keep a short 'never again' list beside the code: treating edge cases as follow-ups; skipping Modular Monolith Archunit error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for modular monolith archunit: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; treating edge cases as follow-ups |
-| Durable path | auditors or enterprise buyers ask how you know it works | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Instrumentation that answers the on-call question
+## Signals worth paging on
 
-If you only remember one thing about Modular Monolith Archunit: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Production systems punish vague ownership and unmeasured happy paths. For modular monolith archunit, that means making failure visible early.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Modular Monolith Archunit without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Modular Monolith Archunit that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Modular Monolith Archunit designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Modular Monolith Archunit cannot answer, it is not production-ready.
 
-## Rollout checklist
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Rollout sequence with OpenTelemetry
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Modular Monolith Archunit as an operations problem first. The goal is to operationalize modular monolith with clear ownership, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Modular Monolith Archunit changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of modular monolith archunit before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for modular monolith archunit from one dashboard and one runbook page.
+
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## What I would not do again
+## What I would delete after month one
 
-I have watched teams under-specify Modular Monolith Archunit and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+Teams usually discover Modular Monolith Archunit after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of modular monolith archunit before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Modular Monolith Archunit changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Modular Monolith Archunit that needs a hero is not done.
 
-## Practical defaults I use for Modular Monolith Archunit
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Modular Monolith Archunit
 
-In Testing stacks I lean on Playwright, Vitest for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Teams usually discover Modular Monolith Archunit after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on treating edge cases as follow-ups. If it is missing, the PR is incomplete.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on modular monolith archunit.
 
-## Review questions before merging Modular Monolith Archunit work
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
-Most write-ups on Modular Monolith Archunit stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Make Modular Monolith Archunit error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Modular Monolith Archunit — you only deployed it.
+## Review questions before merging modular monolith archunit work
 
-Prefer small diffs with a kill switch. Modular Monolith Archunit changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Teams usually discover Modular Monolith Archunit after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Modular Monolith Archunit error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Modular Monolith Archunit without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Modular Monolith Archunit
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Modular Monolith Archunit that needs a hero is not done.
 
-If you only remember one thing about Modular Monolith Archunit: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
 
-Make Modular Monolith Archunit error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Modular Monolith Archunit — you only deployed it.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of modular monolith archunit
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Modular Monolith Archunit error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For modular monolith archunit, that means making failure visible early.
+
+With OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Modular Monolith Archunit that needs a hero is not done.
+
+Slug-specific note (modular-monolith-archunit): prioritize archunit behavior under load and verify with a fixture named `modular-monolith-archunit-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `modular-monolith-archunit`
 - https://12factor.net/
+- https://martinfowler.com/

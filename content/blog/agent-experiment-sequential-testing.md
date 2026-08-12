@@ -1,203 +1,159 @@
 ---
-title: "AI Agents: Experiment Sequential Testing"
+title: "Agent systems: experiment sequential testing"
 slug: "agent-experiment-sequential-testing"
-description: "Sequential testing for production A/B experiments — alpha spending, peeking without inflating false positives, group sequential boundaries, and when to stop agent feature rollouts early."
+description: "Agent systems: experiment sequential testing: how to keep agent side effects idempotent around experiment sequential testing — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-31"
-dateModified: "2025-03-31"
-tags: ["AI", "Agent", "Experiment"]
-keywords: "sequential testing, A/B testing, alpha spending, peeking, O'Brien-Fleming, group sequential, experiment stopping rules, false positive rate"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, experiment, sequential, testing, production, engineering"
 faq:
-  - q: "Why does peeking at A/B test results inflate false positives?"
-    a: "Each interim look is an independent opportunity to reject the null under noise. If you stop the first time p < 0.05, you accumulate Type I error across looks — a nominally 5% test can reach 20–30% false positive rates depending on peek frequency. Sequential methods allocate α across planned looks so the family-wise error rate stays controlled."
-  - q: "When should teams use sequential testing instead of fixed-horizon tests?"
-    a: "Use sequential testing when stakeholders will peek anyway (dashboards, weekly reviews), when early stopping saves meaningful cost (LLM inference, infra), or when harm from a bad variant must be detected quickly. Stick with fixed-horizon tests when sample size is small, looks are unplanned, or you need simplicity for regulatory pre-registration."
-  - q: "What is alpha spending in group sequential designs?"
-    a: "Alpha spending distributes your total Type I error budget (e.g., α=0.05) across interim analyses. O'Brien-Fleming spends little early and more at the final look — conservative early stopping. Pocock spends evenly — easier early stops but stricter overall. Pick a spending function before the first user enters the experiment."
-  - q: "How does sequential testing apply to agent feature experiments?"
-    a: "Agent experiments often track composite metrics: task success rate, latency, token cost, and human escalation rate. Sequential boundaries should be defined on a primary metric with pre-registered guardrails on secondary metrics. Never stop on a cherry-picked metric after peeking at five dashboards."
+  - q: "What is Agent systems: experiment sequential testing?"
+    a: "Agent systems: experiment sequential testing is the production approach to keep agent side effects idempotent around experiment sequential testing. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: experiment sequential testing?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent experiment sequential testing, prioritize it."
+  - q: "What is the most common mistake with Agent systems: experiment sequential testing?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The product manager opened the experiment dashboard on day three. Conversion looked up 4%. Slack celebrated. Engineering started the rollout PR. On day fourteen, after the full sample arrived, the lift had evaporated — indistinguishable from zero within confidence intervals.
+**Agent systems: experiment sequential testing** means you keep agent side effects idempotent around experiment sequential testing — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Nobody lied. The team peeked at a noisy interim estimate, treated a random fluctuation as signal, and paid for it in wasted deploys and eroded trust in experimentation. Sequential testing exists to make early looks **statistically honest**: you can monitor progress without turning every dashboard refresh into a false discovery machine.
+This write-up is specific to `agent-experiment-sequential-testing` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Fixed-horizon tests assume you look once
+## What Agent systems: experiment sequential testing changes in day-two ops
 
-Classical hypothesis testing assumes a single analysis at a pre-specified sample size. Reject H₀ if p < α. That contract breaks the moment someone checks results before n is reached — which is every production team with a live metrics board.
+Teams usually discover Agent systems: experiment sequential testing after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Each interim peek adds another chance to observe a "significant" result under the null. If you peek daily for two weeks on a flat experiment, probability of at least one spurious p < 0.05 exceeds 0.25 even when there is no true effect. The fix is not "don't peek." The fix is **spending your α budget across planned looks**.
+Keep side effects at the edges and make every write idempotent. Agent systems: experiment sequential testing without retry semantics is a future incident write-up.
 
-## Group sequential boundaries
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: experiment sequential testing that needs a hero is not done.
 
-Group sequential testing divides the experiment into K planned analyses at sample fractions n₁, n₂, …, n_K. At each look, compare the test statistic to a boundary that is stricter than the fixed-horizon critical value early on, relaxing toward the final α.
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
-The O'Brien-Fleming boundary is the conservative default for product teams who want early stopping only on overwhelming evidence:
+## Designing so you can keep agent side effects idempotent around experiment sequential testing
 
-```
-At look k of K, reject H₀ if |Z_k| > c_k
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent experiment sequential testing, that means making failure visible early.
 
-where c_k = Φ^{-1}(1 - α/2) / sqrt(n_k / n_K)   (approximate intuition)
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: experiment sequential testing without retry semantics is a future incident write-up.
 
-Early looks require very large Z-scores. The final look approximates the standard z = 1.96 for α = 0.05 two-sided.
+Acceptance check: an on-call engineer can explain system state for agent experiment sequential testing from one dashboard and one runbook page.
 
-Pocock boundaries use a constant critical value across looks — easier to stop early, but you pay with lower power at the final analysis if the effect is real but moderate.
+Concretely, being able to keep agent side effects idempotent around experiment sequential testing forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-| Spending function | Early stopping | Final analysis power | Best for |
-|-------------------|----------------|----------------------|----------|
-| O'Brien-Fleming | Hard | High | Safety-critical, skeptical stakeholders |
-| Pocock | Easier | Moderate | Cost-sensitive, fast iteration |
-| Haybittle-Peto | Very hard early | High | "Stop only if p < 0.001 early" heuristics made rigorous |
-
-Pre-register K, the look schedule, and the spending function **before** traffic enters. Changing the schedule mid-flight invalidates the guarantees.
-
-## Implementing sequential analysis in code
-
-Most teams do not need a custom prover — they need a reproducible boundary table and a job that evaluates it on schedule.
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
 ```python
+# Agent systems: experiment sequential testing
 from dataclasses import dataclass
-from scipy import stats
-import math
 
-@dataclass
-class SequentialLook:
-    look_index: int
-    cumulative_n: int
-    z_critical: float
-    alpha_spent: float
+@dataclass(frozen=True)
+class AgentExperimentSeqRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def obrien_fleming_boundaries(
-    total_n: int,
-    looks: list[int],
-    alpha: float = 0.05,
-) -> list[SequentialLook]:
-    """Two-sided O'Brien-Fleming approximate boundaries."""
-    z_final = stats.norm.ppf(1 - alpha / 2)
-    boundaries = []
-    cumulative_alpha = 0.0
-
-    for i, n_k in enumerate(looks, start=1):
-        fraction = n_k / total_n
-        z_k = z_final / math.sqrt(fraction)
-        # Incremental alpha spent at this look (numerical; use tables in production)
-        alpha_k = 2 * (1 - stats.norm.cdf(z_k))
-        cumulative_alpha = alpha_k
-        boundaries.append(
-            SequentialLook(i, n_k, z_k, cumulative_alpha)
-        )
-    return boundaries
-
-def z_test_proportion(p_control: float, p_treatment: float, n: int) -> float:
-    p_pool = (p_control + p_treatment) / 2
-    se = math.sqrt(2 * p_pool * (1 - p_pool) / n)
-    return (p_treatment - p_control) / se
-
-# Planned: 50k users per variant, looks at 10k, 25k, 50k
-looks = [10_000, 25_000, 50_000]
-bounds = obrien_fleming_boundaries(50_000, looks)
-
-# Interim read at 25k
-z = z_test_proportion(0.042, 0.048, 25_000)
-look = bounds[1]
-decision = "STOP: reject H0" if abs(z) > look.z_critical else "CONTINUE"
-print(f"z={z:.3f}, boundary={look.z_critical:.3f} → {decision}")
+async def run_agent_experiment_sequent(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-experiment-sequential-testing"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Wire this into your experiment orchestration layer. The analysis job should emit structured events: `look_index`, `z_stat`, `boundary`, `decision`, `primary_metric`, `guardrail_status`. Dashboards display progress; only the batch job triggers stop/ship actions.
+## Failure modes specific to agent experiment sequential testing
 
-## mSPRT and always-valid inference
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent experiment sequential testing, that means making failure visible early.
 
-Group sequential methods require **planned** looks. Modern alternatives like mixture Sequential Probability Ratio Tests (mSPRT) and "always-valid" p-values support continuous monitoring with bounded false positive rates even when look times are irregular.
+Put a metric on the user-visible effect of agent experiment sequential testing before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Experiment platforms (Optimizely Stats Engine, Statsig's sequential testing, GrowthBook with CUPED + sequential options) embed these methods so product teams get honest confidence intervals on dashboards without running R scripts. If you build in-house, read Johari et al. on peeking at A/B tests and the mSPRT construction — the implementation detail matters less than the contract: **the UI must use the sequential p-value, not the fixed-horizon one**.
+Acceptance check: an on-call engineer can explain system state for agent experiment sequential testing from one dashboard and one runbook page.
 
-```typescript
-interface SequentialDecision {
-  experimentId: string;
-  lookIndex: number;
-  cumulativeSampleSize: number;
-  sequentialPValue: number;
-  adjustedAlpha: number;
-  canStopForEfficacy: boolean;
-  canStopForFutility: boolean;
-  guardrailsPassed: boolean;
-}
+My never-again list for agent experiment sequential testing: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-export function evaluateSequentialLook(
-  stats: VariantStats,
-  config: SequentialConfig,
-): SequentialDecision {
-  const pSeq = computeMSPRT(stats, config);
-  const look = config.boundaries[stats.lookIndex];
-  return {
-    experimentId: config.experimentId,
-    lookIndex: stats.lookIndex,
-    cumulativeSampleSize: stats.n,
-    sequentialPValue: pSeq,
-    adjustedAlpha: look.alphaSpent,
-    canStopForEfficacy: pSeq < look.efficacyThreshold && stats.guardrailsOk,
-    canStopForFutility: pSeq > look.futilityThreshold,
-    guardrailsPassed: stats.guardrailsOk,
-  };
-}
-```
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
-## Futility stopping saves budget
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Sequential testing is not only about stopping when you win. **Futility analysis** asks: if the true effect is at most δ_min, what is the probability we ever reach efficacy? If conditional power drops below 10% at the 50% information fraction, continuing wastes traffic that could serve other experiments.
+## Signals worth paging on
 
-For agent systems burning GPU dollars per request, futility stopping on "no lift in task completion after 40% of planned sample" is often worth more than early efficacy stopping.
+I treat Agent systems: experiment sequential testing as an operations problem first. The goal is to keep agent side effects idempotent around experiment sequential testing, not to collect frameworks.
 
-## Guardrails and multiple metrics
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Agent experiments rarely have a single binary conversion. Typical bundles:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: experiment sequential testing that needs a hero is not done.
 
-- **Primary:** task success rate (did the agent resolve the ticket?)
-- **Guardrails:** p95 latency, cost per session, escalation rate, toxicity score
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: experiment sequential testing cannot answer, it is not production-ready.
 
-Sequential boundaries apply to the **primary** metric only. Guardrails use fixed thresholds or Bayesian priors — if escalation rate crosses a safety line, halt regardless of primary metric joy. Document this in the experiment spec:
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
-```
-Primary: task_success_rate, O'Brien-Fleming, K=4, α=0.05
-Guardrail halt: escalation_rate > control + 2pp OR p95_latency > 8s
-Guardrail does NOT trigger early ship
-```
+## Rollout sequence with Temporal
 
-Mixing "we stopped because revenue looked good but latency silently doubled" is how agent rollouts cause weekend incidents.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent experiment sequential testing, that means making failure visible early.
 
-## Operational integration
+Put a metric on the user-visible effect of agent experiment sequential testing before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Treat sequential testing as infrastructure, not a spreadsheet:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent experiment sequential testing.
 
-1. **Experiment registry** stores spending function, look schedule, primary metric SQL, guardrail definitions.
-2. **Analysis cron** runs after each look window closes — not on every realtime dashboard tick unless using always-valid methods.
-3. **Auto-pause** puts losing variants on hold when futility triggers; human review before auto-ship on efficacy.
-4. **Audit log** records who changed boundaries (should be nobody after launch).
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
-Alert on **SLO burn of experiment integrity**: unplanned looks, manual sample size changes, or dashboard p-values that disagree with sequential p-values (usually means someone wired the wrong column).
+Related reading:
 
-## Common mistakes
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-**Post-hoc look scheduling.** Adding a look because "results are interesting" destroys Type I control. Plan looks at 25%, 50%, 75%, 100% of traffic — or use always-valid monitoring.
+## What I would delete after month one
 
-**Stopping on secondary metrics.** "Signup was flat but engagement among a segment spiked" is p-hacking with extra steps.
+Teams usually discover Agent systems: experiment sequential testing after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-**Ignoring multiple experiments.** Running twenty sequential tests on overlapping traffic without false discovery rate control still yields junk wins. Coordinate with Benjamini-Hochberg or holdout pools.
+Keep side effects at the edges and make every write idempotent. Agent systems: experiment sequential testing without retry semantics is a future incident write-up.
 
-**Underpowered sequential tests.** Sequential methods do not create power from thin air. If fixed-horizon n is 100k per variant, planning four looks at 5k each is pointless — early boundaries will never cross.
+Acceptance check: an on-call engineer can explain system state for agent experiment sequential testing from one dashboard and one runbook page.
 
-## The takeaway
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
 
-Sequential testing lets teams peek without lying to themselves. Pre-register looks and spending functions, implement boundaries in the analysis pipeline (not in Slack reactions), and separate primary efficacy from guardrail safety. Agent experiments are expensive enough that honest early stopping pays for the statistics many times over.
+## Practical defaults for Agent systems: experiment sequential testing
+
+Teams usually discover Agent systems: experiment sequential testing after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Put a metric on the user-visible effect of agent experiment sequential testing before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent experiment sequential testing.
+
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent experiment sequential testing. Expand only when the metric demands it.
+
+## Review questions before merging agent experiment sequential testing work
+
+Teams usually discover Agent systems: experiment sequential testing after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Put a metric on the user-visible effect of agent experiment sequential testing before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent experiment sequential testing.
+
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-experiment-sequential-testing` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent experiment sequential testing
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent experiment sequential testing, that means making failure visible early.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: experiment sequential testing that needs a hero is not done.
+
+Slug-specific note (agent-experiment-sequential-testing): prioritize testing behavior under load and verify with a fixture named `agent-experiment-sequential-testing-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent experiment sequential testing. Expand only when the metric demands it.
 
 ## Resources
 
-- [Group Sequential Methods with Applications to Clinical Trials (Jennison & Turnbull)](https://www.crcpress.com/Group-Sequential-Methods-with-Applications-to-Clinical-Trials/Jennison-Turnbull/p/book/9780412985610)
-
-- [Peeking at A/B Tests: Why it matters, and what to do about it (Johari et al.)](https://exp-platform.com/Documents/2017-08-PeekingAtABTests.pdf)
-
-- [Optimizely Stats Engine whitepaper](https://www.optimizely.com/optimization-glossary/stats-engine/)
-
-- [Statsig sequential testing documentation](https://docs.statsig.com/experiments-plus/sequential-testing)
-
-- [Always Valid Inference: Continuous Monitoring of A/B Tests (Howard et al.)](https://arxiv.org/abs/1511.01950)
+- Internal runbook seed: `agent-experiment-sequential-testing`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,187 +1,159 @@
 ---
-title: "Container Image Scanning Gates in CI/CD"
+title: "DevOps practice: container image scanning gate"
 slug: "devops-container-image-scanning-gate"
-description: "Block deploy on critical CVE with Trivy/Grype and exception workflow."
+description: "DevOps practice: container image scanning gate: how to automate safe delivery around container image scanning gate — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-10-22"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "DevOps"
-  - "Security"
-  - "CI/CD"
-keywords: "container scanning, Trivy"
+  - "Platform"
+  - "Engineering"
+keywords: "devops, container, image, scanning, gate, production, engineering"
 faq:
-  - q: "Gate on what severity?"
-    a: "Block CRITICAL fixable CVEs; warn HIGH with SLA; exception ticket with expiry for unfixable base."
-  - q: "Scan timing?"
-    a: "Scan in CI after build; rescan on schedule—new CVE DB entries affect old digests."
-  - q: "Distroless false positives?"
-    a: "Tune policy for minimal images; use VEX statements when upstream documents non-exploitable."
-  - q: "Admission vs CI gate?"
-    a: "Both—CI prevents merge; admission catches bypass or retagged images."
+  - q: "What is DevOps practice: container image scanning gate?"
+    a: "DevOps practice: container image scanning gate is the production approach to automate safe delivery around container image scanning gate. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in DevOps practice: container image scanning gate?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with devops container image scanning gate, prioritize it."
+  - q: "What is the most common mistake with DevOps practice: container image scanning gate?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Critical CVE in base image merged Friday; admission gate now blocks CRITICAL fixable CVEs in prod namespace—exception ticket with expiry for unfixable.
+**DevOps practice: container image scanning gate** means you automate safe delivery around container image scanning gate — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-## CI gate
+This write-up is specific to `devops-container-image-scanning-gate` in a devops context, using Kubernetes, Terraform, Prometheus for the mechanics while keeping ownership human.
 
-Trivy or grype scan after build; fail on CRITICAL fixable; HIGH SLA warn.
+## What DevOps practice: container image scanning gate changes in day-two ops
 
-Production teams running container image scanning gate learned that ci gate regressions appear when
-traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
-production timestamps.
+Delivery changes are only safe when they are observable, reversible, and owned. For devops container image scanning gate, that means making failure visible early.
 
-Runbook for ci gate: confirm blast radius, identify last config change, execute single-step
-rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+Keep side effects at the edges and make every write idempotent. DevOps practice: container image scanning gate without retry semantics is a future incident write-up.
 
-Instrument ci gate with low-cardinality metrics tied to user-visible SLIs—error rate, tail latency,
-freshness—not vanity gauges that never correlated with past pages.
+Acceptance check: an on-call engineer can explain system state for devops container image scanning gate from one dashboard and one runbook page.
 
-Game day for ci gate: quarterly staging injection with rollback under fifteen minutes using linked
-runbook only—update runbook with what broke.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Ownership for ci gate belongs in the service catalog with named rotation, last drill date, and known
-sharp edges—new engineers deploy safe canary within one week using that doc.
+## Designing so you can automate safe delivery around container image scanning gate
 
-Change management: peer review from outside authoring team before prod promote—fresh eyes catch
-embedded assumptions in ci gate configs.
+Teams usually discover DevOps practice: container image scanning gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Capacity note: estimate peak concurrency for ci gate, apply 1.5–2× headroom against cloud quotas
-before launch week—not during first outage.
+With Kubernetes, Terraform, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Security review for container image scanning gate: least privilege on automation roles, short-lived
-credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
-with mandatory retrospective.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops container image scanning gate.
 
-FinOps tie-in for ci gate: attribute cloud spend to owning team via tags; monthly review of cost
-drivers prevents silent bill growth after config drift.
+Concretely, being able to automate safe delivery around container image scanning gate forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## Scheduled rescan
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-New CVE DB entries affect old digests—weekly rescan deployed images.
+```typescript
+// DevOps practice: container image scanning gate
+export async function handle_devops_container_image_scanning_gate(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("devops-container-image-scanning-gate");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
+```
 
-Production teams running container image scanning gate learned that scheduled rescan regressions
-appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
-replay used production timestamps.
+## Failure modes specific to devops container image scanning gate
 
-Runbook for scheduled rescan: confirm blast radius, identify last config change, execute single-step
-rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+Delivery changes are only safe when they are observable, reversible, and owned. For devops container image scanning gate, that means making failure visible early.
 
-Instrument scheduled rescan with low-cardinality metrics tied to user-visible SLIs—error rate, tail
-latency, freshness—not vanity gauges that never correlated with past pages.
+Put a metric on the user-visible effect of devops container image scanning gate before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Game day for scheduled rescan: quarterly staging injection with rollback under fifteen minutes using
-linked runbook only—update runbook with what broke.
+Acceptance check: an on-call engineer can explain system state for devops container image scanning gate from one dashboard and one runbook page.
 
-Ownership for scheduled rescan belongs in the service catalog with named rotation, last drill date,
-and known sharp edges—new engineers deploy safe canary within one week using that doc.
+My never-again list for devops container image scanning gate: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Change management: peer review from outside authoring team before prod promote—fresh eyes catch
-embedded assumptions in scheduled rescan configs.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Capacity note: estimate peak concurrency for scheduled rescan, apply 1.5–2× headroom against cloud
-quotas before launch week—not during first outage.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Security review for container image scanning gate: least privilege on automation roles, short-lived
-credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
-with mandatory retrospective.
+## Signals worth paging on
 
-FinOps tie-in for scheduled rescan: attribute cloud spend to owning team via tags; monthly review of
-cost drivers prevents silent bill growth after config drift.
+Teams usually discover DevOps practice: container image scanning gate after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Admission
+Keep side effects at the edges and make every write idempotent. DevOps practice: container image scanning gate without retry semantics is a future incident write-up.
 
-Policy controller verify in cluster catches retag bypass of CI.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. DevOps practice: container image scanning gate that needs a hero is not done.
 
-Production teams running container image scanning gate learned that admission regressions appear
-when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
-production timestamps.
+Review prompts I use: what happens twice, what happens never, what happens partially? If DevOps practice: container image scanning gate cannot answer, it is not production-ready.
 
-Runbook for admission: confirm blast radius, identify last config change, execute single-step
-rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Instrument admission with low-cardinality metrics tied to user-visible SLIs—error rate, tail
-latency, freshness—not vanity gauges that never correlated with past pages.
+## Rollout sequence with Kubernetes
 
-Game day for admission: quarterly staging injection with rollback under fifteen minutes using linked
-runbook only—update runbook with what broke.
+I treat DevOps practice: container image scanning gate as an operations problem first. The goal is to automate safe delivery around container image scanning gate, not to collect frameworks.
 
-Ownership for admission belongs in the service catalog with named rotation, last drill date, and
-known sharp edges—new engineers deploy safe canary within one week using that doc.
+Keep side effects at the edges and make every write idempotent. DevOps practice: container image scanning gate without retry semantics is a future incident write-up.
 
-Change management: peer review from outside authoring team before prod promote—fresh eyes catch
-embedded assumptions in admission configs.
+Acceptance check: an on-call engineer can explain system state for devops container image scanning gate from one dashboard and one runbook page.
 
-Capacity note: estimate peak concurrency for admission, apply 1.5–2× headroom against cloud quotas
-before launch week—not during first outage.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Security review for container image scanning gate: least privilege on automation roles, short-lived
-credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
-with mandatory retrospective.
+Related reading:
 
-FinOps tie-in for admission: attribute cloud spend to owning team via tags; monthly review of cost
-drivers prevents silent bill growth after config drift.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-## Exceptions
+## What I would delete after month one
 
-VEX or ticket with expiry; quarterly review of open exceptions.
+I treat DevOps practice: container image scanning gate as an operations problem first. The goal is to automate safe delivery around container image scanning gate, not to collect frameworks.
 
-Production teams running container image scanning gate learned that exceptions regressions appear
-when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load replay used
-production timestamps.
+With Kubernetes, Terraform, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Runbook for exceptions: confirm blast radius, identify last config change, execute single-step
-rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on devops container image scanning gate.
 
-Instrument exceptions with low-cardinality metrics tied to user-visible SLIs—error rate, tail
-latency, freshness—not vanity gauges that never correlated with past pages.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Game day for exceptions: quarterly staging injection with rollback under fifteen minutes using
-linked runbook only—update runbook with what broke.
+## Practical defaults for DevOps practice: container image scanning gate
 
-Ownership for exceptions belongs in the service catalog with named rotation, last drill date, and
-known sharp edges—new engineers deploy safe canary within one week using that doc.
+I treat DevOps practice: container image scanning gate as an operations problem first. The goal is to automate safe delivery around container image scanning gate, not to collect frameworks.
 
-Change management: peer review from outside authoring team before prod promote—fresh eyes catch
-embedded assumptions in exceptions configs.
+With Kubernetes, Terraform, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Capacity note: estimate peak concurrency for exceptions, apply 1.5–2× headroom against cloud quotas
-before launch week—not during first outage.
+Acceptance check: an on-call engineer can explain system state for devops container image scanning gate from one dashboard and one runbook page.
 
-Security review for container image scanning gate: least privilege on automation roles, short-lived
-credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
-with mandatory retrospective.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-FinOps tie-in for exceptions: attribute cloud spend to owning team via tags; monthly review of cost
-drivers prevents silent bill growth after config drift.
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
-## Distroless tuning
+## Review questions before merging devops container image scanning gate work
 
-Reduce false positives; document base image update cadence.
+I treat DevOps practice: container image scanning gate as an operations problem first. The goal is to automate safe delivery around container image scanning gate, not to collect frameworks.
 
-Production teams running container image scanning gate learned that distroless tuning regressions
-appear when traffic mix shifts—uniform staging QPS missed Black Friday combinations until load
-replay used production timestamps.
+Keep side effects at the edges and make every write idempotent. DevOps practice: container image scanning gate without retry semantics is a future incident write-up.
 
-Runbook for distroless tuning: confirm blast radius, identify last config change, execute single-
-step rollback, capture SLI screenshots for postmortem—not ad-hoc dashboard search during Sev-1.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. DevOps practice: container image scanning gate that needs a hero is not done.
 
-Instrument distroless tuning with low-cardinality metrics tied to user-visible SLIs—error rate, tail
-latency, freshness—not vanity gauges that never correlated with past pages.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
 
-Game day for distroless tuning: quarterly staging injection with rollback under fifteen minutes
-using linked runbook only—update runbook with what broke.
+After a month, delete unused flags and dual paths. `devops-container-image-scanning-gate` accumulates temporary bridges faster than teams expect.
 
-Ownership for distroless tuning belongs in the service catalog with named rotation, last drill date,
-and known sharp edges—new engineers deploy safe canary within one week using that doc.
+## Field notes after thirty days of devops container image scanning gate
 
-Change management: peer review from outside authoring team before prod promote—fresh eyes catch
-embedded assumptions in distroless tuning configs.
+I treat DevOps practice: container image scanning gate as an operations problem first. The goal is to automate safe delivery around container image scanning gate, not to collect frameworks.
 
-Capacity note: estimate peak concurrency for distroless tuning, apply 1.5–2× headroom against cloud
-quotas before launch week—not during first outage.
+Keep side effects at the edges and make every write idempotent. DevOps practice: container image scanning gate without retry semantics is a future incident write-up.
 
-Security review for container image scanning gate: least privilege on automation roles, short-lived
-credentials, immutable audit logs for production changes—break-glass expires in forty-eight hours
-with mandatory retrospective.
+Acceptance check: an on-call engineer can explain system state for devops container image scanning gate from one dashboard and one runbook page.
 
-FinOps tie-in for distroless tuning: attribute cloud spend to owning team via tags; monthly review
-of cost drivers prevents silent bill growth after config drift.
+Slug-specific note (devops-container-image-scanning-gate): prioritize gate behavior under load and verify with a fixture named `devops-container-image-scanning-gate-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Resources
+
+- Internal runbook seed: `devops-container-image-scanning-gate`
+- https://12factor.net/
+- https://martinfowler.com/

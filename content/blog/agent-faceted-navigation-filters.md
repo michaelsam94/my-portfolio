@@ -1,294 +1,159 @@
 ---
-title: "AI Agents: Faceted Navigation Filters"
+title: "Operating agents with faceted navigation filters"
 slug: "agent-faceted-navigation-filters"
-description: "Faceted search and filter UX for agent knowledge bases — conjunctive vs disjunctive facets, cardinality control, URL state, Elasticsearch aggregations, and keeping RAG retrieval aligned with user-selected filters."
+description: "Operating agents with faceted navigation filters: how to bound tool calls and blast radius for faceted navigation filters — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-07-09"
-dateModified: "2025-07-09"
-tags: ["AI", "Agent", "Faceted"]
-keywords: "faceted navigation, faceted search, filters, Elasticsearch aggregations, agent knowledge base, RAG UI, search UX"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, faceted, navigation, filters, production, engineering"
 faq:
-  - q: "What is the difference between conjunctive and disjunctive facets?"
-    a: "Conjunctive (AND) facets narrow results — selecting 'Python' and 'API' returns docs tagged with both. Disjunctive (OR) facets within one dimension — selecting 'Python' and 'JavaScript' returns docs with either language. Most UIs use OR within a facet group and AND across groups. Wrong semantics confuse counts and empty result sets."
-  - q: "How do facet counts stay accurate when filters are applied?"
-    a: "Use Elasticsearch post_filter for user-selected filters while running aggregations on a filtered query that excludes the current facet group (classic self-filter exclusion). Without this, counts show zero for other values in the same group after one selection — the 'facet count collapse' bug users hate."
-  - q: "Should agent RAG retrieval respect UI facet filters?"
-    a: "Yes. When users pick jurisdiction=EU or product_tier=enterprise, pass those as hard filters to retrieval — not soft boosts. Agents that ignore explicit filters erode trust fast. Log filter state in the retrieval trace so evals reproduce user sessions."
-  - q: "How many facet values should the UI expose?"
-    a: "Show top 8–12 by count with a 'show more' expansion. Cap cardinality at index time with normalized taxonomy fields — free-text tags with 50k unique values make unusable facets. Use hierarchical facets (Category > Subcategory) for large catalogs."
+  - q: "What is Operating agents with faceted navigation filters?"
+    a: "Operating agents with faceted navigation filters is the production approach to bound tool calls and blast radius for faceted navigation filters. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with faceted navigation filters?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent faceted navigation filters, prioritize it."
+  - q: "What is the most common mistake with Operating agents with faceted navigation filters?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The support agent retrieved twelve chunks about refunds. Nine were US policy. The user had clicked **Region: EU** in the sidebar thirty seconds earlier. The UI sent filters to search; the RAG pipeline ignored them and fused vector scores on unfiltered corpora.
+**Operating agents with faceted navigation filters** means you bound tool calls and blast radius for faceted navigation filters — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Faceted navigation is the difference between "search a pile" and "navigate a catalog." For agent knowledge bases — runbooks, policies, API docs, ticket macros — facets encode the structured dimensions agents and humans use to disambiguate context. Building them well requires index design, aggregation math, URL state, and tight coupling to retrieval. Building them poorly produces empty states, lying counts, and agents that confidently cite the wrong jurisdiction.
+This write-up is specific to `agent-faceted-navigation-filters` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## Facets are a contract with the user
+## Explaining Operating agents with faceted navigation filters to a skeptical teammate
 
-A facet is a navigable dimension with:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent faceted navigation filters, that means making failure visible early.
 
-- **Field** — `jurisdiction`, `product`, `doc_type`, `severity`
-- **Display values** — human labels mapped from canonical IDs
-- **Selection mode** — single vs multi, AND vs OR within group
-- **Counts** — how many results match each value given other active filters
+Put a metric on the user-visible effect of agent faceted navigation filters before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-When a user selects `doc_type=runbook`, they are not suggesting a preference. They are constraining the result set. Agent pipelines must treat facet selections as **hard filters** unless the product explicitly offers a "expand search" escape hatch.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with faceted navigation filters that needs a hero is not done.
 
-## Index mapping for facet-friendly fields
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
 
-Facets run on keyword fields (or `keyword` subfields), never analyzed text:
+## Making it routine to bound tool calls and blast radius for faceted navigation filters
 
-```json
-PUT /agent_knowledge
-{
-  "mappings": {
-    "properties": {
-      "title": {
-        "type": "text",
-        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
-      },
-      "content": { "type": "text" },
-      "jurisdiction": { "type": "keyword" },
-      "product": { "type": "keyword" },
-      "doc_type": { "type": "keyword" },
-      "tags": { "type": "keyword" },
-      "last_updated": { "type": "date" }
-    }
-  }
-}
-```
+I treat Operating agents with faceted navigation filters as an operations problem first. The goal is to bound tool calls and blast radius for faceted navigation filters, not to collect frameworks.
 
-Normalize values at ingest — `EU`, `eu`, and `Europe` as three facet buckets is a taxonomy failure, not a UI problem.
+Put a metric on the user-visible effect of agent faceted navigation filters before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-```python
-from pydantic import BaseModel, field_validator
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent faceted navigation filters.
 
-class KnowledgeDoc(BaseModel):
-    title: str
-    content: str
-    jurisdiction: str
-    product: str
-    doc_type: str
-    tags: list[str]
+Concretely, being able to bound tool calls and blast radius for faceted navigation filters forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-    @field_validator("jurisdiction")
-    @classmethod
-    def normalize_jurisdiction(cls, v: str) -> str:
-        mapping = {"europe": "EU", "eu": "EU", "us": "US", "usa": "US"}
-        return mapping.get(v.lower(), v.upper())
-```
-
-## Elasticsearch aggregation query with self-filter exclusion
-
-The classic pattern for accurate counts when `product` is already filtered:
-
-```json
-POST /agent_knowledge/_search
-{
-  "size": 20,
-  "query": {
-    "bool": {
-      "must": [
-        { "multi_match": { "query": "refund policy", "fields": ["title^3", "content"] } }
-      ],
-      "filter": [
-        { "term": { "jurisdiction": "EU" } },
-        { "term": { "doc_type": "policy" } }
-      ]
-    }
-  },
-  "post_filter": {
-    "term": { "product": "billing" }
-  },
-  "aggs": {
-    "product_facet": {
-      "filter": {
-        "bool": {
-          "filter": [
-            { "term": { "jurisdiction": "EU" } },
-            { "term": { "doc_type": "policy" } }
-          ]
-        }
-      },
-      "aggs": {
-        "values": {
-          "terms": { "field": "product", "size": 12, "order": { "_count": "desc" } }
-        }
-      }
-    },
-    "jurisdiction_facet": {
-      "filter": {
-        "bool": {
-          "filter": [
-            { "term": { "product": "billing" } },
-            { "term": { "doc_type": "policy" } }
-          ]
-        }
-      },
-      "aggs": {
-        "values": {
-          "terms": { "field": "jurisdiction", "size": 8 }
-        }
-      }
-    }
-  }
-}
-```
-
-`post_filter` applies user selection without affecting aggregation filters for sibling facets. Each facet aggregation excludes its own dimension from the filter context. Libraries like Algolia and Typesense handle this internally; raw Elasticsearch requires explicit bool gymnastics.
-
-## URL state and agent session continuity
-
-Facets belong in the URL — not only component state — so refreshes, shared links, and agent traces reproduce context:
-
-```
-/kb/search?q=refund&jurisdiction=EU&product=billing&doc_type=policy
-```
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
 
 ```typescript
-type FacetState = Record<string, string[]>;
-
-export function parseFacetParams(params: URLSearchParams): FacetState {
-  const facets: FacetState = {};
-  for (const key of ["jurisdiction", "product", "doc_type", "tags"]) {
-    const raw = params.get(key);
-    if (raw) facets[key] = raw.split(",").filter(Boolean);
-  }
-  return facets;
-}
-
-export function facetsToEsFilter(facets: FacetState): object[] {
-  return Object.entries(facets).flatMap(([field, values]) =>
-    values.length === 1
-      ? [{ term: { [field]: values[0] } }]
-      : [{ terms: { [field]: values } }],
-  );
-}
-
-export function buildAgentRetrievalContext(
-  query: string,
-  facets: FacetState,
-): { query: string; filters: object[]; facetSnapshot: FacetState } {
-  return {
-    query,
-    filters: facetsToEsFilter(facets),
-    facetSnapshot: facets,
-  };
-}
-```
-
-Pass `facetSnapshot` into agent logs and eval datasets. Replaying a failed session without facet state is debugging with one eye closed.
-
-## UI patterns that survive real catalogs
-
-**Selected filter chips** above results — removable, keyboard accessible, announce count changes to screen readers.
-
-**Empty state guidance:** "No EU billing policies match 'refund'. Remove Product filter or broaden Region." Never a bare zero.
-
-**Hierarchical facets** for deep taxonomies:
-
-```
-Support > Billing > Refunds
-```
-
-Use `composite` aggregations or nested `parent/child` mappings sparingly — prefer materialized path keyword (`support.billing.refunds`) for simpler queries.
-
-**Range facets** for dates and numeric severity:
-
-```json
-"aggs": {
-  "updated": {
-    "date_range": {
-      "field": "last_updated",
-      "ranges": [
-        { "key": "Last 30 days", "from": "now-30d/d" },
-        { "key": "Last year", "from": "now-1y/d" }
-      ]
-    }
+// Operating agents with faceted navigation filters
+export async function handle_agent_faceted_navigation_filters(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-faceted-navigation-filters");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-Cap `terms` aggregation size; use `sum_other_doc_count` to show "+ 142 more" instead of rendering ten thousand checkboxes.
+## Code seams that keep refactors cheap
 
-## Wiring facets into hybrid RAG retrieval
+I treat Operating agents with faceted navigation filters as an operations problem first. The goal is to bound tool calls and blast radius for faceted navigation filters, not to collect frameworks.
 
-Pipeline order matters:
+Keep side effects at the edges and make every write idempotent. Operating agents with faceted navigation filters without retry semantics is a future incident write-up.
 
-1. Parse query + facet filters from UI/session.
-2. Apply filters as Elasticsearch `filter` context (no score impact, cacheable).
-3. Run BM25 + vector hybrid within filtered set.
-4. Rerank top-k.
-5. Pass chunks + facet metadata to LLM system prompt.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with faceted navigation filters that needs a hero is not done.
 
-```python
-def retrieve(
-    query: str,
-    facets: dict[str, list[str]],
-    k: int = 12,
-) -> list[dict]:
-    filters = []
-    for field, values in facets.items():
-        if len(values) == 1:
-            filters.append({"term": {field: values[0]}})
-        else:
-            filters.append({"terms": {field: values}})
+My never-again list for agent faceted navigation filters: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-    body = {
-        "size": k,
-        "query": {
-            "bool": {
-                "must": [
-                    {
-                        "multi_match": {
-                            "query": query,
-                            "fields": ["title^3", "content"],
-                        }
-                    }
-                ],
-                "filter": filters,
-            }
-        },
-    }
-    # Hybrid: add knn clause in ES 8.x or parallel vector query + RRF merge
-    return es.search(index="agent_knowledge", body=body)["hits"]["hits"]
-```
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
 
-Optional **soft fallback:** if filtered retrieval returns < 3 hits, suggest widening filters in UI — do not silently drop filters in the agent backend without telling the user.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Performance and caching
+## Table stakes vs later polish
 
-- Filter context queries cache bitsets — facet-heavy browse sessions benefit from warm caches.
-- Debounce facet clicks 150–250ms before firing search to avoid aggregation storms.
-- Precompute popular facet combinations for landing pages (`jurisdiction=US&doc_type=policy`).
-- CDN-cache facet-free search pages separately from highly personalized filter states.
+I treat Operating agents with faceted navigation filters as an operations problem first. The goal is to bound tool calls and blast radius for faceted navigation filters, not to collect frameworks.
 
-Monitor p95 search latency split: query phase vs aggregation phase. High-cardinality `cardinality` aggregations on `tags` hurt — use `significant_terms` for exploratory facets only, not primary navigation.
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-## Accessibility
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent faceted navigation filters.
 
-Facets are form controls, not decoration:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with faceted navigation filters cannot answer, it is not production-ready.
 
-- Fieldset/legend per facet group.
-- Checkbox `aria-checked` updates when counts change (`aria-live="polite"` on result count).
-- Focus management when filters remove all results — move focus to suggestion link, not page reset.
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
 
-## Testing
+## Regressions that show up after launch
 
-1. **Count correctness:** golden tests — given fixture index and filter state, assert facet buckets match expected counts.
-2. **URL round-trip:** serialize → parse → identical facet state.
-3. **Agent integration:** eval set where correct answer requires `jurisdiction=EU` filter — measure retrieval recall@k with and without filters.
-4. **Load:** simulate 50 rapid facet toggles; aggregation QPS stays within cluster budget.
+Teams usually discover Operating agents with faceted navigation filters after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-## The takeaway
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Faceted navigation turns agent knowledge bases from monolithic haystacks into navigable inventories. Encode dimensions as normalized keywords, implement self-excluding aggregations for honest counts, persist state in URLs, and enforce filters in retrieval — not just the UI. Agents inherit user intent from facets; ignoring that intent is a product bug dressed as an AI limitation.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with faceted navigation filters that needs a hero is not done.
+
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
+
+Related reading:
+
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+
+## Twelve-month maintenance load
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent faceted navigation filters, that means making failure visible early.
+
+Put a metric on the user-visible effect of agent faceted navigation filters before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent faceted navigation filters.
+
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
+
+## Practical defaults for Operating agents with faceted navigation filters
+
+I treat Operating agents with faceted navigation filters as an operations problem first. The goal is to bound tool calls and blast radius for faceted navigation filters, not to collect frameworks.
+
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent faceted navigation filters.
+
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
+
+## Review questions before merging agent faceted navigation filters work
+
+Teams usually discover Operating agents with faceted navigation filters after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with faceted navigation filters without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent faceted navigation filters from one dashboard and one runbook page.
+
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
+
+## Field notes after thirty days of agent faceted navigation filters
+
+Teams usually discover Operating agents with faceted navigation filters after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Put a metric on the user-visible effect of agent faceted navigation filters before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent faceted navigation filters.
+
+Slug-specific note (agent-faceted-navigation-filters): prioritize filters behavior under load and verify with a fixture named `agent-faceted-navigation-filters-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-faceted-navigation-filters` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Elasticsearch aggregations reference](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations.html)
-
-- [Faceted Search (Manning, Daniel Tunkelang)](https://manning.com/books/faceted-search)
-
-- [Algolia facet design documentation](https://www.algolia.com/doc/guides/managing-results/refine-results/faceting/)
-
-- [Typesense faceting guide](https://typesense.org/docs/guide/#faceting)
-
-- [W3C ARIA practices for checkbox groups](https://www.w3.org/WAI/ARIA/apg/patterns/checkbox/)
+- Internal runbook seed: `agent-faceted-navigation-filters`
+- https://12factor.net/
+- https://martinfowler.com/

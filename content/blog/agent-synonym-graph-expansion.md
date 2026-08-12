@@ -1,151 +1,159 @@
 ---
-title: "AI Agents: Synonym Graph Expansion for Retrieval"
+title: "Agent reliability via synonym graph expansion"
 slug: "agent-synonym-graph-expansion"
-description: "Build and query synonym graphs for domain terms — expansion at index and query time without query drift."
+description: "Agent reliability via synonym graph expansion: how to ship agent synonym graph expansion with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-07-07"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "RAG"
-  - "Search"
-  - "NLP"
-keywords: "synonym expansion, query expansion, knowledge graph, retrieval"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, synonym, graph, expansion, production, engineering"
 faq:
-  - q: "When should teams prioritize Synonym Graph Expansion for Retrieval?"
-    a: "When domain jargon varies but embeddings miss exact matches."
-  - q: "What is the most common mistake with synonym graph expansion?"
-    a: "Blind synonym expansion that pulls irrelevant senses — 'bank' matching river and finance."
-  - q: "How do we measure retrieval quality after changes?"
-    a: "Track nDCG@k on labeled sets, empty-result rate in production, and citation click-through. Regression in any beats offline cosine similarity alone."
-  - q: "Should indexes rebuild synchronously with deploys?"
-    a: "No — blue-green or versioned indexes with a validation gate. Swap traffic only after recall/latency checks pass on the new build."
+  - q: "What is Agent reliability via synonym graph expansion?"
+    a: "Agent reliability via synonym graph expansion is the production approach to ship agent synonym graph expansion with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via synonym graph expansion?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent synonym graph expansion, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via synonym graph expansion?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Users searched 'k8s' and got nothing — your docs say 'Kubernetes' and nobody linked the synonyms.
+**Agent reliability via synonym graph expansion** means you ship agent synonym graph expansion with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-Build and query synonym graphs for domain terms — expansion at index and query time without query drift.
+This write-up is specific to `agent-synonym-graph-expansion` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-## The production story behind synonym graph expansion
+## Decision guide for Agent reliability via synonym graph expansion
 
-Blind synonym expansion that pulls irrelevant senses — 'bank' matching river and finance. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Synonym Graph Expansion for Retrieval is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Synonym Graph Expansion is how you convert that chaos into an invariant someone can operate.
+Put a metric on the user-visible effect of agent synonym graph expansion before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-## Designing synonym graph expansion for retrieval for real constraints
+Acceptance check: an on-call engineer can explain system state for agent synonym graph expansion from one dashboard and one runbook page.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For synonym graph expansion, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## When to refuse this approach
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-## Implementation walkthrough
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits synonym graph expansion during an incident.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via synonym graph expansion that needs a hero is not done.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to ship agent synonym graph expansion with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```python
-# Operational hook — synonym graph expansion
-def apply_synonym_graph_expansion(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
+
+```typescript
+// Agent reliability via synonym graph expansion
+export async function handle_agent_synonym_graph_expansion(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-synonym-graph-expansion");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Rag depth
+## Minimal production setup
 
-Split retrieval latency budget: embed ms, index query ms, fusion ms, rerank ms. Version indexes in response metadata.
-When synonym graph expansion changes, run recall@k and nDCG on labeled sets before traffic swap. Shadow traffic compare old vs new rankers.
-Cache query embeddings only when query text repeats — session recsys queries rarely repeat verbatim.
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-## Failure modes worth rehearsing
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent synonym graph expansion.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent synonym graph expansion: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Leading indicators: error rate on synonym graph expansion, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Cost, complexity, and ownership
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; synonym graph expansion regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent synonym graph expansion, that means making failure visible early.
 
-## Production hardening
+Put a metric on the user-visible effect of agent synonym graph expansion before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Pin versions affecting synonym graph expansion. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Acceptance check: an on-call engineer can explain system state for agent synonym graph expansion from one dashboard and one runbook page.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via synonym graph expansion cannot answer, it is not production-ready.
 
-Synonym Graph Expansion for Retrieval touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-## Further reading
+## Migration without dual-running forever
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent synonym graph expansion, that means making failure visible early.
 
-## Operating synonym graph expansion after scale events (review 1)
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent synonym graph expansion.
 
-When synonym graph expansion for retrieval touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
+## Definition of done
 
-## Operating synonym graph expansion after scale events (review 2)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent synonym graph expansion, that means making failure visible early.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Keep side effects at the edges and make every write idempotent. Agent reliability via synonym graph expansion without retry semantics is a future incident write-up.
 
-When synonym graph expansion for retrieval touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via synonym graph expansion that needs a hero is not done.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Agent reliability via synonym graph expansion
 
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-## Operating synonym graph expansion after scale events (review 3)
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via synonym graph expansion that needs a hero is not done.
 
-When synonym graph expansion for retrieval touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+After a month, delete unused flags and dual paths. `agent-synonym-graph-expansion` accumulates temporary bridges faster than teams expect.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent synonym graph expansion work
 
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-## Operating synonym graph expansion after scale events (review 4)
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent synonym graph expansion.
 
-When synonym graph expansion for retrieval touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent synonym graph expansion. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent synonym graph expansion
 
+I treat Agent reliability via synonym graph expansion as an operations problem first. The goal is to ship agent synonym graph expansion with human override paths, not to collect frameworks.
 
-## Operating synonym graph expansion after scale events (review 5)
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via synonym graph expansion that needs a hero is not done.
 
-When synonym graph expansion for retrieval touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-synonym-graph-expansion): prioritize expansion behavior under load and verify with a fixture named `agent-synonym-graph-expansion-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
 ## Resources
 
-- [BEIR benchmark](https://github.com/beir-cellar/beir)
-- [Elasticsearch hybrid search](https://www.elastic.co/guide/en/elasticsearch/reference/current/tuning-search-speed.html)
+- Internal runbook seed: `agent-synonym-graph-expansion`
+- https://12factor.net/
+- https://martinfowler.com/

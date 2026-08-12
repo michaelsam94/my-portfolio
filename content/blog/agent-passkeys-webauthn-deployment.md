@@ -1,201 +1,159 @@
 ---
-title: "AI Agents: Passkeys Webauthn Deployment"
+title: "Passkeys Webauthn Deployment for production agents"
 slug: "agent-passkeys-webauthn-deployment"
-description: "Deploy FIDO2 passkeys with correct RP ID binding, challenge lifecycle, attestation policy, and cross-platform recovery—without breaking login on day two."
+description: "Passkeys Webauthn Deployment for production agents: how to make agent passkeys webauthn deployment observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-12-15"
-dateModified: "2025-12-15"
-tags: ["AI", "Agent", "Passkeys"]
-keywords: "passkeys, WebAuthn, FIDO2, authenticator, RP ID, attestation, passwordless deployment"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, passkeys, webauthn, deployment, production, engineering"
 faq:
-  - q: "Should production passkey deployments verify attestation?"
-    a: "Most consumer apps skip full attestation and rely on platform authenticators plus risk signals. Regulated or high-value accounts may require attestation with an allowlist of authenticator AAGUIDs and a fallback path for unsupported devices."
-  - q: "What breaks when RP ID and domain do not match?"
-    a: "Registration succeeds in staging but authentication fails in production because the browser binds credentials to the exact RP ID hostname. Subdomain changes, apex vs www mismatches, and preview deploy URLs are the usual culprits."
-  - q: "How do you handle users who lose all passkey devices?"
-    a: "Keep a separate, step-up verified recovery channel—backup codes, hardware key enrollment, or helpdesk identity proofing. Never store a recoverable private key; issue new credentials after verified recovery."
-  - q: "Can passkeys coexist with password login during rollout?"
-    a: "Yes. Run parallel authentication methods with explicit UX that nudges enrollment without blocking legacy login until metrics show enrollment coverage and support load are acceptable."
+  - q: "What is Passkeys Webauthn Deployment for production agents?"
+    a: "Passkeys Webauthn Deployment for production agents is the production approach to make agent passkeys webauthn deployment observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Passkeys Webauthn Deployment for production agents?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent passkeys webauthn deployment, prioritize it."
+  - q: "What is the most common mistake with Passkeys Webauthn Deployment for production agents?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A product team shipped passkeys in a sprint demo and celebrated a 40% enrollment rate in the first week. Three weeks later, support volume doubled: users on corporate Windows laptops could register but not sign in after a domain migration, Android users hit "No available authenticator" on older WebViews, and the security team asked why attestation was disabled while finance asked why hardware keys were not supported. Passkeys are not a checkbox feature—they are a ceremony protocol with sharp edges around hostname binding, challenge replay, and device sync.
+**Passkeys Webauthn Deployment for production agents** means you make agent passkeys webauthn deployment observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-This guide walks through deploying WebAuthn passkeys in production: the server-side state you must persist, the browser ceremonies that actually run, and the rollout decisions that determine whether you retire passwords or inherit a new category of auth incidents.
+This write-up is specific to `agent-passkeys-webauthn-deployment` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## What a passkey actually is
+## Passkeys Webauthn Deployment for production agents: production checklist
 
-A passkey is a FIDO2 credential: a key pair generated inside a platform authenticator (Touch ID, Windows Hello, Android Keystore) or a roaming authenticator (YubiKey). The private key never leaves the authenticator. Your server stores only the public key, a credential ID, a signature counter, and metadata about how the credential was created.
+I treat Passkeys Webauthn Deployment for production agents as an operations problem first. The goal is to make agent passkeys webauthn deployment observable and interruptible, not to collect frameworks.
 
-WebAuthn defines two ceremonies:
+Put a metric on the user-visible effect of agent passkeys webauthn deployment before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-- **Registration (create)** — proves the user controls an authenticator and binds it to your Relying Party (RP).
-- **Authentication (get)** — proves possession of the private key by signing a server-issued challenge.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent passkeys webauthn deployment.
 
-Both ceremonies are mediated by the browser's `navigator.credentials` API. Your backend validates the signed payloads using libraries such as `@simplewebauthn/server` or equivalent implementations in other languages.
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-## Architecture decisions before you write code
+## Inputs, outputs, invariants
 
-### RP ID and origins
+I treat Passkeys Webauthn Deployment for production agents as an operations problem first. The goal is to make agent passkeys webauthn deployment observable and interruptible, not to collect frameworks.
 
-The RP ID is typically your registrable domain (`example.com`, not `app.example.com` unless you intentionally scope it). Browsers enforce that the page origin matches the RP ID. Document every hostname that will serve login UI—`www`, apex, regional subdomains, and mobile deep-link hosts—and align them before enrollment begins.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Maintain an explicit allowlist of origins in server configuration. Reject ceremonies from origins not on the list even if the RP ID matches; this blocks phishing clones on lookalike domains.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent passkeys webauthn deployment.
 
-### Challenge store and TTL
+Concretely, being able to make agent passkeys webauthn deployment observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Every ceremony starts with a random challenge stored server-side (Redis, session table, or encrypted cookie) with a short TTL—60 to 120 seconds is typical. The challenge must be single-use: delete it on successful verification or explicit failure. Reused challenges are a replay vector.
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-Bind the challenge to the user session or a pending registration token so an attacker cannot complete someone else's half-finished flow.
+```python
+# Passkeys Webauthn Deployment for production agents
+from dataclasses import dataclass
 
-### User verification and resident keys
+@dataclass(frozen=True)
+class AgentPasskeysWebauRequest:
+    tenant_id: str
+    idempotency_key: str
 
-Passkeys for consumer apps usually require **resident keys** (discoverable credentials) and **user verification** (biometric or PIN). Set `authenticatorSelection.residentKey` to `required` and `userVerification` to `required` unless you have a concrete reason to relax either—password managers and platform sync depend on discoverable credentials.
-
-### Attestation policy
-
-Full attestation tells you which authenticator model created the credential. Many teams set `attestation` to `none` for simplicity and fraud-model with device signals instead. If you need hardware-backed guarantees, maintain an AAGUID allowlist and provide a fallback enrollment path for unsupported devices.
-
-## Registration ceremony: server and client
-
-The registration flow has four beats: issue options, call the browser, post the attestation, verify and persist.
-
-**Server — generate registration options:**
-
-```typescript
-import {
-  generateRegistrationOptions,
-  verifyRegistrationResponse,
-} from "@simplewebauthn/server";
-
-const options = await generateRegistrationOptions({
-  rpName: "Acme App",
-  rpID: "acme.com",
-  userID: user.uuid,
-  userName: user.email,
-  userDisplayName: user.displayName,
-  attestationType: "none",
-  authenticatorSelection: {
-    residentKey: "required",
-    userVerification: "required",
-  },
-  excludeCredentials: existingCredentials.map((c) => ({
-    id: c.credentialId,
-    transports: c.transports,
-  })),
-});
-
-await challengeStore.set(`reg:${user.id}`, options.challenge, { ttlSeconds: 90 });
-return options;
+async def run_agent_passkeys_webauthn_(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-passkeys-webauthn-deployment"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-**Client — create credential:**
+## Concurrency, retries, and timeouts
 
-```typescript
-const options = await fetch("/webauthn/register/options").then((r) => r.json());
+Teams usually discover Passkeys Webauthn Deployment for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-const credential = await navigator.credentials.create({
-  publicKey: {
-    ...options,
-    challenge: base64urlToBuffer(options.challenge),
-    user: { ...options.user, id: base64urlToBuffer(options.user.id) },
-  },
-});
+Keep side effects at the edges and make every write idempotent. Passkeys Webauthn Deployment for production agents without retry semantics is a future incident write-up.
 
-await fetch("/webauthn/register/verify", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(credential),
-});
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent passkeys webauthn deployment.
 
-**Server — verify and persist:**
+My never-again list for agent passkeys webauthn deployment: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```typescript
-const expectedChallenge = await challengeStore.get(`reg:${user.id}`);
-if (!expectedChallenge) throw new AuthError("challenge_expired");
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-const verification = await verifyRegistrationResponse({
-  response: req.body,
-  expectedChallenge,
-  expectedOrigin: ALLOWED_ORIGINS,
-  expectedRPID: "acme.com",
-});
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-if (!verification.verified || !verification.registrationInfo) {
-  throw new AuthError("registration_failed");
-}
+## Support and audit workflows
 
-await credentialRepo.insert({
-  userId: user.id,
-  credentialId: verification.registrationInfo.credentialID,
-  publicKey: verification.registrationInfo.credentialPublicKey,
-  counter: verification.registrationInfo.counter,
-  transports: req.body.response.transports,
-  aaguid: verification.registrationInfo.aaguid,
-});
+Teams usually discover Passkeys Webauthn Deployment for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-await challengeStore.delete(`reg:${user.id}`);
-```
+Keep side effects at the edges and make every write idempotent. Passkeys Webauthn Deployment for production agents without retry semantics is a future incident write-up.
 
-Store the signature counter. On each authentication, reject credentials whose counter does not strictly increase—cloned authenticators often stall the counter.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent passkeys webauthn deployment.
 
-## Authentication ceremony
+Review prompts I use: what happens twice, what happens never, what happens partially? If Passkeys Webauthn Deployment for production agents cannot answer, it is not production-ready.
 
-Authentication is leaner: no user handle in the request if you use discoverable credentials—the browser shows an account picker.
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-```typescript
-const options = await generateAuthenticationOptions({
-  rpID: "acme.com",
-  userVerification: "required",
-  allowCredentials: userHasOnlyLegacy
-    ? user.credentials.map((c) => ({ id: c.credentialId, transports: c.transports }))
-    : undefined, // undefined => discoverable passkey UX
-});
+## Capacity and load notes
 
-await challengeStore.set(`auth:${sessionId}`, options.challenge, { ttlSeconds: 90 });
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent passkeys webauthn deployment, that means making failure visible early.
 
-After `navigator.credentials.get`, verify with `verifyAuthenticationResponse`, update the counter, rotate session, and invalidate any pre-auth session fixation risk by issuing a fresh server-side session ID.
+Put a metric on the user-visible effect of agent passkeys webauthn deployment before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-## Cross-device, sync, and enterprise friction
+Acceptance check: an on-call engineer can explain system state for agent passkeys webauthn deployment from one dashboard and one runbook page.
 
-Apple iCloud Keychain and Google Password Manager sync passkeys across devices tied to the same vendor account. That improves UX but shifts trust to the user's cloud account. Document this in your security FAQ.
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-**Cross-device sign-in** (phone signs into desktop via QR) requires supported browsers and is still uneven on older Android WebViews. Test on real devices, not only desktop Chrome.
+Related reading:
 
-Enterprise managed devices may block platform authenticators or mandate smart cards. Offer a parallel WebAuthn path with `allowCredentials` populated from enrolled security keys, and keep a break-glass SSO option for IT-controlled fleets.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Rollout sequence that survives audit
+## Ship gate
 
-1. **Internal dogfood** — staff accounts on production RP ID, not a staging hostname.
-2. **Opt-in enrollment** — settings page after password login; measure completion funnel drop-offs by platform.
-3. **Conditional UI** — use `mediation: "conditional"` on login fields so passkeys appear inline without a separate button maze.
-4. **Step-up for sensitive actions** — re-auth with WebAuthn before payout, API key creation, or account deletion even if session is fresh.
-5. **Password sunset** — only after recovery paths are tested and enrollment exceeds your risk threshold (often 70–80% for consumer, lower for B2B with SSO).
+Teams usually discover Passkeys Webauthn Deployment for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Instrument these events: `passkey_register_started`, `passkey_register_failed` (with reason code, not raw browser errors), `passkey_auth_success`, `passkey_auth_failed`, `passkey_recovery_used`.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Failure modes you will hit in week three
+Acceptance check: an on-call engineer can explain system state for agent passkeys webauthn deployment from one dashboard and one runbook page.
 
-| Symptom | Likely cause | Fix |
-|--------|--------------|-----|
-| Works on Mac, fails on Windows | RP ID mismatch or wrong origin | Align apex/www; fix `expectedOrigin` list |
-| "No credentials" on login | Non-resident key or wrong `allowCredentials` | Re-enroll with resident keys; enable discoverable flow |
-| Counter verification errors | Backup restore or cloned key | Force re-enrollment; alert security |
-| Infinite spinner on Android | WebView without WebAuthn | Detect and fall back to password + email magic link |
-| Users locked out after device loss | No recovery path | Backup codes + verified support flow |
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
 
-## Operational checklist
+## Practical defaults for Passkeys Webauthn Deployment for production agents
 
-- Run quarterly DR tests: restore credential DB, verify ceremonies still work.
-- Rotate nothing about the key material—you rotate sessions and challenges, not passkeys.
-- Log ceremony outcomes with correlation IDs; never log challenges or public key bytes in client analytics.
-- Put WebAuthn endpoints on the same latency SLO as password login; slow ceremonies feel broken on mobile.
+Teams usually discover Passkeys Webauthn Deployment for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-Passkeys reward teams that treat WebAuthn as protocol engineering: explicit RP ID strategy, single-use challenges, counter discipline, and a recovery story that does not secretly reintroduce passwords through the back door.
+Put a metric on the user-visible effect of agent passkeys webauthn deployment before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent passkeys webauthn deployment from one dashboard and one runbook page.
+
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-passkeys-webauthn-deployment` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent passkeys webauthn deployment work
+
+I treat Passkeys Webauthn Deployment for production agents as an operations problem first. The goal is to make agent passkeys webauthn deployment observable and interruptible, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent passkeys webauthn deployment before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent passkeys webauthn deployment.
+
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
+
+## Field notes after thirty days of agent passkeys webauthn deployment
+
+I treat Passkeys Webauthn Deployment for production agents as an operations problem first. The goal is to make agent passkeys webauthn deployment observable and interruptible, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent passkeys webauthn deployment before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent passkeys webauthn deployment from one dashboard and one runbook page.
+
+Slug-specific note (agent-passkeys-webauthn-deployment): prioritize deployment behavior under load and verify with a fixture named `agent-passkeys-webauthn-deployment-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent passkeys webauthn deployment. Expand only when the metric demands it.
 
 ## Resources
 
-- [WebAuthn Level 2 Specification (W3C)](https://www.w3.org/TR/webauthn-2/)
-- [FIDO Alliance Passkeys documentation](https://fidoalliance.org/passkeys/)
-- [SimpleWebAuthn server library](https://simplewebauthn.dev/docs/packages/server)
-- [MDN: Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API)
-- [Google Identity: Passkeys implementation guide](https://developers.google.com/identity/passkeys)
+- Internal runbook seed: `agent-passkeys-webauthn-deployment`
+- https://12factor.net/
+- https://martinfowler.com/

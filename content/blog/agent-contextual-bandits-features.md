@@ -1,275 +1,159 @@
 ---
-title: "Feature Engineering for Agent Contextual Bandits"
+title: "Agent systems: contextual bandits features"
 slug: "agent-contextual-bandits-features"
-description: "Build context vectors that make agent routing bandits work — intent signals, latency features, cost proxies, delayed rewards, and cold-start priors for prompt and model selection."
+description: "Agent systems: contextual bandits features: how to keep agent side effects idempotent around contextual bandits features — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-07-27"
-dateModified: "2025-07-27"
-tags: ["AI Agents", "Bandits", "ML", "Routing"]
-keywords: "contextual bandits features, agent model routing, LinUCB features, Thompson sampling context, exploration exploitation agent"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, contextual, bandits, features, production, engineering"
 faq:
-  - q: "What belongs in the context vector vs the reward signal?"
-    a: "Context is everything known before the arm is pulled: intent, tenant tier, input length, time of day. Reward is observed after: task success, latency, cost, thumbs-down. Never put post-hoc outcomes in context — that leaks the label and inflates offline metrics."
-  - q: "How many features before LinUCB or logistic Thompson sampling breaks down?"
-    a: "Stay under 50–100 well-chosen features for linear models; use regularization and feature hashing beyond that. High-cardinality raw text belongs in embeddings reduced to 8–16 dimensions, not one-hot token IDs."
-  - q: "How do you handle delayed rewards in agent bandits?"
-    a: "Log pull events immediately; attach rewards when the session ends or after a timeout (e.g., 30 minutes). Use propensity-weighted updates for late-arriving labels and cap staleness — ignore rewards arriving more than 24h after pull unless task completion inherently delayed."
-  - q: "What features help cold-start new prompt arms?"
-    a: "Similarity to existing arms (embedding distance of prompt text), intent overlap from historical arm performance by intent, and an optimistic prior or minimum traffic floor until N≥200 pulls per arm-intent slice."
+  - q: "What is Agent systems: contextual bandits features?"
+    a: "Agent systems: contextual bandits features is the production approach to keep agent side effects idempotent around contextual bandits features. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: contextual bandits features?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent contextual bandits features, prioritize it."
+  - q: "What is the most common mistake with Agent systems: contextual bandits features?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent systems: contextual bandits features** means you keep agent side effects idempotent around contextual bandits features — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-You deployed LinUCB to pick between four system prompts and three model tiers. Offline replay looked great. Online, the bandit keeps routing billing questions to the creative-writing prompt because both share the word "account" in the context vector. **Contextual bandits are only as good as their features** — the arm selection math is solved; the engineering work is building a context representation that reflects what actually drives reward for agent workloads.
+This write-up is specific to `agent-contextual-bandits-features` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-This post covers feature design for agent routing bandits: which signals to include, how to encode them, how delayed rewards interact with context timestamps, and how to validate that your feature vector is not leaking future information.
+## What Agent systems: contextual bandits features changes in day-two ops
 
-## What agent bandits optimize
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
 
-Production agent bandits typically choose among **arms** like:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-- System prompt variants
-- Model tier (fast/cheap vs capable/expensive)
-- Retrieval depth (top-k, reranker on/off)
-- Tool routing policy (aggressive vs conservative)
-- Fallback chain ordering
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent contextual bandits features.
 
-The **context** is observed at decision time — before the arm is pulled. The **reward** arrives after the agent completes work: task success, user thumbs, latency SLA, token cost, escalation to human.
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
 
-```
-Session start
-    │
-    ▼
-Extract context x ──► Bandit.select_arm(x) ──► arm k
-    │
-    ▼
-Agent runs with arm k configuration
-    │
-    ▼
-Observe reward r (possibly delayed)
-    │
-    ▼
-Bandit.update(x, k, r)
-```
+## Designing so you can keep agent side effects idempotent around contextual bandits features
 
-If `x` omits intent or tenant constraints, the bandit learns spurious correlations. If `x` includes the model's own confidence score from a prior turn, you leak outcome information.
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
 
-## Feature categories that matter for agents
+Keep side effects at the edges and make every write idempotent. Agent systems: contextual bandits features without retry semantics is a future incident write-up.
 
-### Intent and task type
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent contextual bandits features.
 
-The strongest predictor of which prompt or model works is **what the user is trying to do**. Sources:
+Concretely, being able to keep agent side effects idempotent around contextual bandits features forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-- Classifier output (support / billing / code / research) with calibrated probabilities
-- Embedding of first user message reduced via PCA to 8–16 dims
-- Detected language and locale
-- Presence of attachments (PDF, image, CSV)
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
 
 ```python
-# features/intent.py
+# Agent systems: contextual bandits features
 from dataclasses import dataclass
-import numpy as np
 
-@dataclass
-class IntentFeatures:
-    p_support: float
-    p_billing: float
-    p_code: float
-    p_research: float
-    embedding_pca: np.ndarray  # shape (16,)
-    has_attachment: float
-    language_en: float
+@dataclass(frozen=True)
+class AgentContextualBanRequest:
+    tenant_id: str
+    idempotency_key: str
 
-    def to_vector(self) -> np.ndarray:
-        return np.concatenate([
-            [self.p_support, self.p_billing, self.p_code, self.p_research,
-             self.has_attachment, self.language_en],
-            self.embedding_pca,
-        ])
-```
-
-Use classifier **probabilities**, not argmax labels. Hard labels discard uncertainty that the bandit can exploit.
-
-### Input scale and complexity
-
-Token count, tool count available, and estimated retrieval difficulty predict latency-sensitive arm choices:
-
-- `log1p(input_tokens)` — user message + attached doc size estimate
-- `log1p(rag_candidates)` — chunks retrieved before rerank
-- `tool_count_available` — capped at 20
-- `requires_code_execution` — binary from intent classifier
-
-Large inputs often reward capable models; simple FAQs reward fast models. Without scale features, bandits over-index on intent alone.
-
-### Tenant and policy constraints
-
-B2B agents need **hard constraints** encoded as features or as arm filters:
-
-- `tenant_tier` — one-hot: free, pro, enterprise
-- `data_residency_eu` — binary; filters non-EU model arms entirely
-- `pii_present` — binary from DLP scan; boosts conservative tool arms
-- `sla_latency_ms` — contractual p95 target
-
-Some constraints should **filter ineligible arms** before bandit selection rather than enter the context vector. A bandit cannot learn "never send HIPAA tenants to external model X" from reward alone without expensive violations.
-
-### Temporal and load features
-
-- `hour_of_day_sin/cos` — cyclic encoding
-- `queue_depth_normalized` — current inference queue
-- `recent_error_rate_arm_family` — rolling 5-min error rate for model provider
-
-Under load, cheap arms may maximize reward even for complex intent because latency penalties dominate user satisfaction.
-
-### Session continuity
-
-- `turn_index` — multi-turn sessions differ from first message
-- `prior_task_success` — binary, prior turn outcome
-- `tools_invoked_count` — depth of agent loop so far
-
-Do not include **current arm identity** from prior turns as a feature unless you are running a separate "switching cost" experiment — it creates path dependence that confounds arm comparison.
-
-## Building the context vector
-
-Concatenate normalized feature groups with documented schema versioning:
-
-```python
-# features/context_builder.py
-import numpy as np
-from datetime import datetime
-
-FEATURE_SCHEMA_VERSION = 3
-
-def build_context(session: dict) -> np.ndarray:
-    intent = extract_intent_features(session["first_message"])
-    scale = extract_scale_features(session)
-    tenant = extract_tenant_features(session["tenant_id"])
-    temporal = extract_temporal_features(datetime.utcnow())
-    continuity = extract_continuity_features(session)
-
-    vector = np.concatenate([
-        intent.to_vector(),       # 22 dims
-        scale.to_vector(),        # 6 dims
-        tenant.to_vector(),       # 8 dims
-        temporal.to_vector(),     # 4 dims
-        continuity.to_vector(),   # 3 dims
-    ])  # total 43 dims
-
-    assert vector.shape[0] == 43, f"schema v{FEATURE_SCHEMA_VERSION} mismatch"
-    return vector
-```
-
-**Normalize continuous features** to zero mean and unit variance using stats from training traffic — refreshed weekly. Store normalization params alongside the bandit checkpoint.
-
-**Version the schema.** When you add features, bump `FEATURE_SCHEMA_VERSION` and either retrain from scratch or pad old vectors with zeros — never silently change dimension order.
-
-## Reward design for agent bandits
-
-Multi-objective rewards need explicit weighting:
-
-```python
-def compute_reward(outcome: dict) -> float:
-    success = 1.0 if outcome["task_completed"] else 0.0
-    latency_penalty = min(outcome["latency_ms"] / 30_000, 1.0) * 0.2
-    cost_penalty = min(outcome["token_cost_usd"] / 0.50, 1.0) * 0.15
-    human_escalation = 1.0 if outcome["escalated"] else 0.0
-
-    thumbs = outcome.get("user_rating")  # -1, 0, 1 or None
-    thumbs_bonus = (thumbs or 0) * 0.25
-
-    return success + thumbs_bonus - latency_penalty - cost_penalty - 0.5 * human_escalation
-```
-
-Log **component rewards** separately for debugging. A bandit optimizing composite reward may shift arms for reasons product cannot explain unless you decompose.
-
-Clip rewards to [-1, 2] or similar bounded range. Unbounded cost penalties destabilize LinUCB confidence intervals.
-
-## Delayed rewards and propensity logging
-
-Agent task success may arrive minutes later. Pattern:
-
-```python
-# bandit/event_log.py
-@dataclass
-class PullEvent:
-    event_id: str
-    context: np.ndarray
-    arm: str
-    context_schema_version: int
-    timestamp: float
-    propensity: float  # P(arm | context) under current policy
-
-def update_on_reward(event_id: str, reward: float, bandit: LinUCB):
-    event = pull_log.get(event_id)
-    if event is None:
+async def run_agent_contextual_bandits(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
         return
-    age_hours = (time.time() - event.timestamp) / 3600
-    if age_hours > 24:
-        metrics.increment("bandit.stale_reward_dropped")
-        return
-    bandit.update(event.context, event.arm, reward)
+    with deps.tracer.start_as_current_span("agent-contextual-bandits-features"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Log **propensity** — the probability the pulled arm was selected — for offline IPS (inverse propensity scoring) evaluation when you change the policy. Without propensity, offline replays lie.
+## Failure modes specific to agent contextual bandits features
 
-## Cold start for new arms
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent contextual bandits features, that means making failure visible early.
 
-Adding a prompt arm with zero history starves exploration. Mitigations:
+Put a metric on the user-visible effect of agent contextual bandits features before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-1. **Optimistic prior** — initialize arm reward estimate at 75th percentile of existing arms per intent slice
-2. **Minimum traffic floor** — 5% of pulls matching arm's target intent until N≥200
-3. **Similarity transfer** — if new prompt embedding is close to arm A, seed prior from A's stats for overlapping intent buckets
+Acceptance check: an on-call engineer can explain system state for agent contextual bandits features from one dashboard and one runbook page.
 
-```python
-def seed_arm_prior(new_arm: str, prompt_embedding: np.ndarray, arms: dict) -> float:
-    similarities = {
-        name: cosine_sim(prompt_embedding, meta.embedding)
-        for name, meta in arms.items()
-    }
-    best_match = max(similarities, key=similarities.get)
-    if similarities[best_match] > 0.85:
-        return arms[best_match].mean_reward * 0.9
-    return global_mean_reward + 0.1  # slight optimism
-```
+My never-again list for agent contextual bandits features: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Feature leakage checklist
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
 
-Before shipping, audit for these leaks:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-| Leak | Symptom |
-|------|---------|
-| Post-hoc model confidence in context | Offline AUC too good; online flat |
-| Outcome-derived "complexity" score | Bandit ignores intent features |
-| Same-session reward in context of next pull | Within-session overfitting |
-| Arm ID unless modeling switching | Incumbent arm always wins |
-| Unnormalized token counts | Dominates linear model weights |
+## Signals worth paging on
 
-Run **permutation importance** offline: shuffle each feature column, measure reward prediction drop. Features with zero importance are candidates for removal — they add noise and dimensionality.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent contextual bandits features, that means making failure visible early.
 
-## Evaluation without lying to yourself
+Put a metric on the user-visible effect of agent contextual bandits features before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-1. **IPS offline evaluation** using logged propensities from production
-2. **Holdout intent buckets** — entire intent classes reserved for final validation
-3. **Switchback tests** — alternate bandit on/off by hour to measure global lift
-4. **Slice dashboards** — reward by intent, tenant tier, input length quartile
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: contextual bandits features that needs a hero is not done.
 
-Require **minimum sample size per arm-intent cell** before declaring an arm winner. "Billing + enterprise + long doc" may have 40 sessions/week — too thin for confident elimination.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: contextual bandits features cannot answer, it is not production-ready.
 
-## Operational ownership
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
 
-Feature pipelines for bandits need the same SLOs as payment code:
+## Rollout sequence with Temporal
 
-- **Freshness** — context features computed in <50ms at session start
-- **Schema contracts** — protobuf or JSON schema with CI validation
-- **Backfill jobs** — when adding features, recompute context for last 7 days of pull logs for offline replay
-- **Kill switch** — feature flag to revert to static champion arm without redeploy
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent contextual bandits features, that means making failure visible early.
 
-Alert when feature distributions drift (PSI > 0.2 on input_tokens or intent probabilities). Drift often precedes bandit reward collapse after product or taxonomy changes.
+Keep side effects at the edges and make every write idempotent. Agent systems: contextual bandits features without retry semantics is a future incident write-up.
 
-## The takeaway
+Acceptance check: an on-call engineer can explain system state for agent contextual bandits features from one dashboard and one runbook page.
 
-Contextual bandits for agent routing fail in production when teams treat feature engineering as an afterthought. Build context from intent probabilities, input scale, tenant constraints, and session continuity — never from outcomes. Normalize, version, and log propensities. Design composite rewards with interpretable components. Cold-start new arms deliberately. The bandit algorithm is the easy part; the context vector is where uplift lives or dies.
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
+
+Related reading:
+
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+
+## What I would delete after month one
+
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: contextual bandits features that needs a hero is not done.
+
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
+
+## Practical defaults for Agent systems: contextual bandits features
+
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: contextual bandits features without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent contextual bandits features.
+
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Review questions before merging agent contextual bandits features work
+
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent contextual bandits features before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent contextual bandits features.
+
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Field notes after thirty days of agent contextual bandits features
+
+I treat Agent systems: contextual bandits features as an operations problem first. The goal is to keep agent side effects idempotent around contextual bandits features, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: contextual bandits features without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent contextual bandits features from one dashboard and one runbook page.
+
+Slug-specific note (agent-contextual-bandits-features): prioritize features behavior under load and verify with a fixture named `agent-contextual-bandits-features-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent contextual bandits features. Expand only when the metric demands it.
 
 ## Resources
 
-- [Li et al. — A Contextual-Bandit Approach to Personalized News (LinUCB)](https://arxiv.org/abs/1003.0146)
-- [Chapelle & Li — An Empirical Evaluation of Thompson Sampling](https://arxiv.org/abs/1209.3352)
-- [Google — Counterfactual Learning for Bandits (IPS)](https://developers.google.com/machine-learning/recommendation/dnn/recommendation-systems)
-- [Vowpal Wabbit — Contextual Bandit documentation](https://vowpalwabbit.org/docs/vowpal_wabbit/python/latest/examples/contextual_bandits.html)
-- [Netflix — Artwork Personalization bandit features (engineering blog)](https://netflixtechblog.com/artwork-personalization-c589f174ad76)
+- Internal runbook seed: `agent-contextual-bandits-features`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,131 +1,158 @@
 ---
 title: "Supabase Auth Hooks"
 slug: "supabase-auth-hooks"
-description: "Supabase Auth Hooks: how to make retries and timeouts intentional in production payments systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Supabase Auth Hooks: how to measure supabase auth before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-06"
 dateModified: "2026-08-12"
 tags:
-  - "Payments"
-  - "Fintech"
-keywords: "supabase, auth, hooks, payments, production, engineering"
+  - "Engineering"
+  - "Supabase"
+keywords: "supabase, auth, hooks, production, engineering"
 faq:
   - q: "What is Supabase Auth Hooks?"
-    a: "Supabase Auth Hooks is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
+    a: "Supabase Auth Hooks is the production approach to measure supabase auth before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
   - q: "When should teams invest in Supabase Auth Hooks?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with supabase auth hooks, prioritize it."
   - q: "What is the most common mistake with Supabase Auth Hooks?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Supabase Auth Hooks** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Supabase Auth Hooks** means you measure supabase auth before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in Payments systems using Stripe, ledger: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `supabase-auth-hooks` in a product context, using Redis, Prometheus for the mechanics while keeping ownership human.
 
-## Incident story: when Supabase Auth Hooks bit us
+## Incident pattern involving supabase auth hooks
 
-Most write-ups on Supabase Auth Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For supabase auth hooks, that means making failure visible early.
 
-In Payments stacks I lean on Stripe, ledger for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Keep side effects at the edges and make every write idempotent. Supabase Auth Hooks without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for supabase auth hooks from one dashboard and one runbook page.
 
-## Root cause in one paragraph
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
-If you only remember one thing about Supabase Auth Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## Root cause in plain language
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Production systems punish vague ownership and unmeasured happy paths. For supabase auth hooks, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. Supabase Auth Hooks without retry semantics is a future incident write-up.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on supabase auth hooks.
+
+Concretely, being able to measure supabase auth before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Supabase Auth Hooks
+export async function handle_supabase_auth_hooks(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Supabase Auth Hooks
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("supabase-auth-hooks");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Fix that survived the next traffic spike
+## The fix that held under load
 
-If you only remember one thing about Supabase Auth Hooks: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Teams usually discover Supabase Auth Hooks after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Make Supabase Auth Hooks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Supabase Auth Hooks — you only deployed it.
+Put a metric on the user-visible effect of supabase auth hooks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Supabase Auth Hooks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Supabase Auth Hooks that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Supabase Auth Hooks error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for supabase auth hooks: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Tests that would have caught it
+## Tests and probes that catch regressions
 
-Most write-ups on Supabase Auth Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+I treat Supabase Auth Hooks as an operations problem first. The goal is to measure supabase auth before optimizing it, not to collect frameworks.
 
-In Payments stacks I lean on Stripe, ledger for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Keep side effects at the edges and make every write idempotent. Supabase Auth Hooks without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Supabase Auth Hooks that needs a hero is not done.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Supabase Auth Hooks designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Supabase Auth Hooks cannot answer, it is not production-ready.
 
-## Runbook additions worth keeping
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
-I have watched teams under-specify Supabase Auth Hooks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Runbook lines that save minutes
 
-In Payments stacks I lean on Stripe, ledger for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Teams usually discover Supabase Auth Hooks after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Supabase Auth Hooks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Put a metric on the user-visible effect of supabase auth hooks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on supabase auth hooks.
+
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
 Related reading:
 
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Prevention in the platform
+## Platform guardrails afterward
 
-Most write-ups on Supabase Auth Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+I treat Supabase Auth Hooks as an operations problem first. The goal is to measure supabase auth before optimizing it, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Keep side effects at the edges and make every write idempotent. Supabase Auth Hooks without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on supabase auth hooks.
 
-## Practical defaults I use for Supabase Auth Hooks
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
-Most write-ups on Supabase Auth Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Practical defaults for Supabase Auth Hooks
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Supabase Auth Hooks after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Prefer small diffs with a kill switch. Supabase Auth Hooks changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With Redis, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Supabase Auth Hooks error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for supabase auth hooks from one dashboard and one runbook page.
 
-## Review questions before merging Supabase Auth Hooks work
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
-Most write-ups on Supabase Auth Hooks stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+After a month, delete unused flags and dual paths. `supabase-auth-hooks` accumulates temporary bridges faster than teams expect.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging supabase auth hooks work
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+I treat Supabase Auth Hooks as an operations problem first. The goal is to measure supabase auth before optimizing it, not to collect frameworks.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Put a metric on the user-visible effect of supabase auth hooks before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Field notes after the first month of Supabase Auth Hooks
+Acceptance check: an on-call engineer can explain system state for supabase auth hooks from one dashboard and one runbook page.
 
-I have watched teams under-specify Supabase Auth Hooks and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
 
-Make Supabase Auth Hooks error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Supabase Auth Hooks — you only deployed it.
+Default deny, explicit timeouts, and one dashboard row for supabase auth hooks. Expand only when the metric demands it.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of supabase auth hooks
 
-A month in, prune unused paths. Supabase Auth Hooks accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+I treat Supabase Auth Hooks as an operations problem first. The goal is to measure supabase auth before optimizing it, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Supabase Auth Hooks without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on supabase auth hooks.
+
+Slug-specific note (supabase-auth-hooks): prioritize hooks behavior under load and verify with a fixture named `supabase-auth-hooks-smoke`.
+
+After a month, delete unused flags and dual paths. `supabase-auth-hooks` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `supabase-auth-hooks`
 - https://12factor.net/
+- https://martinfowler.com/

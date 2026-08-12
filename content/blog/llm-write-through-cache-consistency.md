@@ -1,217 +1,159 @@
 ---
-title: "Write Through Cache Consistency"
+title: "LLM ops guide to write through cache consistency"
 slug: "llm-write-through-cache-consistency"
-description: "Keep agent session state and tool caches consistent with write-through patterns: Redis + Postgres dual writes, read-your-writes guarantees, and invalidation when agents mutate shared knowledge for teams running LLM features in production."
+description: "LLM ops guide to write through cache consistency: how to operate write through cache consistency under token and quota pressure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-11"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "write through cache agent session, agent state consistency Redis, read your writes agent, cache invalidation RAG"
+  - "Engineering"
+keywords: "llm, write, through, cache, consistency, production, engineering"
 faq:
-  - q: "Write-through vs write-behind for agent session state?"
-    a: "Write-through: update cache and DB synchronously on every agent turn — simpler read-your-writes for multi-tab UX. Write-behind: higher write throughput but stale reads if user switches device before flush — poor fit for conversational agents."
-  - q: "What agent data belongs in cache vs authoritative store?"
-    a: "Cache: hot session context, tool result memoization, embedding lookup for recent chunks. Authoritative: billing events, audit logs, KB document versions — never cache-only."
-  - q: "How do you invalidate RAG cache when documents update?"
-    a: "Versioned keys: `chunk:{doc_id}:{content_hash}`. On ingest publish, bump doc version — old cache entries miss naturally. Broadcast invalidation event for eager purge on large reindex."
-  - q: "Does prompt caching change write-through design?"
-    a: "Provider prompt caches are read-only from your side. Your write-through layer still owns session facts and tool memo keys locally — don't conflate OpenAI prefix cache with application cache consistency."
+  - q: "What is LLM ops guide to write through cache consistency?"
+    a: "LLM ops guide to write through cache consistency is the production approach to operate write through cache consistency under token and quota pressure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in LLM ops guide to write through cache consistency?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with llm write through cache consistency, prioritize it."
+  - q: "What is the most common mistake with LLM ops guide to write through cache consistency?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-User asks the agent to update a CRM record, then immediately asks "what did we just set the status to?" If session state went to Redis async while Postgres lagged — or worse, edge cache served another pod's stale view — the agent confidently lies. **Write-through caching** synchronizes cache and authoritative store on every mutation so agent reads see what writes committed, at the cost of write latency you must budget in p95 turn time.
+**LLM ops guide to write through cache consistency** means you operate write through cache consistency under token and quota pressure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-## Cache patterns compared for agents
+This write-up is specific to `llm-write-through-cache-consistency` in a llm context, using Postgres, vLLM, OpenTelemetry for the mechanics while keeping ownership human.
 
-| Pattern | Read latency | Write latency | Consistency | Agent fit |
-|---------|--------------|---------------|-------------|-----------|
-| Cache-aside | Low | Low | Eventual | OK for RAG chunks |
-| Write-through | Low | Higher | Strong | Session state |
-| Write-behind | Low | Lowest | Eventual | Risky for chat |
-| Read-through | Low | N/A | Depends | Tool memo reads |
+## Decision guide for LLM ops guide to write through cache consistency
 
-Agent **session memory** and **post-tool state** → write-through. Immutable **retrieved chunks** → cache-aside with version keys.
+I treat LLM ops guide to write through cache consistency as an operations problem first. The goal is to operate write through cache consistency under token and quota pressure, not to collect frameworks.
 
-## Write-through session store
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-```python
-class AgentSessionStore:
-    def __init__(self, redis, pg):
-        self.redis = redis
-        self.pg = pg
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to write through cache consistency that needs a hero is not done.
 
-    def append_turn(self, session_id: str, turn: Turn) -> None:
-        key = f"session:{session_id}"
-        with self.pg.transaction():
-            self.pg.execute(
-                "INSERT INTO session_turns (session_id, seq, role, content) VALUES (%s, %s, %s, %s)",
-                (session_id, turn.seq, turn.role, turn.content),
-            )
-            self.redis.rpush(key, turn.to_json())
-            self.redis.expire(key, 86400 * 7)
-            # Invalidate derived summary cache
-            self.redis.delete(f"session:{session_id}:summary")
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
+
+## When to refuse this approach
+
+Teams usually discover LLM ops guide to write through cache consistency after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+Put a metric on the user-visible effect of llm write through cache consistency before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm write through cache consistency.
+
+Concretely, being able to operate write through cache consistency under token and quota pressure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
+
+```typescript
+// LLM ops guide to write through cache consistency
+export async function handle_llm_write_through_cache_consistency(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("llm-write-through-cache-consistency");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Both succeed or transaction rolls back — no orphaned Redis state.
+## Minimal production setup
 
-## Read-your-writes across pods
+I treat LLM ops guide to write through cache consistency as an operations problem first. The goal is to operate write through cache consistency under token and quota pressure, not to collect frameworks.
 
-Sticky sessions are fragile on K8s. Options:
+Put a metric on the user-visible effect of llm write through cache consistency before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-1. **Redis as primary read path** after write-through (Postgres for recovery).
-2. **Version token** returned to client, sent on next request:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to write through cache consistency that needs a hero is not done.
 
-```python
-def get_session(session_id: str, min_version: int | None) -> Session:
-    data = redis.lrange(f"session:{session_id}", 0, -1)
-    version = pg.get_version(session_id)
-    if min_version and version < min_version:
-        raise StaleReadError()  # client retries 100ms
-    return Session.from_turns(data, version=version)
-```
+My never-again list for llm write through cache consistency: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Client includes `If-Match: session-version-42` header.
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
 
-## Tool result memoization
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Expensive idempotent tools (market data fetch) memo with write-through to avoid stale **external** truth:
+## Cost, complexity, and ownership
 
-```python
-def cached_tool_call(tool: str, args_hash: str, ttl: int, fn):
-    key = f"toolmemo:{tool}:{args_hash}"
-    hit = redis.get(key)
-    if hit:
-        return json.loads(hit)
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm write through cache consistency, that means making failure visible early.
 
-    result = fn()
-    with pg.transaction():
-        pg.log_tool_result(tool, args_hash, result)
-        redis.setex(key, ttl, json.dumps(result))
-    return result
-```
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-TTL short (60–300s) for semi-fresh data; invalidate on known market close events.
+Acceptance check: an on-call engineer can explain system state for llm write through cache consistency from one dashboard and one runbook page.
 
-## RAG chunk cache — cache-aside with versioning
+Review prompts I use: what happens twice, what happens never, what happens partially? If LLM ops guide to write through cache consistency cannot answer, it is not production-ready.
 
-Don't write-through megabyte embeddings every ingest:
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
 
-```python
-def get_chunk_embedding(chunk_id: str, content_hash: str) -> vector:
-    key = f"emb:{chunk_id}:{content_hash}"
-    cached = redis.get(key)
-    if cached:
-        return deserialize(cached)
+## Migration without dual-running forever
 
-    vec = embed_service.encode(chunk_id)
-    redis.setex(key, 86400, serialize(vec))  # no PG write — PG has chunks table
-    return vec
-```
+I treat LLM ops guide to write through cache consistency as an operations problem first. The goal is to operate write through cache consistency under token and quota pressure, not to collect frameworks.
 
-Document update → new `content_hash` → automatic miss. Old keys expire via TTL.
+Keep side effects at the edges and make every write idempotent. LLM ops guide to write through cache consistency without retry semantics is a future incident write-up.
 
-## Invalidation broadcast on KB reindex
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm write through cache consistency.
 
-Large reindex flips collection version:
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
 
-```python
-def on_reindex_complete(tenant_id: str, new_version: int):
-    pg.set_kb_version(tenant_id, new_version)
-    redis.publish(f"kb_invalidate:{tenant_id}", new_version)
-    # Workers subscribe and purge local Caffeine caches
-```
+Related reading:
 
-Agent retrieval checks `kb_version` in session — mismatch triggers re-fetch even if chunk cache hit.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Consistency vs agent latency budget
+## Definition of done
 
-Write-through adds ~2–8ms Redis + PG on hot path. Measure:
+I treat LLM ops guide to write through cache consistency as an operations problem first. The goal is to operate write through cache consistency under token and quota pressure, not to collect frameworks.
 
-```python
-with metrics.timer("session_append_ms"):
-    store.append_turn(session_id, turn)
-```
+Put a metric on the user-visible effect of llm write through cache consistency before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-If p95 exceeds SLO, consider:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to write through cache consistency that needs a hero is not done.
 
-- Async summary compression (write-through turns only, not derived artifacts)
-- Partitioned Redis cluster by tenant
-- Cockroach/Spanner for single-node SQL latency
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
 
-Don't revert to write-behind without UX acceptance of stale reads.
+## Practical defaults for LLM ops guide to write through cache consistency
 
-## Failure handling
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm write through cache consistency, that means making failure visible early.
 
-| Failure | Behavior |
-|---------|----------|
-| Redis down | Fall back to PG read (degraded latency) |
-| PG down | Fail turn append — don't write Redis alone |
-| Partial dual-write bug | Reconciliation job compares counts |
+Put a metric on the user-visible effect of llm write through cache consistency before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Nightly:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to write through cache consistency that needs a hero is not done.
 
-```sql
-SELECT session_id FROM session_turns
-GROUP BY session_id
-HAVING count(*) != redis_turn_count(session_id);  -- pseudo
-```
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
 
-## Testing
+After a month, delete unused flags and dual paths. `llm-write-through-cache-consistency` accumulates temporary bridges faster than teams expect.
 
-Integration test two concurrent pods:
+## Review questions before merging llm write through cache consistency work
 
-```python
-def test_read_your_writes_cross_pod(store_a, store_b):
-    store_a.append_turn("s1", turn1)
-    session = store_b.get_session("s1", min_version=1)
-    assert len(session.turns) == 1
-```
+I treat LLM ops guide to write through cache consistency as an operations problem first. The goal is to operate write through cache consistency under token and quota pressure, not to collect frameworks.
+
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to write through cache consistency that needs a hero is not done.
+
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Field notes after thirty days of llm write through cache consistency
+
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm write through cache consistency, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. LLM ops guide to write through cache consistency without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm write through cache consistency.
+
+Slug-specific note (llm-write-through-cache-consistency): prioritize consistency behavior under load and verify with a fixture named `llm-write-through-cache-consistency-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
 ## Resources
 
-- [Redis — Cache consistency patterns](https://redis.io/docs/manual/patterns/)
-- [Martin Kleppmann — Designing Data-Intensive Applications (cache chapter)](https://dataintensive.net/)
-- [AWS — Caching best practices](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html)
-- [Jepsen — distributed cache consistency analyses](https://jepsen.io/analyses)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+- Internal runbook seed: `llm-write-through-cache-consistency`
+- https://12factor.net/
+- https://martinfowler.com/

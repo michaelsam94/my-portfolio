@@ -1,219 +1,159 @@
 ---
-title: "Counterfactual Explanations for ML Models"
+title: "Grounded generation with counterfactual explanations"
 slug: "rag-counterfactual-explanations"
-description: "Generate actionable counterfactual explanations for agent decisions — minimal input changes, feasibility constraints, diversity sampling, and audit-ready UX for regulated workflows."
+description: "Grounded generation with counterfactual explanations: how to operate chunking/indexing for counterfactual explanations — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-24"
-dateModified: "2026-07-17"
-tags: ["AI", "Rag", "Counterfactual"]
-keywords: "counterfactual explanations, XAI agents, actionable recourse, DiCE algorithm, model interpretability, agent decision audit"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, counterfactual, explanations, production, engineering"
 faq:
-  - q: "What makes a counterfactual explanation useful for agent users?"
-    a: "A useful counterfactual names the smallest change to inputs that would flip the agent's decision to an acceptable outcome — 'if annual_income were $52k instead of $48k, approval would succeed' — and respects feasibility (no 'change your age to 25'). Users need actionable recourse, not abstract feature attributions."
-  - q: "Can LLM agents generate counterfactuals without a trained classifier?"
-    a: "LLMs can narrate plausible counterfactuals from prompt context, but they hallucinate constraints unless grounded in a deterministic policy engine or surrogate model. Production stacks pair LLM phrasing with validated counterfactual search over structured features — never trust free-form counterfactuals for credit, hiring, or medical triage without verification."
-  - q: "How do you prevent discriminatory counterfactual suggestions?"
-    a: "Mark legally protected attributes as immutable in the search space (race, gender, age in many jurisdictions). Audit generated counterfactuals for proxy leakage — zip code substituting for race. Run fairness tests: counterfactual cost distributions should not differ systematically across demographic groups."
+  - q: "What is Grounded generation with counterfactual explanations?"
+    a: "Grounded generation with counterfactual explanations is the production approach to operate chunking/indexing for counterfactual explanations. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Grounded generation with counterfactual explanations?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with rag counterfactual explanations, prioritize it."
+  - q: "What is the most common mistake with Grounded generation with counterfactual explanations?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A loan agent denied the application in four seconds. The user asked why. The agent returned SHAP values: `debt_to_income` contributed −0.31, `credit_utilization` −0.22. Correct, opaque, and useless — the applicant cannot "adjust SHAP." What they needed was a **counterfactual**: "If you pay down card balance by $1,400 (utilization 78% → 62%), approval probability crosses threshold." Counterfactual explanations answer the closest-world question: *what minimal change would have produced a different outcome?*
+**Grounded generation with counterfactual explanations** means you operate chunking/indexing for counterfactual explanations — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-For agent systems making consequential decisions — underwriting, insurance quotes, access control, medical triage routing — counterfactuals bridge model output and human action. Feature attributions describe the past; counterfactuals prescribe feasible futures. This post covers search algorithms, constraint modeling, LLM grounding, and operational patterns that keep explanations auditable.
+This write-up is specific to `rag-counterfactual-explanations` in a rag context, using Postgres, pgvector, OpenSearch for the mechanics while keeping ownership human.
 
-## Counterfactuals vs attributions vs contrastive examples
+## A pragmatic path to Grounded generation with counterfactual explanations
 
-| Method | Question answered | User actionability |
-|--------|-------------------|-------------------|
-| Feature attribution (SHAP, LIME) | Which inputs pushed the score? | Low — no magnitude path |
-| Contrastive example | What similar case got approved? | Medium — may not be reachable |
-| Counterfactual | What change flips the decision? | High — if feasible |
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag counterfactual explanations, that means making failure visible early.
 
-Counterfactuals require a **decision boundary** — binary or score threshold — and a **search space** over mutable features. Agent wrappers often expose natural language decisions; underneath, a structured scorer or rules engine must exist for valid counterfactual search.
+Put a metric on the user-visible effect of rag counterfactual explanations before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-```
-Original x ──► model f(x) ──► deny (score 0.42, threshold 0.50)
-                    │
-                    ▼
-         search min ||x' - x|| s.t. f(x') ≥ 0.50
-                    │
-                    ▼
-         x' = x with {utilization: 0.62, inquiries: 1}
-         "Reduce utilization by $1,400; wait 30 days on new inquiry"
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with counterfactual explanations that needs a hero is not done.
 
-## DiCE-style search over structured features
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
 
-[Diverse Counterfactual Explanations (DiCE)](https://arxiv.org/abs/1905.07857) generates multiple valid counterfactuals by optimizing proximity, sparsity, and diversity jointly. Production implementations rarely use the library verbatim but follow its pattern:
+## Start from the user-visible symptom
 
-```python
-# explanations/counterfactual_search.py
-from dataclasses import dataclass
-import numpy as np
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag counterfactual explanations, that means making failure visible early.
 
-@dataclass
-class FeatureSpec:
-    name: str
-    value: float
-    mutable: bool
-    min_val: float
-    max_val: float
-    dtype: str  # "continuous" | "categorical"
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-IMMUTABLE = {"age", "race", "gender", "zip_code"}  # jurisdiction-specific
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag counterfactual explanations.
 
-def generate_counterfactuals(
-    features: list[FeatureSpec],
-    predict_fn,
-    target_class: int = 1,
-    n: int = 5,
-    max_iter: int = 2000,
-) -> list[dict]:
-    x0 = np.array([f.value for f in features])
-    mutable_idx = [i for i, f in enumerate(features) if f.mutable and f.name not in IMMUTABLE]
-    rng = np.random.default_rng(42)
-    candidates = []
+Concretely, being able to operate chunking/indexing for counterfactual explanations forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-    for _ in range(max_iter):
-        x_prime = x0.copy()
-        # Sparse perturbation: change 1–3 features
-        k = rng.integers(1, min(4, len(mutable_idx) + 1))
-        chosen = rng.choice(mutable_idx, size=k, replace=False)
-        for j in chosen:
-            spec = features[j]
-            if spec.dtype == "continuous":
-                delta = rng.normal(0, 0.1 * (spec.max_val - spec.min_val))
-                x_prime[j] = np.clip(x0[j] + delta, spec.min_val, spec.max_val)
-            else:
-                x_prime[j] = rng.integers(spec.min_val, spec.max_val + 1)
-
-        if predict_fn(x_prime) >= target_class:
-            dist = np.sum(np.abs(x_prime - x0) / (np.array([f.max_val - f.min_val + 1e-9 for f in features])))
-            candidates.append((dist, x_prime))
-
-    candidates.sort(key=lambda t: t[0])
-    # Diversity filter: drop counterfactuals too similar in feature space
-    diverse = []
-    for dist, xp in candidates:
-        if all(np.mean(np.abs(xp - d) > 0.05) for d in diverse):
-            diverse.append(xp)
-        if len(diverse) >= n:
-            break
-    return [dict(zip([f.name for f in features], xp)) for xp in diverse]
-```
-
-Wrap `predict_fn` with the same preprocessing pipeline as production — counterfactuals on raw user input that bypass scaling produce fantasy edits.
-
-## Feasibility and actionability constraints
-
-Mathematically valid counterfactuals often violate reality:
-
-- "Increase income by $200k" — not actionable this week
-- "Change employment_status to 'tenured professor'" — categorical leap
-- "Set age to 21" — illegal suggestion in credit contexts
-
-Layer **feasibility scores** after search:
-
-```python
-def feasibility_score(original: dict, counterfactual: dict, rules: list) -> float:
-    score = 1.0
-    for rule in rules:
-        score *= rule(original, counterfactual)
-    return score
-
-def income_delta_cap(original, cf, max_pct=0.15):
-    delta = cf["annual_income"] - original["annual_income"]
-    if delta > max_pct * original["annual_income"]:
-        return 0.0
-    return 1.0
-```
-
-Rank displayed counterfactuals by `proximity × feasibility`, not proximity alone. Log rejected infeasible candidates for compliance review — regulators ask what you *did not* show.
-
-## Grounding LLM agents in verified counterfactuals
-
-Agent UX often demands natural language. Never let the LLM invent numeric counterfactuals.
-
-Pipeline:
-
-1. Structured decision service returns `{decision, score, features}`.
-2. Counterfactual engine searches over mutable features.
-3. LLM receives **frozen** counterfactual JSON and rephrases for the user.
-4. Validator checks LLM output against JSON — reject regeneration if numbers drift.
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
 
 ```typescript
-const systemPrompt = `You explain loan decisions using ONLY the counterfactuals in COUNTERFACTUALS_JSON.
-Do not invent new numbers, features, or policy rules. If asked about immutable attributes, state they cannot be changed per policy.`;
-
-async function explainDecision(sessionId: string, decision: Decision) {
-  const cfs = await counterfactualService.generate(decision.featureVector, {
-    desiredOutcome: "approve",
-    count: 3,
-  });
-
-  const llmResponse = await agent.complete({
-    system: systemPrompt,
-    user: `Decision: ${decision.outcome}. COUNTERFACTUALS_JSON: ${JSON.stringify(cfs)}`,
-  });
-
-  assertNumbersMatch(llmResponse, cfs); // strip and compare
-  await auditLog.write({ sessionId, decision, cfs, llmResponse });
-  return llmResponse;
+// Grounded generation with counterfactual explanations
+export async function handle_rag_counterfactual_explanations(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("rag-counterfactual-explanations");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-This pattern survives model upgrades — the search layer is deterministic; the LLM is presentation.
+## Implementation details for rag counterfactual explanations
 
-## Diversity and user trust
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag counterfactual explanations, that means making failure visible early.
 
-Single counterfactuals feel coercive ("the only way is pay $1,400"). Multiple paths build trust:
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-- **Path A** — pay down utilization (fast, requires liquidity)
-- **Path B** — add co-signer (relational cost)
-- **Path C** — wait 60 days for inquiry to age off (time cost)
+Acceptance check: an on-call engineer can explain system state for rag counterfactual explanations from one dashboard and one runbook page.
 
-DiCE's diversity objective penalizes counterfactuals that change the same features. In UI, label tradeoffs explicitly; hide internal feature names users do not recognize (`revolving_balance` → "total credit card balance").
+My never-again list for rag counterfactual explanations: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Evaluation metrics
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
 
-Offline:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-- **Validity rate** — % counterfactuals that actually flip `predict_fn`
-- **Sparsity** — mean number of changed features
-- **Proximity** — normalized L1 distance
-- **Actionability** — % passing feasibility rules
+## Flags, canaries, and kill switches
 
-Online:
+I treat Grounded generation with counterfactual explanations as an operations problem first. The goal is to operate chunking/indexing for counterfactual explanations, not to collect frameworks.
 
-- User follow-through rate on suggested actions (with consent)
-- Support ticket volume on "why denied" themes
-- Disparate impact of suggested actions across groups
+Put a metric on the user-visible effect of rag counterfactual explanations before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Run counterfactual eval in CI when the scorer model version changes — explanation quality regresses silently otherwise.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with counterfactual explanations that needs a hero is not done.
 
-## Audit, retention, and regulation
+Review prompts I use: what happens twice, what happens never, what happens partially? If Grounded generation with counterfactual explanations cannot answer, it is not production-ready.
 
-Store `{input_hash, model_version, counterfactuals[], timestamp, immutable_set}` for each explanation request. GDPR and FCRA contexts may treat explanations as part of adverse action notices — retention policies apply.
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
 
-For tool chains, propagate `explanation_id` so downstream tools do not re-generate conflicting counterfactuals mid-session.
+## Proving it worked
 
-Red-team: prompt injection asking the agent to suggest changing protected attributes. Immutable feature enforcement must live in search code, not prompt instructions alone.
+I treat Grounded generation with counterfactual explanations as an operations problem first. The goal is to operate chunking/indexing for counterfactual explanations, not to collect frameworks.
 
-## Latency budgets and caching in production
+Put a metric on the user-visible effect of rag counterfactual explanations before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Counterfactual search is CPU-bound for tree ensembles; GPU for neural scorers. Budget 100–500ms per explanation request; cache by `(model_version, feature_vector_hash, desired_outcome)` for repeat queries in the same session.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with counterfactual explanations that needs a hero is not done.
 
-Feature flag `counterfactual_explanations_v2` when changing search parameters — A/B test comprehension, not just validity rate.
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
 
-Alert when validity rate drops below 95% — usually a training-serving skew bug.
+Related reading:
 
-Session-level consistency matters: if an agent generates counterfactuals mid-conversation and the user acts on one path, subsequent turns must not contradict earlier suggested edits. Pin `counterfactual_set_id` on the session and invalidate when the underlying scorer model version changes.
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## The takeaway
+## Follow-ups teams usually skip
 
-Counterfactual explanations turn agent denials into paths forward — when search is constrained, verified, and separated from LLM narration. Build on structured scorers, enforce immutable attributes in code, rank by feasibility, surface diverse options, and audit everything. Attribution charts impress data scientists; counterfactuals reduce support tickets and satisfy regulators asking "what could they have done differently?"
+I treat Grounded generation with counterfactual explanations as an operations problem first. The goal is to operate chunking/indexing for counterfactual explanations, not to collect frameworks.
+
+Put a metric on the user-visible effect of rag counterfactual explanations before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag counterfactual explanations.
+
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
+
+## Practical defaults for Grounded generation with counterfactual explanations
+
+I treat Grounded generation with counterfactual explanations as an operations problem first. The goal is to operate chunking/indexing for counterfactual explanations, not to collect frameworks.
+
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag counterfactual explanations.
+
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
+
+## Review questions before merging rag counterfactual explanations work
+
+I treat Grounded generation with counterfactual explanations as an operations problem first. The goal is to operate chunking/indexing for counterfactual explanations, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Grounded generation with counterfactual explanations without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with counterfactual explanations that needs a hero is not done.
+
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
+
+After a month, delete unused flags and dual paths. `rag-counterfactual-explanations` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of rag counterfactual explanations
+
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag counterfactual explanations, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Grounded generation with counterfactual explanations without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for rag counterfactual explanations from one dashboard and one runbook page.
+
+Slug-specific note (rag-counterfactual-explanations): prioritize explanations behavior under load and verify with a fixture named `rag-counterfactual-explanations-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for rag counterfactual explanations. Expand only when the metric demands it.
 
 ## Resources
 
-- [DiCE: Diverse Counterfactual Explanations (arxiv)](https://arxiv.org/abs/1905.07857)
-- [Interpretable Machine Learning — Counterfactual Explanations chapter](https://christophm.github.io/interpretable-ml-book/counterfactual.html)
-- [IBM AI Explainability 360 — DiCE implementation](https://aix360.mybluemix.net/)
-- [EU AI Act — transparency obligations summary](https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai)
-- [FCRA adverse action notice requirements (CFPB)](https://www.consumerfinance.gov/compliance/compliance-resources/fair-credit-reporting-act/)
+- Internal runbook seed: `rag-counterfactual-explanations`
+- https://12factor.net/
+- https://martinfowler.com/

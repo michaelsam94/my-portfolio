@@ -1,284 +1,159 @@
 ---
-title: "AI Agents: Kyc Document Verification"
+title: "Agent systems: kyc document verification"
 slug: "agent-kyc-document-verification"
-description: "Production KYC document verification for agent-assisted onboarding—OCR pipelines, liveness checks, vendor fallbacks, audit trails, and human-in-the-loop escalation without compliance gaps."
+description: "Agent systems: kyc document verification: how to keep agent side effects idempotent around kyc document verification — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-08-10"
-dateModified: "2025-08-10"
-tags: ["AI", "Agent", "Kyc"]
-keywords: "KYC document verification, identity verification, OCR pipeline, liveness detection, agent onboarding, AML compliance, human in the loop"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, kyc, document, verification, production, engineering"
 faq:
-  - q: "Can AI agents auto-approve KYC without human review?"
-    a: "Only for low-risk tiers where regulation and your risk model allow straight-through processing—typically standardized government IDs with high vendor confidence, passing liveness, and no sanctions hits. Medium and high-risk jurisdictions, PEP matches, or document anomalies must route to human analysts. Agents orchestrate and summarize; they do not replace the compliance officer for final approval unless explicitly licensed to."
-  - q: "How do you handle poor-quality mobile ID photos in verification pipelines?"
-    a: "Run quality gates before OCR: blur detection, glare ratio, document edge detection, and minimum DPI. Reject early with user-facing retake guidance rather than sending garbage to OCR vendors—you pay per call and accumulate false mismatches. Cache retake attempts per session with backoff to prevent fraud probing."
-  - q: "What audit data must KYC verification retain?"
-    a: "Store verification decision, vendor scores, document type, country, hash of image (not necessarily raw image long-term), analyst override reason, agent tool calls, and timestamps in append-only audit storage. Retention follows local law—often five to seven years after relationship ends. Separate PII vault from application logs; agents should read redacted summaries only."
-  - q: "How should agent tool calls interact with KYC vendors?"
-    a: "Wrap vendors behind an internal idempotent API with case_id correlation. Agents invoke tools like submit_document or check_status—never raw vendor credentials. Timeout vendor calls aggressively; partial results go to manual queue rather than retry loops that duplicate submissions. Feature-flag vendor routing per country for A/B on accuracy."
+  - q: "What is Agent systems: kyc document verification?"
+    a: "Agent systems: kyc document verification is the production approach to keep agent side effects idempotent around kyc document verification. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: kyc document verification?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent kyc document verification, prioritize it."
+  - q: "What is the most common mistake with Agent systems: kyc document verification?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-An onboarding agent congratulated a user on verified identity in under thirty seconds. Compliance pulled the case two days later: the passport OCR misread a digit, liveness was a screen replay, and the agent had auto-approved because the vendor confidence score cleared an threshold tuned for a different document type. KYC document verification is not a single API call—it is a staged pipeline with quality gates, vendor orchestration, sanctions screening, and human escalation paths that agents must respect, not shortcut.
+**Agent systems: kyc document verification** means you keep agent side effects idempotent around kyc document verification — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-## Verification stages and agent boundaries
+This write-up is specific to `agent-kyc-document-verification` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-Typical flow for agent-assisted KYC:
+## Fitting Agent systems: kyc document verification into an existing system
 
-```
-Upload → Quality gate → Document classify → OCR/extract → Authenticity checks
-    → Liveness (selfie) → Face match → Sanctions/PEP → Risk score → Decision
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent kyc document verification, that means making failure visible early.
 
-| Stage | Agent role | Auto-approve OK? |
-|-------|------------|------------------|
-| User guidance | Retake coaching, explain blur | Yes |
-| Quality gate | Trigger retake tool | Yes |
-| OCR extract | Display extracted fields for confirm | No—user confirms |
-| Sanctions hit | Summarize hit, freeze account tool | Never auto-clear |
-| Low-risk approve | Call decision tool if policy allows | Policy-gated |
-| Analyst queue | Package case summary | N/A |
+Put a metric on the user-visible effect of agent kyc document verification before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Agents excel at **conversational recovery** ("turn off flash, fill the frame") and **case summarization** for analysts. Final approval stays with policy engines and humans where required.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: kyc document verification that needs a hero is not done.
 
-## Document ingestion and quality gates
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-Before OCR, score capture quality:
+## Contracts and ownership boundaries
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent kyc document verification, that means making failure visible early.
+
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
+
+Acceptance check: an on-call engineer can explain system state for agent kyc document verification from one dashboard and one runbook page.
+
+Concretely, being able to keep agent side effects idempotent around kyc document verification forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
 ```python
+# Agent systems: kyc document verification
 from dataclasses import dataclass
 
-@dataclass
-class CaptureQuality:
-    blur_score: float      # Laplacian variance; higher = sharper
-    glare_ratio: float     # fraction of overexposed pixels
-    doc_detected: bool     # quadrilateral found
-    dpi_estimate: int
+@dataclass(frozen=True)
+class AgentKycDocumentVRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def quality_gate(q: CaptureQuality) -> tuple[bool, str | None]:
-    if not q.doc_detected:
-        return False, "Document edges not detected—place ID flat in frame"
-    if q.blur_score < 120:
-        return False, "Image too blurry—hold steady and retake"
-    if q.glare_ratio > 0.15:
-        return False, "Glare detected—tilt phone slightly"
-    if q.dpi_estimate < 200:
-        return False, "Move closer so text is readable"
-    return True, None
+async def run_agent_kyc_document_verif(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-kyc-document-verification"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Store images in **encrypted object storage** with short-lived presigned URLs. Agents never receive raw image bytes in prompts—only structured extraction results and quality codes.
+## State, storage, and retention
 
-## OCR and field normalization
+I treat Agent systems: kyc document verification as an operations problem first. The goal is to keep agent side effects idempotent around kyc document verification, not to collect frameworks.
 
-Vendor OCR returns heterogeneous JSON. Normalize to internal schema:
+Keep side effects at the edges and make every write idempotent. Agent systems: kyc document verification without retry semantics is a future incident write-up.
 
-```typescript
-interface IdentityDocument {
-  caseId: string;
-  docType: "passport" | "drivers_license" | "national_id";
-  country: string;           // ISO 3166-1 alpha-2
-  fields: {
-    fullName: string;
-    documentNumber: string;
-    dateOfBirth: string;     // ISO date
-    expiryDate: string;
-  };
-  vendorRef: string;
-  confidence: number;        // 0–1 composite
-  rawChecksum: string;       // hash for audit, not PII in logs
-}
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: kyc document verification that needs a hero is not done.
 
-function normalizeMrz(mrzLines: string[]): Partial<IdentityDocument["fields"]> {
-  // TD3 passport MRZ parsing with check digit validation
-  const line2 = mrzLines[1] ?? "";
-  if (!validateCheckDigits(line2)) {
-    throw new ValidationError("MRZ check digit failure");
-  }
-  return {
-    documentNumber: line2.slice(0, 9).replace(/</g, ""),
-    dateOfBirth: parseMrzDate(line2.slice(13, 19)),
-    expiryDate: parseMrzDate(line2.slice(21, 27)),
-  };
-}
-```
+My never-again list for agent kyc document verification: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Cross-validate MRZ against visual zone OCR when both exist—discrepancies route to manual review automatically.
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-## Liveness and presentation attack detection
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Selfie liveness blocks photo-of-photo and screen replay:
+## Security defaults that are non-negotiable
 
-```python
-async def liveness_check(session_id: str, selfie_uri: str, vendor: LivenessVendor) -> dict:
-    result = await vendor.analyze(
-        session_id=session_id,
-        image_uri=selfie_uri,
-        challenge="turn_head_left",  # active liveness
-    )
-    return {
-        "passed": result.score >= LIVENESS_THRESHOLD,
-        "score": result.score,
-        "attack_vector": result.suspected_attack,  # print, screen, mask
-        "vendor_ref": result.transaction_id,
-    }
-```
+Teams usually discover Agent systems: kyc document verification after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Never let the agent skip liveness because the user is "in a hurry." Policy engine enforces ordering: document verified → liveness passed → face match.
+Keep side effects at the edges and make every write idempotent. Agent systems: kyc document verification without retry semantics is a future incident write-up.
 
-Face match compares selfie embedding to document portrait:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: kyc document verification that needs a hero is not done.
 
-```python
-def face_match_score(selfie_emb: list[float], doc_emb: list[float]) -> float:
-    # cosine similarity
-    dot = sum(a * b for a, b in zip(selfie_emb, doc_emb))
-    norm = (sum(a*a for a in selfie_emb) ** 0.5) * (sum(b*b for b in doc_emb) ** 0.5)
-    return dot / norm if norm else 0.0
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: kyc document verification cannot answer, it is not production-ready.
 
-FACE_MATCH_MIN = 0.82  # tune per demographic fairness eval
-```
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-Monitor false reject rates across demographic buckets—regulators ask.
+## SLOs and dashboards
 
-## Sanctions, PEP, and risk scoring
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent kyc document verification, that means making failure visible early.
 
-After identity extraction, screen against sanctions and PEP lists:
+Put a metric on the user-visible effect of agent kyc document verification before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```sql
-CREATE TABLE kyc_cases (
-  case_id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  status TEXT NOT NULL,  -- pending, approved, rejected, manual_review
-  risk_tier TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  decided_at TIMESTAMPTZ,
-  decided_by TEXT        -- 'policy:v2', 'analyst:jane', 'agent:orchestrator'
-);
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent kyc document verification.
 
-CREATE TABLE kyc_audit_events (
-  id BIGSERIAL PRIMARY KEY,
-  case_id UUID REFERENCES kyc_cases(case_id),
-  event_type TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  actor TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-Agent tool to submit screening (idempotent):
+Related reading:
 
-```python
-async def tool_run_sanctions_screen(case_id: str, full_name: str, dob: str, country: str):
-    existing = await db.fetchval(
-        "SELECT 1 FROM kyc_audit_events WHERE case_id=$1 AND event_type='sanctions_screen'",
-        case_id,
-    )
-    if existing:
-        return {"status": "already_screened"}
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-    hits = await sanctions_client.screen(name=full_name, dob=dob, country=country)
-    await audit_log(case_id, "sanctions_screen", {"hit_count": len(hits)}, actor="agent")
-    if hits:
-        await escalate_manual(case_id, reason="sanctions_hit", hits=redact(hits))
-        return {"status": "manual_review", "hit_count": len(hits)}
-    return {"status": "clear"}
-```
+## First-week validation plan
 
-Any hit **freezes** auto-approval—agent messages user neutrally ("review in progress") without revealing watchlist details.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent kyc document verification, that means making failure visible early.
 
-## Human-in-the-loop escalation
+Keep side effects at the edges and make every write idempotent. Agent systems: kyc document verification without retry semantics is a future incident write-up.
 
-Manual queue items need structured analyst UI fed by agent summaries—not raw chat logs:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent kyc document verification.
 
-```python
-def build_analyst_packet(case: KycCase) -> dict:
-    return {
-        "case_id": case.case_id,
-        "extracted_fields": case.fields,
-        "quality_issues": case.quality_log,
-        "vendor_scores": case.vendor_scores,
-        "sanctions_summary": case.sanctions_summary,
-        "agent_notes": case.agent_summary,  # max 500 chars, no speculation
-        "recommended_action": policy_recommendation(case),  # advisory only
-    }
-```
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-Analyst override always writes audit event with reason code. Train agents never to promise approval timelines when status is `manual_review`.
+## Practical defaults for Agent systems: kyc document verification
 
-## Vendor abstraction and fallbacks
+I treat Agent systems: kyc document verification as an operations problem first. The goal is to keep agent side effects idempotent around kyc document verification, not to collect frameworks.
 
-Multi-vendor routing by country and document type:
+Put a metric on the user-visible effect of agent kyc document verification before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-| Country | Primary vendor | Fallback | Rationale |
-|---------|----------------|----------|-----------|
-| US | Vendor A | Vendor B | DL formats vary by state |
-| EU | Vendor B | Manual | GDPR data residency |
-| APAC | Vendor C | Vendor A | Language coverage |
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: kyc document verification that needs a hero is not done.
 
-```python
-async def ocr_with_fallback(doc: UploadedDoc) -> OcrResult:
-    primary = router.primary(doc.country, doc.doc_type)
-    try:
-        return await primary.extract(doc, timeout=8.0)
-    except (VendorTimeout, VendorError):
-        fallback = router.fallback(doc.country, doc.doc_type)
-        return await fallback.extract(doc, timeout=12.0)
-```
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-Duplicate vendor submissions for same `case_id` waste money and create conflicting records—enforce idempotency keys.
+After a month, delete unused flags and dual paths. `agent-kyc-document-verification` accumulates temporary bridges faster than teams expect.
 
-## Security and data minimization
+## Review questions before merging agent kyc document verification work
 
-- **Tokenize** document numbers in application DB; full values in HSM-backed vault if needed.
-- **Redact** images from agent context windows; use field-level summaries.
-- **Rate-limit** uploads per device and IP to slow fraud farms.
-- **Device binding** optional step-up for high-value accounts.
+I treat Agent systems: kyc document verification as an operations problem first. The goal is to keep agent side effects idempotent around kyc document verification, not to collect frameworks.
 
-Agents with tool access get scoped credentials—read case status, not bulk export.
+Put a metric on the user-visible effect of agent kyc document verification before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Metrics and compliance reporting
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: kyc document verification that needs a hero is not done.
 
-Track:
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-- `kyc_auto_approval_rate{tier, country}`
-- `kyc_manual_queue_age_hours` p95
-- `kyc_ocr_retry_total{reason}`
-- `kyc_liveness_fail_total{attack_vector}`
-- `kyc_vendor_latency_seconds{vendors}`
+Default deny, explicit timeouts, and one dashboard row for agent kyc document verification. Expand only when the metric demands it.
 
-Monthly fairness review: false reject/approve rates by age band and document country. Regulators care about disproportionate impact.
+## Field notes after thirty days of agent kyc document verification
 
-## Anti-patterns
+Teams usually discover Agent systems: kyc document verification after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-- **Single global confidence threshold** across document types.
-- **Agent auto-approve on vendor timeout**—queue manual instead.
-- **Storing raw ID images in LLM logs**—immediate compliance failure.
-- **No MRZ check digit validation**—OCR errors slip through.
-- **Telling users why sanctions hit**—information leakage to fraudsters.
+Put a metric on the user-visible effect of agent kyc document verification before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## The takeaway
+Acceptance check: an on-call engineer can explain system state for agent kyc document verification from one dashboard and one runbook page.
 
-KYC document verification pipelines combine capture quality, OCR normalization, liveness, screening, and policy-gated decisions. Agents improve UX and analyst throughput but must not bypass sanctions hits or over-trust vendor scores. Idempotent vendor wrappers, append-only audit trails, and human queues for anomalies turn agent-assisted onboarding from a demo into something compliance can sign off on.
+Slug-specific note (agent-kyc-document-verification): prioritize verification behavior under load and verify with a fixture named `agent-kyc-document-verification-smoke`.
 
-## FAQ
-
-### Can AI agents auto-approve KYC without human review?
-
-Only for low-risk tiers where regulation and your risk model allow straight-through processing—typically standardized government IDs with high vendor confidence, passing liveness, and no sanctions hits. Medium and high-risk jurisdictions, PEP matches, or document anomalies must route to human analysts. Agents orchestrate and summarize; they do not replace the compliance officer for final approval unless explicitly licensed to.
-
-### How do you handle poor-quality mobile ID photos in verification pipelines?
-
-Run quality gates before OCR: blur detection, glare ratio, document edge detection, and minimum DPI. Reject early with user-facing retake guidance rather than sending garbage to OCR vendors—you pay per call and accumulate false mismatches. Cache retake attempts per session with backoff to prevent fraud probing.
-
-### What audit data must KYC verification retain?
-
-Store verification decision, vendor scores, document type, country, hash of image (not necessarily raw image long-term), analyst override reason, agent tool calls, and timestamps in append-only audit storage. Retention follows local law—often five to seven years after relationship ends. Separate PII vault from application logs; agents should read redacted summaries only.
-
-### How should agent tool calls interact with KYC vendors?
-
-Wrap vendors behind an internal idempotent API with case_id correlation. Agents invoke tools like submit_document or check_status—never raw vendor credentials. Timeout vendor calls aggressively; partial results go to manual queue rather than retry loops that duplicate submissions. Feature-flag vendor routing per country for A/B on accuracy.
+After a month, delete unused flags and dual paths. `agent-kyc-document-verification` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [www.fatf-gafi.org/en/publications/Fatfrecommendations/Fatf-recommendations.html](https://www.fatf-gafi.org/en/publications/Fatfrecommendations/Fatf-recommendations.html) — FATF recommendations
-- [developers.onfido.com/](https://developers.onfido.com/) — Onfido API documentation
-- [docs.veriff.com/](https://docs.veriff.com/) — Veriff documentation
-- [www.icma-group.com/standards/iso-20022/](https://www.icma-group.com/standards/iso-20022/) — ISO standards context for financial messaging
-- [nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63-3.pdf](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63-3.pdf) — NIST digital identity guidelines
+- Internal runbook seed: `agent-kyc-document-verification`
+- https://12factor.net/
+- https://martinfowler.com/

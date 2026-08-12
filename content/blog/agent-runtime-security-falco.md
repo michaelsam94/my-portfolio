@@ -1,304 +1,160 @@
 ---
-title: "AI Agents: Runtime Security Falco"
+title: "Runtime Security Falco for production agents"
 slug: "agent-runtime-security-falco"
-description: "Runtime security for AI agent workloads with Falco — eBPF syscall rules, Kubernetes detection for shell escapes and crypto miners, tuning false positives, and alert routing when agents run untrusted code."
+description: "Runtime Security Falco for production agents: how to make agent runtime security falco observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-13"
-dateModified: "2025-11-13"
-tags: ["AI", "Agent", "Runtime"]
-keywords: "Falco runtime security, eBPF Kubernetes, AI agent security, container syscall monitoring, Falco rules, CNCF Falco, agent sandbox escape, runtime threat detection"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+  - "Security"
+keywords: "agent, runtime, security, falco, production, engineering"
 faq:
-  - q: "Why do AI agent pods need runtime security beyond network policies?"
-    a: "Agents increasingly run code interpreters, shell tools, and user-supplied plugins inside containers. Network policies block lateral movement; Falco detects in-container behavior — unexpected shells, binary downloads, credential file reads, reverse shells — that indicates escape or compromise."
-  - q: "Falco vs admission control — what is the division of labor?"
-    a: "Admission controllers (OPA Gatekeeper, Kyverno) decide whether a pod may start — image allowlists, seccomp, dropped caps. Falco watches syscalls after the pod is running and alerts on suspicious runtime behavior admission could not predict."
-  - q: "How do you reduce Falco false positives for legitimate agent tools?"
-    a: "Scope rules by Kubernetes labels (agent tier, tool profile), maintain allowlists for known interpreter invocations, tune file paths per base image, and run in log-only mode for two weeks before paging. Agents that legitimately spawn subprocesses need narrower rules than static API pods."
-  - q: "What agent behaviors should trigger immediate Falco alerts?"
-    a: "Shell spawned from inference process, write to /etc or /root, outbound connection from unexpected binary, mount of hostPath, read of cloud metadata combined with curl/wget, crypto miner process names, and ptrace attach attempts inside agent sandboxes."
+  - q: "What is Runtime Security Falco for production agents?"
+    a: "Runtime Security Falco for production agents is the production approach to make agent runtime security falco observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Runtime Security Falco for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent runtime security falco, prioritize it."
+  - q: "What is the most common mistake with Runtime Security Falco for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A security researcher on our red team pasted Python into a "code assistant" tool. The sandbox was supposed to block filesystem access. The agent wrapper called `subprocess.run(["python", "-c", user_code])` without seccomp. Twenty seconds later, Falco fired `Sensitive file read below /etc` tied to a pod labeled `agent-code-runner`. We killed the pod before credentials in a mounted ConfigMap were exfiltrated.
+**Runtime Security Falco for production agents** means you make agent runtime security falco observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Static scanning did not catch that — the vulnerability was runtime behavior in a container that passed image signing and admission checks. That is Falco's lane.
+This write-up is specific to `agent-runtime-security-falco` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Where Falco sits in the agent security stack
+## Runtime Security Falco for production agents: production checklist
 
-Agent workloads in Kubernetes typically stack defenses:
+I treat Runtime Security Falco for production agents as an operations problem first. The goal is to make agent runtime security falco observable and interruptible, not to collect frameworks.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Admission: signed images, no privileged, dropped CAP_SYS_ADMIN│
-├─────────────────────────────────────────────────────────────┤
-│ NetworkPolicy: egress allowlist to LLM API + tool endpoints │
-├─────────────────────────────────────────────────────────────┤
-│ Pod Security: seccomp RuntimeDefault, readOnlyRootFilesystem │
-├─────────────────────────────────────────────────────────────┤
-│ Falco (eBPF): syscall + K8s audit events → detect anomalies │
-└─────────────────────────────────────────────────────────────┘
-```
+Put a metric on the user-visible effect of agent runtime security falco before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Falco uses the Linux kernel via **eBPF probes** (modern driver) or kernel module (legacy) to observe syscalls without modifying application code. For agents executing untrusted logic, that visibility is non-optional.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent runtime security falco.
 
-## Deploying Falco for agent namespaces
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-Helm install with eBPF driver enabled:
+## Inputs, outputs, invariants
 
-```bash
-helm repo add falcosecurity https://falcosecurity.github.io/charts
-helm install falco falcosecurity/falco \
-  --namespace falco --create-namespace \
-  --set driver.kind=ebpf \
-  --set falcosidekick.enabled=true \
-  --set falcosidekick.config.webhook.address="http://alert-router.security.svc/alerts"
-```
+Teams usually discover Runtime Security Falco for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Scope collection to agent namespaces to reduce noise:
+Put a metric on the user-visible effect of agent runtime security falco before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```yaml
-# values-agent-cluster.yaml
- collectors:
-   enabled: true
-   containerd:
-     enabled: true
- customRules:
-   agent-runtime.yaml: |-
-     # custom rules loaded from ConfigMap
- falco:
-   jsonOutput: true
-   priority: notice
-   bufferedOutputs: false
-   rules_file:
-     - /etc/falco/falco_rules.yaml
-     - /etc/falco/k8s_audit_rules.yaml
-     - /etc/falco/rules.d/agent-runtime.yaml
+Acceptance check: an on-call engineer can explain system state for agent runtime security falco from one dashboard and one runbook page.
+
+Concretely, being able to make agent runtime security falco observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
+
+```python
+# Runtime Security Falco for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentRuntimeSecuriRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_runtime_security_f(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-runtime-security-falco"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Run Falco as a DaemonSet on nodes hosting agent sandboxes. Sidecar Falco per pod is rarely worth the overhead.
+## Concurrency, retries, and timeouts
 
-## Custom rules for agent threat patterns
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent runtime security falco, that means making failure visible early.
 
-Default Falco rules catch generic bad behavior. Agent pods need additions for **interpreter abuse** and **tool escape**.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```yaml
-# rules.d/agent-runtime.yaml
-- macro: agent_namespace
-  condition: k8s.ns.name in (agent-sandbox, agent-tools-prod)
+Acceptance check: an on-call engineer can explain system state for agent runtime security falco from one dashboard and one runbook page.
 
-- macro: agent_pod
-  condition: agent_namespace and k8s.pod.label.app.kubernetes.io/component = "code-runner"
+My never-again list for agent runtime security falco: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-- list: agent_allowed_binaries
-  items: [python3, node, tini, dumb-init]
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-- rule: Agent Unexpected Shell
-  desc: Shell spawned inside agent code-runner pod
-  condition: >
-    agent_pod and spawned_process and proc.name in (bash, sh, zsh, dash)
-    and not proc.pname in (agent_allowed_binaries)
-  output: >
-    Unexpected shell in agent sandbox
-    (user=%user.name pod=%k8s.pod.name ns=%k8s.ns.name
-     shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
-  priority: CRITICAL
-  tags: [agent, shell, mitre_execution]
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-- rule: Agent Sensitive File Read
-  desc: Read credential or cloud metadata paths from agent pod
-  condition: >
-    agent_pod and open_read and
-    (fd.name startswith /etc/kubernetes or
-     fd.name startswith /var/run/secrets or
-     fd.name = /etc/passwd)
-  output: >
-    Sensitive file read in agent pod
-    (file=%fd.name pod=%k8s.pod.name cmdline=%proc.cmdline)
-  priority: CRITICAL
-  tags: [agent, credential_access]
+## Support and audit workflows
 
-- rule: Agent Outbound Recon Tool
-  desc: curl/wget/nc from agent sandbox to non-allowlisted destination
-  condition: >
-    agent_pod and spawned_process and
-    proc.name in (curl, wget, nc, ncat) and
-    not fd.sip in (10.0.0.0/8)
-  output: >
-    Network recon tool in agent sandbox
-    (proc=%proc.name cmdline=%proc.cmdline pod=%k8s.pod.name)
-  priority: WARNING
-  tags: [agent, exfiltration]
-```
+I treat Runtime Security Falco for production agents as an operations problem first. The goal is to make agent runtime security falco observable and interruptible, not to collect frameworks.
 
-Tune `agent_allowed_binaries` to match your base image. A pod that never legitimately needs `curl` should alert on any invocation.
+Keep side effects at the edges and make every write idempotent. Runtime Security Falco for production agents without retry semantics is a future incident write-up.
 
-## Kubernetes audit integration
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Runtime Security Falco for production agents that needs a hero is not done.
 
-Syscalls tell you what happened inside the container. **Kubernetes audit logs** tell you who created the risky pod.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Runtime Security Falco for production agents cannot answer, it is not production-ready.
 
-Enable audit policy capturing pod exec and privileged escalations:
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-```yaml
-# k8s-audit-policy.yaml
-apiVersion: audit.k8s.io/v1
-kind: Policy
-rules:
-  - level: Metadata
-    omitStages: ["RequestReceived"]
-  - level: RequestResponse
-    verbs: ["create"]
-    resources:
-      - group: ""
-        resources: ["pods/exec", "pods/attach"]
-  - level: RequestResponse
-    users: ["system:serviceaccount:agent-sandbox:*"]
-    verbs: ["create", "update", "patch"]
-    resources:
-      - group: ""
-        resources: ["pods"]
-```
+## Capacity and load notes
 
-Falco's `k8s_audit` rules correlate: `kubectl exec` into agent pod followed by shell spawn = higher confidence incident.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent runtime security falco, that means making failure visible early.
 
-## Seccomp and Falco together
+Keep side effects at the edges and make every write idempotent. Runtime Security Falco for production agents without retry semantics is a future incident write-up.
 
-Do not choose between seccomp and Falco — stack them.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Runtime Security Falco for production agents that needs a hero is not done.
 
-Agent code-runner seccomp profile (partial):
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-```json
-{
-  "defaultAction": "SCMP_ACT_ERRNO",
-  "syscalls": [
-    { "names": ["read", "write", "exit", "exit_group", "futex", "clock_gettime"], "action": "SCMP_ACT_ALLOW" },
-    { "names": ["execve", "execveat"], "action": "SCMP_ACT_ALLOW", "args": [{ "index": 0, "op": "SCMP_CMP_EQ", "value": "/usr/bin/python3.11" }] }
-  ]
-}
-```
+Related reading:
 
-Seccomp blocks many escapes silently. Falco alerts when something **attempted** a blocked syscall — useful signal for tuning profiles and detecting probing.
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-Pod spec:
+## Ship gate
 
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: agent-code-runner
-  namespace: agent-sandbox
-  labels:
-    app.kubernetes.io/component: code-runner
-spec:
-  securityContext:
-    runAsNonRoot: true
-    seccompProfile:
-      type: Localhost
-      localhostProfile: profiles/agent-code-runner.json
-  containers:
-    - name: runner
-      image: ghcr.io/org/agent-sandbox:2025.11.1
-      securityContext:
-        allowPrivilegeEscalation: false
-        readOnlyRootFilesystem: true
-        capabilities:
-          drop: ["ALL"]
-```
+Teams usually discover Runtime Security Falco for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Alert routing and response playbooks
+Keep side effects at the edges and make every write idempotent. Runtime Security Falco for production agents without retry semantics is a future incident write-up.
 
-Falco noise kills response quality. Route by priority and namespace:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent runtime security falco.
 
-```yaml
-# falcosidekick values snippet
-config:
-  slack:
-    webhookurl: "https://hooks.slack.com/services/..."
-    minimumpriority: warning
-    outputformat: "all"
-  pagerduty:
-    routingkey: "${PD_AGENT_SECURITY_KEY}"
-    minimumpriority: critical
-customLabels: "team=agent-security"
-```
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-Slack for WARNING during tuning; PagerDuty only for CRITICAL rules with low false-positive rates.
+## Practical defaults for Runtime Security Falco for production agents
 
-Response runbook steps tied to Falco output fields:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent runtime security falco, that means making failure visible early.
 
-1. **Capture** — `kubectl logs` + Falco event JSON + agent trace ID from pod annotation
-2. **Isolate** — NetworkPolicy deny-all on pod label, or delete pod if stateless
-3. **Preserve** — snapshot container filesystem if forensic need (rare for agents)
-4. **Review** — was user prompt, plugin supply chain, or cluster compromise?
+Put a metric on the user-visible effect of agent runtime security falco before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-```bash
-# emergency isolate agent pod
-kubectl label pod -n agent-sandbox "$POD" security.isolated=true --overwrite
-kubectl apply -f networkpolicies/agent-isolated-deny-all.yaml
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Runtime Security Falco for production agents that needs a hero is not done.
 
-## Tuning false positives systematically
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-Agent pods generate more process noise than stateless APIs. Tuning workflow:
+Default deny, explicit timeouts, and one dashboard row for agent runtime security falco. Expand only when the metric demands it.
 
-| Week | Mode | Action |
-|------|------|--------|
-| 1–2 | `priority: DEBUG`, log-only | Collect top 20 rules by volume |
-| 3 | Adjust macros/lists | Exclude known CI test namespaces |
-| 4 | Promote stable rules to WARNING | Page only CRITICAL |
-| Ongoing | Review monthly | New base image → re-baseline |
+## Review questions before merging agent runtime security falco work
 
-Document every macro change in git next to the rule. "We silenced shell alerts" without context guarantees a miss during real incident.
+Teams usually discover Runtime Security Falco for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Supply chain: Falco for plugin and MCP sidecars
+Put a metric on the user-visible effect of agent runtime security falco before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Agents loading third-party MCP servers or plugins introduce binaries outside your main image scan path. Run plugin sidecars in dedicated namespace with **stricter** Falco rules than core inference pods:
+Acceptance check: an on-call engineer can explain system state for agent runtime security falco from one dashboard and one runbook page.
 
-```yaml
-- macro: mcp_sidecar_pod
-  condition: k8s.ns.name = "agent-mcp" and k8s.pod.label.role = "mcp-server"
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-- rule: MCP Binary Write to Tmp
-  desc: Unexpected executable written to tmp by MCP sidecar
-  condition: >
-    mcp_sidecar_pod and open_write and
-    (fd.name startswith /tmp/ or fd.name startswith /dev/shm/) and
-    (proc.name in (chmod, mv, cp))
-  output: "MCP sidecar wrote executable path (file=%fd.name pod=%k8s.pod.name)"
-  priority: CRITICAL
-```
+After a month, delete unused flags and dual paths. `agent-runtime-security-falco` accumulates temporary bridges faster than teams expect.
 
-Combine with image digest pinning in admission — Falco catches what slipped through.
+## Field notes after thirty days of agent runtime security falco
 
-## Performance overhead
+Teams usually discover Runtime Security Falco for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-eBPF Falco on modern kernels typically adds **1–3% CPU** on busy nodes — acceptable for agent sandbox nodes. Watch for:
+Keep side effects at the edges and make every write idempotent. Runtime Security Falco for production agents without retry semantics is a future incident write-up.
 
-- Rule complexity (`condition` with many OR branches evaluated per syscall)
-- High-churn short-lived pods (batch eval jobs) amplifying event volume
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent runtime security falco.
 
-Use `falco --dry-run` and `falcoctl rules check` in CI when adding custom rules.
+Slug-specific note (agent-runtime-security-falco): prioritize falco behavior under load and verify with a fixture named `agent-runtime-security-falco-smoke`.
 
-## Compliance and audit trail
-
-Falco JSON output to immutable storage (S3 Object Lock, SIEM) satisfies "detective control" narratives for SOC2 / ISO audits. Include fields: `k8s.pod.name`, `k8s.ns.name`, `proc.cmdline`, `container.id`, `rule`, `priority`, `time`.
-
-Retention: 90 days hot, 1 year cold — align with your incident investigation windows.
-
-## Practical starting set
-
-If you are adding Falco to agent infrastructure this week, ship these before exotic rules:
-
-1. Unexpected shell in sandbox namespace
-2. Read `/var/run/secrets` or cloud metadata IP `169.254.169.254`
-3. `kubectl exec` into agent production namespace (audit rule)
-4. Process running as root in agent pod
-5. Outbound connection from sandbox to public IP not on allowlist
-
-Each rule links to a runbook. Detection without response is telemetry theater.
-
-Agents blur the line between data plane and compute plane — they execute intent, not just serve it. Falco watches that execution layer with kernel fidelity. Pair it with tight admission, seccomp, and network policy, and you get defense in depth that survives the first creative prompt injection carrying shellcode ambition.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Falco official documentation](https://falco.org/docs/)
-- [Falco rules repository](https://github.com/falcosecurity/rules)
-- [CNCF Falco project page](https://www.cncf.io/projects/falco/)
-- [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
-- [MITRE ATT&CK: Container Escape techniques](https://attack.mitre.org/techniques/T1611/)
+- Internal runbook seed: `agent-runtime-security-falco`
+- https://12factor.net/
+- https://martinfowler.com/

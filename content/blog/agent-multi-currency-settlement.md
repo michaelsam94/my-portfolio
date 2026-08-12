@@ -1,214 +1,159 @@
 ---
-title: "AI Agents: Multi Currency Settlement"
+title: "Multi Currency Settlement for production agents"
 slug: "agent-multi-currency-settlement"
-description: "Ledger design, FX handling, and reconciliation patterns for agent platforms that bill usage in one currency and settle payouts in another."
+description: "Multi Currency Settlement for production agents: how to make agent multi currency settlement observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-09-04"
-dateModified: "2025-09-04"
-tags: ["AI", "Agent", "Multi"]
-keywords: "multi-currency billing, agent usage metering, FX settlement, minor units, ledger reconciliation, Stripe multi-currency"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, multi, currency, settlement, production, engineering"
 faq:
-  - q: "Should agent usage be metered in the customer's currency or a platform base currency?"
-    a: "Meter in a single platform base currency internally—usually USD or EUR—then convert for display and invoicing at defined rate snapshots. Metering directly in dozens of currencies creates reconciliation nightmares when rates move intraday and usage events arrive out of order."
-  - q: "How do you avoid rounding errors that accumulate across millions of micro-transactions?"
-    a: "Store all amounts as integers in minor units (cents, yen without decimals) and never use floating point in the ledger. Apply banker's rounding only at presentation boundaries. Keep a separate rounding adjustment account that finance can zero out monthly."
-  - q: "When should FX rates be locked for a settlement batch?"
-    a: "Lock at batch close time, not at individual event ingestion. Agent usage events stream continuously; settlement batches close on a schedule—daily at 23:59 UTC for SMB, monthly for enterprise. The rate table version ID becomes part of the batch metadata for audit."
-  - q: "What breaks if partner payouts lag invoice collection by a week?"
-    a: "You carry FX exposure. If you invoice a German customer in EUR on Monday but pay a US GPU vendor in USD on Friday, a 2% EUR move hits margin. Either shorten the payout window, hedge programmatically, or quote prices in the payout currency with explicit FX buffers."
+  - q: "What is Multi Currency Settlement for production agents?"
+    a: "Multi Currency Settlement for production agents is the production approach to make agent multi currency settlement observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Multi Currency Settlement for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent multi currency settlement, prioritize it."
+  - q: "What is the most common mistake with Multi Currency Settlement for production agents?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Finance opened a ticket labeled "pennies wrong" and attached a spreadsheet showing €847.13 billed versus €847.19 accrued over six weeks of agent usage. The root cause was not fraud—it was three engineers storing `amount * rate` as JavaScript floats, rounding per event instead of per batch, and pulling FX from two different providers without versioning. Multi-currency settlement for agent platforms is arithmetic dressed up as infrastructure; get the invariants wrong and every dashboard lies a little.
+**Multi Currency Settlement for production agents** means you make agent multi currency settlement observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-## The money path for agent usage
+This write-up is specific to `agent-multi-currency-settlement` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-An agent platform typically moves value through four hops:
+## Incident pattern involving agent multi currency settlement
 
-1. **Metering** — token counts, tool invocations, storage bytes, attributed to `tenant_id` with timestamps.
-2. **Rating** — apply price list (per-model, per-region surcharges) in base currency minor units.
-3. **Invoicing** — convert rated totals to customer currency for Stripe or NetSuite.
-4. **Settlement** — aggregate payable lines to vendors and partners in their preferred currency.
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Each hop is idempotent and append-only. Corrections are new ledger entries, never updates.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-```
-usage events → rating engine → rated_lines (USD cents)
-                                    ↓
-                         FX snapshot @ batch_close
-                                    ↓
-                    invoice_lines (EUR cents) → Stripe
-                                    ↓
-                    payout_lines (USD cents) → vendor ACH
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Multi Currency Settlement for production agents that needs a hero is not done.
 
-If any arrow lacks a versioned snapshot ID, auditors will ask questions you cannot answer.
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
-## Minor units everywhere
+## Root cause in plain language
 
-Define a single internal type and ban floats in code review:
+I treat Multi Currency Settlement for production agents as an operations problem first. The goal is to make agent multi currency settlement observable and interruptible, not to collect frameworks.
 
-```typescript
-/** Amount stored as integer minor units in a specific currency. */
-type Money = {
-  currency: CurrencyCode; // ISO 4217
-  minorUnits: bigint;     // JPY: 1 yen = 1 unit; USD: 1 cent = 1 unit
-};
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-function add(a: Money, b: Money): Money {
-  if (a.currency !== b.currency) {
-    throw new Error("cannot add unlike currencies without FX conversion");
-  }
-  return { currency: a.currency, minorUnits: a.minorUnits + b.minorUnits };
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Multi Currency Settlement for production agents that needs a hero is not done.
 
-PostgreSQL users should store `minor_units BIGINT` and `currency CHAR(3)`—never `NUMERIC` without explicit scale rules. For currencies with three decimal places (KWD, BHD), document the exponent in a `currency_metadata` table rather than hardcoding `100`.
+Concretely, being able to make agent multi currency settlement observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## FX rate sourcing and snapshots
-
-Pull rates from a provider with a commercial SLA—Open Exchange Rates, ECB daily feed, or your bank's treasury API. Cache raw responses in object storage with SHA-256 hashes.
-
-```sql
-CREATE TABLE fx_rate_snapshots (
-  snapshot_id     UUID PRIMARY KEY,
-  provider        TEXT NOT NULL,
-  base_currency   CHAR(3) NOT NULL,
-  fetched_at      TIMESTAMPTZ NOT NULL,
-  raw_payload_uri TEXT NOT NULL,
-  UNIQUE (provider, base_currency, fetched_at)
-);
-
-CREATE TABLE fx_rates (
-  snapshot_id UUID REFERENCES fx_rate_snapshots(snapshot_id),
-  from_ccy    CHAR(3) NOT NULL,
-  to_ccy      CHAR(3) NOT NULL,
-  rate        NUMERIC(20, 10) NOT NULL, -- stored rational, applied with integer math
-  PRIMARY KEY (snapshot_id, from_ccy, to_ccy)
-);
-```
-
-At batch close, bind `snapshot_id` to every `settlement_batch` row. Replaying a batch six months later uses the same snapshot—required for SOX-style audits.
-
-Conversion at scale uses integer math:
-
-```typescript
-function convert(m: Money, to: CurrencyCode, rate: { numerator: bigint; denominator: bigint }): Money {
-  const converted = (m.minorUnits * rate.numerator) / rate.denominator;
-  return { currency: to, minorUnits: converted };
-}
-```
-
-Choose rounding mode explicitly—`ROUND_HALF_EVEN` at batch totals, not per line item, unless local tax law demands otherwise.
-
-## Rating agent usage without double billing
-
-Agent workloads produce high-cardinality events. Aggregate before rating when possible:
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
 ```python
-def aggregate_usage(events: list[UsageEvent]) -> dict[tuple, int]:
-    buckets: dict[tuple, int] = {}
-    for e in events:
-        key = (e.tenant_id, e.model, e.region, e.hour_bucket())
-        buckets[key] = buckets.get(key, 0) + e.token_count
-    return buckets
-```
+# Multi Currency Settlement for production agents
+from dataclasses import dataclass
 
-Idempotency keys on ingestion prevent duplicate charges when clients retry:
+@dataclass(frozen=True)
+class AgentMultiCurrencyRequest:
+    tenant_id: str
+    idempotency_key: str
 
-```python
-def ingest(event: UsageEvent, store: LedgerStore) -> None:
-    if store.seen_idempotency_key(event.idempotency_key):
+async def run_agent_multi_currency_set(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
         return
-    store.append_raw(event)
-    store.mark_idempotency_key(event.idempotency_key, ttl_days=90)
+    with deps.tracer.start_as_current_span("agent-multi-currency-settlement"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Retention policy: raw events 13 months, rated aggregates 7 years, PII stripped after 30 days unless contract requires otherwise.
+## The fix that held under load
 
-## Settlement batches and cutoff windows
+I treat Multi Currency Settlement for production agents as an operations problem first. The goal is to make agent multi currency settlement observable and interruptible, not to collect frameworks.
 
-Align batch boundaries with [settlement cutoff windows](https://blog.michaelsam94.com/agent-settlement-cutoff-windows/) so finance knows when numbers freeze. A daily batch might close at `23:59:59 UTC`; events with `occurred_at` after cutoff roll forward.
+Put a metric on the user-visible effect of agent multi currency settlement before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```sql
-INSERT INTO settlement_batches (batch_id, period_start, period_end, fx_snapshot_id, status)
-VALUES ('2025-09-04-daily', '2025-09-03 00:00:00+00', '2025-09-03 23:59:59+00', 'snap-abc', 'open');
+Acceptance check: an on-call engineer can explain system state for agent multi currency settlement from one dashboard and one runbook page.
 
--- Close batch: no more lines accepted for this period
-UPDATE settlement_batches SET status = 'closed', closed_at = now() WHERE batch_id = '2025-09-04-daily';
-```
+My never-again list for agent multi currency settlement: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Partial closes for enterprise tenants—custom contracts with Net 45 terms—get separate batch types. Never mix SMB daily close with enterprise monthly close in one reconciliation report.
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
-## Invoicing vs payout currency mismatch
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Customers in Brazil may insist on BRL invoices while your GPU vendor invoices you in USD. Track **economic exposure** explicitly:
+## Tests and probes that catch regressions
 
-| Line type | Currency | When locked |
-|-----------|----------|-------------|
-| Rated usage | USD (internal) | Event hour |
-| Customer invoice | BRL | Batch close FX |
-| Vendor payable | USD | Vendor invoice date |
-| FX gain/loss | USD | Month-end reval |
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Stripe multi-currency charges settle to your platform balance in charge currency; payouts to your bank may still convert. Read Stripe's settlement reports—not the Dashboard summary—to tie agent revenue to bank deposits.
+Keep side effects at the edges and make every write idempotent. Multi Currency Settlement for production agents without retry semantics is a future incident write-up.
 
-## Reconciliation that catches drift early
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Multi Currency Settlement for production agents that needs a hero is not done.
 
-Nightly job:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Multi Currency Settlement for production agents cannot answer, it is not production-ready.
 
-1. Sum rated lines for closed batches.
-2. Sum invoice line items exported to Stripe.
-3. Sum payout records in treasury system.
-4. Assert triangle equality within one minor unit per ten thousand lines.
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
-```python
-def reconcile(batch_id: str) -> ReconciliationReport:
-    rated = ledger.sum_rated(batch_id)
-    invoiced = stripe.sum_invoices(batch_id)
-    diff = rated - invoiced
-    if abs(diff.minor_units) > tolerance(rated):
-        pager.trigger("settlement_drift", batch_id=batch_id, diff=str(diff))
-    return ReconciliationReport(rated=rated, invoiced=invoiced, diff=diff)
-```
+## Runbook lines that save minutes
 
-Drift sources ranked by frequency: timezone cutoff bugs, duplicate idempotency key expiry, manual credit notes without ledger mirror, FX snapshot mismatch between rating and invoicing services.
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Tax and regulatory overlays
+Put a metric on the user-visible effect of agent multi currency settlement before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-VAT/GST depends on customer location, not server location. Store `tax_jurisdiction` on the tenant at invoice time. Agent platforms selling into the EU need valid VAT IDs and reverse-charge handling on B2B lines.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Multi Currency Settlement for production agents that needs a hero is not done.
 
-Sanctions screening applies before first payout in a new currency corridor. Block settlement to flagged entities at batch generation, not at ACH submission—returns are expensive.
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
-## Testing money paths
+Related reading:
 
-Property-based tests on `Money` arithmetic. Golden-file tests on FX conversion with known ECB rates. Integration tests that replay a week of synthetic usage through ingest → rate → batch → mock Stripe.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-Chaos: inject duplicate events, delayed events crossing cutoff, and provider returning stale rates. The ledger should never go negative on a tenant prepay balance without an explicit credit line.
+## Platform guardrails afterward
 
-## Operational dashboards finance actually opens
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-- **Unbilled rated usage** — accrual not yet invoiced; should trend smoothly, not stair-step.
-- **FX snapshot age** — alert if latest snapshot older than 26 hours on weekdays.
-- **Batch close duration** — p95 under five minutes for daily SMB batch.
-- **Reconciliation exceptions** — count open items; target zero older than 48 hours.
+Put a metric on the user-visible effect of agent multi currency settlement before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Partner revenue share in foreign corridors
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent multi currency settlement.
 
-When agents resell through partners—systems integrators, marketplace listings, white-label deployments—settlement adds a **revenue share** line denominated in the partner's currency while usage remains rated in base currency. Model this as a separate payable line type rather than adjusting the rated total:
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
 
-```sql
-INSERT INTO payout_lines (batch_id, partner_id, currency, minor_units, line_type)
-VALUES ('2025-09-04-daily', 'partner-42', 'GBP', 125000, 'revenue_share');
-```
+## Practical defaults for Multi Currency Settlement for production agents
 
-Compute share as a rational fraction applied after FX conversion so partners see consistent percentages on their statements even when daily FX moves. Document whether share applies pre- or post-tax in the partner agreement; mixing conventions across partners guarantees quarterly disputes.
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Closing the loop on the €0.06
+Keep side effects at the edges and make every write idempotent. Multi Currency Settlement for production agents without retry semantics is a future incident write-up.
 
-The penny ticket closed when the team migrated rated totals to `bigint` minor units, pinned FX snapshots at batch close, and added a reconciliation job that pages on more than three mismatched lines per million. Multi-currency settlement is not exotic—it is disciplined bookkeeping at streaming scale.
+Acceptance check: an on-call engineer can explain system state for agent multi currency settlement from one dashboard and one runbook page.
+
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-multi-currency-settlement` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging agent multi currency settlement work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent multi currency settlement, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Acceptance check: an on-call engineer can explain system state for agent multi currency settlement from one dashboard and one runbook page.
+
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-multi-currency-settlement` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent multi currency settlement
+
+Teams usually discover Multi Currency Settlement for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Put a metric on the user-visible effect of agent multi currency settlement before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent multi currency settlement from one dashboard and one runbook page.
+
+Slug-specific note (agent-multi-currency-settlement): prioritize settlement behavior under load and verify with a fixture named `agent-multi-currency-settlement-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-multi-currency-settlement` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [ISO 4217 currency codes](https://www.iso.org/iso-4217-currency-codes.html)
-- [Stripe — multi-currency payments](https://docs.stripe.com/payments/currencies)
-- [European Central Bank — daily FX reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html)
-- [Martin Fowler — patterns for money](https://martinfowler.com/eaaCatalog/money.html)
-- [PostgreSQL arbitrary precision numeric types](https://www.postgresql.org/docs/current/datatype-numeric.html)
+- Internal runbook seed: `agent-multi-currency-settlement`
+- https://12factor.net/
+- https://martinfowler.com/

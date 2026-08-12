@@ -1,261 +1,159 @@
 ---
-title: "JSON Schema Validation Pipeline for Agent Tool Outputs"
+title: "Agent reliability via json schema validation pipeline"
 slug: "agent-json-schema-validation-pipeline"
-description: "Build a multi-stage JSON Schema validation pipeline for LLM tool calls—strict mode, repair loops, schema versioning, and observability so malformed agent output never reaches production side effects."
+description: "Agent reliability via json schema validation pipeline: how to ship agent json schema validation pipeline with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-02-14"
-dateModified: "2025-02-14"
-tags: ["AI Agents", "JSON Schema", "Validation", "Tool Calling"]
-keywords: "json schema validation, agent tool output, structured output, LLM repair loop, schema versioning, ajv, pydantic"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, json, schema, validation, pipeline, production, engineering"
 faq:
-  - q: "Should JSON Schema validation run before or after the LLM generates tool arguments?"
-    a: "Validate after generation and before any side effect. Inject the schema into the tool definition so the model sees constraints, but never trust generation alone—run a validator on the parsed JSON, reject or repair, and only then call external APIs, databases, or billing systems."
-  - q: "What JSON Schema draft works best with OpenAI and Anthropic structured output?"
-    a: "Draft 2020-12 is the practical default for new pipelines. OpenAI structured outputs and most SDK converters target a subset of 2020-12. Avoid draft-04 unless legacy systems require it. Pin the draft in your CI and reject schemas that use unsupported keywords like unevaluatedProperties if your provider strips them."
-  - q: "How many repair attempts should an agent validation pipeline allow?"
-    a: "Two repair attempts after the initial failure is a common production cap—one targets syntax or type errors, the second targets semantic constraints the model missed. Log every failure with schema path and raw output. Beyond two attempts, fall back to a safe default or human handoff rather than looping and burning tokens."
-  - q: "How do you version schemas without breaking in-flight agent runs?"
-    a: "Attach schema_version to each run and tool invocation record. Support N and N-1 concurrently during rollout. Additive changes (new optional fields) ship in minor versions; breaking changes require a new schema_id, feature flag, and sunset date for the old version. Never mutate a schema in place that already has production traffic."
+  - q: "What is Agent reliability via json schema validation pipeline?"
+    a: "Agent reliability via json schema validation pipeline is the production approach to ship agent json schema validation pipeline with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via json schema validation pipeline?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent json schema validation pipeline, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via json schema validation pipeline?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent reliability via json schema validation pipeline** means you ship agent json schema validation pipeline with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-The support agent tried to refund $500 instead of $5.00 because the model returned `"amount": 500` without decimal semantics, and your handler coerced it blindly. The ticket queue had fifty similar failures that week—not hallucinations, but **valid JSON that violated your business schema**. A JSON Schema validation pipeline sits between generation and side effects so bad structure never becomes bad money movement.
+This write-up is specific to `agent-json-schema-validation-pipeline` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-LLMs are excellent at approximate JSON. They are unreliable at **exact contracts**. Tool calling APIs return parseable strings most of the time, but production needs guarantees: types, enums, bounds, required fields, and cross-field rules (`end_date` after `start_date`). Validation is not pessimism—it is the cheapest guardrail before irreversible actions.
+## Decision guide for Agent reliability via json schema validation pipeline
 
-## Pipeline stages
+Teams usually discover Agent reliability via json schema validation pipeline after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Treat validation as a **sequential pipeline**, not a single `JSON.parse` check:
+Put a metric on the user-visible effect of agent json schema validation pipeline before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-| Stage | Purpose | Fail action |
-|-------|---------|-------------|
-| Extract | Strip markdown fences, find first `{`…`}` | Reject with `PARSE_EXTRACT_FAILED` |
-| Parse | `JSON.parse` / `json.loads` | Reject with `PARSE_SYNTAX` |
-| Schema validate | JSON Schema against tool contract | Repair or reject |
-| Semantic validate | Business rules beyond schema | Reject or escalate |
-| Authorize | Tenant quotas, RBAC on fields | Reject with `FORBIDDEN` |
-| Execute | Side effect (API, SQL, charge) | Idempotent handler |
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via json schema validation pipeline that needs a hero is not done.
 
-Each stage emits structured errors with a **path** (`/refund/amount`), **keyword** (`maximum`), and **received value**. That metadata feeds repair prompts and dashboards.
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-## Schema design for agent tools
+## When to refuse this approach
 
-Agent tool schemas should be **strict and small**. Models fill large optional objects with plausible noise.
+Teams usually discover Agent reliability via json schema validation pipeline after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Principles:
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-1. **Required fields only for what execution needs** — optional fields invite invention
-2. **`additionalProperties: false`** on every object — catches hallucinated keys early
-3. **Enums over free strings** for actions (`approve`, `reject`, not arbitrary verbs)
-4. **Numeric bounds** with `minimum`, `maximum`, `multipleOf` for currency (cents as integers)
-5. **`pattern` for IDs** — `^T-[0-9]{4,8}$` beats prose descriptions in the prompt
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via json schema validation pipeline that needs a hero is not done.
 
-Example refund tool schema:
+Concretely, being able to ship agent json schema validation pipeline with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://api.example.com/schemas/refund-v3.json",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["ticket_id", "amount_cents", "reason_code"],
-  "properties": {
-    "ticket_id": {
-      "type": "string",
-      "pattern": "^T-[0-9]{4,8}$"
-    },
-    "amount_cents": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 50000
-    },
-    "reason_code": {
-      "type": "string",
-      "enum": ["duplicate_charge", "service_failure", "goodwill", "billing_error"]
-    },
-    "note": {
-      "type": "string",
-      "maxLength": 500
-    }
-  }
-}
-```
-
-Store schemas in git, publish to an internal registry, and compile once at deploy—not on every request.
-
-## Validator implementation
-
-Use a compiled validator. Ajv for Node, `jsonschema` or `pydantic` TypeAdapter for Python. Warm compilation at startup:
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
 ```typescript
-import Ajv2020 from "ajv/dist/2020";
-import addFormats from "ajv-formats";
-
-const ajv = new Ajv2020({ allErrors: true, strict: true });
-addFormats(ajv);
-
-const compiled = new Map<string, ValidateFunction>();
-
-export function loadSchema(schemaId: string, schema: object): void {
-  compiled.set(schemaId, ajv.compile(schema));
-}
-
-export type ValidationResult =
-  | { ok: true; data: unknown }
-  | { ok: false; errors: SchemaError[] };
-
-export function validateToolArgs(
-  schemaId: string,
-  raw: string
-): ValidationResult {
-  let parsed: unknown;
+// Agent reliability via json schema validation pipeline
+export async function handle_agent_json_schema_validation_pipeline(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-json-schema-validation-pipeline");
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ok: false, errors: [{ path: "", keyword: "parse", message: "Invalid JSON" }] };
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-
-  const validate = compiled.get(schemaId);
-  if (!validate) throw new Error(`Unknown schema: ${schemaId}`);
-
-  if (validate(parsed)) return { ok: true, data: parsed };
-
-  return {
-    ok: false,
-    errors: (validate.errors ?? []).map((e) => ({
-      path: e.instancePath,
-      keyword: e.keyword ?? "unknown",
-      message: e.message ?? "validation failed",
-      params: e.params,
-    })),
-  };
 }
 ```
 
-Enable `allErrors: true` so repair prompts list every violation in one pass—cheaper than whack-a-mole retries.
+## Minimal production setup
 
-## Repair loop without infinite spend
+Teams usually discover Agent reliability via json schema validation pipeline after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-When validation fails, feed errors back to the model in a **structured repair message**, not a vague "try again":
+Keep side effects at the edges and make every write idempotent. Agent reliability via json schema validation pipeline without retry semantics is a future incident write-up.
 
-```python
-REPAIR_TEMPLATE = """
-The tool call failed JSON Schema validation for {tool_name} (schema {schema_version}).
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent json schema validation pipeline.
 
-Errors:
-{error_lines}
+My never-again list for agent json schema validation pipeline: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Original arguments:
-{raw_json}
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-Return ONLY corrected JSON matching the schema. Do not include markdown fences.
-"""
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-def build_repair_prompt(tool_name: str, schema_version: str, raw: str, errors: list) -> str:
-    lines = [f"- {e['path'] or '/'}: {e['message']} ({e['keyword']})" for e in errors]
-    return REPAIR_TEMPLATE.format(
-        tool_name=tool_name,
-        schema_version=schema_version,
-        error_lines="\n".join(lines),
-        raw_json=raw[:4000],
-    )
-```
+## Cost, complexity, and ownership
 
-Cap attempts at two. Track `validation.repair_attempts` and `validation.repair_success_rate` per tool. Tools with chronic repair failure need schema or prompt changes—not a third retry.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent json schema validation pipeline, that means making failure visible early.
 
-For high-risk tools (payments, deletes), **skip repair** and route to human review on first schema failure.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Semantic validation layer
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent json schema validation pipeline.
 
-JSON Schema cannot express every rule. Add a pure function stage:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via json schema validation pipeline cannot answer, it is not production-ready.
 
-```typescript
-function semanticRefundCheck(data: RefundArgs, ctx: RunContext): SemanticError[] {
-  const errs: SemanticError[] = [];
-  if (data.amount_cents > ctx.ticket.max_refundable_cents) {
-    errs.push({
-      path: "/amount_cents",
-      code: "EXCEEDS_TICKET_MAX",
-      message: `Max refundable is ${ctx.ticket.max_refundable_cents} cents`,
-    });
-  }
-  if (ctx.ticket.status === "closed" && data.reason_code !== "billing_error") {
-    errs.push({ path: "/reason_code", code: "CLOSED_TICKET", message: "Closed tickets need billing_error" });
-  }
-  return errs;
-}
-```
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-Keep semantic checks **deterministic and testable**. The LLM should not be the only line of defense for "amount exceeds order total."
+## Migration without dual-running forever
 
-## Schema registry and CI
+I treat Agent reliability via json schema validation pipeline as an operations problem first. The goal is to ship agent json schema validation pipeline with human override paths, not to collect frameworks.
 
-Wire schemas into CI so drift never reaches production:
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-```yaml
-# .github/workflows/schema-check.yml
-jobs:
-  validate-schemas:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npm run schemas:compile-all
-      - run: npm run schemas:golden-fixtures
-      - run: npm run schemas:breaking-diff -- --base origin/main
-```
+Acceptance check: an on-call engineer can explain system state for agent json schema validation pipeline from one dashboard and one runbook page.
 
-Golden fixtures are JSON files that must pass or fail validation—committed alongside schemas. Breaking-diff compares `$id` and required fields against main; block merges that remove fields without a major version bump.
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-## Observability
+Related reading:
 
-Metrics that matter:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-- `agent.validation.pass_rate` by `tool_name`, `schema_version`
-- `agent.validation.failure_keyword` top-N (`additionalProperties`, `enum`, `maximum`)
-- `agent.validation.repair_success` after attempt 1 vs 2
-- `agent.validation.latency_ms` p95 for compile cache hits
+## Definition of done
 
-Log a hash of raw model output on failure—never log full PII payloads in hot paths. Sample 1% of successes for quality audits.
+I treat Agent reliability via json schema validation pipeline as an operations problem first. The goal is to ship agent json schema validation pipeline with human override paths, not to collect frameworks.
 
-Traces should span: `llm.generate` → `validate.schema` → `validate.semantic` → `tool.execute`. When finance disputes a refund, you need the exact invalid intermediate JSON, not just "model said refund."
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Provider structured output integration
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via json schema validation pipeline that needs a hero is not done.
 
-OpenAI `response_format: json_schema` and similar APIs push validation upstream. Still run your pipeline:
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-1. Provider schemas may lag your registry
-2. Network proxies can mutate payloads
-3. You may switch models or vendors
+## Practical defaults for Agent reliability via json schema validation pipeline
 
-Use provider structured output to **reduce** repair loops, not to **eliminate** server-side validation.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent json schema validation pipeline, that means making failure visible early.
 
-Map internal schema IDs to provider-compatible subsets—automate the diff in CI when OpenAI updates supported keywords.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Security considerations
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent json schema validation pipeline.
 
-Validation is part of your trust boundary. Never `eval` or dynamic code on model output. Reject deeply nested JSON (`maxDepth` check before schema) to mitigate billion-laughs-style bombs. Limit string lengths at schema and parser level.
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-Tool schemas are not authorization. A valid `delete_user` payload still requires RBAC checks in the execute stage.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
 
-## Rollout strategy
+## Review questions before merging agent json schema validation pipeline work
 
-Ship new schema versions behind flags:
+I treat Agent reliability via json schema validation pipeline as an operations problem first. The goal is to ship agent json schema validation pipeline with human override paths, not to collect frameworks.
 
-1. Deploy validator with v4 compiled, default still v3
-2. Canary 5% of runs to v4 with shadow validation (log-only)
-3. Compare failure rates for one week
-4. Flip default, keep v3 for in-flight runs until TTL expires
-5. Decommission v3 on announced date
+Put a metric on the user-visible effect of agent json schema validation pipeline before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Shadow mode catches "we tightened enum and 40% of production calls fail" before users see errors.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent json schema validation pipeline.
 
-## The takeaway
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
 
-A JSON Schema validation pipeline turns agent tool calling from hopeful parsing into engineered contracts: extract, parse, schema-validate, semantic-validate, then execute. Keep schemas strict and versioned, compile validators at deploy, cap repair loops, and instrument every failure path. The model will still surprise you—your job is ensuring surprises never reach the database.
+After a month, delete unused flags and dual paths. `agent-json-schema-validation-pipeline` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent json schema validation pipeline
+
+I treat Agent reliability via json schema validation pipeline as an operations problem first. The goal is to ship agent json schema validation pipeline with human override paths, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent json schema validation pipeline before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for agent json schema validation pipeline from one dashboard and one runbook page.
+
+Slug-specific note (agent-json-schema-validation-pipeline): prioritize pipeline behavior under load and verify with a fixture named `agent-json-schema-validation-pipeline-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent json schema validation pipeline. Expand only when the metric demands it.
 
 ## Resources
 
-- [JSON Schema 2020-12 specification](https://json-schema.org/draft/2020-12/json-schema-core)
-- [Ajv JSON Schema validator](https://ajv.js.org/)
-- [OpenAI — Structured outputs guide](https://platform.openai.com/docs/guides/structured-outputs)
-- [Anthropic — Tool use documentation](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
-- [Pydantic — JSON Schema generation](https://docs.pydantic.dev/latest/concepts/json_schema/)
+- Internal runbook seed: `agent-json-schema-validation-pipeline`
+- https://12factor.net/
+- https://martinfowler.com/

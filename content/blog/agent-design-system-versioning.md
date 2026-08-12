@@ -1,236 +1,159 @@
 ---
-title: "AI Agents: Design System Versioning"
+title: "Agent systems: design system versioning"
 slug: "agent-design-system-versioning"
-description: "Semantic versioning, release trains, and consumer contracts for design systems that ship across web, mobile, and agent-generated UIs without breaking production."
+description: "Agent systems: design system versioning: how to keep agent side effects idempotent around design system versioning — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-17"
-dateModified: "2026-06-17"
-tags: ["AI", "Agent", "Design"]
-keywords: "design system versioning, semver components, release train, breaking changes, agent UI generation, Figma tokens sync"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, design, system, versioning, production, engineering"
 faq:
-  - q: "Should design system packages follow strict semver for component APIs?"
-    a: "Yes for published npm/Maven packages consumed by multiple teams. Patch for bug fixes and visual tweaks that preserve DOM structure and props. Minor for additive props, new variants, and deprecated-but-still-working APIs. Major only when you remove props, change default behavior, or alter accessibility contracts that downstream tests depend on."
-  - q: "How do you version a design system when agents generate UI from the same token source?"
-    a: "Pin agents to a specific design-system major version in their system prompt and tool schema. Expose a version manifest (tokens + component API snapshot) the agent reads at session start. Never let an agent pick 'latest' at runtime—generation drift is harder to detect than import drift."
-  - q: "What is the minimum deprecation window before a breaking change?"
-    a: "Two release cycles for internal consumers, one quarter for external SDK users. Pair deprecation with codemods, Storybook migration notes, and CI warnings on deprecated imports. If usage telemetry shows >5% of traffic still on deprecated APIs at window end, extend rather than break."
-  - q: "How do mobile and web stay on compatible design system versions?"
-    a: "Use a shared token package as the single source of truth and version it independently from platform component libraries. Web and mobile component libs declare compatible token ranges in their package metadata. CI fails if a mobile release requires token features the web release has not adopted yet."
+  - q: "What is Agent systems: design system versioning?"
+    a: "Agent systems: design system versioning is the production approach to keep agent side effects idempotent around design system versioning. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: design system versioning?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent design system versioning, prioritize it."
+  - q: "What is the most common mistake with Agent systems: design system versioning?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A product team shipped a minor design system bump on Tuesday—new button padding, a renamed `variant` prop on `Card`, and a deprecated `size="compact"` path. By Thursday, three squads had green CI, but customer-facing agent chat UIs rendered misaligned action chips because the agent runtime pulled `@acme/ui@latest` while the host app pinned `@acme/ui@4.2.0`. Nobody had treated the design system as a **versioned platform contract** shared by human engineers and generative UI paths. Design system versioning is how you prevent that class of silent skew.
+**Agent systems: design system versioning** means you keep agent side effects idempotent around design system versioning — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-## Versioning layers: tokens, components, and documentation
+This write-up is specific to `agent-design-system-versioning` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-Mature design systems expose three versioned surfaces that move at different speeds:
+## Fitting Agent systems: design system versioning into an existing system
 
-| Layer | What changes | Typical cadence | Consumer |
-|-------|--------------|-----------------|----------|
-| **Design tokens** | Color, spacing, typography primitives | Weekly minor, quarterly major | CSS, iOS, Android, Figma |
-| **Component API** | Props, slots, events, a11y roles | Biweekly minor, semiannual major | App repos, Storybook, agent schemas |
-| **Patterns & docs** | Usage guidance, composition recipes | Continuous | Designers, PMs, LLM prompt context |
+Teams usually discover Agent systems: design system versioning after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Coupling all three to one semver number creates either paralysis (everything is major) or lies (you shipped breaking token contrast ratios under a patch). Split packages: `@acme/tokens@2.4.1`, `@acme/react@5.1.0`, `@acme/patterns-docs@2026.06`.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-## Semver rules that survive design review
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-Write explicit rules engineers can apply without a committee:
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-- **Patch** — Visual adjustment with no prop/DOM change; bug fix restoring documented behavior; internal refactor with identical snapshot tests.
-- **Minor** — New optional prop; new component; deprecated prop still functional with console warning in dev; token alias added without removing old names.
-- **Major** — Removed or renamed prop; changed default variant; altered focus order or ARIA labeling; token removed or remapped in ways that shift contrast ratios below WCAG thresholds.
+## Contracts and ownership boundaries
 
-Document these in `VERSIONING.md` and enforce via changesets or semantic-release with custom analyzers that inspect Storybook prop tables, not just commit messages.
+I treat Agent systems: design system versioning as an operations problem first. The goal is to keep agent side effects idempotent around design system versioning, not to collect frameworks.
 
-## Release trains and compatibility windows
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Platform teams benefit from **predictable release trains**: cut `main` to `release/5.x` every two weeks, cherry-pick only fixes, publish from the branch. App teams pin `^5.1.0` and plan major upgrades quarterly.
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-```json
-{
-  "name": "@acme/react",
-  "version": "5.2.0",
-  "peerDependencies": {
-    "@acme/tokens": "^2.4.0"
-  },
-  "acme": {
-    "releaseTrain": "2026-Q2",
-    "compatibleAgents": ["agent-ui-schema@3.x"],
-    "breakingChangePolicy": "https://design.acme.com/versioning"
-  }
-}
+Concretely, being able to keep agent side effects idempotent around design system versioning forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
+
+```python
+# Agent systems: design system versioning
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentDesignSystemRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_design_system_vers(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-design-system-versioning"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Expose `compatibleAgents` so agent infrastructure refuses to pair an outdated UI schema with a newer component library.
+## State, storage, and retention
 
-## Consumer contracts: manifests and lockfiles
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent design system versioning, that means making failure visible early.
 
-Every consuming app—and every agent runtime—should record a **design system lock manifest**:
+Keep side effects at the edges and make every write idempotent. Agent systems: design system versioning without retry semantics is a future incident write-up.
 
-```typescript
-// design-system.lock.json — committed beside package-lock.json
-export interface DesignSystemLock {
-  tokens: { name: string; version: string; checksum: string };
-  react: { name: string; version: string };
-  figmaLibrary: { fileKey: string; publishedVersion: string };
-  agentSchema: { version: string; componentAllowlist: string[] };
-}
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-export function assertCompatible(
-  lock: DesignSystemLock,
-  published: { tokens: string; react: string }
-): void {
-  const [lockMajor] = lock.react.version.split(".");
-  const [pubMajor] = published.react.split(".");
-  if (lockMajor !== pubMajor) {
-    throw new Error(
-      `Design system major mismatch: app locks ${lock.react.version}, CI resolved ${published.react}`
-    );
-  }
-}
-```
+My never-again list for agent design system versioning: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Run `assertCompatible` in CI after `npm ci` and before visual regression suites. Agents load the same manifest at cold start; tool calls that emit JSX must validate against `componentAllowlist`.
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-## Coordinating Figma, code, and agent prompts
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Designers publish Figma libraries with version numbers. Automate sync so a Figma publish triggers a tokens PR, not the reverse:
+## Security defaults that are non-negotiable
 
-```yaml
-# .github/workflows/figma-tokens-sync.yml
-on:
-  repository_dispatch:
-    types: [figma-library-published]
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm run tokens:pull -- --figma-version ${{ github.event.client_payload.version }}
-      - run: npm run tokens:diff -- --fail-on-breaking
-      - run: npm run changeset version
-```
+I treat Agent systems: design system versioning as an operations problem first. The goal is to keep agent side effects idempotent around design system versioning, not to collect frameworks.
 
-`tokens:diff --fail-on-breaking` compares token renames and removed keys against your semver policy. If contrast ratios regress, fail the pipeline even when designers labeled the change "cosmetic."
+Put a metric on the user-visible effect of agent design system versioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-For agents, snapshot the token JSON and component prop JSON Schema into the prompt cache:
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-```typescript
-const designContext = await loadDesignSystemContext({
-  lockFile: "design-system.lock.json",
-  include: ["tokens", "componentSchemas", "deprecatedProps"],
-});
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: design system versioning cannot answer, it is not production-ready.
 
-const systemPrompt = `
-You generate UI using ONLY components and tokens from this manifest v${designContext.version}.
-Deprecated props (do not use): ${JSON.stringify(designContext.deprecatedProps)}
-`;
-```
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-## Migration tooling: codemods and dual publishing
+## SLOs and dashboards
 
-Breaking changes without mechanical migration burn trust. Ship codemods alongside majors:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent design system versioning, that means making failure visible early.
 
-```bash
-npx @acme/codemod v5-button-variant --path ./src
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: design system versioning without retry semantics is a future incident write-up.
 
-For large ecosystems, **dual-publish** deprecated APIs for one minor cycle:
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-```tsx
-/** @deprecated Use variant="primary" — removed in v6 */
-export type ButtonSize = "compact" | "default";
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-export function Button({ size, variant, ...rest }: ButtonProps) {
-  const resolvedVariant =
-    variant ?? (size === "compact" ? "primary" : "secondary");
-  if (process.env.NODE_ENV !== "production" && size !== undefined) {
-    console.warn("Button: `size` is deprecated; use `variant`");
-  }
-  return <button data-variant={resolvedVariant} {...rest} />;
-}
-```
+Related reading:
 
-Track deprecated usage with build telemetry (opt-in) or ESLint rules (`no-deprecated-design-system-props`) so you know when to cut the major.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Visual regression as a versioning gate
+## First-week validation plan
 
-Unit tests catch logic; **visual regression** catches unintended design drift. Treat Chromatic/Percy baselines as part of the version contract:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent design system versioning, that means making failure visible early.
 
-- Patch releases must have zero unexpected diffs on stable stories.
-- Minor releases document accepted diffs in the PR with designer approval attached.
-- Major releases reset baselines intentionally with a labeled "baseline-reset" changeset.
+Put a metric on the user-visible effect of agent design system versioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```typescript
-// storybook.test.ts — fail CI on unreviewed visual change
-test("design system stories match approved baselines", async () => {
-  const report = await chromatic.run({
-    projectToken: process.env.CHROMATIC_TOKEN,
-    onlyChanged: true,
-    exitZeroOnChanges: false,
-  });
-  expect(report.changeCount).toBe(0);
-});
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: design system versioning that needs a hero is not done.
 
-## Agent-specific pitfalls
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-Agents amplify versioning mistakes because they compose components creatively:
+## Practical defaults for Agent systems: design system versioning
 
-1. **Schema lag** — Agent tool definitions reference `Modal` props removed two minors ago. Fix: generate tool schemas from Storybook `argTypes` in CI.
-2. **Token hallucination** — Model invents `color-brand-450` not in tokens. Fix: validate generated class names against token allowlist before render.
-3. **Cross-tenant leakage** — Multi-tenant agent host caches one design context for all tenants. Fix: namespace manifests per tenant/white-label brand.
+Teams usually discover Agent systems: design system versioning after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-```typescript
-function validateGeneratedClasses(classNames: string[], tokenKeys: Set<string>): string[] {
-  const invalid = classNames.filter(
-    (c) => c.startsWith("color-") && !tokenKeys.has(c.replace("color-", ""))
-  );
-  if (invalid.length) throw new ValidationError(`Unknown tokens: ${invalid.join(", ")}`);
-  return classNames;
-}
-```
+Keep side effects at the edges and make every write idempotent. Agent systems: design system versioning without retry semantics is a future incident write-up.
 
-## Operational ownership
+Acceptance check: an on-call engineer can explain system state for agent design system versioning from one dashboard and one runbook page.
 
-Assign a **design system on-call** rotation separate from product on-call. Alerts worth paging:
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-- npm publish succeeded but Storybook deploy failed (docs/schema drift).
-- Token contrast checker failed on `main` for more than one hour.
-- Agent UI validation error rate exceeds 2% of sessions after a design system publish.
+After a month, delete unused flags and dual paths. `agent-design-system-versioning` accumulates temporary bridges faster than teams expect.
 
-Runbooks should include rollback: unpublish is impossible on npm, so yank broken patch releases and publish a revert patch within SLA documented in your versioning policy.
+## Review questions before merging agent design system versioning work
 
-## Governance without committees
+I treat Agent systems: design system versioning as an operations problem first. The goal is to keep agent side effects idempotent around design system versioning, not to collect frameworks.
 
-Use a lightweight **RFC template** for majors: motivation, migration plan, codemod availability, consumer survey results, accessibility impact statement. Require two consuming-team approvals for majors affecting shared primitives (`Button`, `TextField`, `FocusRing`).
+Put a metric on the user-visible effect of agent design system versioning before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Minor releases can flow through automated changesets if visual and API diff gates pass. This keeps velocity for additive work while majors get scrutiny.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent design system versioning.
 
-## The takeaway
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-Design system versioning is platform engineering: semver discipline, independent token versioning, lock manifests for apps and agents, automated Figma-to-code pipelines, and visual regression gates. Teams that treat the design system as "just a component library" get broken agent UIs and fearful quarterly upgrades. Teams that version each layer explicitly ship smaller diffs and recover from bad releases in hours, not sprints.
+After a month, delete unused flags and dual paths. `agent-design-system-versioning` accumulates temporary bridges faster than teams expect.
 
-## FAQ
+## Field notes after thirty days of agent design system versioning
 
-### Should design system packages follow strict semver for component APIs?
+I treat Agent systems: design system versioning as an operations problem first. The goal is to keep agent side effects idempotent around design system versioning, not to collect frameworks.
 
-Yes for published npm/Maven packages consumed by multiple teams. Patch for bug fixes and visual tweaks that preserve DOM structure and props. Minor for additive props, new variants, and deprecated-but-still-working APIs. Major only when you remove props, change default behavior, or alter accessibility contracts that downstream tests depend on.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-### How do you version a design system when agents generate UI from the same token source?
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent design system versioning.
 
-Pin agents to a specific design-system major version in their system prompt and tool schema. Expose a version manifest (tokens + component API snapshot) the agent reads at session start. Never let an agent pick "latest" at runtime—generation drift is harder to detect than import drift.
+Slug-specific note (agent-design-system-versioning): prioritize versioning behavior under load and verify with a fixture named `agent-design-system-versioning-smoke`.
 
-### What is the minimum deprecation window before a breaking change?
-
-Two release cycles for internal consumers, one quarter for external SDK users. Pair deprecation with codemods, Storybook migration notes, and CI warnings on deprecated imports. If usage telemetry shows >5% of traffic still on deprecated APIs at window end, extend rather than break.
-
-### How do mobile and web stay on compatible design system versions?
-
-Use a shared token package as the single source of truth and version it independently from platform component libraries. Web and mobile component libs declare compatible token ranges in their package metadata. CI fails if a mobile release requires token features the web release has not adopted yet.
+Default deny, explicit timeouts, and one dashboard row for agent design system versioning. Expand only when the metric demands it.
 
 ## Resources
 
-- [semver.org](https://semver.org/) — Semantic versioning specification
-- [design-tokens.github.io/community-group/format/](https://design-tokens.github.io/community-group/format/) — Design Tokens Format Module
-- [storybook.js.org/docs/writing-tests/visual-testing](https://storybook.js.org/docs/writing-tests/visual-testing) — Storybook visual testing
-- [github.com/changesets/changesets](https://github.com/changesets/changesets) — Changesets for monorepo versioning
-- [www.w3.org/WAI/WCAG22/quickref/](https://www.w3.org/WAI/WCAG22/quickref/) — WCAG 2.2 quick reference for contrast regressions
+- Internal runbook seed: `agent-design-system-versioning`
+- https://12factor.net/
+- https://martinfowler.com/

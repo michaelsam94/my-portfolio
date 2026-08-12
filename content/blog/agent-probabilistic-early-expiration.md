@@ -1,199 +1,159 @@
 ---
-title: "AI Agents: Probabilistic Early Expiration"
+title: "Probabilistic Early Expiration for production agents"
 slug: "agent-probabilistic-early-expiration"
-description: "Prevent cache stampedes on LLM response caches with probabilistic early expiration — the math, Redis implementation, and tuning for embedding and completion caches at scale."
+description: "Probabilistic Early Expiration for production agents: how to make agent probabilistic early expiration observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-05-07"
-dateModified: "2026-05-07"
-tags: ["AI", "Agent", "Probabilistic"]
-keywords: "probabilistic early expiration, cache stampede, LLM cache, xfetch, Redis TTL, thundering herd, semantic cache invalidation"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, probabilistic, early, expiration, production, engineering"
 faq:
-  - q: "What problem does probabilistic early expiration solve?"
-    a: "When a popular cache key expires, every concurrent request misses at once and hammers the origin — classic cache stampede. Probabilistic early expiration refreshes keys before hard expiry with probability that rises as TTL runs out, spreading recomputation over time so one unlucky millisecond does not collapse your LLM backend."
-  - q: "How is this different from locking or request coalescing?"
-    a: "Single-flight locks dedupe within one process cluster but add complexity and failure modes if the lock holder dies. Probabilistic early expiration needs no coordination — each client independently rolls dice. Combine both for highest-traffic keys: prob.expiration spreads load; coalescing caps parallel origin calls."
-  - q: "Does probabilistic early expiration work with semantic caches?"
-    a: "Yes, applied per embedding bucket or per exact cache key. For vector similarity caches, run prob.expiration on the canonical key for a cluster of paraphrases, or on each exact key independently. Tune beta separately — semantic recomputation is more expensive than byte-identical lookup."
-  - q: "What beta value should I start with for LLM completion caches?"
-    a: "Start with beta = 1.0 (standard XFetch paper default) and TTL of 300–900 seconds for stable prompts. Increase beta toward 2.0 if you still see latency spikes at expiry; decrease toward 0.5 if origin load from early refresh is too high. Measure p99 origin QPS vs. cache age."
+  - q: "What is Probabilistic Early Expiration for production agents?"
+    a: "Probabilistic Early Expiration for production agents is the production approach to make agent probabilistic early expiration observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Probabilistic Early Expiration for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent probabilistic early expiration, prioritize it."
+  - q: "What is the most common mistake with Probabilistic Early Expiration for production agents?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Latency tripled at the top of every hour because ten thousand sessions shared one cached system prompt response that expired simultaneously.
+**Probabilistic Early Expiration for production agents** means you make agent probabilistic early expiration observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Probabilistic early expiration is a small algorithmic change that stops LLM and embedding caches from triggering thundering herds — no distributed lock service required.
+This write-up is specific to `agent-probabilistic-early-expiration` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## Cache stampedes in agent stacks
+## Probabilistic Early Expiration for production agents: production checklist
 
-Agent products cache aggressively: system prompt prefixes, retrieval results for hot documents, embedding vectors, and full completions for FAQ-style queries. Hit rates of 40–70% on repetitive support flows are common.
+Teams usually discover Probabilistic Early Expiration for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Fixed TTL expiry is a synchronized timer bomb. At `T=900s`, the key vanishes. Five hundred in-flight requests miss. Each fires a 4k-token completion. Your GPU queue depth spikes, p99 latency crosses SLA, and circuit breakers start rejecting unrelated traffic.
+Keep side effects at the edges and make every write idempotent. Probabilistic Early Expiration for production agents without retry semantics is a future incident write-up.
 
-Classic mitigations:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Probabilistic Early Expiration for production agents that needs a hero is not done.
 
-- **Jitter on TTL** — spreads expiry times at write; helps only at insert, not when one key serves millions of reads.
-- **Stale-while-revalidate** — serve stale while one worker refreshes; needs explicit support in cache layer.
-- **Probabilistic early expiration (XFetch)** — treat keys as "maybe expired" before hard TTL; recompute early with tunable probability.
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-For LLM caches where recomputation costs dollars and seconds, prob.expiration is often the best cost-to-complexity ratio.
+## Inputs, outputs, invariants
 
-## The XFetch algorithm in plain language
+Teams usually discover Probabilistic Early Expiration for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-From Vattani et al. (2015), popularized in production by Facebook's memcached patches:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Each cache read computes whether to treat the item as expired **before** its actual TTL:
+Acceptance check: an on-call engineer can explain system state for agent probabilistic early expiration from one dashboard and one runbook page.
 
-```
-delta = now - item.created_at
-if delta < item.ttl * beta * log(random_uniform(0,1)):
-    return cached_value  # still "fresh enough"
-else:
-    return MISS  # recompute and refresh
-```
+Concretely, being able to make agent probabilistic early expiration observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-- `beta` controls aggressiveness. Higher beta → earlier probabilistic expiry → smoother load, more origin calls.
-- Randomness per request spreads recomputation across the beta-window before hard expiry.
-- Hard TTL still applies as upper bound — keys cannot live forever if beta logic never triggers recompute (use `min(hard_ttl, ...)` semantics).
-
-Intuition: when a key is young, `log(random)` is usually small enough that the inequality holds — cache hit. Near end of life, negative log uniform grows — more requests " opt in" to refresh early.
-
-## Redis implementation for completion cache
-
-Store metadata alongside cached completions:
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
 ```python
-import math
-import random
-import time
-import json
-import redis
+# Probabilistic Early Expiration for production agents
+from dataclasses import dataclass
 
-r = redis.Redis(host="cache.internal", decode_responses=True)
+@dataclass(frozen=True)
+class AgentProbabilisticRequest:
+    tenant_id: str
+    idempotency_key: str
 
-BETA = 1.0
-HARD_TTL_SEC = 600
-
-def cache_get(key: str) -> str | None:
-    raw = r.get(key)
-    if raw is None:
-        return None
-    item = json.loads(raw)
-    age = time.time() - item["created_at"]
-    if age >= HARD_TTL_SEC:
-        return None  # hard expiry
-    if should_refresh_early(age, HARD_TTL_SEC, BETA):
-        return None  # probabilistic miss → caller recomputes
-    return item["value"]
-
-def should_refresh_early(age: float, ttl: float, beta: float) -> bool:
-    # True means treat as miss and refresh
-    u = random.random()
-    if u <= 0:
-        u = 1e-10
-    threshold = ttl * beta * math.log(u)
-    return age >= threshold
-
-def cache_set(key: str, value: str) -> None:
-    payload = json.dumps({"value": value, "created_at": time.time()})
-    r.setex(key, HARD_TTL_SEC + 60, payload)  # Redis TTL slightly above hard TTL
+async def run_agent_probabilistic_earl(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-probabilistic-early-expiration"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Caller pattern with origin fetch:
+## Concurrency, retries, and timeouts
 
-```python
-def get_completion(prompt_hash: str, compute_fn) -> str:
-    key = f"llm:completion:{prompt_hash}"
-    cached = cache_get(key)
-    if cached is not None:
-        return cached
-    result = compute_fn()
-    cache_set(key, result)
-    return result
-```
+Teams usually discover Probabilistic Early Expiration for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Instrument `cache_get` returns: hit, hard_miss, prob_miss. If prob_miss dominates and origin load is high, lower beta.
+Keep side effects at the edges and make every write idempotent. Probabilistic Early Expiration for production agents without retry semantics is a future incident write-up.
 
-## Layering with single-flight for hot keys
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Probabilistic Early Expiration for production agents that needs a hero is not done.
 
-Probabilistic expiration spreads traffic; it does not guarantee exactly one recomputation. For keys with extreme fan-out (global system prompt), add brief coalescing:
+My never-again list for agent probabilistic early expiration: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```python
-from redis.lock import Lock
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-def get_completion_coalesced(key: str, compute_fn) -> str:
-    cached = cache_get(key)
-    if cached is not None:
-        return cached
-    lock = Lock(r, f"lock:{key}", timeout=30, blocking_timeout=5)
-    if lock.acquire(blocking=False):
-        try:
-            cached = cache_get(key)  # double-check
-            if cached is not None:
-                return cached
-            result = compute_fn()
-            cache_set(key, result)
-            return result
-        finally:
-            lock.release()
-    else:
-        # Another worker refreshes; wait briefly or serve stale if allowed
-        time.sleep(0.05)
-        cached = cache_get(key)
-        return cached if cached else compute_fn()
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Use coalescing only on a allowlist of known hot keys — global locks on every request reintroduce contention you wanted to avoid.
+## Support and audit workflows
 
-## Tuning for embedding vs. completion caches
+I treat Probabilistic Early Expiration for production agents as an operations problem first. The goal is to make agent probabilistic early expiration observable and interruptible, not to collect frameworks.
 
-**Embeddings** — deterministic, cheaper than full completion. Slightly lower beta (0.7–1.0) acceptable; hard TTL 24h+ for stable corpora. Invalidate on document update via version suffix in key (`doc:118:v4`), not TTL alone.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-**Completions** — expensive, user-visible latency. Beta 1.0–1.5 with HARD_TTL 300–900s for semi-static answers. Shorter TTL for time-sensitive content (pricing, inventory).
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent probabilistic early expiration.
 
-**Semantic caches** — key by `(embedding_bucket, policy_version)`. Prob.expiration on bucket canonical key; when refresh triggers, recompute embedding similarity index entry and stored completion together. Log false-hit rate separately — prob.expiration does not fix wrong-answer caching, only load shape.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Probabilistic Early Expiration for production agents cannot answer, it is not production-ready.
 
-## Measuring success
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-Dashboard four series:
+## Capacity and load notes
 
-1. Origin QPS vs. wall clock — stampede shows as sharp spike at fixed intervals before prob.exp; should flatten after.
-2. Ratio `prob_miss / (hit + prob_miss + hard_miss)` — tuning knob feedback.
-3. p99 completion latency during former expiry minutes.
-4. Cache hit rate — early refresh lowers hit rate slightly; acceptable if origin p99 and cost improve.
+Teams usually discover Probabilistic Early Expiration for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Load test: simulate 500 concurrent clients reading one key approaching TTL. Without prob.exp, origin receives 500 simultaneous computes. With beta=1.0, spread over roughly `beta * ttl * (1 - 1/e)` seconds for exponential-style distribution — empirically verify in staging.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-## Pitfalls
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent probabilistic early expiration.
 
-**Clock skew** across clients affects age calculation if created_at is writer-local; use server time from Redis `TIME` on write.
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-**Beta too high** on low-traffic keys causes unnecessary origin calls — prob.exp shines on hot keys; cold keys can use plain TTL.
+Related reading:
 
-**Ignoring prompt version in cache key** — prob.exp refreshes stale **wrong** answers faster if version not in key. Always include model ID, prompt template hash, and retrieval corpus version in the key namespace.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-**Caching errors** — never prob.exp refresh 429/500 responses; cache only 200 with explicit error TTL separate from success path.
+## Ship gate
 
-## When to skip probabilistic early expiration
+I treat Probabilistic Early Expiration for production agents as an operations problem first. The goal is to make agent probabilistic early expiration observable and interruptible, not to collect frameworks.
 
-Caches with fewer than ~10 concurrent readers per key at expiry — jitter alone may suffice. Client-side caches with no shared Redis — coalescing in-process is enough.
+Keep side effects at the edges and make every write idempotent. Probabilistic Early Expiration for production agents without retry semantics is a future incident write-up.
 
-Real-time agent tool results (live stock prices) should not use long TTL caches at all; prob.expiration does not make stale financial data acceptable.
+Acceptance check: an on-call engineer can explain system state for agent probabilistic early expiration from one dashboard and one runbook page.
 
-## Closing the loop
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-Add prob.expiration to your LLM cache layer before the next marketing push drives ten× FAQ traffic. Tune beta from metrics, not folklore. Pair with versioned keys and selective single-flight on globals.
+## Practical defaults for Probabilistic Early Expiration for production agents
 
-The algorithm fits in forty lines. The production win is not looking clever — it is removing the hourly latency cliff nobody could explain until they plotted cache TTL against origin QPS.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent probabilistic early expiration, that means making failure visible early.
 
-## Extending to CDN and edge caches
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-The same prob.expiration logic applies at edge workers serving cached agent widget responses. Edge TTLs are shorter; beta often lands lower (0.5–0.8) because recomputation at origin is rarer than at regional Redis. Pass `Cache-Control` with hard max-age while implementing prob.exp in worker code — browsers and CDNs still need an upper bound.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent probabilistic early expiration.
 
-For multi-region Redis, prob.expiration runs independently per region — acceptable when origin can handle scattered refresh. If origin is single-region, coordinate hot-key coalescing globally via a short-lived lock in the primary region only; edge regions serve stale up to `stale_max_sec` while primary refreshes.
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
 
-Document beta and HARD_TTL per cache namespace in config management. Prompt teams should not need to ask infra which values apply to their new FAQ cache — defaults live in a YAML file reviewed quarterly against origin load charts.
+Default deny, explicit timeouts, and one dashboard row for agent probabilistic early expiration. Expand only when the metric demands it.
+
+## Review questions before merging agent probabilistic early expiration work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent probabilistic early expiration, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Probabilistic Early Expiration for production agents that needs a hero is not done.
+
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-probabilistic-early-expiration` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of agent probabilistic early expiration
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent probabilistic early expiration, that means making failure visible early.
+
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Probabilistic Early Expiration for production agents that needs a hero is not done.
+
+Slug-specific note (agent-probabilistic-early-expiration): prioritize expiration behavior under load and verify with a fixture named `agent-probabilistic-early-expiration-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent probabilistic early expiration. Expand only when the metric demands it.
 
 ## Resources
 
-- [Optimal Probabilistic Cache Stampede Prevention (Vattani et al., 2015)](https://arxiv.org/abs/1410.1323)
-- [Facebook/memcached: Probabilistic early expiration patch notes](https://github.com/memcached/memcached/wiki/ReleaseNotes1524)
-- [AWS Database Blog — Preventing cache stampede with DynamoDB DAX and lazy loading](https://aws.amazon.com/blogs/database/building-a-cache-that-protects-against-stampedes/)
-- [Redis expiration documentation](https://redis.io/docs/manual/keyspace-notifications/)
-- [Semantic caching for LLM APIs — related patterns](/blog/semantic-caching-llm-apis)
+- Internal runbook seed: `agent-probabilistic-early-expiration`
+- https://12factor.net/
+- https://martinfowler.com/

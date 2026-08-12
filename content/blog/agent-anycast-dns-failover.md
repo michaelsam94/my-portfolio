@@ -1,196 +1,159 @@
 ---
-title: "AI Agents: Anycast Dns Failover"
+title: "Agent systems: anycast dns failover"
 slug: "agent-anycast-dns-failover"
-description: "Designing anycast DNS failover for global agent API endpoints — BGP health withdrawal, health probe semantics, TTL tradeoffs, and drills that prove failover works."
+description: "Agent systems: anycast dns failover: how to keep agent side effects idempotent around anycast dns failover — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-04-09"
-dateModified: "2026-04-09"
-tags: ["AI", "Agent", "Anycast"]
-keywords: "anycast DNS failover, BGP route withdrawal, global load balancing, health checks API gateway, Route53 latency routing, Cloudflare load balancing, agent API availability"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, anycast, dns, failover, production, engineering"
 faq:
-  - q: "How does anycast DNS failover differ from DNS round-robin?"
-    a: "Anycast advertises the same IP prefix from multiple PoPs via BGP; routing pulls clients to the nearest healthy edge. Failover withdraws BGP announcements or stops advertising the prefix from a failed site — traffic reroutes at network layer, often faster than waiting for DNS TTL expiry. DNS round-robin returns multiple A records with no health awareness; clients may persist to dead IPs until TTL expires."
-  - q: "What health checks work for LLM agent API backends?"
-    a: "Use lightweight synthetic inference or auth endpoints that validate the full path: edge TLS, gateway auth, model router reachability, and optional GPU queue depth signal. Avoid marking healthy when only nginx responds — agents need end-to-end confirmation that orchestration and model backends accept work."
-  - q: "What TTL should agent API DNS records use?"
-    a: "For anycast with BGP failover, authoritative TTL can be higher (300–3600s) because failover happens at routing layer. For unicast multi-region with DNS-based failover, use lower TTL (30–60s) on critical records — accepting increased query load and cache churn. Streaming agent sessions may need connection draining beyond TTL math."
-  - q: "How do you test anycast failover without causing an outage?"
-    a: "Run controlled drills: withdraw BGP from one PoP in staging mirrors, use traffic shadowing, and monitor RUM latency split by region. Production drills use maintenance windows with canary prefixes or weighted traffic shift before full withdrawal. Verify synthetic probes from external vantage points detect the change within your SLO."
+  - q: "What is Agent systems: anycast dns failover?"
+    a: "Agent systems: anycast dns failover is the production approach to keep agent side effects idempotent around anycast dns failover. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: anycast dns failover?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent anycast dns failover, prioritize it."
+  - q: "What is the most common mistake with Agent systems: anycast dns failover?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The incident lasted eleven minutes. A GPU rack in `eu-west` lost power; our agent API stayed "up" because Cloudflare still announced the anycast prefix — but packets landed on black-holed backends until health checks failed three consecutive times, then BGP withdrew. European users saw 30-second hangs on streaming completions while TCP retried dead paths. Anycast DNS failover wasn't broken; our **health probe semantics** and **draining policy** were. Global agent APIs — long-lived SSE streams, fat payloads, bursty tool callbacks — punish naive failover configs that work fine for static marketing sites.
+**Agent systems: anycast dns failover** means you keep agent side effects idempotent around anycast dns failover — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-This is how to architect anycast and DNS failover when the product is an agent platform, not a CDN-hosted brochure.
+This write-up is specific to `agent-anycast-dns-failover` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Anycast vs DNS failover: complementary layers
+## What Agent systems: anycast dns failover changes in day-two ops
 
-**Ananycast** (network layer): Same IP announced from multiple locations. Internet routing delivers packets to topologically nearest healthy site. Failure removes advertisement; routers converge to alternate sites — typically seconds to low minutes depending on prefix size and provider.
+I treat Agent systems: anycast dns failover as an operations problem first. The goal is to keep agent side effects idempotent around anycast dns failover, not to collect frameworks.
 
-**DNS failover** (name layer): Authoritative DNS changes answers (A/AAAA/CNAME) or uses routing policies (latency, geolocation, weighted) based on health. Clients cache per TTL; stale records persist until expiry unless apps bypass cache.
+Put a metric on the user-visible effect of agent anycast dns failover before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Production agent stacks use both:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent anycast dns failover.
 
-```
-Client → DNS resolves api.agents.example.com → anycast IP (or CNAME to provider)
-       → BGP routes to nearest PoP
-       → PoP health check fails → withdraw route OR DNS policy shifts weight
-       → Client reroutes (BGP) or re-resolves (DNS)
-```
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-Anycast handles regional brownouts fast. DNS handles blue-green region migrations, multi-cloud backends without shared anycast, and gradual traffic shifts during deploys.
+## Designing so you can keep agent side effects idempotent around anycast dns failover
 
-## Health probes that match agent reality
+Teams usually discover Agent systems: anycast dns failover after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-A `/healthz` returning 200 from kubelet proves the pod exists — not that agents can complete work. Probes should reflect user-visible success:
+Keep side effects at the edges and make every write idempotent. Agent systems: anycast dns failover without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: anycast dns failover that needs a hero is not done.
+
+Concretely, being able to keep agent side effects idempotent around anycast dns failover forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
 ```python
-# probe/agent_readiness.py — run from each PoP edge controller
-import httpx
-import time
+# Agent systems: anycast dns failover
+from dataclasses import dataclass
 
-PROBE_PROMPT = "Reply with exactly: OK"
-MAX_LATENCY_MS = 8000
-TIMEOUT_S = 10
+@dataclass(frozen=True)
+class AgentAnycastDnsFaRequest:
+    tenant_id: str
+    idempotency_key: str
 
-def check_agent_path(base_url: str, api_key: str) -> tuple[bool, dict]:
-    start = time.monotonic()
-    try:
-        r = httpx.post(
-            f"{base_url}/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": "probe-model-smallest",
-                "messages": [{"role": "user", "content": PROBE_PROMPT}],
-                "max_tokens": 5,
-            },
-            timeout=TIMEOUT_S,
-        )
-        latency_ms = (time.monotonic() - start) * 1000
-        body_ok = r.status_code == 200 and "OK" in r.json()["choices"][0]["message"]["content"]
-        healthy = body_ok and latency_ms < MAX_LATENCY_MS
-        return healthy, {"latency_ms": latency_ms, "status": r.status_code}
-    except Exception as e:
-        return False, {"error": str(e)}
+async def run_agent_anycast_dns_failov(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-anycast-dns-failover"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Tune probe intervals and failure thresholds for **flapping resistance**:
+## Failure modes specific to agent anycast dns failover
 
-- **Interval:** 10–30s at edge; 5s only if convergence SLO demands it
-- **Unhealthy threshold:** 3 consecutive failures (~30–90s) before withdrawal
-- **Healthy threshold:** 2 consecutive successes before readvertising — prevents oscillation
+Teams usually discover Agent systems: anycast dns failover after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Include **dependency checks** as degraded states: if vector DB is down, drain new sessions but allow in-flight streams to complete (HTTP 503 with `Retry-After` on new connections).
+Put a metric on the user-visible effect of agent anycast dns failover before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## BGP withdrawal and convergence behavior
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: anycast dns failover that needs a hero is not done.
 
-When a PoP goes unhealthy, your provider (Cloudflare, Fastly, AWS Global Accelerator, self-managed BGP on metal) stops announcing the prefix from that site or shifts weight in traffic manager.
+My never-again list for agent anycast dns failover: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Factors affecting convergence:
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-| Factor | Effect |
-|--------|--------|
-| Prefix size (/24 vs /32) | Larger aggregates propagate faster; some providers filter long prefixes |
-| BGP hold timers | Local preference and provider tuning dominate user-visible cutover |
-| Active TCP sessions | Existing connections don't magically migrate — they reset or hang |
-| QUIC vs TCP | QUIC connection migration can help mobile clients; most agent SDKs use HTTP/2 TCP |
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-For streaming agent responses, **connection draining** matters as much as BGP:
+## Signals worth paging on
 
-```yaml
-# drain policy pseudocode — edge controller
-on_health_degraded:
-  stop_admitting_new_connections: true
-  max_drain_seconds: 120
-  force_close_after: 180
-on_health_recovered:
-  require_warmup_probes: 2
-  ramp_weight_percent: [10, 50, 100]  # over 3 minutes
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anycast dns failover, that means making failure visible early.
 
-Without draining, users mid-stream see truncated completions — functionally an outage even if failover "worked."
+Keep side effects at the edges and make every write idempotent. Agent systems: anycast dns failover without retry semantics is a future incident write-up.
 
-## DNS TTL and resolver behavior
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: anycast dns failover that needs a hero is not done.
 
-Agent mobile and web clients cache DNS aggressively. If you rely on DNS failover without anycast:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: anycast dns failover cannot answer, it is not production-ready.
 
-```dns
-api.agents.example.com.  60  IN  A  203.0.113.10   ; primary
-api.agents.example.com.  60  IN  A  198.51.100.20   ; secondary (backup via health policy)
-```
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-60-second TTL means up to one minute of sticky bad IPs after failure — plus resolver-specific minimums (some ISPs clamp to 300s).
+## Rollout sequence with Temporal
 
-**Recommendations:**
+I treat Agent systems: anycast dns failover as an operations problem first. The goal is to keep agent side effects idempotent around anycast dns failover, not to collect frameworks.
 
-- **Anycast front door:** TTL 300–3600s acceptable; failover at IP routing layer
-- **DNS-only multi-region:** TTL 30–60s on API records; monitor authoritative QPS increase
-- **Never CNAME chains** deep enough to multiply TTL confusion
+Put a metric on the user-visible effect of agent anycast dns failover before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Use **split-horizon DNS** cautiously for internal agent workers calling regional backends — external anycast IP for customers, internal service discovery for east-west mesh traffic.
+Acceptance check: an on-call engineer can explain system state for agent anycast dns failover from one dashboard and one runbook page.
 
-## Architecture patterns by scale
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-**Managed anycast (Cloudflare, Fastly):** Fastest path for most teams. Load balancing pools map origins per region; health monitors drive steering. Agent APIs terminate TLS at edge; origin pools per GPU cluster.
+Related reading:
 
-**Cloud DNS + GLB (GCP Cloud Load Balancing, AWS Route 53 + Global Accelerator):** Anycast IP via provider accelerator; health checks on regional backend services. Good when agents already live on one cloud with multi-region GKE/EKS.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-**Self-managed BGP (Equinix Metal, bare metal):** Maximum control, highest ops burden. Justified at massive scale or regulatory data residency requiring owned prefixes.
+## What I would delete after month one
 
-Example Route 53 latency policy with health check:
+I treat Agent systems: anycast dns failover as an operations problem first. The goal is to keep agent side effects idempotent around anycast dns failover, not to collect frameworks.
 
-```hcl
-resource "aws_route53_record" "agent_api" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "api.agents.example.com"
-  type    = "A"
-  set_identifier = "eu-west"
+Keep side effects at the edges and make every write idempotent. Agent systems: anycast dns failover without retry semantics is a future incident write-up.
 
-  latency_routing_policy {
-    region = "eu-west-1"
-  }
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: anycast dns failover that needs a hero is not done.
 
-  health_check_id = aws_route53_health_check.eu.id
-  records         = [aws_globalaccelerator.accelerator.ip_sets[0].ip_addresses[0]]
-}
-```
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-Pair with **synthetic monitoring from external vantage points** (Catchpoint, Datadog Synthetics, ThousandEyes) — provider-internal health can mark healthy while transcontinental paths fail.
+## Practical defaults for Agent systems: anycast dns failover
 
-## Observability and failover SLOs
+I treat Agent systems: anycast dns failover as an operations problem first. The goal is to keep agent side effects idempotent around anycast dns failover, not to collect frameworks.
 
-Dashboard per region/PoP:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-- Request rate and error rate (4xx/5xx split)
-- p50/p99 TTFB and stream inter-chunk latency
-- Active BGP announcement status
-- Health probe success rate and latency
-- DNS answer distribution from external resolvers
+Acceptance check: an on-call engineer can explain system state for agent anycast dns failover from one dashboard and one runbook page.
 
-Define failover SLO: "95% of clients converge to healthy PoP within 90 seconds of simulated regional failure." Measure with quarterly game days.
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-Alert on **asymmetric routing**: `eu-west` errors spike while `us-east` idle — health checks may not have fired if edge still accepts TCP but origins reject inference load.
+Default deny, explicit timeouts, and one dashboard row for agent anycast dns failover. Expand only when the metric demands it.
 
-Log `X-Edge-Location` or equivalent response headers; correlate user reports with PoP assignment.
+## Review questions before merging agent anycast dns failover work
 
-## Runbook: regional failure checklist
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent anycast dns failover, that means making failure visible early.
 
-1. Confirm scope: single origin pool vs entire region vs global DNS issue (`dig +trace`, BGP looking glass)
-2. Check health probe dashboard — false negative? dependency blip?
-3. If intentional drain: verify weight at 0%, connections draining
-4. If unintentional: manual BGP withdrawal or set pool unhealthy to force convergence
-5. Communicate status page — agent APIs degrade subtly (slow streams) before hard 503s
-6. Post-incident: probe gap analysis, drain timer tuning, client SDK retry idempotency review
+Keep side effects at the edges and make every write idempotent. Agent systems: anycast dns failover without retry semantics is a future incident write-up.
 
-Client SDKs should retry idempotent requests with exponential backoff and **region-agnostic endpoints** — hardcoding regional hostnames defeats anycast.
+Acceptance check: an on-call engineer can explain system state for agent anycast dns failover from one dashboard and one runbook page.
 
-Webhooks and async tool callbacks need the same thinking: if your agent calls customer systems from `eu-west` workers but failover shifts orchestration to `us-east`, egress IP allowlists on customer firewalls break unless you publish stable anycast egress ranges or proxy callbacks through region-neutral infrastructure. Failover planning that ignores outbound paths causes silent tool failures long after user-facing API health returns green.
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
 
-Document **RTO and RPO for inference availability** separately from data persistence. DNS and BGP failover restore API reachability quickly; in-flight agent state in regional Redis or unfinished tool sagas may not survive regional loss without cross-region replication you planned explicitly.
+Default deny, explicit timeouts, and one dashboard row for agent anycast dns failover. Expand only when the metric demands it.
 
-Anycast DNS failover for agent platforms is a stack: BGP or traffic-manager steering, probes that validate inference paths, drain policies for long streams, TTL choices matched to your layer, and game days that prove eleven-minute hangs become ninety-second blips. The network will fail; design so routing and DNS argue in your favor when they do.
+## Field notes after thirty days of agent anycast dns failover
+
+Teams usually discover Agent systems: anycast dns failover after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: anycast dns failover without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent anycast dns failover.
+
+Slug-specific note (agent-anycast-dns-failover): prioritize failover behavior under load and verify with a fixture named `agent-anycast-dns-failover-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
 ## Resources
 
-- [Cloudflare Load Balancing and health monitors](https://developers.cloudflare.com/load-balancing/)
-- [AWS Route 53 health checks and failover routing](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/dns-failover.html)
-- [Google Cloud load balancing overview (global anycast)](https://cloud.google.com/load-balancing/docs/load-balancing-overview)
-- [RIPE Atlas — Internet measurement probes](https://atlas.ripe.net/)
-- [BGP best practices (RFC 7454)](https://datatracker.ietf.org/doc/html/rfc7454)
+- Internal runbook seed: `agent-anycast-dns-failover`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,129 +1,158 @@
 ---
-title: "Database NOT NULL Backfill Migration"
+title: "Shipping database migration not null backfill without regret"
 slug: "database-migration-not-null-backfill"
-description: "Three-phase NOT NULL — add nullable, backfill default, set NOT NULL with check validation."
+description: "Shipping database migration not null backfill without regret: how to ship database migration behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-03-17"
-dateModified: "2026-03-17"
+dateModified: "2026-08-12"
 tags:
+  - "Engineering"
   - "Database"
-  - "Backend"
-  - "Migrations"
-keywords: "database migration not null backfill, production, backend"
+keywords: "database, migration, not, null, backfill, production, engineering"
 faq:
-  - q: "What problem does Database NOT NULL Backfill Migration solve?"
-    a: "It addresses production gaps teams hit when scaling database migration not null backfill: correctness under concurrency, operability, and measurable SLOs instead of ad-hoc scripts."
-  - q: "When should I adopt this pattern?"
-    a: "Adopt when database migration not null backfill appears on incident timelines, p95 latency regresses, or the next traffic doubling will break the current shortcut."
-  - q: "What is the most common implementation mistake?"
-    a: "Copying a tutorial without matching your pooler mode, isolation level, or retry semantics — and skipping idempotency on any path that can be retried."
+  - q: "What is Shipping database migration not null backfill without regret?"
+    a: "Shipping database migration not null backfill without regret is the production approach to ship database migration behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping database migration not null backfill without regret?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with database migration not null backfill, prioritize it."
+  - q: "What is the most common mistake with Shipping database migration not null backfill without regret?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Shipping database migration not null backfill without regret** (`database-migration-not-null-backfill`) means you ship database migration behind flags with a rollback. I use this when traffic or tenant count is about to jump, and I explicitly guard against retries without idempotency keys.
 
-## Production context
+This write-up is specific to `database-migration-not-null-backfill` in a product context, using OpenTelemetry, Redis for the mechanics while keeping ownership human.
 
-A billing service lost duplicate events because database migration not null backfill was handled only in application code without database-enforced invariants. The fix was not more logging — it was moving the guarantee to the layer that survives process crashes and duplicate deliveries.
+## Decision guide for Shipping database migration not null backfill without regret
 
-Senior backend work on database not null backfill migration is less about syntax and more about failure modes: what happens on retry, on partial outage, and when two deploy versions run simultaneously during a rolling update.
+I treat Shipping database migration not null backfill without regret as an operations problem first. The goal is to ship database migration behind flags with a rollback, not to collect frameworks.
 
-## Architecture pattern
+Put a metric on the user-visible effect of database migration not null backfill before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Separate command path from query path where appropriate. Keep side effects idempotent. Push cross-cutting concerns — auth, quotas, tracing — to middleware/interceptors so domain handlers stay testable.
+Acceptance check: an on-call engineer can explain system state for database migration not null backfill from one dashboard and one runbook page.
 
-Document explicit SLIs: availability, p95 latency, error rate, and lag (if async). Alerts should page on user-visible symptoms, not every internal retry.
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
+## When to refuse this approach
 
-```sql
--- Example: idempotent ingest skeleton for database workloads
-CREATE TABLE IF NOT EXISTS processed_events (
-  idempotency_key text PRIMARY KEY,
-  response_code   int NOT NULL,
-  response_body   jsonb,
-  created_at      timestamptz NOT NULL DEFAULT now()
-);
+Production systems punish vague ownership and unmeasured happy paths. For database migration not null backfill, that means making failure visible early.
+
+With OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on database migration not null backfill.
+
+Concretely, being able to ship database migration behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
+
+```typescript
+// Shipping database migration not null backfill without regret
+export async function handle_database_migration_not_null_backfill(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("database-migration-not-null-backfill");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Implementation checklist
+## Minimal production setup
 
-Validate inputs at the trust boundary with schema versioning.
+Teams usually discover Shipping database migration not null backfill without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Use timeouts and cancellation on every outbound call; propagate context.
+Put a metric on the user-visible effect of database migration not null backfill before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Store idempotency keys with TTL; return cached responses on replay.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping database migration not null backfill without regret that needs a hero is not done.
 
-Run migrations with lock_timeout and statement_timeout set.
+My never-again list for database migration not null backfill: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Load test at 2× expected peak with production-like payload sizes.
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
-## Observability
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Metrics: request rate, error ratio, duration histogram, and saturation (pool wait, queue depth, consumer lag). Logs: structured JSON with trace_id and tenant_id. Traces: one span per outbound dependency.
+## Cost, complexity, and ownership
 
-Dashboards for database migration not null backfill should answer: 'Is the system slow, broken, or overloaded?' without SSH. Exemplars link spikes to trace IDs.
+Teams usually discover Shipping database migration not null backfill without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-## Security notes
+With OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Least privilege for service accounts and database roles. Rotate secrets without redeploy where possible. Never log raw tokens or PII — redact at serialization.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping database migration not null backfill without regret that needs a hero is not done.
 
-For auth-related paths, fail closed. Rate limit unauthenticated endpoints aggressively.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping database migration not null backfill without regret cannot answer, it is not production-ready.
 
-## Common production mistakes
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
-Teams ship backend changes without rehearsing failure modes: missing `lock_timeout` on migrations, connection pools sized for app count not PgBouncer multiplexing, and assuming staging EXPLAIN plans match production statistics after a traffic pattern shift. Document trade-offs explicitly — if you chose availability over strict consistency, write that down for the next engineer on call.
+## Migration without dual-running forever
 
-## Debugging and triage workflow
+I treat Shipping database migration not null backfill without regret as an operations problem first. The goal is to ship database migration behind flags with a rollback, not to collect frameworks.
 
-When production misbehaves, work top-down:
+Put a metric on the user-visible effect of database migration not null backfill before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-1. **Confirm scope** — one tenant, region, or deployment stage?
-2. **Check recent changes** — deploys, flag flips, schema migrations in the last 24 hours.
-3. **Compare golden signals** — latency, error rate, saturation, traffic vs baseline.
-4. **Reproduce minimally** — smallest input that triggers failure; capture traces with correlation IDs.
-5. **Fix forward or rollback** — rollback first during incident if faster than root cause.
-6. **Add a guard** — alert, integration test, or circuit breaker for this failure class.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on database migration not null backfill.
 
-## Operational checklist
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
-- **Staging parity** — failure paths (timeouts, retries, partial outages) exercised before prod.
-- **Observability** — dashboards and alerts for metrics discussed above; on-call knows where to look.
-- **Rollback** — documented revert path without improvising.
-- **Load test** — evidence about behavior at expected peak plus headroom, not intuition.
+Related reading:
 
-## Performance tuning notes
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Measure before optimizing database migration not null backfill. Capture baseline p50/p95 latency, error rate, and resource utilization under representative load. Change one variable at a time — pool size, batch size, timeout, cache TTL — and re-measure.
+## Definition of done
 
-CPU profiling often reveals unexpected hotspots: JSON serialization, regex in middleware, or ORM hydration of wide entities. IO profiling reveals N+1 queries, missing indexes, and pool wait time dominating tail latency.
+Production systems punish vague ownership and unmeasured happy paths. For database migration not null backfill, that means making failure visible early.
 
-Cache only what is expensive to compute and safe to stale. Document TTL rationale. Invalidate on write where consistency matters; accept eventual consistency where product allows.
+With OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-## Rollout and migration
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on database migration not null backfill.
 
-Ship database migration not null backfill changes behind feature flags when behavior crosses service boundaries. Use canary deploys with automatic rollback on error rate or latency regression.
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
-For schema changes, prefer expand-contract over big-bang DDL. Never assume maintenance windows are available — design for online migration.
+## Practical defaults for Shipping database migration not null backfill without regret
 
-Maintain rollback runbooks: previous container image digest, down migration forward-fix, and feature flag disable path tested quarterly.
+Production systems punish vague ownership and unmeasured happy paths. For database migration not null backfill, that means making failure visible early.
 
-## Testing recommendations
+Put a metric on the user-visible effect of database migration not null backfill before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Unit test pure domain logic without database. Integration test against real Postgres/Redis/Kafka in CI with Testcontainers.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping database migration not null backfill without regret that needs a hero is not done.
 
-Contract test API boundaries with Pact or schema fixtures. Chaos test dependency timeouts and verify circuit breakers open.
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
 
-Load test before marketing launches — synthetic traffic shapes miss fan-out and queue backlog effects seen in production.
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-## Incident patterns we see
+## Review questions before merging database migration not null backfill work
 
-Connection pool exhaustion masquerading as slow queries — graph active connections vs pool max.
+Teams usually discover Shipping database migration not null backfill without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Missing idempotency on webhook or queue consumers causing duplicate side effects during at-least-once delivery.
+With OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Migration holding ACCESS EXCLUSIVE lock because lock_timeout was not set — traffic pile-up and cascading timeouts.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping database migration not null backfill without regret that needs a hero is not done.
 
-Retry storms amplifying outage — uncapped retries on 503 increase load on failing dependency.
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Field notes after thirty days of database migration not null backfill
+
+Production systems punish vague ownership and unmeasured happy paths. For database migration not null backfill, that means making failure visible early.
+
+With OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on database migration not null backfill.
+
+Slug-specific note (database-migration-not-null-backfill): prioritize backfill behavior under load and verify with a fixture named `database-migration-not-null-backfill-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for database migration not null backfill. Expand only when the metric demands it.
 
 ## Resources
 
-- [PostgreSQL documentation](https://www.postgresql.org/docs/)
-- [Microservices patterns](https://microservices.io/patterns/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [12-Factor App](https://12factor.net/)
+- Internal runbook seed: `database-migration-not-null-backfill`
+- https://12factor.net/
+- https://martinfowler.com/

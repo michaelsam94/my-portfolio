@@ -1,132 +1,150 @@
 ---
-title: "App Intents and Shortcuts in Production"
+title: "Shipping ios app intents shortcuts production without regret"
 slug: "ios-app-intents-shortcuts-production"
-description: "App Intents and Shortcuts in Production: how to ship intents that pass review in production ios systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Shipping ios app intents shortcuts production without regret: how to ship ios app behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-08-12"
 dateModified: "2026-08-12"
 tags:
   - "iOS"
-  - "SwiftUI"
-  - "Mobile"
 keywords: "ios, app, intents, shortcuts, production, engineering"
 faq:
-  - q: "What is App Intents and Shortcuts in Production?"
-    a: "App Intents and Shortcuts in Production is a production approach to ship intents that pass review. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in App Intents and Shortcuts in Production?"
-    a: "Invest when power-user automation. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with App Intents and Shortcuts in Production?"
-    a: "The usual failure is unlocalized shortcut phrases. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Shipping ios app intents shortcuts production without regret?"
+    a: "Shipping ios app intents shortcuts production without regret is the production approach to ship ios app behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Shipping ios app intents shortcuts production without regret?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with ios app intents shortcuts production, prioritize it."
+  - q: "What is the most common mistake with Shipping ios app intents shortcuts production without regret?"
+    a: "The usual failure is treating ios app intents shortcuts production as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**App Intents and Shortcuts in Production** means you ship intents that pass review — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you hit power-user automation; that is usually also when shortcuts like unlocalized shortcut phrases start paging people.
+**Shipping ios app intents shortcuts production without regret** means you ship ios app behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like treating ios app intents shortcuts production as a pure library problem start paging people.
 
-Below is how I implement and operate it in iOS systems using SwiftUI, Swift, UIKit: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `ios-app-intents-shortcuts-production` in a product context, using SwiftUI, OpenTelemetry, Prometheus for the mechanics while keeping ownership human.
 
-## Decision guide for App Intents and Shortcuts in Production
+## Decision guide for Shipping ios app intents shortcuts production without regret
 
-If you only remember one thing about App Intents and Shortcuts in Production: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship intents that pass review.
+Teams usually discover Shipping ios app intents shortcuts production without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-The anti-pattern is unlocalized shortcut phrases. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With SwiftUI, OpenTelemetry, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating ios app intents shortcuts production as a pure library problem.
 
-Prefer small diffs with a kill switch. App Intents and Shortcuts in Production changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on ios app intents shortcuts production.
 
-## When this is the wrong tool
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
-I have watched teams under-specify App Intents and Shortcuts in Production and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship intents that pass review.
+## When to refuse this approach
 
-The anti-pattern is unlocalized shortcut phrases. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Shipping ios app intents shortcuts production without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of ios app intents shortcuts production before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Practically, being able to ship intents that pass review means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for ios app intents shortcuts production from one dashboard and one runbook page.
+
+Concretely, being able to ship ios app behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
 ```swift
-actor SwiftUIClient {
-  func run() async throws {
+// Shipping ios app intents shortcuts production without regret
+actor Service_ios_app_inte {
+  func run(_ req: Request) async throws -> Response {
     try Task.checkCancellation()
-    // App Intents and Shortcuts in Production
+    return try await client.send(req, timeout: .seconds(2))
   }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-I have watched teams under-specify App Intents and Shortcuts in Production and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship intents that pass review.
+Teams usually discover Shipping ios app intents shortcuts production without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-In iOS stacks I lean on SwiftUI, Swift, UIKit for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlocalized shortcut phrases.
+Keep side effects at the edges and make every write idempotent. Shipping ios app intents shortcuts production without regret without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on ios app intents shortcuts production.
 
-I also keep a short 'never again' list beside the code: unlocalized shortcut phrases; skipping App Intents and Shortcuts in Production error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for ios app intents shortcuts production: treating ios app intents shortcuts production as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlocalized shortcut phrases |
-| Durable path | power-user automation | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating ios app intents shortcuts production as a pure library problem |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-I have watched teams under-specify App Intents and Shortcuts in Production and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship intents that pass review.
+I treat Shipping ios app intents shortcuts production without regret as an operations problem first. The goal is to ship ios app behind flags with a rollback, not to collect frameworks.
 
-In iOS stacks I lean on SwiftUI, Swift, UIKit for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlocalized shortcut phrases.
+Keep side effects at the edges and make every write idempotent. Shipping ios app intents shortcuts production without regret without retry semantics is a future incident write-up.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on ios app intents shortcuts production.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? App Intents and Shortcuts in Production designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Shipping ios app intents shortcuts production without regret cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
-If you only remember one thing about App Intents and Shortcuts in Production: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship intents that pass review.
+## Migration without dual-running forever
 
-In iOS stacks I lean on SwiftUI, Swift, UIKit for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlocalized shortcut phrases.
+Production systems punish vague ownership and unmeasured happy paths. For ios app intents shortcuts production, that means making failure visible early.
 
-Write the acceptance check in product language: when power-user automation, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of ios app intents shortcuts production before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for ios app intents shortcuts production from one dashboard and one runbook page.
+
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
 Related reading:
 
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-I have watched teams under-specify App Intents and Shortcuts in Production and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to ship intents that pass review.
+Production systems punish vague ownership and unmeasured happy paths. For ios app intents shortcuts production, that means making failure visible early.
 
-The anti-pattern is unlocalized shortcut phrases. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of ios app intents shortcuts production before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Prefer small diffs with a kill switch. App Intents and Shortcuts in Production changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for ios app intents shortcuts production from one dashboard and one runbook page.
 
-## Practical defaults I use for App Intents and Shortcuts in Production
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
-If you only remember one thing about App Intents and Shortcuts in Production: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship intents that pass review.
+## Practical defaults for Shipping ios app intents shortcuts production without regret
 
-The anti-pattern is unlocalized shortcut phrases. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Shipping ios app intents shortcuts production without regret as an operations problem first. The goal is to ship ios app behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. App Intents and Shortcuts in Production changes that require a hero engineer on-call are not done, even if the feature flag is green.
+With SwiftUI, OpenTelemetry, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating ios app intents shortcuts production as a pure library problem.
 
-A month in, prune unused paths. App Intents and Shortcuts in Production accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping ios app intents shortcuts production without regret that needs a hero is not done.
 
-## Review questions before merging App Intents and Shortcuts in Production work
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
-Most write-ups on App Intents and Shortcuts in Production stop at the demo. This one starts from situations where power-user automation, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and treating ios app intents shortcuts production as a pure library problem. Missing that note blocks merge.
 
-Make App Intents and Shortcuts in Production error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate App Intents and Shortcuts in Production — you only deployed it.
+## Review questions before merging ios app intents shortcuts production work
 
-Prefer small diffs with a kill switch. App Intents and Shortcuts in Production changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Teams usually discover Shipping ios app intents shortcuts production without regret after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for App Intents and Shortcuts in Production error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Shipping ios app intents shortcuts production without regret without retry semantics is a future incident write-up.
 
-## Field notes after the first month of App Intents and Shortcuts in Production
+Acceptance check: an on-call engineer can explain system state for ios app intents shortcuts production from one dashboard and one runbook page.
 
-If you only remember one thing about App Intents and Shortcuts in Production: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can ship intents that pass review.
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
 
-In iOS stacks I lean on SwiftUI, Swift, UIKit for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlocalized shortcut phrases.
+After a month, delete unused flags and dual paths. `ios-app-intents-shortcuts-production` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when power-user automation, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of ios app intents shortcuts production
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlocalized shortcut phrases. If it is missing, the PR is incomplete.
+Production systems punish vague ownership and unmeasured happy paths. For ios app intents shortcuts production, that means making failure visible early.
+
+Put a metric on the user-visible effect of ios app intents shortcuts production before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Shipping ios app intents shortcuts production without regret that needs a hero is not done.
+
+Slug-specific note (ios-app-intents-shortcuts-production): prioritize production behavior under load and verify with a fixture named `ios-app-intents-shortcuts-production-smoke`.
+
+After a month, delete unused flags and dual paths. `ios-app-intents-shortcuts-production` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `ios-app-intents-shortcuts-production`
 - https://12factor.net/
+- https://martinfowler.com/

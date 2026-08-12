@@ -1,304 +1,160 @@
 ---
-title: "Core Web Vitals Field Data for Agent-Powered Products"
+title: "Agent reliability via core web vitals field data"
 slug: "agent-core-web-vitals-field-data"
-description: "Measure and improve LCP, INP, and CLS on real user sessions for streaming agent UIs — CrUX vs RUM, attribution, AI-specific regressions, and performance budgets in CI."
+description: "Agent reliability via core web vitals field data: how to ship agent core web vitals field data with human override paths — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-07-16"
-dateModified: "2026-07-16"
-tags: ["AI Agents", "Performance", "Core Web Vitals", "Frontend"]
-keywords: "Core Web Vitals field data, INP agent UI, LCP streaming chat, CrUX RUM, web vitals agent dashboard, performance monitoring"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+  - "Web"
+keywords: "agent, core, web, vitals, field, data, production, engineering"
 faq:
-  - q: "Why is lab Lighthouse insufficient for agent chat products?"
-    a: "Lab tests use clean profiles, warm caches, and no concurrent streaming tokens or WebSocket backpressure. Agent UIs regress from long tasks during markdown rendering, layout shifts when tool cards mount, and INP spikes during input while tokens stream — only field data captures that mix."
-  - q: "What is a realistic INP target for an agent input box?"
-    a: "Aim for INP p75 under 200ms on field data for the chat input element. Streaming output can run on separate threads or requestAnimationFrame batches, but the send button and textarea must stay responsive — users type during generation."
-  - q: "How do streaming tokens affect LCP?"
-    a: "If the largest paint is the first assistant message bubble, LCP may fire late on slow models — sometimes after FCP by seconds. Track element-level LCP attribution; consider skeleton placeholders with fixed dimensions so LCP lands on stable chrome, not growing message height."
-  - q: "Should agent telemetry include CrUX data or only custom RUM?"
-    a: "Use both. CrUX gives competitive baseline and Search Console integration at origin level. Custom RUM adds route-level, tenant-level, and interaction attribution (which tool renderer caused CLS) that CrUX cannot provide."
+  - q: "What is Agent reliability via core web vitals field data?"
+    a: "Agent reliability via core web vitals field data is the production approach to ship agent core web vitals field data with human override paths. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent reliability via core web vitals field data?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent core web vitals field data, prioritize it."
+  - q: "What is the most common mistake with Agent reliability via core web vitals field data?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Agent reliability via core web vitals field data** means you ship agent core web vitals field data with human override paths — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Google Search Console flagged your marketing site as "needs improvement" on INP the same week product shipped streaming agent chat, markdown tool renderers, and a lazy-loaded code editor. Lab Lighthouse still scores 94. Real users on mid-tier Android wait 800ms for the send button to acknowledge a tap. **Core Web Vitals field data** — measurements from actual sessions, not your MacBook on gigabit — is the only honest scorecard for agent-powered web products.
+This write-up is specific to `agent-core-web-vitals-field-data` in a agent context, using Redis, Temporal, OpenTelemetry for the mechanics while keeping ownership human.
 
-Agent interfaces create performance patterns static sites never see: unbounded DOM growth from token streaming, layout shifts when tool cards hydrate, long main-thread tasks from syntax highlighting, and INP contention when users type while output renders. This post covers how to collect field vitals correctly, attribute regressions to agent-specific causes, and set budgets that survive model latency masquerading as frontend slowness.
+## A pragmatic path to Agent reliability via core web vitals field data
 
-## The three vitals and how agents break them
+I treat Agent reliability via core web vitals field data as an operations problem first. The goal is to ship agent core web vitals field data with human override paths, not to collect frameworks.
 
-| Vital | Measures | Agent UI risk |
-|-------|----------|---------------|
-| **LCP** | Largest contentful paint | First message bubble, hero demo chat, large tool output panel |
-| **INP** | Interaction to next paint (p75) | Send button, stop generation, copy code, expand tool trace |
-| **CLS** | Cumulative layout shift | Streaming markdown, lazy images in RAG citations, font swap |
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Field data aggregates **p75 over 28 days** of real Chrome sessions (CrUX) or your RUM pipeline. Lab scores are diagnostics; field data is accountability.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent core web vitals field data.
 
-## CrUX vs your own RUM
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-**Chrome User Experience Report (CrUX)** is free, origin-level, and powers Search ranking signals. Limitations:
+## Start from the user-visible symptom
 
-- No URL-level detail below popular origins
-- No custom dimensions (tenant, agent version, model tier)
-- 28-day rolling window — slow to confirm fixes
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-**Real User Monitoring (RUM)** with `web-vitals` library fills gaps:
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```typescript
-// lib/vitals.ts
-import { onLCP, onINP, onCLS, onFCP, type Metric } from "web-vitals";
+Acceptance check: an on-call engineer can explain system state for agent core web vitals field data from one dashboard and one runbook page.
 
-type VitalsPayload = {
-  name: string;
-  value: number;
-  rating: "good" | "needs-improvement" | "poor";
-  id: string;
-  route: string;
-  agentVersion: string;
-  navigationType: string;
-  attribution?: Record<string, unknown>;
-};
+Concretely, being able to ship agent core web vitals field data with human override paths forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-function sendToAnalytics(metric: Metric) {
-  const body: VitalsPayload = {
-    name: metric.name,
-    value: metric.value,
-    rating: metric.rating,
-    id: metric.id,
-    route: window.location.pathname,
-    agentVersion: window.__AGENT_CONFIG__?.version ?? "unknown",
-    navigationType: metric.navigationType ?? "unknown",
-    attribution: "attribution" in metric ? (metric as any).attribution : undefined,
-  };
-
-  navigator.sendBeacon("/api/rum/vitals", JSON.stringify(body));
-}
-
-export function initVitals() {
-  onLCP(sendToAnalytics, { reportAllChanges: false });
-  onINP(sendToAnalytics, { reportAllChanges: true });
-  onCLS(sendToAnalytics, { reportAllChanges: true });
-  onFCP(sendToAnalytics);
-}
-```
-
-Enable **`reportAllChanges` for INP and CLS** during development; production can sample 10–30% of sessions to control volume.
-
-Correlate RUM with CrUX weekly. If RUM p75 INP is 180ms but CrUX shows "poor," your RUM sample may skew desktop — weight by device class.
-
-## INP: the agent chat bottleneck
-
-INP replaced FID because modern apps have long tasks after input — exactly what token streaming causes.
-
-Common agent INP failures:
-
-1. **Main thread blocked during stream processing** — parsing markdown on every chunk
-2. **Synchronous JSON.stringify on large tool payloads** for debug panels
-3. **Re-render entire message list** instead of appending tail
-4. **Heavy React reconciliation** when message array grows unbounded
-
-Fix pattern — **incremental render pipeline**:
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
 ```typescript
-// hooks/useStreamingMessage.ts
-import { useRef, useCallback } from "react";
-
-export function useStreamingMessage() {
-  const bufferRef = useRef("");
-  const rafRef = useRef<number | null>(null);
-
-  const appendToken = useCallback((token: string, onFlush: (text: string) => void) => {
-    bufferRef.current += token;
-    if (rafRef.current !== null) return;
-
-    rafRef.current = requestAnimationFrame(() => {
-      onFlush(bufferRef.current);
-      rafRef.current = null;
-    });
-  }, []);
-
-  return { appendToken };
+// Agent reliability via core web vitals field data
+export async function handle_agent_core_web_vitals_field_data(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-core-web-vitals-field-data");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-Batch token DOM updates to one frame. Measure INP on the send button with Performance API:
+## Implementation details for agent core web vitals field data
 
-```typescript
-// Mark interaction start on pointerdown, measure to next paint
-sendButton.addEventListener("pointerdown", () => {
-  performance.mark("send-start");
-});
+I treat Agent reliability via core web vitals field data as an operations problem first. The goal is to ship agent core web vitals field data with human override paths, not to collect frameworks.
 
-// After handler completes and paints
-performance.measure("send-inp", "send-start");
-```
+Keep side effects at the edges and make every write idempotent. Agent reliability via core web vitals field data without retry semantics is a future incident write-up.
 
-**Target:** INP p75 < 200ms field; investigate any agent route above 500ms.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via core web vitals field data that needs a hero is not done.
 
-Use **`scheduler.postTask`** or Web Workers for markdown parsing if tokens arrive faster than 60fps consumption.
+My never-again list for agent core web vitals field data: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## LCP when content is model-generated
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-Static LCP advice ("optimize hero image") misses agent UIs where LCP element is dynamic text.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Strategies:
+## Flags, canaries, and kill switches
 
-**Stable skeleton with fixed height.** Render chat shell and placeholder bubble before first token. LCP anchors on shell, not growing content.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-```tsx
-<div className="message assistant" style={{ minHeight: 120 }}>
-  {!firstTokenReceived && <Skeleton lines={3} />}
-  {content}
-</div>
-```
+Keep side effects at the edges and make every write idempotent. Agent reliability via core web vitals field data without retry semantics is a future incident write-up.
 
-**Element timing API** — mark when assistant message mounts:
+Acceptance check: an on-call engineer can explain system state for agent core web vitals field data from one dashboard and one runbook page.
 
-```typescript
-onLCP((metric) => {
-  const lcpElement = metric.entries?.[0]?.element;
-  console.log("LCP element:", lcpElement?.className, metric.value);
-});
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent reliability via core web vitals field data cannot answer, it is not production-ready.
 
-If LCP is consistently the assistant bubble, separate **Time to First Token (TTFT)** as a product metric — model latency — from **Time to Stable Layout**, a frontend metric.
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-Do not conflate "model took 3s" with "frontend LCP failed." Track both on the same dashboard with different labels.
+## Proving it worked
 
-## CLS from tool renderers and citations
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-Agent messages embed unpredictable content: images from RAG, code blocks with async highlighting, expandable tool traces. Each injection shifts layout.
+Put a metric on the user-visible effect of agent core web vitals field data before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-CLS prevention checklist:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via core web vitals field data that needs a hero is not done.
 
-- **Width/height on citation thumbnails** — or fixed aspect-ratio containers
-- **Reserve space for code blocks** — min-height from line count estimate
-- **`font-display: optional`** or preloaded fonts for monospace code
-- **Avoid inserting banners above existing messages** — toast notifications steal space
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-```css
-.tool-card {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 200px; /* reserve approximate height */
-}
+Related reading:
 
-.citation-thumb {
-  aspect-ratio: 16 / 9;
-  width: 100%;
-  max-width: 320px;
-  object-fit: cover;
-}
-```
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Measure CLS attribution in web-vitals v4+ — identify which tool renderer (`code`, `chart`, `table`) correlates with shift events.
+## Follow-ups teams usually skip
 
-## Separating model latency from frontend vitals
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-Agent products confuse teams because slow **feels** uniform:
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-| Signal | Source | Owner |
-|--------|--------|-------|
-| TTFT | API stream TTFB | Model / backend |
-| Token rate | API stream | Model / backend |
-| Stream render FPS | RUM custom | Frontend |
-| INP on input | web-vitals | Frontend |
-| LCP element timing | web-vitals | Frontend + design |
+Acceptance check: an on-call engineer can explain system state for agent core web vitals field data from one dashboard and one runbook page.
 
-```typescript
-// Custom metric: stream render health
-performance.mark("stream-first-chunk");
-// ... on first rAF flush after chunk
-performance.mark("stream-first-paint");
-performance.measure("stream-render-delay", "stream-first-chunk", "stream-first-paint");
-```
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-If `stream-render-delay` p95 > 100ms while TTFT is fine, optimize frontend batching — not the model route.
+## Practical defaults for Agent reliability via core web vitals field data
 
-## Field data collection hygiene
+Teams usually discover Agent reliability via core web vitals field data after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-**Sample wisely.** 100% RUM on high-traffic agent routes is expensive. Stratified sample: 20% overall, 100% for new agent version first 48 hours.
+Keep side effects at the edges and make every write idempotent. Agent reliability via core web vitals field data without retry semantics is a future incident write-up.
 
-**Segment reports** by:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent core web vitals field data.
 
-- `deviceMemory` / mobile vs desktop
-- `agentVersion` (feature flags)
-- `route` (/chat, /embed, /dashboard)
-- `streamEnabled` boolean
-- Geographic region (latency to API region)
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-**Privacy.** Vitals payloads must not include message content. IDs only.
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-**Bot filtering.** CrUX excludes bots; your RUM may not. Filter headless user agents from INP aggregates.
+## Review questions before merging agent core web vitals field data work
 
-## Performance budgets in CI
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-Lab tests still gate regressions before deploy — they just do not replace field data.
+With Redis, Temporal, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-```javascript
-// lighthouse-ci assert (agent chat route)
-module.exports = {
-  ci: {
-    assert: {
-      assertions: {
-        "categories:performance": ["error", { minScore: 0.75 }],
-        "interactive": ["error", { maxNumericValue: 4000 }],
-        "total-blocking-time": ["error", { maxNumericValue: 300 }],
-      },
-    },
-  },
-};
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent core web vitals field data.
 
-Add **custom lab scenario**: load `/agent/chat`, simulate 500-token stream via mocked SSE, measure long tasks > 50ms during stream.
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-Pair with **bundle budgets**:
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
 
-```json
-{
-  "path": "dist/agent-chat-*.js",
-  "maxSize": "180 kB"
-}
-```
+## Field notes after thirty days of agent core web vitals field data
 
-Syntax highlighters and chart libraries blow budgets silently when added to tool renderers.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent core web vitals field data, that means making failure visible early.
 
-## CrUX API for dashboards
+Keep side effects at the edges and make every write idempotent. Agent reliability via core web vitals field data without retry semantics is a future incident write-up.
 
-Pull origin-level history for executive reporting:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent reliability via core web vitals field data that needs a hero is not done.
 
-```python
-# scripts/crux_fetch.py
-import requests
+Slug-specific note (agent-core-web-vitals-field-data): prioritize data behavior under load and verify with a fixture named `agent-core-web-vitals-field-data-smoke`.
 
-API = "https://chromeuxreport.googleapis.com/v1/records:queryRecord"
-params = {
-    "origin": "https://app.example.com",
-    "formFactor": "PHONE",
-    "metrics": ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift"],
-}
-
-# Requires API key; returns p75 distribution and histogram
-```
-
-Compare phone vs desktop CrUX monthly. Agent power users on desktop hide mobile CLS disasters.
-
-## Regression response playbook
-
-When field INP crosses "needs improvement" threshold:
-
-1. **Check deploy correlation** — agent version flag, new tool renderer
-2. **Slice RUM attribution** — which interaction target (send, stop, copy)
-3. **Long task profiler** — reproduce on Moto G4 equivalent device
-4. **Stream off experiment** — if INP recovers, blame render path not input handler
-5. **Rollback or hotfix** — feature flag off new renderer; confirm CrUX recovery in 28 days or faster via RUM
-
-Document wins. "Reserved 200px for tool cards" is reusable knowledge.
-
-## The takeaway
-
-Core Web Vitals field data exposes what Lighthouse misses on agent UIs: interaction delay during streaming, layout shift from tool output, and LCP driven by dynamic content. Instrument with web-vitals RUM, attribute regressions to specific renderers and interactions, separate model TTFT from frontend render delay, and set CI budgets that include streaming scenarios. CrUX tells you if Google thinks you are slow; RUM tells you why and where — you need both to ship agent products that feel fast on real devices.
+After a month, delete unused flags and dual paths. `agent-core-web-vitals-field-data` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [web.dev — Core Web Vitals](https://web.dev/vitals/)
-- [Chrome UX Report API documentation](https://developer.chrome.com/docs/crux/api)
-- [web-vitals JavaScript library](https://github.com/GoogleChrome/web-vitals)
-- [web.dev — Optimize INP](https://web.dev/articles/optimize-inp)
-- [Search Console — Core Web Vitals report](https://support.google.com/webmasters/answer/9205520)
+- Internal runbook seed: `agent-core-web-vitals-field-data`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,127 +1,158 @@
 ---
-title: "Billing Applier"
+title: "Production billing applier: decisions that matter"
 slug: "billing-applier"
-description: "Billing Applier: how to measure the user-visible signal first in production android systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Production billing applier: decisions that matter: how to keep billing applier correct under retries and partial failure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-24"
 dateModified: "2026-08-12"
 tags:
-  - "Android"
-  - "Mobile"
-keywords: "billing, applier, android, production, engineering"
+  - "Engineering"
+  - "Billing"
+keywords: "billing, applier, production, engineering"
 faq:
-  - q: "What is Billing Applier?"
-    a: "Billing Applier is a production approach to measure the user-visible signal first. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Billing Applier?"
-    a: "Invest when auditors or enterprise buyers ask how you know it works. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Billing Applier?"
-    a: "The usual failure is treating edge cases as follow-ups. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Production billing applier: decisions that matter?"
+    a: "Production billing applier: decisions that matter is the production approach to keep billing applier correct under retries and partial failure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Production billing applier: decisions that matter?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with billing applier, prioritize it."
+  - q: "What is the most common mistake with Production billing applier: decisions that matter?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Billing Applier** means you measure the user-visible signal first — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when auditors or enterprise buyers ask how you know it works; that is usually also when shortcuts like treating edge cases as follow-ups start paging people.
+**Production billing applier: decisions that matter** means you keep billing applier correct under retries and partial failure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-Below is how I implement and operate it in Android systems using Kotlin, CameraX: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `billing-applier` in a product context, using Prometheus, OpenTelemetry, Redis for the mechanics while keeping ownership human.
 
-## The short answer on Billing Applier
+## Short answer: Production billing applier: decisions that matter
 
-I have watched teams under-specify Billing Applier and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+I treat Production billing applier: decisions that matter as an operations problem first. The goal is to keep billing applier correct under retries and partial failure, not to collect frameworks.
 
-Make Billing Applier error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Applier — you only deployed it.
+With Prometheus, OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production billing applier: decisions that matter that needs a hero is not done.
+
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
 ## Constraints before abstractions
 
-If you only remember one thing about Billing Applier: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+Teams usually discover Production billing applier: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-In Android stacks I lean on Kotlin, CameraX for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+With Prometheus, OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for billing applier from one dashboard and one runbook page.
 
-Practically, being able to measure the user-visible signal first means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Concretely, being able to keep billing applier correct under retries and partial failure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```kotlin
-interface KotlinGateway { suspend fun execute(input: Request): Result<Response> }
-// Billing Applier
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
+
+```typescript
+// Production billing applier: decisions that matter
+export async function handle_billing_applier(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("billing-applier");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-## Reference shape using Kotlin
+## Reference implementation notes (Prometheus)
 
-Most write-ups on Billing Applier stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Production billing applier: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-In Android stacks I lean on Kotlin, CameraX for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+With Prometheus, OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for billing applier from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: treating edge cases as follow-ups; skipping Billing Applier error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for billing applier: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; treating edge cases as follow-ups |
-| Durable path | auditors or enterprise buyers ask how you know it works | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Comparison: quick path vs durable path
+## Quick path vs durable path
 
-If you only remember one thing about Billing Applier: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+I treat Production billing applier: decisions that matter as an operations problem first. The goal is to keep billing applier correct under retries and partial failure, not to collect frameworks.
 
-Make Billing Applier error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Applier — you only deployed it.
+Put a metric on the user-visible effect of billing applier before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Billing Applier changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on billing applier.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Billing Applier designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Production billing applier: decisions that matter cannot answer, it is not production-ready.
 
-## Edge cases that break demos
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
-If you only remember one thing about Billing Applier: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can measure the user-visible signal first.
+## Edge cases demos miss
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Teams usually discover Production billing applier: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Write the acceptance check in product language: when auditors or enterprise buyers ask how you know it works, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Production billing applier: decisions that matter without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production billing applier: decisions that matter that needs a hero is not done.
+
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
 Related reading:
 
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-## Shipping without painting into a corner
+## Merge checklist
 
-Most write-ups on Billing Applier stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover Production billing applier: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-In Android stacks I lean on Kotlin, CameraX for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+Keep side effects at the edges and make every write idempotent. Production billing applier: decisions that matter without retry semantics is a future incident write-up.
 
-Prefer small diffs with a kill switch. Billing Applier changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Acceptance check: an on-call engineer can explain system state for billing applier from one dashboard and one runbook page.
 
-## Practical defaults I use for Billing Applier
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
-I have watched teams under-specify Billing Applier and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+## Practical defaults for Production billing applier: decisions that matter
 
-Make Billing Applier error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Billing Applier — you only deployed it.
+Production systems punish vague ownership and unmeasured happy paths. For billing applier, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Keep side effects at the edges and make every write idempotent. Production billing applier: decisions that matter without retry semantics is a future incident write-up.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Billing Applier error rate. Expand only when the metric says you must.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production billing applier: decisions that matter that needs a hero is not done.
 
-## Review questions before merging Billing Applier work
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
-Most write-ups on Billing Applier stop at the demo. This one starts from situations where auditors or enterprise buyers ask how you know it works, because that is when the abstraction either pays rent or becomes toil.
+After a month, delete unused flags and dual paths. `billing-applier` accumulates temporary bridges faster than teams expect.
 
-In Android stacks I lean on Kotlin, CameraX for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when treating edge cases as follow-ups.
+## Review questions before merging billing applier work
 
-Prefer small diffs with a kill switch. Billing Applier changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Production billing applier: decisions that matter as an operations problem first. The goal is to keep billing applier correct under retries and partial failure, not to collect frameworks.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Billing Applier error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Production billing applier: decisions that matter without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Billing Applier
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production billing applier: decisions that matter that needs a hero is not done.
 
-I have watched teams under-specify Billing Applier and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to measure the user-visible signal first.
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
 
-The anti-pattern is treating edge cases as follow-ups. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `billing-applier` accumulates temporary bridges faster than teams expect.
 
-Prefer small diffs with a kill switch. Billing Applier changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of billing applier
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Billing Applier error rate. Expand only when the metric says you must.
+Production systems punish vague ownership and unmeasured happy paths. For billing applier, that means making failure visible early.
+
+With Prometheus, OpenTelemetry, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is one shared path for every tenant and environment.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production billing applier: decisions that matter that needs a hero is not done.
+
+Slug-specific note (billing-applier): prioritize applier behavior under load and verify with a fixture named `billing-applier-smoke`.
+
+After a month, delete unused flags and dual paths. `billing-applier` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `billing-applier`
 - https://12factor.net/
+- https://martinfowler.com/

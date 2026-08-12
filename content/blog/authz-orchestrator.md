@@ -1,131 +1,158 @@
 ---
-title: "Authz Orchestrator"
+title: "Authz-orchestrator engineering checklist"
 slug: "authz-orchestrator"
-description: "Authz Orchestrator: how to make retries and timeouts intentional in production platform systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Authz-orchestrator engineering checklist: how to ship authz orchestrator behind flags with a rollback — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-03-27"
 dateModified: "2026-08-12"
 tags:
-  - "Platform"
-  - "DX"
-keywords: "authz, orchestrator, platform, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, orchestrator, production, engineering"
 faq:
-  - q: "What is Authz Orchestrator?"
-    a: "Authz Orchestrator is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Orchestrator?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Orchestrator?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Authz-orchestrator engineering checklist?"
+    a: "Authz-orchestrator engineering checklist is the production approach to ship authz orchestrator behind flags with a rollback. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Authz-orchestrator engineering checklist?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with authz orchestrator, prioritize it."
+  - q: "What is the most common mistake with Authz-orchestrator engineering checklist?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Orchestrator** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**Authz-orchestrator engineering checklist** means you ship authz orchestrator behind flags with a rollback — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Below is how I implement and operate it in Platform systems using GitHub Actions, Docker: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-orchestrator` in a product context, using Prometheus, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Decision guide for Authz Orchestrator
+## Decision guide for Authz-orchestrator engineering checklist
 
-If you only remember one thing about Authz Orchestrator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+With Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz orchestrator.
 
-## When this is the wrong tool
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
-Most write-ups on Authz Orchestrator stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## When to refuse this approach
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-Prefer small diffs with a kill switch. Authz Orchestrator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Keep side effects at the edges and make every write idempotent. Authz-orchestrator engineering checklist without retry semantics is a future incident write-up.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-orchestrator engineering checklist that needs a hero is not done.
+
+Concretely, being able to ship authz orchestrator behind flags with a rollback forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Authz-orchestrator engineering checklist
+export async function handle_authz_orchestrator(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Orchestrator
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-orchestrator");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Minimal viable production setup
+## Minimal production setup
 
-Most write-ups on Authz Orchestrator stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-Make Authz Orchestrator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Orchestrator — you only deployed it.
+With Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-orchestrator engineering checklist that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Authz Orchestrator error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz orchestrator: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Cost and complexity tradeoffs
+## Cost, complexity, and ownership
 
-If you only remember one thing about Authz Orchestrator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-Make Authz Orchestrator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Orchestrator — you only deployed it.
+Keep side effects at the edges and make every write idempotent. Authz-orchestrator engineering checklist without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for authz orchestrator from one dashboard and one runbook page.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Orchestrator designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Authz-orchestrator engineering checklist cannot answer, it is not production-ready.
 
-## Migration sequence
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
-I have watched teams under-specify Authz Orchestrator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Migration without dual-running forever
 
-Make Authz Orchestrator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Orchestrator — you only deployed it.
+Teams usually discover Authz-orchestrator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz orchestrator before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-orchestrator engineering checklist that needs a hero is not done.
+
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
 Related reading:
 
-- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
-- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 - [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-## Acceptance checks before you call it done
+## Definition of done
 
-Most write-ups on Authz Orchestrator stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Production systems punish vague ownership and unmeasured happy paths. For authz orchestrator, that means making failure visible early.
 
-Make Authz Orchestrator error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Orchestrator — you only deployed it.
+With Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for authz orchestrator from one dashboard and one runbook page.
 
-## Practical defaults I use for Authz Orchestrator
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
-If you only remember one thing about Authz Orchestrator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+## Practical defaults for Authz-orchestrator engineering checklist
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of authz orchestrator before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz orchestrator.
 
-## Review questions before merging Authz Orchestrator work
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
-I have watched teams under-specify Authz Orchestrator and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Default deny, explicit timeouts, and one dashboard row for authz orchestrator. Expand only when the metric demands it.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+## Review questions before merging authz orchestrator work
 
-Prefer small diffs with a kill switch. Authz Orchestrator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+I treat Authz-orchestrator engineering checklist as an operations problem first. The goal is to ship authz orchestrator behind flags with a rollback, not to collect frameworks.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+With Prometheus, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-## Field notes after the first month of Authz Orchestrator
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Authz-orchestrator engineering checklist that needs a hero is not done.
 
-If you only remember one thing about Authz Orchestrator: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
 
-In Platform stacks I lean on GitHub Actions, Docker for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Default deny, explicit timeouts, and one dashboard row for authz orchestrator. Expand only when the metric demands it.
 
-Prefer small diffs with a kill switch. Authz Orchestrator changes that require a hero engineer on-call are not done, even if the feature flag is green.
+## Field notes after thirty days of authz orchestrator
 
-A month in, prune unused paths. Authz Orchestrator accumulates flags and dual-writes faster than teams expect; schedule deletion the same day you ship the new path.
+Teams usually discover Authz-orchestrator engineering checklist after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+Keep side effects at the edges and make every write idempotent. Authz-orchestrator engineering checklist without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for authz orchestrator from one dashboard and one runbook page.
+
+Slug-specific note (authz-orchestrator): prioritize orchestrator behavior under load and verify with a fixture named `authz-orchestrator-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-orchestrator`
 - https://12factor.net/
+- https://martinfowler.com/

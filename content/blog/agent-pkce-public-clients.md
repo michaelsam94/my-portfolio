@@ -1,215 +1,159 @@
 ---
-title: "AI Agents: Pkce Public Clients"
+title: "Agent systems: pkce public clients"
 slug: "agent-pkce-public-clients"
-description: "OAuth PKCE for agent public clients—desktop assistants, IDE plugins, and mobile copilots: verifier storage, loopback redirects, token refresh without embedded secrets."
+description: "Agent systems: pkce public clients: how to keep agent side effects idempotent around pkce public clients — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-02"
-dateModified: "2026-01-02"
-tags: ["AI", "Agent", "Pkce"]
-keywords: "PKCE public client, OAuth agent desktop app, authorization code PKCE, loopback redirect, IDE plugin authentication, token refresh without client secret"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, pkce, public, clients, production, engineering"
 faq:
-  - q: "Why are AI agent clients treated as OAuth public clients?"
-    a: "Desktop agents, IDE extensions, and mobile copilots ship code to environments attackers can inspect. Embedded client secrets are extractable from binaries or JavaScript bundles within minutes. OAuth classifies these as public clients—they authenticate users via Authorization Code + PKCE, not via confidential client secrets at the token endpoint."
-  - q: "Where should the code verifier live during the auth flow?"
-    a: "In memory for the duration of the flow, keyed by state parameter. For desktop apps using loopback redirects, bind verifier to the local server instance that receives the callback. Never persist verifiers to disk or sync them across devices. Clear verifier immediately after successful token exchange or on flow timeout (typically 10 minutes)."
-  - q: "Can agent backends use refresh tokens on behalf of users?"
-    a: "Yes, but prefer a backend-for-frontend (BFF) that holds refresh tokens in HttpOnly cookies or a secure server-side store. Pure public clients on desktop may use OS keychains for refresh tokens with rotation enabled. Avoid refresh tokens in plaintext config files beside the agent binary."
-  - q: "What redirect URI patterns work for local agent installs?"
-    a: "RFC 8252 recommends http://127.0.0.1:{port}/callback with a random port chosen at runtime, registered as a pattern with your IdP where supported. Custom URI schemes (myagent://callback) work but are less portable and prone to inter-app hijacking on some platforms—loopback is preferred for desktop agents."
+  - q: "What is Agent systems: pkce public clients?"
+    a: "Agent systems: pkce public clients is the production approach to keep agent side effects idempotent around pkce public clients. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: pkce public clients?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent pkce public clients, prioritize it."
+  - q: "What is the most common mistake with Agent systems: pkce public clients?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A security researcher demoed credential theft against a popular coding assistant: intercept the authorization code from a custom URI scheme handler, exchange it at the token endpoint using the public `client_id`, and impersonate the victim's GitHub-backed agent session. The vendor had shipped Authorization Code flow without PKCE because "desktop apps are hard." They were right about difficulty. They were wrong about skipping the one RFC that fixes public-client code interception.
+**Agent systems: pkce public clients** means you keep agent side effects idempotent around pkce public clients — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-AI agent clients—Electron shells, IDE plugins, CLI tools with GUI login, mobile copilots—are **public OAuth clients**. They cannot hold secrets. Proof Key for Code Exchange (PKCE, RFC 7636) binds each authorization code to a verifier generated locally at flow start. Stolen codes are useless without the verifier. This post covers PKCE specifically for agent runtimes, not generic SPA tutorials.
+This write-up is specific to `agent-pkce-public-clients` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## Threat model: what PKCE actually stops
+## Fitting Agent systems: pkce public clients into an existing system
 
-Without PKCE:
+Teams usually discover Agent systems: pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-1. User completes login; IdP redirects to agent callback with `?code=AUTH_CODE`.
-2. Attacker obtains code via malicious local handler registration, network capture on misconfigured proxy, or phishing clone of the OAuth consent screen.
-3. Attacker POSTs to `/token` with `client_id`, `code`, `redirect_uri`.
-4. Attacker receives access (and refresh) tokens.
+Put a metric on the user-visible effect of agent pkce public clients before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-PKCE inserts step 2b: token endpoint requires `code_verifier` matching the `code_challenge` from step 1's authorize request. Attacker lacks verifier.
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
 
-PKCE does **not** stop:
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-- Malware with access to agent memory/keychain after login.
-- Phishing users into approving malicious OAuth clients (different client_id).
-- XSS in web-based agent shells—use CSP and BFF patterns there.
+## Contracts and ownership boundaries
 
-Scope PKCE as necessary, not sufficient, for agent auth.
+I treat Agent systems: pkce public clients as an operations problem first. The goal is to keep agent side effects idempotent around pkce public clients, not to collect frameworks.
 
-## End-to-end flow for desktop agents
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```
-┌──────────────┐   code_verifier (memory)   ┌──────────────┐
-│ Agent app    │◀──────────────────────────▶│ Loopback     │
-│ (main proc)  │   code_challenge in URL    │ HTTP server  │
-└──────┬───────┘                            └──────▲───────┘
-       │ open browser                               │ redirect
-       ▼                                            │
-┌──────────────┐         authorization code        │
-│ System       │───────────────────────────────────┘
-│ browser      │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│ Identity     │
-│ provider     │
-└──────────────┘
-```
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
 
-Sequence:
+Concretely, being able to keep agent side effects idempotent around pkce public clients forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-1. Agent generates `code_verifier` (43–128 chars, cryptographically random).
-2. Computes `code_challenge = BASE64URL(SHA256(verifier))`, method `S256`.
-3. Starts loopback listener on ephemeral port; launches browser to authorize URL with `code_challenge`, `state`, `redirect_uri=http://127.0.0.1:{port}/callback`.
-4. IdP redirects to loopback with `code` and `state`.
-5. Agent validates `state`, POSTs token request with `code_verifier`.
-6. Stores tokens in OS keychain; shuts down loopback server; zeroes verifier from memory.
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-```typescript
-import { createHash, randomBytes } from "crypto";
-import { createServer } from "http";
+```python
+# Agent systems: pkce public clients
+from dataclasses import dataclass
 
-function base64UrlEncode(buf: Buffer): string {
-  return buf.toString("base64url");
-}
+@dataclass(frozen=True)
+class AgentPkcePublicClRequest:
+    tenant_id: str
+    idempotency_key: str
 
-function generateVerifier(): string {
-  return base64UrlEncode(randomBytes(32));
-}
-
-function challengeFromVerifier(verifier: string): string {
-  return createHash("sha256").update(verifier).digest("base64url");
-}
-
-async function authorizeWithPkce(config: {
-  clientId: string;
-  authorizeUrl: string;
-  tokenUrl: string;
-  scopes: string[];
-}): Promise<{ accessToken: string; refreshToken?: string }> {
-  const verifier = generateVerifier();
-  const challenge = challengeFromVerifier(verifier);
-  const state = base64UrlEncode(randomBytes(16));
-  const port = await pickEphemeralPort();
-
-  const codePromise = waitForLoopbackCode(port, state, 600_000);
-
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: config.clientId,
-    redirect_uri: `http://127.0.0.1:${port}/callback`,
-    scope: config.scopes.join(" "),
-    state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-  });
-
-  await openSystemBrowser(`${config.authorizeUrl}?${params}`);
-
-  const code = await codePromise;
-
-  const tokenRes = await fetch(config.tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: config.clientId,
-      code,
-      redirect_uri: `http://127.0.0.1:${port}/callback`,
-      code_verifier: verifier,
-    }),
-  });
-
-  if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
-  return tokenRes.json();
-}
+async def run_agent_pkce_public_client(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-pkce-public-clients"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Use `S256` exclusively. The `plain` challenge method is deprecated in OAuth 2.1.
+## State, storage, and retention
 
-## IDE plugins and multi-process runtimes
+I treat Agent systems: pkce public clients as an operations problem first. The goal is to keep agent side effects idempotent around pkce public clients, not to collect frameworks.
 
-VS Code and JetBrains plugins often split UI (extension host) and auth (external browser). Pitfalls:
+Put a metric on the user-visible effect of agent pkce public clients before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-- **Verifier in extension storage** — readable if another extension compromises storage APIs. Keep verifier in the extension host memory only for the auth session; use a one-shot message channel from auth helper process.
-- **Shared redirect port** — two plugins starting loopback on the same port: bind `127.0.0.1:0`, register dynamic redirect with IdP if supported, or document fixed port ranges per product.
-- **Headless CI agents** — device code flow (RFC 8628) replaces PKCE loopback for unattended automation; do not disable PKCE in production to " simplify CI."
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent pkce public clients.
 
-For Electron agents, run loopback in the main process, not the renderer. Renderer compromise should not steal verifiers mid-flow.
+My never-again list for agent pkce public clients: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Token storage after exchange
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-| Storage | Access token | Refresh token |
-|---------|--------------|---------------|
-| OS keychain (Keytar, libsecret) | Acceptable | Preferred |
-| Encrypted local file (DPAPI/macOS Keychain wrapper) | Acceptable with rotation | Acceptable |
-| Environment variables | Never | Never |
-| Repo config / `.env` | Never | Never |
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Enable refresh token rotation if IdP supports it. On refresh reuse detection, revoke all sessions and force re-login—agents are high-value targets for long-lived refresh tokens.
+## Security defaults that are non-negotiable
 
-Access tokens for tool calls should be short-lived (5–15 minutes). Agent orchestration layers refresh proactively at 80% TTL, not on 401 from first tool failure, to avoid half-completed multi-step plans failing mid-flight.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent pkce public clients, that means making failure visible early.
 
-## Backend-for-frontend variant
+Put a metric on the user-visible effect of agent pkce public clients before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Enterprise agents often proxy OAuth through a vendor cloud:
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
 
-1. Desktop agent opens browser to *your* BFF `/auth/start`, not directly to IdP.
-2. BFF completes PKCE with IdP using server-side session storage for verifier.
-3. BFF sets HttpOnly session cookie; agent receives opaque device session token.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: pkce public clients cannot answer, it is not production-ready.
 
-Benefits: centralized audit, IP allowlists, refresh tokens never touch desktop. Tradeoff: offline mode requires explicit design—cached credentials or degraded local-only features.
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-If you use BFF, desktop still uses PKCE on the BFF leg unless BFF uses mTLS device attestation instead (uncommon).
+## SLOs and dashboards
 
-## IdP configuration checklist
+I treat Agent systems: pkce public clients as an operations problem first. The goal is to keep agent side effects idempotent around pkce public clients, not to collect frameworks.
 
-- Register exact loopback pattern or dynamic port policy.
-- Disable implicit and password grants for agent client IDs.
-- Require PKCE (`code_challenge` required) via IdP policy—do not rely on client behavior.
-- Restrict redirect URIs—no `http://localhost` wildcard without port binding rules.
-- Set consent screen product name matching shipped binary to reduce phishing clones.
+Keep side effects at the edges and make every write idempotent. Agent systems: pkce public clients without retry semantics is a future incident write-up.
 
-For multi-tenant SaaS agents, separate OAuth clients per tenant only when tenants bring own IdP. Shared client with tenant routing simplifies PKCE redirect management.
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
 
-## Testing PKCE implementations
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-Automated:
+Related reading:
 
-- Unit test `challengeFromVerifier` against RFC 7636 appendix B vectors.
-- Integration test with WireMock IdP: reject token exchange when verifier wrong, challenge wrong, or code replayed.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-Manual red team:
+## First-week validation plan
 
-- Capture authorize redirect, attempt token exchange without verifier—expect `invalid_grant`.
-- Replay code with old verifier after successful exchange—expect failure.
-- Swap `state`—loopback handler must reject before token exchange.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent pkce public clients, that means making failure visible early.
 
-Log auth failures with `error_code` from IdP, never log verifiers or codes.
+Keep side effects at the edges and make every write idempotent. Agent systems: pkce public clients without retry semantics is a future incident write-up.
 
-## Migration from implicit or static secrets
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent pkce public clients.
 
-If legacy agent shipped implicit flow or embedded `client_secret`:
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
 
-1. Register new public client with PKCE required.
-2. Ship agent update that migrates users on next login—force re-consent if scopes change.
-3. Revoke old client credentials after 90-day sunset.
-4. Monitor token endpoint for old `client_id` usage; alert on non-zero after cutoff.
+## Practical defaults for Agent systems: pkce public clients
 
-Communicate downtime window for CLI agents used in CI—provide device code path before killing legacy flow.
+Teams usually discover Agent systems: pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## Closing thought
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-PKCE for agent public clients is baseline hygiene, not advanced hardening. Generate verifiers locally, use S256, bind loopback redirects tightly, store refresh tokens in OS secure storage, and test failure paths where attackers present stolen codes. The coding-assistant breach pattern is public knowledge now—shipping without PKCE is a choice auditors and attackers both understand.
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
+
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent pkce public clients. Expand only when the metric demands it.
+
+## Review questions before merging agent pkce public clients work
+
+Teams usually discover Agent systems: pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Put a metric on the user-visible effect of agent pkce public clients before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent pkce public clients.
+
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent pkce public clients. Expand only when the metric demands it.
+
+## Field notes after thirty days of agent pkce public clients
+
+Teams usually discover Agent systems: pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: pkce public clients without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent pkce public clients from one dashboard and one runbook page.
+
+Slug-specific note (agent-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `agent-pkce-public-clients-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-pkce-public-clients` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [RFC 7636: Proof Key for Code Exchange (PKCE)](https://datatracker.ietf.org/doc/html/rfc7636) — normative specification.
-- [RFC 8252: OAuth 2.0 for Native Apps](https://datatracker.ietf.org/doc/html/rfc8252) — loopback redirect guidance for desktop agents.
-- [OAuth 2.1 Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-11) — PKCE required for all clients; implicit flow removed.
-- [OAuth 2.0 Security BCP (RFC 9700)](https://datatracker.ietf.org/doc/html/rfc9700) — current best current practice for public clients.
-- [Auth0: PKCE for mobile and native apps](https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow-with-pkce) — practical implementation notes for native runtimes.
+- Internal runbook seed: `agent-pkce-public-clients`
+- https://12factor.net/
+- https://martinfowler.com/

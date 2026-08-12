@@ -1,257 +1,159 @@
 ---
-title: "AI Agents: Expand Contract Migrations"
+title: "Agent systems: expand contract migrations"
 slug: "agent-expand-contract-migrations"
-description: "Expand Contract Migrations: production patterns for ai teams — design, implementation, testing, security, and operations."
+description: "Agent systems: expand contract migrations: how to keep agent side effects idempotent around expand contract migrations — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2024-12-26"
-dateModified: "2024-12-26"
-tags: ["AI", "Agent", "Expand"]
-keywords: "agent, expand, contract, migrations, ai, production, engineering, architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, expand, contract, migrations, production, engineering"
 faq:
-  - q: "What are expand-contract migrations?"
-    a: "A three-phase pattern for zero-downtime schema change: Expand (add new column/table/index without breaking old code), Migrate (dual-write or backfill until new path owns data), Contract (remove old column/code once nothing reads it). You never rename-in-place or drop-before-migrate—each phase is independently deployable and reversible."
-  - q: "Why do agent platforms need this more than CRUD apps?"
-    a: "Agent stacks accumulate fast-moving schema: conversation memory formats, tool registry versions, embedding dimensions, eval rubrics, and prompt template bindings. Deploys happen daily; sessions run for hours. A breaking migration mid-flight corrupts in-progress agent state. Expand-contract lets old workers finish on old schema while new workers adopt new fields."
-  - q: "How long should the expand phase last?"
-    a: "Until all running code paths tolerate the new schema and backfill is complete—often 1–3 release cycles for agent systems. Do not contract until metrics show zero reads of deprecated columns (log or query audit), integration tests pass without legacy fields, and no rollback plan requires the old shape. Rushing contract is how you brick rollback during an incident."
-  - q: "How does expand-contract apply to prompt and config changes?"
-    a: "Same logic, softer schema: expand by adding prompt template v2 alongside v1 with a flag; migrate by routing cohorts to v2; contract by retiring v1 after eval proves parity. For vector indexes, expand means a new index with new dimensions; migrate means dual-write embeddings; contract means dropping the old index after retrieval quality holds."
+  - q: "What is Agent systems: expand contract migrations?"
+    a: "Agent systems: expand contract migrations is the production approach to keep agent side effects idempotent around expand contract migrations. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: expand contract migrations?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent expand contract migrations, prioritize it."
+  - q: "What is the most common mistake with Agent systems: expand contract migrations?"
+    a: "The usual failure is treating agent expand contract migrations as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The Friday deploy added `tool_result_schema_version` to `agent_steps` and dropped `raw_tool_output` in the same migration. Rolling deploy hit mixed versions: new pods wrote only the versioned column; old pods still reading `raw_tool_output` returned null to the orchestrator. Live sessions lost tool context mid-run and started hallucinating inventory counts. Rollback failed because the down migration could not restore dropped JSONB for rows written after cutover.
+**Agent systems: expand contract migrations** means you keep agent side effects idempotent around expand contract migrations — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating agent expand contract migrations as a pure library problem start paging people.
 
-Database migrations for agent platforms fail differently than for stateless APIs. Sessions are long-lived. Workers version-skew during every deploy. Prompt and embedding schemas change weekly. Expand-contract—add before remove, dual-write before switch, verify before drop—is the discipline that lets you evolve agent storage without betting the fleet on a single ALTER.
+This write-up is specific to `agent-expand-contract-migrations` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## The three phases
+## What Agent systems: expand contract migrations changes in day-two ops
 
-```
-Phase 1 — EXPAND          Phase 2 — MIGRATE           Phase 3 — CONTRACT
-─────────────────         ─────────────────           ──────────────────
-Add new column/table      Backfill + dual-read/write  Drop old column
-Old code ignores it       Feature flag picks path     Remove dead code
-Deploy anytime            Measure parity              Only when safe
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent expand contract migrations, that means making failure visible early.
 
-Each phase is a separate PR and deploy. Never combine expand and contract in one release unless traffic is fully stopped—which is not zero-downtime.
+Put a metric on the user-visible effect of agent expand contract migrations before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Example: evolving agent step storage
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: expand contract migrations that needs a hero is not done.
 
-**Today:** `agent_steps.result` is unstructured JSONB.
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-**Goal:** typed `result_v2` with schema version for safer tool parsing.
+## Designing so you can keep agent side effects idempotent around expand contract migrations
 
-### Phase 1 — Expand
+I treat Agent systems: expand contract migrations as an operations problem first. The goal is to keep agent side effects idempotent around expand contract migrations, not to collect frameworks.
 
-```sql
--- migration_001_expand.sql
-ALTER TABLE agent_steps
-  ADD COLUMN result_v2 JSONB,
-  ADD COLUMN result_schema_version SMALLINT DEFAULT 1;
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent expand contract migrations as a pure library problem.
 
--- No NOT NULL yet; old code unaffected
-CREATE INDEX CONCURRENTLY idx_agent_steps_v2
-  ON agent_steps (result_schema_version)
-  WHERE result_schema_version >= 2;
-```
+Acceptance check: an on-call engineer can explain system state for agent expand contract migrations from one dashboard and one runbook page.
 
-Deploy application code that **writes both** columns on new steps only (optional dual-write starts here) or waits until phase 2—expand alone must not break readers.
+Concretely, being able to keep agent side effects idempotent around expand contract migrations forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-### Phase 2 — Migrate
-
-Application changes:
-
-```typescript
-// repositories/agent-step.ts
-const USE_RESULT_V2 = process.env.FF_RESULT_V2 === "true";
-
-export async function saveStepResult(stepId: string, result: ToolResult): Promise<void> {
-  const v2Payload = toResultV2(result);
-
-  if (USE_RESULT_V2) {
-    await db.query(
-      `UPDATE agent_steps
-       SET result_v2 = $1, result_schema_version = 2, result = $2
-       WHERE id = $3`,
-      [v2Payload, legacyShim(v2Payload), stepId], // dual-write shim for old readers
-    );
-  } else {
-    await db.query(
-      `UPDATE agent_steps SET result = $1 WHERE id = $2`,
-      [legacyFormat(result), stepId],
-    );
-  }
-}
-
-export function readStepResult(row: AgentStepRow): ToolResult {
-  if (row.result_schema_version >= 2 && row.result_v2) {
-    return fromResultV2(row.result_v2);
-  }
-  return fromLegacy(row.result);
-}
-```
-
-Backfill job for historical rows:
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
 ```python
-# jobs/backfill_result_v2.py
-BATCH = 500
+# Agent systems: expand contract migrations
+from dataclasses import dataclass
 
-def backfill(conn):
-    while True:
-        rows = conn.execute(
-            """
-            SELECT id, result FROM agent_steps
-            WHERE result_schema_version = 1 AND result_v2 IS NULL
-            LIMIT %s
-            FOR UPDATE SKIP LOCKED
-            """,
-            (BATCH,),
-        ).fetchall()
-        if not rows:
-            break
-        for row in rows:
-            v2 = convert_to_v2(row.result)
-            conn.execute(
-                """
-                UPDATE agent_steps
-                SET result_v2 = %s, result_schema_version = 2
-                WHERE id = %s
-                """,
-                (v2, row.id),
-            )
-        conn.commit()
+@dataclass(frozen=True)
+class AgentExpandContracRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_expand_contract_mi(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-expand-contract-migrations"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Enable `FF_RESULT_V2` for 5% of tenants, compare tool-parse error rates, ramp to 100%. Monitor `legacy_result_reads_total`—should trend to zero on write path; reads may still hit legacy until all rows backfilled.
+## Failure modes specific to agent expand contract migrations
 
-### Phase 3 — Contract
+Teams usually discover Agent systems: expand contract migrations after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Only when backfill complete and no code reads `result` without fallback:
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating agent expand contract migrations as a pure library problem.
 
-```sql
--- migration_003_contract.sql — separate release, weeks later
-ALTER TABLE agent_steps DROP COLUMN result;
-ALTER TABLE agent_steps ALTER COLUMN result_v2 SET NOT NULL;
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent expand contract migrations.
 
-Remove `legacyShim`, `fromLegacy`, and feature flag in the same deploy as contract migration. Order: deploy code that stops writing `result` → verify → drop column.
+My never-again list for agent expand contract migrations: treating agent expand contract migrations as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Expand-contract for vector embedding dimensions
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-Model upgrade changes embedding size 1536 → 3072. You cannot ALTER the vector column in place on pgvector without rebuild.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; treating agent expand contract migrations as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-**Expand:** Create `documents_embedding_v2` table or new Pinecone index `prod-v2`.
+## Signals worth paging on
 
-**Migrate:** Dual-write new embeddings on ingest; background re-embed corpus; retrieval uses weighted blend or shadow-read v2 comparing recall@k.
+I treat Agent systems: expand contract migrations as an operations problem first. The goal is to keep agent side effects idempotent around expand contract migrations, not to collect frameworks.
 
-**Contract:** Flip retrieval flag to v2-only; delete v1 index after 30-day fallback window.
+Keep side effects at the edges and make every write idempotent. Agent systems: expand contract migrations without retry semantics is a future incident write-up.
 
-```typescript
-async function embedAndStore(doc: Document): Promise<void> {
-  const [v1, v2] = await Promise.all([
-    embedModelV1(doc.text),
-    embedModelV2(doc.text),
-  ]);
-  await Promise.all([
-    vectorStoreV1.upsert(doc.id, v1),
-    vectorStoreV2.upsert(doc.id, v2),
-  ]);
-}
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: expand contract migrations that needs a hero is not done.
 
-Agent answer quality regressions during migrate show up in eval dashboards before you drop v1.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: expand contract migrations cannot answer, it is not production-ready.
 
-## Prompt template versioning (schema-less expand-contract)
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-Not every migration is SQL. Prompt templates follow the same rhythm:
+## Rollout sequence with Temporal
 
-| Phase | Action |
-|-------|--------|
-| Expand | Add `billing_agent_v2.prompt` in registry; v1 remains default |
-| Migrate | Route 10% traffic via `template_id` flag; run side-by-side eval |
-| Contract | Remove v1 from registry; reject sessions referencing old ID |
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent expand contract migrations, that means making failure visible early.
 
-Store `template_version` on each session event (event sourcing) or `agent_sessions.prompt_version` so replay and audit know which template produced which behavior.
+Put a metric on the user-visible effect of agent expand contract migrations before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Flyway/Liquibase discipline
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: expand contract migrations that needs a hero is not done.
 
-Number migrations explicitly:
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-```
-V001__expand_result_v2.sql
-V002__add_index_result_v2.sql   -- CONCURRENTLY in prod
--- app deploys with dual-read/write between V001 and V003
-V003__contract_drop_result.sql
-```
+Related reading:
 
-Rules:
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 
-- **Never edit applied migrations.** New phase = new file.
-- **CONCURRENTLY** for indexes on large agent tables—sessions do not pause for `ACCESS EXCLUSIVE`.
-- **Reversible expand** always; contract migrations are intentionally irreversible—treat as ceremony with checklist.
+## What I would delete after month one
 
-## Coordination across services
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent expand contract migrations, that means making failure visible early.
 
-Agent stacks split across orchestrator, tool workers, retrieval service, and billing consumer. Schema contracts are API contracts:
+Keep side effects at the edges and make every write idempotent. Agent systems: expand contract migrations without retry semantics is a future incident write-up.
 
-1. Publish OpenAPI/Protobuf with **additive** fields only during expand.
-2. Consumers ignore unknown fields (forward compatibility).
-3. Producers populate both old and new field names during migrate (duplicate data is temporary tax).
-4. Announce contract date in `#eng-releases`; block deploys that reference dropped fields via CI schema diff.
+Acceptance check: an on-call engineer can explain system state for agent expand contract migrations from one dashboard and one runbook page.
 
-```yaml
-# ci/schema-compat.yml
-- name: Check breaking proto changes
-  run: buf breaking --against '.git#branch=main'
-```
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-## Rollback strategy per phase
+## Practical defaults for Agent systems: expand contract migrations
 
-| Phase | Rollback |
-|-------|----------|
-| Expand | Remove new column only if unused; safe if app ignores it |
-| Migrate | Flip feature flag off; dual-written data still in old column |
-| Contract | **Cannot restore dropped data** — restore from backup or delay contract |
+Teams usually discover Agent systems: expand contract migrations after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-This asymmetry is why contract waits weeks. If you drop `raw_tool_output` and need rollback, you are restoring snapshots—not running `DOWN` migration.
+Put a metric on the user-visible effect of agent expand contract migrations before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Observability during migrate
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: expand contract migrations that needs a hero is not done.
 
-Track:
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-- `dual_write_skipped_total` — bug if non-zero during migrate
-- `backfill_lag_rows` — remaining rows without v2
-- `read_path_legacy_total` vs `read_path_v2_total`
-- Agent task success rate split by flag cohort
+Default deny, explicit timeouts, and one dashboard row for agent expand contract migrations. Expand only when the metric demands it.
 
-Alert if legacy read path increases after contract deploy—that signals a missed consumer.
+## Review questions before merging agent expand contract migrations work
 
-## Testing migrations
+Teams usually discover Agent systems: expand contract migrations after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-**Testcontainers with production-sized fixtures.** Apply V001, run app, apply V002 logic, assert reads work both ways.
+Put a metric on the user-visible effect of agent expand contract migrations before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-**Rollback drill.** Deploy expand only; roll back app; confirm old app still works.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent expand contract migrations.
 
-**Contract rehearsal in staging.** Run V003 against staging clone; verify no 500s in integration suite.
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-Property: for every row, `read(read(write(x)))` preserves semantic equality across v1 and v2 parsers.
+After a month, delete unused flags and dual paths. `agent-expand-contract-migrations` accumulates temporary bridges faster than teams expect.
 
-## Anti-patterns
+## Field notes after thirty days of agent expand contract migrations
 
-**Big bang rename.** `RENAME COLUMN result TO result_deprecated` breaks old pods instantly.
+I treat Agent systems: expand contract migrations as an operations problem first. The goal is to keep agent side effects idempotent around expand contract migrations, not to collect frameworks.
 
-**NOT NULL on day one.** Backfill has not run; deploy inserts fail.
+Put a metric on the user-visible effect of agent expand contract migrations before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-**Contract in Friday deploy.** No engineers to fix skewed workers.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: expand contract migrations that needs a hero is not done.
 
-**Shared JSON blob without version field.** You cannot expand-contract what you cannot detect.
+Slug-specific note (agent-expand-contract-migrations): prioritize migrations behavior under load and verify with a fixture named `agent-expand-contract-migrations-smoke`.
 
-## The takeaway
-
-Expand-contract migrations treat schema evolution as a multi-release project, not a single SQL file. Add new shapes before removing old ones, dual-write and backfill with feature flags, measure parity on agent outcomes—not just migration job success—and contract only when rollback no longer needs the deprecated path. Agent systems change too fast for destructive ALTER bravery; they need migrations as boring and reversible as the rest of production engineering.
+After a month, delete unused flags and dual paths. `agent-expand-contract-migrations` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Martin Fowler — Evolutionary Database Design](https://martinfowler.com/articles/evodb.html)
-- [expand/contract pattern (Pramod Sadalage)](https://www.martinfowler.com/bliki/ParallelChange.html)
-- [Flyway migrations best practices](https://flywaydb.org/documentation/concepts/migrations)
-- [PostgreSQL CREATE INDEX CONCURRENTLY](https://www.postgresql.org/docs/current/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)
-- [StrongDM — Zero-downtime Postgres migrations](https://www.strongdm.com/blog/zero-downtime-postgres-migrations)
+- Internal runbook seed: `agent-expand-contract-migrations`
+- https://12factor.net/
+- https://martinfowler.com/

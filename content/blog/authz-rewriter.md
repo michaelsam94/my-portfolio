@@ -1,131 +1,158 @@
 ---
-title: "Authz Rewriter"
+title: "Production authz rewriter: decisions that matter"
 slug: "authz-rewriter"
-description: "Authz Rewriter: how to avoid the demo-only happy path in production saas systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "Production authz rewriter: decisions that matter: how to keep authz rewriter correct under retries and partial failure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-04-25"
 dateModified: "2026-08-12"
 tags:
-  - "SaaS"
-  - "Backend"
-keywords: "authz, rewriter, saas, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, rewriter, production, engineering"
 faq:
-  - q: "What is Authz Rewriter?"
-    a: "Authz Rewriter is a production approach to avoid the demo-only happy path. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Rewriter?"
-    a: "Invest when on-call already feels this pain weekly. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Rewriter?"
-    a: "The usual failure is dual-writing without an outbox. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is Production authz rewriter: decisions that matter?"
+    a: "Production authz rewriter: decisions that matter is the production approach to keep authz rewriter correct under retries and partial failure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Production authz rewriter: decisions that matter?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with authz rewriter, prioritize it."
+  - q: "What is the most common mistake with Production authz rewriter: decisions that matter?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Rewriter** means you avoid the demo-only happy path — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when on-call already feels this pain weekly; that is usually also when shortcuts like dual-writing without an outbox start paging people.
+**Production authz rewriter: decisions that matter** means you keep authz rewriter correct under retries and partial failure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Below is how I implement and operate it in SaaS systems using Postgres, Stripe: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-rewriter` in a product context, using Postgres, OpenTelemetry for the mechanics while keeping ownership human.
 
-## How I explain Authz Rewriter to a skeptical teammate
+## Explaining Production authz rewriter: decisions that matter to a skeptical teammate
 
-If you only remember one thing about Authz Rewriter: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Teams usually discover Production authz rewriter: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Make Authz Rewriter error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Rewriter — you only deployed it.
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Acceptance check: an on-call engineer can explain system state for authz rewriter from one dashboard and one runbook page.
 
-## Doing work to avoid the demo-only happy path
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
-If you only remember one thing about Authz Rewriter: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## Making it routine to keep authz rewriter correct under retries and partial failure
 
-In SaaS stacks I lean on Postgres, Stripe for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+Teams usually discover Production authz rewriter: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Put a metric on the user-visible effect of authz rewriter before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Practically, being able to avoid the demo-only happy path means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz rewriter from one dashboard and one runbook page.
+
+Concretely, being able to keep authz rewriter correct under retries and partial failure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
 ```typescript
-export async function handle(input: unknown): Promise<Result> {
+// Production authz rewriter: decisions that matter
+export async function handle_authz_rewriter(input: unknown): Promise<Result> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error);
-  // Authz Rewriter
-  return repo.execute(parsed.data);
+  const span = tracer.startSpan("authz-rewriter");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Code boundaries that keep refactors cheap
+## Code seams that keep refactors cheap
 
-If you only remember one thing about Authz Rewriter: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+Teams usually discover Production authz rewriter: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Make Authz Rewriter error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Rewriter — you only deployed it.
+Put a metric on the user-visible effect of authz rewriter before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production authz rewriter: decisions that matter that needs a hero is not done.
 
-I also keep a short 'never again' list beside the code: dual-writing without an outbox; skipping Authz Rewriter error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz rewriter: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; dual-writing without an outbox |
-| Durable path | on-call already feels this pain weekly | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Table stakes vs nice-to-haves
+## Table stakes vs later polish
 
-Most write-ups on Authz Rewriter stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+I treat Production authz rewriter: decisions that matter as an operations problem first. The goal is to keep authz rewriter correct under retries and partial failure, not to collect frameworks.
 
-Make Authz Rewriter error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Rewriter — you only deployed it.
+Put a metric on the user-visible effect of authz rewriter before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz rewriter.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Rewriter designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Production authz rewriter: decisions that matter cannot answer, it is not production-ready.
 
-## Common regressions after launch
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
-Most write-ups on Authz Rewriter stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+## Regressions that show up after launch
 
-In SaaS stacks I lean on Postgres, Stripe for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+I treat Production authz rewriter: decisions that matter as an operations problem first. The goal is to keep authz rewriter correct under retries and partial failure, not to collect frameworks.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Keep side effects at the edges and make every write idempotent. Production authz rewriter: decisions that matter without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for authz rewriter from one dashboard and one runbook page.
+
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
 Related reading:
 
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Maintenance burden over 12 months
+## Twelve-month maintenance load
 
-I have watched teams under-specify Authz Rewriter and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+I treat Production authz rewriter: decisions that matter as an operations problem first. The goal is to keep authz rewriter correct under retries and partial failure, not to collect frameworks.
 
-Make Authz Rewriter error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Rewriter — you only deployed it.
+Put a metric on the user-visible effect of authz rewriter before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Rewriter changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Production authz rewriter: decisions that matter that needs a hero is not done.
 
-## Practical defaults I use for Authz Rewriter
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
-If you only remember one thing about Authz Rewriter: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can avoid the demo-only happy path.
+## Practical defaults for Production authz rewriter: decisions that matter
 
-In SaaS stacks I lean on Postgres, Stripe for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when dual-writing without an outbox.
+I treat Production authz rewriter: decisions that matter as an operations problem first. The goal is to keep authz rewriter correct under retries and partial failure, not to collect frameworks.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on dual-writing without an outbox. If it is missing, the PR is incomplete.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz rewriter.
 
-## Review questions before merging Authz Rewriter work
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
-Most write-ups on Authz Rewriter stop at the demo. This one starts from situations where on-call already feels this pain weekly, because that is when the abstraction either pays rent or becomes toil.
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+## Review questions before merging authz rewriter work
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Teams usually discover Production authz rewriter: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Rewriter error rate. Expand only when the metric says you must.
+Keep side effects at the edges and make every write idempotent. Production authz rewriter: decisions that matter without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Rewriter
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz rewriter.
 
-I have watched teams under-specify Authz Rewriter and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to avoid the demo-only happy path.
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
 
-The anti-pattern is dual-writing without an outbox. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `authz-rewriter` accumulates temporary bridges faster than teams expect.
 
-Write the acceptance check in product language: when on-call already feels this pain weekly, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+## Field notes after thirty days of authz rewriter
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Rewriter error rate. Expand only when the metric says you must.
+Teams usually discover Production authz rewriter: decisions that matter after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
+
+With Postgres, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
+
+Acceptance check: an on-call engineer can explain system state for authz rewriter from one dashboard and one runbook page.
+
+Slug-specific note (authz-rewriter): prioritize rewriter behavior under load and verify with a fixture named `authz-rewriter-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for authz rewriter. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-rewriter`
 - https://12factor.net/
+- https://martinfowler.com/

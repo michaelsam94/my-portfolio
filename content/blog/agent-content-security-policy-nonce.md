@@ -1,231 +1,160 @@
 ---
-title: "CSP Nonces for Agent-Powered Web Apps"
+title: "Content Security Policy Nonce for production agents"
 slug: "agent-content-security-policy-nonce"
-description: "Deploy strict Content-Security-Policy with per-request nonces on agent chat UIs, streaming widgets, and third-party tool embeds without breaking inline hydration or dynamic script injection."
+description: "Content Security Policy Nonce for production agents: how to make agent content security policy nonce observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-10-05"
-dateModified: "2025-10-05"
-tags: ["AI Agents", "Security", "CSP", "Frontend"]
-keywords: "content security policy nonce, CSP strict-dynamic, agent web UI, XSS prevention, nonce middleware, Next.js CSP"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+  - "Security"
+keywords: "agent, content, security, policy, nonce, production, engineering"
 faq:
-  - q: "Why use nonces instead of hashes for agent chat UIs?"
-    a: "Hashes work for static bundles but break when build IDs change every deploy and when frameworks inject inline bootstrap scripts. Nonces rotate per request, so SSR pages can emit fresh inline scripts safely without maintaining a hash allowlist across every release."
-  - q: "Does strict-dynamic replace the need for host allowlists?"
-    a: "Partially. strict-dynamic lets nonce-trusted scripts load other scripts dynamically, which helps agent widgets that lazy-load chart libraries. You still need explicit host sources for images, fonts, connect-src (LLM API endpoints), and frame-src if tools embed third-party iframes."
-  - q: "How do nonces interact with streaming SSR and React hydration?"
-    a: "Generate one nonce per HTTP response before the first byte. Pass it to the HTML shell, inline hydration payload, and any server-rendered script tags. Never reuse nonces across requests or cache HTML containing a nonce at CDN edges without stripping or regenerating it."
-  - q: "What breaks CSP first when adding agent tool renderers?"
-    a: "connect-src blocks LLM and telemetry calls; frame-src blocks sandboxed tool iframes; img-src blocks markdown-rendered user images; and script-src blocks dynamically injected chart or code-highlight bundles unless they chain from a nonce-trusted root script."
+  - q: "What is Content Security Policy Nonce for production agents?"
+    a: "Content Security Policy Nonce for production agents is the production approach to make agent content security policy nonce observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Content Security Policy Nonce for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent content security policy nonce, prioritize it."
+  - q: "What is the most common mistake with Content Security Policy Nonce for production agents?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Content Security Policy Nonce for production agents** means you make agent content security policy nonce observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Your agent dashboard renders user markdown, streams tokens into a React island, lazy-loads a syntax highlighter, and calls three different API origins. Security wants `script-src 'self'` with no `'unsafe-inline'`. Product wants the chat widget shipped this sprint. **Content Security Policy nonces** are how you satisfy both: a cryptographically random token, issued once per response, that whitelists specific inline and dynamically loaded scripts while keeping the default deny posture everywhere else.
+This write-up is specific to `agent-content-security-policy-nonce` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-This is not academic hardening. Agent UIs are XSS magnets — retrieved documents, tool outputs, and model-generated HTML all arrive untrusted. A nonce-based CSP is the baseline for any production surface where the model or RAG pipeline can influence rendered content.
+## Content Security Policy Nonce for production agents: production checklist
 
-## How nonces fit a strict CSP
+I treat Content Security Policy Nonce for production agents as an operations problem first. The goal is to make agent content security policy nonce observable and interruptible, not to collect frameworks.
 
-A CSP nonce is a base64 random string included in two places:
+Keep side effects at the edges and make every write idempotent. Content Security Policy Nonce for production agents without retry semantics is a future incident write-up.
 
-1. The `Content-Security-Policy` header: `script-src 'nonce-{value}' 'strict-dynamic'`
-2. Every permitted `<script>` tag: `<script nonce="{value}">`
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Content Security Policy Nonce for production agents that needs a hero is not done.
 
-Browsers execute only scripts whose nonce matches the policy. Attack-injected `<script>` tags lack the nonce and are blocked.
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-For agent stacks, the typical policy skeleton looks like:
+## Inputs, outputs, invariants
 
-```
-Content-Security-Policy:
-  default-src 'self';
-  script-src 'nonce-{RANDOM}' 'strict-dynamic';
-  style-src 'self' 'nonce-{RANDOM}';
-  connect-src 'self' https://api.openai.com https://*.your-telemetry.com;
-  img-src 'self' data: https:;
-  frame-src 'self' https://sandbox.your-tools.com;
-  object-src 'none';
-  base-uri 'self';
-  frame-ancestors 'none';
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent content security policy nonce, that means making failure visible early.
 
-`'strict-dynamic'` is the critical addition for modern agent frontends. A nonce-trusted bootstrap script may load additional modules via `import()` or `document.createElement('script')` without listing every CDN host in `script-src`. That covers chart libraries, WASM runtimes, and code editors loaded after the user opens a tool result panel.
+Put a metric on the user-visible effect of agent content security policy nonce before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-## Per-request generation and the caching trap
+Acceptance check: an on-call engineer can explain system state for agent content security policy nonce from one dashboard and one runbook page.
 
-Nonces must be **unique per HTTP response**. The generation belongs in your edge middleware or SSR handler, before any HTML is flushed:
+Concretely, being able to make agent content security policy nonce observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```typescript
-// middleware/csp.ts
-import { randomBytes } from "crypto";
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-export function createCspNonce(): string {
-  return randomBytes(16).toString("base64");
-}
+```python
+# Content Security Policy Nonce for production agents
+from dataclasses import dataclass
 
-export function buildCspHeader(nonce: string): string {
-  const directives = [
-    "default-src 'self'",
-    `script-src 'nonce-${nonce}' 'strict-dynamic'`,
-    `style-src 'self' 'nonce-${nonce}'`,
-    "connect-src 'self' https://api.openai.com https://telemetry.example.com",
-    "img-src 'self' data: https:",
-    "frame-src 'self' https://sandbox.example.com",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "frame-ancestors 'none'",
-    "report-uri /api/csp-report",
-  ];
-  return directives.join("; ");
-}
+@dataclass(frozen=True)
+class AgentContentSecuriRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_content_security_p(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-content-security-policy-nonce"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Wire it into Next.js middleware or Express:
+## Concurrency, retries, and timeouts
 
-```typescript
-// middleware.ts (Next.js App Router)
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { createCspNonce, buildCspHeader } from "./middleware/csp";
+I treat Content Security Policy Nonce for production agents as an operations problem first. The goal is to make agent content security policy nonce observable and interruptible, not to collect frameworks.
 
-export function middleware(request: NextRequest) {
-  const nonce = createCspNonce();
-  const csp = buildCspHeader(nonce);
+Put a metric on the user-visible effect of agent content security policy nonce before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Content Security Policy Nonce for production agents that needs a hero is not done.
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
-  return response;
-}
-```
+My never-again list for agent content security policy nonce: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-The failure mode that burns teams: **caching HTML with embedded nonces**. If your CDN serves a cached page, every user gets the same nonce — which weakens the model slightly — but worse, your SSR layer may generate a *different* nonce in the header than the one baked into cached body HTML. Scripts fail silently; the agent UI shows a blank panel. Rule: either disable HTML caching on authenticated agent routes, or use `Cache-Control: private, no-store` on responses that carry nonces.
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-## SSR, hydration, and streaming agent widgets
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Agent chat interfaces almost always hydrate client-side after SSR. The inline bootstrap that calls `hydrateRoot` must carry the nonce:
+## Support and audit workflows
 
-```tsx
-// app/layout.tsx
-import { headers } from "next/headers";
+I treat Content Security Policy Nonce for production agents as an operations problem first. The goal is to make agent content security policy nonce observable and interruptible, not to collect frameworks.
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const nonce = (await headers()).get("x-nonce") ?? "";
+Put a metric on the user-visible effect of agent content security policy nonce before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-  return (
-    <html lang="en">
-      <body>
-        {children}
-        <script
-          nonce={nonce}
-          dangerouslySetInnerHTML={{
-            __html: `window.__AGENT_CONFIG__ = ${JSON.stringify({ streamEndpoint: "/api/chat" })}`,
-          }}
-        />
-      </body>
-    </html>
-  );
-}
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent content security policy nonce.
 
-For **streaming SSR** — common when the first token arrives before the full page shell completes — generate the nonce before opening the stream and pass it through your template context. Do not generate a second nonce mid-stream. Frameworks like React 19 streaming will flush early HTML chunks; each chunk's inline scripts must reference the same nonce issued at stream start.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Content Security Policy Nonce for production agents cannot answer, it is not production-ready.
 
-Third-party agent widgets (embedded copilots, support bots) often ship as a `<script src="https://vendor.com/widget.js">` tag. With `'strict-dynamic'`, your nonce-trusted loader can inject the vendor script without adding `https://vendor.com` to `script-src`. Verify the vendor loader is itself nonce-tagged inline or loaded from `'self'`.
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-## Agent-specific CSP surfaces
+## Capacity and load notes
 
-### Markdown and tool output rendering
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent content security policy nonce, that means making failure visible early.
 
-When agents render user or tool-provided markdown to HTML, you are one `<script>` tag away from XSS even with CSP — unless rendering is sanitized server-side. CSP is defense in depth, not a sanitizer. Pair nonce CSP with a strict allowlist sanitizer (DOMPurify with `USE_PROFILES: { html: true }` and no `ALLOW_UNKNOWN_PROTOCOLS`).
+Keep side effects at the edges and make every write idempotent. Content Security Policy Nonce for production agents without retry semantics is a future incident write-up.
 
-For inline styles in code blocks or highlighted snippets, either:
+Acceptance check: an on-call engineer can explain system state for agent content security policy nonce from one dashboard and one runbook page.
 
-- Use `style-src 'nonce-...'` and tag generated `<style>` blocks, or
-- Prefer CSS classes from your design system and forbid inline styles entirely
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-### connect-src for LLM and tool calls
+Related reading:
 
-Agent frontends call more origins than typical CRUD apps: model APIs, embedding endpoints, WebSocket streams, telemetry, and OAuth token refresh. Inventory every `fetch`, `EventSource`, and WebSocket URL, then encode them in `connect-src`. Missing entries produce console errors that look like "agent is broken" but are CSP blocks.
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Use CSP violation reports to discover gaps:
+## Ship gate
 
-```typescript
-// app/api/csp-report/route.ts
-export async function POST(request: Request) {
-  const report = await request.json();
-  console.warn("[CSP violation]", JSON.stringify(report["csp-report"]));
-  // Ship to your observability stack — filter on blocked-uri
-  return new Response(null, { status: 204 });
-}
-```
+I treat Content Security Policy Nonce for production agents as an operations problem first. The goal is to make agent content security policy nonce observable and interruptible, not to collect frameworks.
 
-### frame-src for sandboxed tool execution
+Keep side effects at the edges and make every write idempotent. Content Security Policy Nonce for production agents without retry semantics is a future incident write-up.
 
-Agents that run code or render untrusted HTML in iframes need explicit `frame-src`. Use a dedicated sandbox origin (`sandbox.tools.example.com`) with its own tighter CSP. Never use `frame-src *` because a compromised tool iframe becomes a phishing surface.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent content security policy nonce.
 
-## Report-only rollout strategy
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-Deploying strict CSP on a live agent product without a rehearsal breaks production. Start in **`Content-Security-Policy-Report-Only`** mode for two weeks:
+## Practical defaults for Content Security Policy Nonce for production agents
 
-1. Log violations to `/api/csp-report` tagged by route and tenant
-2. Bucket violations by `violated-directive` and `blocked-uri`
-3. Fix legitimate resources; investigate unexpected inline scripts
-4. Flip to enforcing CSP on internal tenants first, then percentage rollout
+Teams usually discover Content Security Policy Nonce for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Track a metric: **CSP violation rate per 1k sessions**. Spikes after deploy usually mean a new lazy-loaded bundle missed the nonce chain.
+Keep side effects at the edges and make every write idempotent. Content Security Policy Nonce for production agents without retry semantics is a future incident write-up.
 
-## Nonce vs hash vs unsafe-inline
+Acceptance check: an on-call engineer can explain system state for agent content security policy nonce from one dashboard and one runbook page.
 
-| Approach | Agent UI fit | Ops burden |
-|----------|-------------|------------|
-| `'unsafe-inline'` | Works everywhere | No XSS protection from inline scripts |
-| SHA-256 hashes | Static bundles only | Recompute hashes every build |
-| Nonces | SSR + dynamic hydration | Per-request middleware, no CDN HTML cache |
-| `'strict-dynamic'` + nonce | Lazy tool bundles | Requires modern browsers (2018+) |
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-Avoid `'unsafe-eval'` unless a specific tool (some notebook kernels) requires it. If unavoidable, isolate that tool on a separate subdomain with a narrower policy.
+Default deny, explicit timeouts, and one dashboard row for agent content security policy nonce. Expand only when the metric demands it.
 
-## Testing CSP in CI
+## Review questions before merging agent content security policy nonce work
 
-Add automated checks so CSP regressions do not reach production:
+I treat Content Security Policy Nonce for production agents as an operations problem first. The goal is to make agent content security policy nonce observable and interruptible, not to collect frameworks.
 
-```javascript
-// tests/csp.test.ts
-import { test, expect } from "@playwright/test";
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-test("agent chat page sends enforcing CSP with nonce", async ({ page }) => {
-  const response = await page.goto("/agent/chat");
-  const csp = response?.headers()["content-security-policy"] ?? "";
-  expect(csp).toContain("script-src");
-  expect(csp).not.toContain("unsafe-inline");
-  expect(csp).toMatch(/'nonce-/);
+Acceptance check: an on-call engineer can explain system state for agent content security policy nonce from one dashboard and one runbook page.
 
-  // Inline bootstrap present and nonce matches header
-  const nonceMatch = csp.match(/'nonce-([^']+)'/);
-  const nonce = nonceMatch?.[1];
-  const inlineScript = page.locator(`script[nonce="${nonce}"]`);
-  await expect(inlineScript.first()).toBeAttached();
-});
-```
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-Run Playwright against staging after every frontend deploy. Pair with a ZAP or CSP Evaluator scan for structural issues (overly broad `https:` in `img-src`, missing `object-src 'none'`, etc.).
+After a month, delete unused flags and dual paths. `agent-content-security-policy-nonce` accumulates temporary bridges faster than teams expect.
 
-## Common failure modes
+## Field notes after thirty days of agent content security policy nonce
 
-**Nonce mismatch after edge middleware rewrite.** Some proxies strip or regenerate headers. Ensure the nonce travels on an internal header (`x-nonce`) from middleware to SSR, not by parsing the outbound CSP header in React.
+Teams usually discover Content Security Policy Nonce for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-**Third-party analytics outside strict-dynamic chain.** GTM snippets injected as standalone inline scripts need their own nonce or must load from a `'self'` proxy you control.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-**Web Workers and blob URLs.** `worker-src` defaults to `script-src` in CSP Level 3. Agent code runners using `blob:` workers need `worker-src blob: 'self'` explicitly.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Content Security Policy Nonce for production agents that needs a hero is not done.
 
-**Style nonces on dynamically inserted CSS.** If tool renderers inject `<style>` at runtime from client JS, those elements need the nonce attribute set in JavaScript — the nonce must be available on `window.__NONCE__` from your trusted bootstrap.
+Slug-specific note (agent-content-security-policy-nonce): prioritize nonce behavior under load and verify with a fixture named `agent-content-security-policy-nonce-smoke`.
 
-## The takeaway
-
-CSP nonces let agent-powered web apps run strict `script-src` while keeping SSR hydration, streaming chat, and lazy-loaded tool widgets functional. The implementation is straightforward; the discipline is harder — one nonce per response, no cached HTML with stale nonces, report-only validation before enforcement, and `connect-src` kept in sync with every LLM and tool endpoint. Treat CSP as living configuration maintained alongside your API route map, not a one-time security ticket.
+Default deny, explicit timeouts, and one dashboard row for agent content security policy nonce. Expand only when the metric demands it.
 
 ## Resources
 
-- [MDN — Content-Security-Policy script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src)
-- [W3C CSP Level 3 — strict-dynamic](https://www.w3.org/TR/CSP3/#strict-dynamic-usage)
-- [Google — CSP Evaluator](https://csp-evaluator.withgoogle.com/)
-- [Next.js — Content Security Policy guide](https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy)
-- [OWASP — Content Security Policy Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html)
+- Internal runbook seed: `agent-content-security-policy-nonce`
+- https://12factor.net/
+- https://martinfowler.com/

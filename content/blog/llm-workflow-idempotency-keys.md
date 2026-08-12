@@ -1,240 +1,159 @@
 ---
-title: "Workflow Idempotency Keys"
+title: "Workflow Idempotency Keys in LLM services"
 slug: "llm-workflow-idempotency-keys"
-description: "Design idempotency keys for agent workflows: tool side effects, Temporal run IDs, HTTP Idempotency-Key headers, and deduplication stores that survive retries and human double-clicks for teams running LLM features in production."
+description: "Workflow Idempotency Keys in LLM services: how to harden LLM services around workflow idempotency keys — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-04-23"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "agent workflow idempotency keys, dedupe agent tool calls, Temporal idempotent workflow, Idempotency-Key header"
+  - "Engineering"
+keywords: "llm, workflow, idempotency, keys, production, engineering"
 faq:
-  - q: "Where should idempotency keys originate in agent systems?"
-    a: "Client or gateway generates keys at workflow start — format `{tenant_id}:{client_request_id}`. Tool calls inherit `{workflow_key}:{step_id}`. Never let the LLM invent keys; inject deterministically from orchestration layer."
-  - q: "How long should idempotency records live?"
-    a: "Minimum 24–72 hours for HTTP API semantics; 30 days for financial agent workflows aligned with billing dispute windows. TTL must exceed max retry horizon including DLQ replays."
-  - q: "What if the same key is reused with different parameters?"
-    a: "Return 409 Conflict with stored response hash mismatch — never silently return wrong result. Log potential attack or client bug. Agent orchestrator should treat as fatal for that run."
-  - q: "Does Temporal replace application idempotency keys?"
-    a: "Temporal gives run-level dedupe via WorkflowId reuse policy — not substitute for tool side-effect idempotency. Combine: Temporal WorkflowId for orchestration, idempotency keys on each external API call inside activities."
+  - q: "What is Workflow Idempotency Keys in LLM services?"
+    a: "Workflow Idempotency Keys in LLM services is the production approach to harden LLM services around workflow idempotency keys. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Workflow Idempotency Keys in LLM services?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with llm workflow idempotency keys, prioritize it."
+  - q: "What is the most common mistake with Workflow Idempotency Keys in LLM services?"
+    a: "The usual failure is one shared path for every tenant and environment. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Users double-click Approve. Load balancers retry POSTs. Temporal activities replay after worker crash. LLM agents hallucinate progress but the **payment tool already ran**. Idempotency keys are how agent workflows guarantee "exactly-once semantics where it matters" without pretending networks are reliable.
+**Workflow Idempotency Keys in LLM services** means you harden LLM services around workflow idempotency keys — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like one shared path for every tenant and environment start paging people.
 
-## Layers of idempotency
+This write-up is specific to `llm-workflow-idempotency-keys` in a llm context, using Prometheus, Postgres, vLLM for the mechanics while keeping ownership human.
 
-```
-Client Idempotency-Key
-        │
-        ▼
-Gateway dedupe (HTTP 409/200 replay)
-        │
-        ▼
-Workflow engine (Temporal WorkflowId)
-        │
-        ▼
-Activity / tool call keys → external APIs
-        │
-        ▼
-Downstream provider (Stripe Idempotency-Key)
-```
+## Incident pattern involving llm workflow idempotency keys
 
-Each layer covers different retry sources — don't skip inner layers because outer exists.
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm workflow idempotency keys, that means making failure visible early.
 
-## Key format conventions
+Keep side effects at the edges and make every write idempotent. Workflow Idempotency Keys in LLM services without retry semantics is a future incident write-up.
 
-```text
-# User-initiated agent run
-idem:tenant_42:usr_click_20260717_abc123
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm workflow idempotency keys.
 
-# Tool step within run
-idem:run_9f3:step_send_invoice:v1
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
-# Scheduled cron agent
-idem:tenant_42:daily_reconcile:2026-07-17
-```
+## Root cause in plain language
 
-Properties:
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-- Stable across retries of **same logical operation**
-- Unique across **different** operations
-- Include tenant scope to prevent cross-tenant collision in shared stores
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## HTTP gateway pattern
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Workflow Idempotency Keys in LLM services that needs a hero is not done.
+
+Concretely, being able to harden LLM services around workflow idempotency keys forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
 ```python
-from fastapi import Header, HTTPException
+# Workflow Idempotency Keys in LLM services
+from dataclasses import dataclass
 
-@app.post("/v1/agent/runs")
-async def start_run(
-    body: StartRunRequest,
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
-):
-    scope = f"{body.tenant_id}:{idempotency_key}"
-    cached = idem_store.get(scope)
-    if cached:
-        if cached.request_hash != hash(body):
-            raise HTTPException(409, "idempotency key reused with different body")
-        return cached.response
+@dataclass(frozen=True)
+class LlmWorkflowIdempotRequest:
+    tenant_id: str
+    idempotency_key: str
 
-    run = orchestrator.start(body)
-    idem_store.put(scope, hash(body), run, ttl=86400 * 3)
-    return run
+async def run_llm_workflow_idempotency(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("llm-workflow-idempotency-keys"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Clients (mobile, web) generate UUIDv4 `Idempotency-Key` per button click.
+## The fix that held under load
 
-## Temporal workflow IDs
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-```python
-# temporal starter
-async def start_agent_workflow(tenant_id: str, client_key: str, input: RunInput):
-    workflow_id = f"agent-run/{tenant_id}/{client_key}"
-    handle = await client.start_workflow(
-        AgentRunWorkflow.run,
-        input,
-        id=workflow_id,
-        id_reuse_policy=WorkflowIdReusePolicy.REJECT_DUPLICATE,
-    )
-    return handle
-```
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-`REJECT_DUPLICATE` prevents two runs for same user action; use `ALLOW_DUPLICATE_FAILED_ONLY` if retries after failure should restart.
+Acceptance check: an on-call engineer can explain system state for llm workflow idempotency keys from one dashboard and one runbook page.
 
-## Activity-level tool idempotency
+My never-again list for llm workflow idempotency keys: one shared path for every tenant and environment; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```python
-@activity.defn
-async def charge_customer(params: ChargeParams) -> ChargeResult:
-    key = f"charge:{params.workflow_id}:{params.step_id}"
-    existing = await idem_store.get(key)
-    if existing:
-        return existing
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
-    result = stripe.PaymentIntent.create(
-        amount=params.amount,
-        currency="usd",
-        customer=params.customer_id,
-        idempotency_key=key,
-    )
-    await idem_store.put(key, result, ttl=86400 * 30)
-    return result
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; one shared path for every tenant and environment |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Stripe dedupes on their side; your store avoids duplicate API calls before network round trip.
+## Tests and probes that catch regressions
 
-## Dedupe store implementation
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Redis with SET NX:
+Keep side effects at the edges and make every write idempotent. Workflow Idempotency Keys in LLM services without retry semantics is a future incident write-up.
 
-```python
-def reserve(key: str, ttl_sec: int) -> bool:
-    return redis.set(f"idem:{key}", "pending", nx=True, ex=ttl_sec)
+Acceptance check: an on-call engineer can explain system state for llm workflow idempotency keys from one dashboard and one runbook page.
 
-def complete(key: str, response: dict):
-    redis.set(f"idem:{key}", json.dumps(response), ex=ttl_sec)
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Workflow Idempotency Keys in LLM services cannot answer, it is not production-ready.
 
-Postgres for audit-grade durability:
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
-```sql
-CREATE TABLE idempotency_keys (
-  scope text PRIMARY KEY,
-  request_hash bytea NOT NULL,
-  response jsonb NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-CREATE INDEX ON idempotency_keys (created_at);
-```
+## Runbook lines that save minutes
 
-## LLM non-determinism vs idempotent side effects
+I treat Workflow Idempotency Keys in LLM services as an operations problem first. The goal is to harden LLM services around workflow idempotency keys, not to collect frameworks.
 
-Model output varies; **side effects must not**. Pattern:
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-1. Plan phase — LLM proposes tool calls (no side effects).
-2. Commit phase — orchestrator executes tools with idempotency keys (deterministic).
-3. Re-plan on tool results — new LLM turn.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm workflow idempotency keys.
 
-Never interleave unguarded tool execution inside streaming generation.
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
-## Human-in-the-loop approval
+Related reading:
 
-Approval token doubles as idempotency scope:
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-```python
-def on_approval(approval_id: str, decision: str):
-    key = f"approval:{approval_id}"
-    if not reserve(key, ttl=86400 * 7):
-        return get_stored_outcome(key)
-    outcome = execute_approved_tools(approval_id, decision)
-    complete(key, outcome)
-```
+## Platform guardrails afterward
 
-Second click on Approve returns same outcome — no double ship.
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Testing idempotency
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-```python
-def test_duplicate_start_run_returns_same_run_id(client):
-    headers = {"Idempotency-Key": "test-key-1"}
-    r1 = client.post("/v1/agent/runs", json=payload, headers=headers)
-    r2 = client.post("/v1/agent/runs", json=payload, headers=headers)
-    assert r1.json()["run_id"] == r2.json()["run_id"]
-    assert orchestrator.start.call_count == 1
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm workflow idempotency keys.
 
-Chaos: kill worker mid-activity, verify replay doesn't double-charge.
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
 
-## Metrics
+## Practical defaults for Workflow Idempotency Keys in LLM services
 
-- `idempotency_cache_hit_total` — healthy on retries
-- `idempotency_conflict_409_total` — investigate client bugs
-- `tool_duplicate_prevented_total` by tool name
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Workflow Idempotency Keys in LLM services that needs a hero is not done.
+
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for llm workflow idempotency keys. Expand only when the metric demands it.
+
+## Review questions before merging llm workflow idempotency keys work
+
+Teams usually discover Workflow Idempotency Keys in LLM services after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
+
+Put a metric on the user-visible effect of llm workflow idempotency keys before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for llm workflow idempotency keys from one dashboard and one runbook page.
+
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and one shared path for every tenant and environment. Missing that note blocks merge.
+
+## Field notes after thirty days of llm workflow idempotency keys
+
+I treat Workflow Idempotency Keys in LLM services as an operations problem first. The goal is to harden LLM services around workflow idempotency keys, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Workflow Idempotency Keys in LLM services without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm workflow idempotency keys.
+
+Slug-specific note (llm-workflow-idempotency-keys): prioritize keys behavior under load and verify with a fixture named `llm-workflow-idempotency-keys-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-workflow-idempotency-keys` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Stripe — Idempotent requests](https://docs.stripe.com/api/idempotent_requests)
-- [Temporal — Workflow Id reuse policies](https://docs.temporal.io/workflows#workflow-id-reuse-policy)
-- [IETF draft — Idempotency-Key header](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header)
-- [AWS — Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+- Internal runbook seed: `llm-workflow-idempotency-keys`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,148 +1,159 @@
 ---
-title: "AI Agents: Zero-Downtime Schema Migration for Agent Stores"
+title: "Agent systems: schema migration zero downtime"
 slug: "agent-schema-migration-zero-downtime"
-description: "Expand-contract migrations for conversation tables — dual-write, backfill cursors, and online DDL without locking messages mid-chat."
+description: "Agent systems: schema migration zero downtime: how to keep agent side effects idempotent around schema migration zero downtime — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-11-04"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "Agent"
-  - "Database"
-  - "PostgreSQL"
-keywords: "zero downtime migration, expand contract, agent conversation store, online DDL"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, schema, migration, zero, downtime, production, engineering"
 faq:
-  - q: "When should teams prioritize Zero-Downtime Schema Migration for Agent Stores?"
-    a: "Before altering agent message, session, or tool-trace tables under production traffic."
-  - q: "What is the most common mistake with zero-downtime schema migration?"
-    a: "Combining expand, dual-write, backfill, and contract phases in a single deploy."
-  - q: "How do we know Zero-Downtime Schema Migration for Agent Stores is working?"
-    a: "Define a leading metric for zero-downtime schema migration (error rate, stale read rate, recall, verification failures) and a lagging metric (incidents, invoice variance, audit findings). Review both in weekly ops, not only after escalations."
+  - q: "What is Agent systems: schema migration zero downtime?"
+    a: "Agent systems: schema migration zero downtime is the production approach to keep agent side effects idempotent around schema migration zero downtime. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: schema migration zero downtime?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent schema migration zero downtime, prioritize it."
+  - q: "What is the most common mistake with Agent systems: schema migration zero downtime?"
+    a: "The usual failure is dual writes without an outbox or CDC story. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-p99 chat latency hit four seconds when NOT NULL was added in the same release as the writer — Postgres rewrote the table under ACCESS EXCLUSIVE lock.
+**Agent systems: schema migration zero downtime** means you keep agent side effects idempotent around schema migration zero downtime — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like dual writes without an outbox or CDC story start paging people.
 
-Expand-contract migrations for conversation tables — dual-write, backfill cursors, and online DDL without locking messages mid-chat.
+This write-up is specific to `agent-schema-migration-zero-downtime` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## The production story behind zero-downtime schema migration
+## Fitting Agent systems: schema migration zero downtime into an existing system
 
-Combining expand, dual-write, backfill, and contract phases in a single deploy. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Zero-Downtime Schema Migration for Agent Stores is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent schema migration zero downtime, that means making failure visible early.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Zero-Downtime Schema Migration is how you convert that chaos into an invariant someone can operate.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-## Designing zero-downtime schema migration for agent stores for real constraints
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: schema migration zero downtime that needs a hero is not done.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For zero-downtime schema migration, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## Contracts and ownership boundaries
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent schema migration zero downtime, that means making failure visible early.
 
-## Implementation walkthrough
+Keep side effects at the edges and make every write idempotent. Agent systems: schema migration zero downtime without retry semantics is a future incident write-up.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits zero-downtime schema migration during an incident.
+Acceptance check: an on-call engineer can explain system state for agent schema migration zero downtime from one dashboard and one runbook page.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to keep agent side effects idempotent around schema migration zero downtime forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
 ```python
-# Operational hook — zero-downtime schema migration
-def apply_schema_migration_zero_downtime(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+# Agent systems: schema migration zero downtime
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentSchemaMigratiRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_schema_migration_z(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-schema-migration-zero-downtime"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Platform depth
+## State, storage, and retention
 
-Platform teams own defaults and libraries; product teams own domain config. Document interfaces where zero-downtime schema migration gates handoffs to downstream owners.
-Review after every magnitude change in traffic or model swap — assumptions drift silently.
+I treat Agent systems: schema migration zero downtime as an operations problem first. The goal is to keep agent side effects idempotent around schema migration zero downtime, not to collect frameworks.
 
-## Failure modes worth rehearsing
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: schema migration zero downtime that needs a hero is not done.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent schema migration zero downtime: dual writes without an outbox or CDC story; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Leading indicators: error rate on zero-downtime schema migration, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; dual writes without an outbox or CDC story |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Security defaults that are non-negotiable
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; zero-downtime schema migration regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+I treat Agent systems: schema migration zero downtime as an operations problem first. The goal is to keep agent side effects idempotent around schema migration zero downtime, not to collect frameworks.
 
-## Production hardening
+Put a metric on the user-visible effect of agent schema migration zero downtime before you optimize internals. If on-call already feels weekly pain here, you need that graph on day one.
 
-Pin versions affecting zero-downtime schema migration. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent schema migration zero downtime.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: schema migration zero downtime cannot answer, it is not production-ready.
 
-Zero-Downtime Schema Migration for Agent Stores touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-## Further reading
+## SLOs and dashboards
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent schema migration zero downtime, that means making failure visible early.
 
-## Operating zero-downtime schema migration after scale events (review 1)
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: schema migration zero downtime that needs a hero is not done.
 
-When zero-downtime schema migration for agent stores touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
+## First-week validation plan
 
-## Operating zero-downtime schema migration after scale events (review 2)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent schema migration zero downtime, that means making failure visible early.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-When zero-downtime schema migration for agent stores touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Acceptance check: an on-call engineer can explain system state for agent schema migration zero downtime from one dashboard and one runbook page.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Agent systems: schema migration zero downtime
 
+I treat Agent systems: schema migration zero downtime as an operations problem first. The goal is to keep agent side effects idempotent around schema migration zero downtime, not to collect frameworks.
 
-## Operating zero-downtime schema migration after scale events (review 3)
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent schema migration zero downtime.
 
-When zero-downtime schema migration for agent stores touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+In review, require a short failure note covering retry, partial deploy, and dual writes without an outbox or CDC story. Missing that note blocks merge.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent schema migration zero downtime work
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent schema migration zero downtime, that means making failure visible early.
 
-## Operating zero-downtime schema migration after scale events (review 4)
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is dual writes without an outbox or CDC story.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Acceptance check: an on-call engineer can explain system state for agent schema migration zero downtime from one dashboard and one runbook page.
 
-When zero-downtime schema migration for agent stores touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent schema migration zero downtime. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent schema migration zero downtime
 
+I treat Agent systems: schema migration zero downtime as an operations problem first. The goal is to keep agent side effects idempotent around schema migration zero downtime, not to collect frameworks.
 
-## Operating zero-downtime schema migration after scale events (review 5)
+Keep side effects at the edges and make every write idempotent. Agent systems: schema migration zero downtime without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: schema migration zero downtime that needs a hero is not done.
 
-When zero-downtime schema migration for agent stores touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-schema-migration-zero-downtime): prioritize downtime behavior under load and verify with a fixture named `agent-schema-migration-zero-downtime-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
+Default deny, explicit timeouts, and one dashboard row for agent schema migration zero downtime. Expand only when the metric demands it.
 
 ## Resources
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [AWS documentation](https://docs.aws.amazon.com/)
+- Internal runbook seed: `agent-schema-migration-zero-downtime`
+- https://12factor.net/
+- https://martinfowler.com/

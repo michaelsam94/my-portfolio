@@ -1,329 +1,159 @@
 ---
-title: "Conversation State Machines for Chat Applications"
+title: "Grounded generation with conversation state machine"
 slug: "rag-conversation-state-machine"
-description: "Model agent dialogues as explicit finite state machines — slot filling, tool-gated transitions, interrupt handling, persistence, and recovery from LLM non-determinism."
+description: "Grounded generation with conversation state machine: how to operate chunking/indexing for conversation state machine — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-04-22"
-dateModified: "2026-07-17"
-tags: ["AI Agents", "Dialogue", "State Machine", "Architecture"]
-keywords: "conversation state machine agent, dialogue management LLM, slot filling FSM, agent session state, multi-turn agent architecture"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "RAG"
+  - "Engineering"
+keywords: "rag, conversation, state, machine, production, engineering"
 faq:
-  - q: "When should an agent use a state machine vs free-form LLM dialogue?"
-    a: "Use a state machine when the task has ordered steps, legal confirmations, slot requirements, or side effects (payments, deletes). Free-form dialogue works for open Q&A; FSMs work for workflows where skipping a step creates liability or bad data."
-  - q: "Where does the LLM sit relative to the state machine?"
-    a: "The FSM owns transitions and guards; the LLM fills slots, generates natural language, and proposes intents. Never let the model directly commit state transitions without validation — parse structured output and let the FSM decide."
-  - q: "How do you persist state across server restarts and tab closes?"
-    a: "Serialize FSM state (current state, filled slots, pending confirmations) to durable storage keyed by session ID. Version the schema. On resume, hydrate the FSM and inject a compact state summary into the LLM context — not the full transition log."
+  - q: "What is Grounded generation with conversation state machine?"
+    a: "Grounded generation with conversation state machine is the production approach to operate chunking/indexing for conversation state machine. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Grounded generation with conversation state machine?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with rag conversation state machine, prioritize it."
+  - q: "What is the most common mistake with Grounded generation with conversation state machine?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Grounded generation with conversation state machine** means you operate chunking/indexing for conversation state machine — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-Free-form retrieval loops feel elegant until a user confirms a $2,000 refund, the model forgets it already collected the order ID, and support finds three duplicate API calls in the audit log. **Conversation state machines** bring structure to multi-turn agents: explicit states, guarded transitions, slot validation, and recovery paths that do not depend on the model remembering where the dialogue left off.
+This write-up is specific to `rag-conversation-state-machine` in a rag context, using Postgres, pgvector, OpenSearch for the mechanics while keeping ownership human.
 
-The LLM remains the voice and the parser. The FSM is the source of truth for what step you are on and what is allowed next. That separation is what makes agent workflows auditable, testable, and safe under non-deterministic generation.
+## Decision guide for Grounded generation with conversation state machine
 
-## FSM vs ReAct loop
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-| Aspect | ReAct / retrieval loop | Conversation FSM |
-|--------|-------------------|------------------|
-| Control flow | Implicit in prompt | Explicit states and edges |
-| Side effects | Any turn | Guarded transitions only |
-| Testability | Scenario prompts | State table unit tests |
-| Recovery | Re-prompt and hope | Defined rollback states |
-| UX predictability | Variable | Consistent step order |
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-Most production agents combine both: an outer FSM for workflow phase, an inner ReAct loop for retrieval and reasoning within a state.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag conversation state machine.
 
-## Anatomy of an agent conversation FSM
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-States represent ** phases**, not individual messages:
+## When to refuse this approach
 
-```
-                    ┌─────────────┐
-         start ───► │   GREETING  │
-                    └──────┬──────┘
-                           │ intent=refund
-                           ▼
-                    ┌─────────────┐
-              ┌──── │ COLLECT_ID  │ ◄─────┐
-              │     └──────┬──────┘       │ invalid_id
-              │            │ valid_id     │
-              │            ▼              │
-              │     ┌─────────────┐       │
-              │     │ VERIFY_ELIG │───────┘
-              │     └──────┬──────┘
-              │            │ eligible
-              │            ▼
-              │     ┌─────────────┐
-              │     │ CONFIRM_AMT │──► CANCELLED (interrupt)
-              │     └──────┬──────┘
-              │            │ user_confirmed
-              │            ▼
-              │     ┌─────────────┐
-              └──── │  EXECUTE    │
-                    └──────┬──────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │  COMPLETE   │
-                    └─────────────┘
-```
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-Each state defines:
+Put a metric on the user-visible effect of rag conversation state machine before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-- **Required slots** — data that must exist before exiting
-- **Allowed tools** — subset available in this phase
-- **Prompt template** — system instructions scoped to the state
-- **Transitions** — events that move to the next state
-- **On-enter / on-exit hooks** — side effects, analytics, idempotency keys
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag conversation state machine.
 
-## Implementation with typed states and events
+Concretely, being able to operate chunking/indexing for conversation state machine forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```python
-# dialogue/fsm.py
-from enum import Enum, auto
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-class State(Enum):
-    GREETING = auto()
-    COLLECT_ORDER_ID = auto()
-    VERIFY_ELIGIBILITY = auto()
-    CONFIRM_AMOUNT = auto()
-    EXECUTE_REFUND = auto()
-    COMPLETE = auto()
-    CANCELLED = auto()
-
-class Event(Enum):
-    INTENT_REFUND = auto()
-    SLOT_ORDER_ID = auto()
-    ELIGIBLE = auto()
-    INELIGIBLE = auto()
-    USER_CONFIRMED = auto()
-    USER_DECLINED = auto()
-    INTERRUPT_CANCEL = auto()
-
-@dataclass
-class SessionSlots:
-    order_id: Optional[str] = None
-    amount_cents: Optional[int] = None
-    eligibility_checked: bool = False
-
-@dataclass
-class Transition:
-    target: State
-    guard: Callable[["SessionContext"], bool] = lambda _: True
-    action: Callable[["SessionContext"], None] = lambda _: None
-
-@dataclass
-class SessionContext:
-    state: State = State.GREETING
-    slots: SessionSlots = field(default_factory=SessionSlots)
-    session_id: str = ""
-    idempotency_key: str = ""
-
-TRANSITIONS: dict[tuple[State, Event], Transition] = {
-    (State.GREETING, Event.INTENT_REFUND): Transition(State.COLLECT_ORDER_ID),
-    (State.COLLECT_ORDER_ID, Event.SLOT_ORDER_ID): Transition(
-        State.VERIFY_ELIGIBILITY,
-        guard=lambda ctx: ctx.slots.order_id is not None,
-    ),
-    (State.VERIFY_ELIGIBILITY, Event.ELIGIBLE): Transition(State.CONFIRM_AMOUNT),
-    (State.VERIFY_ELIGIBILITY, Event.INELIGIBLE): Transition(State.COMPLETE),
-    (State.CONFIRM_AMOUNT, Event.USER_CONFIRMED): Transition(
-        State.EXECUTE_REFUND,
-        action=lambda ctx: setattr(ctx, "idempotency_key", f"refund-{ctx.slots.order_id}"),
-    ),
-    (State.EXECUTE_REFUND, Event.USER_CONFIRMED): Transition(State.COMPLETE),
-}
-
-# Global interrupts
-for state in State:
-    if state not in (State.COMPLETE, State.CANCELLED):
-        TRANSITIONS[(state, Event.INTERRUPT_CANCEL)] = Transition(State.CANCELLED)
-
-def apply_event(ctx: SessionContext, event: Event) -> bool:
-    key = (ctx.state, event)
-    if key not in TRANSITIONS:
-        return False
-    t = TRANSITIONS[key]
-    if not t.guard(ctx):
-        return False
-    t.action(ctx)
-    ctx.state = t.target
-    return True
-```
-
-Unit test every `(state, event)` pair. FSM bugs are cheaper to fix in Python than in prompt prose.
-
-## LLM integration: parse, don't trust
-
-Each turn, the LLM produces **structured output** alongside natural language:
-
-```python
-from pydantic import BaseModel
-from typing import Literal
-
-class TurnParse(BaseModel):
-    detected_event: Optional[str]  # maps to Event enum
-    slot_updates: dict[str, str] = {}
-    user_message: str
-    confidence: float
-
-async def handle_turn(ctx: SessionContext, user_text: str) -> str:
-    parse = await llm_parse(user_text, current_state=ctx.state.name, schema=TurnParse)
-
-    # Global interrupt check first
-    if parse.detected_event == "INTERRUPT_CANCEL":
-        apply_event(ctx, Event.INTERRUPT_CANCEL)
-        return "Understood — I've cancelled that. How else can I help?"
-
-    # Apply slot updates before state events
-    if "order_id" in parse.slot_updates:
-        ctx.slots.order_id = validate_order_id(parse.slot_updates["order_id"])
-        if ctx.slots.order_id:
-            apply_event(ctx, Event.SLOT_ORDER_ID)
-
-    # State-specific event handling
-    if ctx.state == State.CONFIRM_AMOUNT and parse.detected_event == "USER_CONFIRMED":
-        if parse.confidence < 0.85:
-            return "Just to confirm — should I proceed with the refund? Reply yes or no."
-        apply_event(ctx, Event.USER_CONFIRMED)
-        await execute_refund(ctx)  # side effect ONLY after transition
-
-    return await llm_respond(ctx, user_text, parse)
-```
-
-Low-confidence confirmations get a clarification turn — never execute side effects on ambiguous "sure" / "ok" without state-appropriate guardrails.
-
-## Persistence and hydration
-
-Serialize minimal state:
-
-```json
-{
-  "schema_version": 2,
-  "state": "CONFIRM_AMOUNT",
-  "slots": {
-    "order_id": "ORD-8842",
-    "amount_cents": 5000,
-    "eligibility_checked": true
-  },
-  "idempotency_key": "",
-  "updated_at": "2025-04-23T14:22:00Z"
+```typescript
+// Grounded generation with conversation state machine
+export async function handle_rag_conversation_state_machine(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("rag-conversation-state-machine");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-On session resume, inject into context window:
+## Minimal production setup
 
-```
-[SESSION STATE]
-Workflow: refund
-Phase: awaiting user confirmation
-Order ID: ORD-8842
-Amount: $50.00
-Do not re-collect filled slots unless user explicitly corrects them.
-```
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-Schema versioning matters. Migrations on load:
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-```python
-def hydrate(raw: dict) -> SessionContext:
-    version = raw.get("schema_version", 1)
-    if version == 1:
-        raw = migrate_v1_to_v2(raw)
-    return SessionContext(
-        state=State[raw["state"]],
-        slots=SessionSlots(**raw["slots"]),
-        session_id=raw["session_id"],
-        idempotency_key=raw.get("idempotency_key", ""),
-    )
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on rag conversation state machine.
 
-## Side effects and idempotency
+My never-again list for rag conversation state machine: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Side effects belong in **on-enter hooks** of states like EXECUTE_REFUND, not in LLM tool handlers that the model can invoke arbitrarily.
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-```python
-async def execute_refund(ctx: SessionContext) -> None:
-    if not ctx.idempotency_key:
-        raise WorkflowError("missing idempotency key")
-    result = await payments_api.refund(
-        order_id=ctx.slots.order_id,
-        amount_cents=ctx.slots.amount_cents,
-        idempotency_key=ctx.idempotency_key,
-    )
-    if result.already_processed:
-        metrics.increment("refund.idempotent_replay")
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-If the user double-sends "yes confirm," the FSM may fire twice — idempotency keys prevent duplicate charges.
+## Cost, complexity, and ownership
 
-## Tool availability per state
+I treat Grounded generation with conversation state machine as an operations problem first. The goal is to operate chunking/indexing for conversation state machine, not to collect frameworks.
 
-Restrict tools to reduce model error surface:
+Put a metric on the user-visible effect of rag conversation state machine before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-```python
-TOOLS_BY_STATE = {
-    State.COLLECT_ORDER_ID: ["lookup_order"],
-    State.VERIFY_ELIGIBILITY: ["check_refund_policy"],
-    State.CONFIRM_AMOUNT: [],  # no tools — conversation only
-    State.EXECUTE_REFUND: ["process_refund"],
-}
-```
+Acceptance check: an on-call engineer can explain system state for rag conversation state machine from one dashboard and one runbook page.
 
-Pass only allowed tool schemas in the API call for the current state. Models invoke fewer wrong tools when they cannot see irrelevant ones.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Grounded generation with conversation state machine cannot answer, it is not production-ready.
 
-## Handling LLM non-determinism
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-Models go off-script. Defenses:
+## Migration without dual-running forever
 
-1. **Invalid event ignored** — if `(state, event)` not in transition table, stay in state and re-prompt with state-specific instructions
-2. **Slot validation** — regex, API lookup, or type check before accepting slot updates
-3. **Max turns per state** — after N failed collection attempts, transition to HANDOFF_HUMAN
-4. **State timeout** — sessions in CONFIRM_AMOUNT >24h auto-expire to GREETING with apology message
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-Log `fsm.invalid_transition_attempts` and `fsm.stuck_state_timeouts` — high rates mean prompt or parse schema needs work.
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-## Observability
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with conversation state machine that needs a hero is not done.
 
-Track funnel metrics per workflow:
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-- `fsm.entered_state` counts by state
-- `fsm.transition` counts by `(from, event, to)`
-- `fsm.time_in_state` histogram
-- `fsm.dropoff_rate` — sessions that never reach COMPLETE
-- `fsm.interrupt_rate` by state
+Related reading:
 
-Product reads funnels; engineering reads stuck states. A cliff at VERIFY_ELIGIBILITY means policy API latency or confusing copy — not "the model is dumb."
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Verifying transitions in CI
+## Definition of done
 
-**Table tests** for transitions — every row in `TRANSITIONS` gets a pytest case.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-**Simulation tests** — scripted user messages through the full FSM with mocked LLM parse responses.
+Put a metric on the user-visible effect of rag conversation state machine before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-**Property tests** — no path from EXECUTE_REFUND to COLLECT_ORDER_ID without explicit reset event.
+Acceptance check: an on-call engineer can explain system state for rag conversation state machine from one dashboard and one runbook page.
 
-**Chaos** — random invalid events never cause side effects; assert invariants on idempotency key presence before refund.
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-## Anti-patterns
+## Practical defaults for Grounded generation with conversation state machine
 
-**States per message** ("turn 3 state") — too granular; states become unmanageable.
+RAG quality is mostly retrieval and chunking; the generator cannot invent missing evidence. For rag conversation state machine, that means making failure visible early.
 
-**LLM chooses next state via free text** — parse structured events only.
+With Postgres, pgvector, OpenSearch, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-**Side effects in tool definitions the model controls** — move to FSM-guarded hooks.
+Acceptance check: an on-call engineer can explain system state for rag conversation state machine from one dashboard and one runbook page.
 
-**No global cancel** — users always need an escape hatch; trapping them in slot collection destroys trust.
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
 
-**Duplicating state in prompt and FSM** — one source of truth; prompt reflects FSM, not vice versa.
+After a month, delete unused flags and dual paths. `rag-conversation-state-machine` accumulates temporary bridges faster than teams expect.
 
-## The takeaway
+## Review questions before merging rag conversation state machine work
 
-Conversation state machines make agent workflows reliable by separating dialogue control from language generation. Model the happy path and interrupts explicitly, parse structured events from LLM output, guard side effects with idempotency keys, and persist versioned state for resume. The FSM is boring code — that is the point. Boring control flow with an eloquent LLM front end beats an eloquent model winging your refund policy.
+Teams usually discover Grounded generation with conversation state machine after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Keep side effects at the edges and make every write idempotent. Grounded generation with conversation state machine without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for rag conversation state machine from one dashboard and one runbook page.
+
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for rag conversation state machine. Expand only when the metric demands it.
+
+## Field notes after thirty days of rag conversation state machine
+
+Teams usually discover Grounded generation with conversation state machine after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Keep side effects at the edges and make every write idempotent. Grounded generation with conversation state machine without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Grounded generation with conversation state machine that needs a hero is not done.
+
+Slug-specific note (rag-conversation-state-machine): prioritize machine behavior under load and verify with a fixture named `rag-conversation-state-machine-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
 
 ## Resources
 
-- [Rasa — Dialogue Policies and Stories](https://rasa.com/docs/rasa/policies/)
-- [AWS — Step Functions for human-in-the-loop workflows](https://docs.aws.amazon.com/step-functions/latest/dg/concepts-amazon-states-language.html)
-- [XState — State machine concepts](https://xstate.js.org/docs/about/concepts.html)
-- [OpenAI — Structured outputs](https://platform.openai.com/docs/guides/structured-outputs)
-- [Google — Dialogflow CX state handlers](https://cloud.google.com/dialogflow/cx/docs/concept/handler)
+- Internal runbook seed: `rag-conversation-state-machine`
+- https://12factor.net/
+- https://martinfowler.com/

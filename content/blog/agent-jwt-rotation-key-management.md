@@ -1,264 +1,159 @@
 ---
-title: "JWT Rotation and Key Management for Multi-Tenant Agent Platforms"
+title: "Operating agents with jwt rotation key management"
 slug: "agent-jwt-rotation-key-management"
-description: "Operate JWT signing key rotation for agent APIs—JWKS publishing, overlap windows, asymmetric RS256 vs ES256, revocation, and zero-downtime rotation without invalidating active agent sessions."
+description: "Operating agents with jwt rotation key management: how to bound tool calls and blast radius for jwt rotation key management — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-09-22"
-dateModified: "2025-09-22"
-tags: ["AI Agents", "JWT", "Security", "Key Management"]
-keywords: "jwt rotation, jwks, key management, agent authentication, RS256, token introspection, OIDC, session continuity"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, jwt, rotation, key, management, production, engineering"
 faq:
-  - q: "How long should JWT signing keys overlap during rotation?"
-    a: "Publish the new key in JWKS immediately, sign new tokens with it, and keep the old key in JWKS until all tokens signed by it expire—typically 24–72 hours for access tokens, longer if you issue refresh tokens bound to a kid. Never remove a kid from JWKS while verifiers might still see tokens referencing it."
-  - q: "Should agent platform JWTs use RS256 or ES256?"
-    a: "ES256 (P-256) is smaller on the wire and faster to verify at scale; RS256 is more universally supported by legacy API gateways and HSMs. Pick one family per platform, document it, and avoid mixing algs in the same JWKS endpoint without explicit kid-to-alg mapping."
-  - q: "Where should signing keys live for production agent services?"
-    a: "Use a managed KMS (AWS KMS, GCP Cloud KMS, Azure Key Vault) or dedicated secrets manager with HSM-backed keys. Application pods should hold verification public keys or fetch JWKS, not long-lived private PEM files on disk. Rotation should be API-driven: generate new key in KMS, update kid mapping, publish JWKS."
-  - q: "How do you revoke agent access without waiting for JWT expiry?"
-    a: "Short-lived access tokens (5–15 minutes) plus refresh token rotation is the baseline. For immediate revocation, maintain a session blocklist or use token introspection for high-risk operations. Agent runs invoking destructive tools should re-check session validity against a central store, not trust JWT exp alone."
+  - q: "What is Operating agents with jwt rotation key management?"
+    a: "Operating agents with jwt rotation key management is the production approach to bound tool calls and blast radius for jwt rotation key management. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with jwt rotation key management?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent jwt rotation key management, prioritize it."
+  - q: "What is the most common mistake with Operating agents with jwt rotation key management?"
+    a: "The usual failure is copying a tutorial without matching production constraints. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
+**Operating agents with jwt rotation key management** means you bound tool calls and blast radius for jwt rotation key management — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like copying a tutorial without matching production constraints start paging people.
 
-On-call got paged because every agent API call returned 401 after a "routine" key rotation. The platform team uploaded a new RSA private key to the auth service but forgot to add the previous public key to the JWKS document. Mobile clients and edge workers still held access tokens signed with the old `kid`. For six hours, production agents could not start runs.
+This write-up is specific to `agent-jwt-rotation-key-management` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-JWT rotation is boring until it is catastrophic. Agent platforms amplify the pain: long-lived WebSocket sessions, background workers, SDKs that cache JWKS for an hour, and multi-region deploys that drift key material. Key management is not a one-time OpenSSL exercise—it is an operational loop with overlap windows, observability, and runbooks.
+## Short answer: Operating agents with jwt rotation key management
 
-## Architecture: asymmetric signing with JWKS
+I treat Operating agents with jwt rotation key management as an operations problem first. The goal is to bound tool calls and blast radius for jwt rotation key management, not to collect frameworks.
 
-Agent platforms should issue **asymmetric JWTs** (RS256 or ES256). The auth service holds private keys; API gateways and agent workers verify with public keys from `/.well-known/jwks.json`.
+Put a metric on the user-visible effect of agent jwt rotation key management before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Standard claims for agent access tokens:
+Acceptance check: an on-call engineer can explain system state for agent jwt rotation key management from one dashboard and one runbook page.
 
-| Claim | Purpose |
-|-------|---------|
-| `sub` | User or service principal ID |
-| `tenant_id` | Multi-tenant isolation |
-| `agent_scopes` | Allowed tools, models, spend caps |
-| `session_id` | Revocation and audit correlation |
-| `kid` | Key identifier for verification |
-| `exp` / `iat` | Short TTL, clock skew tolerance |
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-Never embed API keys or refresh tokens inside access JWTs. Access tokens are bearer credentials—treat leakage as compromise.
+## Constraints before abstractions
 
-Example header:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent jwt rotation key management, that means making failure visible early.
 
-```json
-{
-  "alg": "ES256",
-  "typ": "JWT",
-  "kid": "agent-signing-2025-09-a"
-}
-```
+Keep side effects at the edges and make every write idempotent. Operating agents with jwt rotation key management without retry semantics is a future incident write-up.
 
-## Key generation and storage
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with jwt rotation key management that needs a hero is not done.
 
-Generate keys in KMS, not on a laptop:
+Concretely, being able to bound tool calls and blast radius for jwt rotation key management forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-```bash
-# AWS KMS example — create signing key
-aws kms create-key \
-  --key-spec ECC_NIST_P256 \
-  --key-usage SIGN_VERIFY \
-  --description "agent-platform-jwt-es256"
-```
-
-Map KMS key IDs to logical `kid` values in a database table:
-
-```sql
-CREATE TABLE jwt_signing_keys (
-  kid              TEXT PRIMARY KEY,
-  alg              TEXT NOT NULL CHECK (alg IN ('ES256', 'RS256')),
-  kms_key_id       TEXT NOT NULL,
-  status           TEXT NOT NULL CHECK (status IN ('active', 'retiring', 'retired')),
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  retire_after     TIMESTAMPTZ,
-  retired_at       TIMESTAMPTZ
-);
-
-CREATE UNIQUE INDEX one_active_signer
-  ON jwt_signing_keys ((true))
-  WHERE status = 'active';
-```
-
-Only one **active** signer for new tokens. Multiple **retiring** public keys may appear in JWKS simultaneously.
-
-Export public JWK from KMS or openssl for JWKS publication—private material never leaves HSM/KMS except during initial migration.
-
-## JWKS endpoint contract
-
-Publish keys at a stable URL with cache headers:
-
-```json
-{
-  "keys": [
-    {
-      "kty": "EC",
-      "crv": "P-256",
-      "kid": "agent-signing-2025-09-a",
-      "use": "sig",
-      "alg": "ES256",
-      "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6kPAvd7L4",
-      "y": "4Eld6e_x0JG53fEq5lBP0-uGO_-28reEHbh2vaPYQLHf"
-    },
-    {
-      "kty": "EC",
-      "crv": "P-256",
-      "kid": "agent-signing-2025-06-b",
-      "use": "sig",
-      "alg": "ES256",
-      "x": "...",
-      "y": "..."
-    }
-  ]
-}
-```
-
-Verification rules for consumers:
-
-1. Fetch JWKS if `kid` unknown (respect `Cache-Control`, max 5–15 minute staleness for agent APIs)
-2. Reject tokens with missing or unknown `kid` — no fallback to "try all keys" in production (timing attacks and ambiguity)
-3. Enforce `alg` matches JWK entry — reject `none` and algorithm confusion
-4. Validate `iss`, `aud`, `exp` with ±60s clock skew
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
 ```typescript
-import { createRemoteJWKSet, jwtVerify } from "jose";
-
-const JWKS = createRemoteJWKSet(new URL("https://auth.example.com/.well-known/jwks.json"));
-
-export async function verifyAgentToken(token: string) {
-  const { payload, protectedHeader } = await jwtVerify(token, JWKS, {
-    issuer: "https://auth.example.com",
-    audience: "agent-api",
-    algorithms: ["ES256"],
-  });
-  if (!payload.tenant_id || !payload.session_id) {
-    throw new Error("missing tenant or session claims");
+// Operating agents with jwt rotation key management
+export async function handle_agent_jwt_rotation_key_management(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-jwt-rotation-key-management");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-  return { payload, kid: protectedHeader.kid };
 }
 ```
 
-## Rotation procedure (zero-downtime)
+## Reference implementation notes (OpenTelemetry)
 
-Document this runbook and rehearse quarterly:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent jwt rotation key management, that means making failure visible early.
 
-**Phase 1 — Introduce new key (T+0)**
+Put a metric on the user-visible effect of agent jwt rotation key management before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-1. Create KMS key, insert row with `status = retiring` is wrong — use `active` for new, mark old as `retiring`
-2. Actually: new key `status = active` for signing; previous `active` → `retiring`
-3. Publish both public keys in JWKS immediately
-4. New tokens get new `kid`; old tokens still verify
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent jwt rotation key management.
 
-**Phase 2 — Overlap window (T+0 to T+max_token_ttl)**
+My never-again list for agent jwt rotation key management: copying a tutorial without matching production constraints; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-5. Monitor `jwt.verify.failure` grouped by `kid`
-6. Do not remove retiring key until `now > last_token_iat + max_access_ttl + skew_buffer`
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-**Phase 3 — Decommission (T+overlap)**
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; copying a tutorial without matching production constraints |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-7. Remove retiring public key from JWKS
-8. Mark DB row `retired`, disable KMS key (don't delete—audit retention)
+## Quick path vs durable path
 
-Automate overlap calculation:
+I treat Operating agents with jwt rotation key management as an operations problem first. The goal is to bound tool calls and blast radius for jwt rotation key management, not to collect frameworks.
 
-```python
-def can_retire_key(kid: str, max_access_ttl_seconds: int, buffer: int = 3600) -> bool:
-    last_used = db.query(
-        "SELECT max(iat) FROM issued_tokens WHERE signing_kid = %s", kid
-    )
-    if last_used is None:
-        return True
-    return time.time() > last_used + max_access_ttl_seconds + buffer
-```
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-## Refresh tokens and session binding
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent jwt rotation key management.
 
-Agent UIs keep sessions alive across access token expiry. Use **rotating refresh tokens** stored server-side:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with jwt rotation key management cannot answer, it is not production-ready.
 
-```sql
-CREATE TABLE refresh_sessions (
-  session_id       UUID PRIMARY KEY,
-  tenant_id        TEXT NOT NULL,
-  user_id          TEXT NOT NULL,
-  token_hash       TEXT NOT NULL,
-  family_id        UUID NOT NULL,
-  revoked          BOOLEAN NOT NULL DEFAULT false,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_used_at     TIMESTAMPTZ
-);
-```
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-On refresh: issue new access JWT with current active `kid`, rotate refresh token hash, detect reuse (revoke entire `family_id` on mismatch). This contains theft without long-lived JWTs.
+## Edge cases demos miss
 
-## Emergency revocation
+I treat Operating agents with jwt rotation key management as an operations problem first. The goal is to bound tool calls and blast radius for jwt rotation key management, not to collect frameworks.
 
-Short TTL access tokens limit blast radius. For immediate kill:
+Put a metric on the user-visible effect of agent jwt rotation key management before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-```typescript
-async function assertSessionActive(sessionId: string, tenantId: string): Promise<void> {
-  const session = await redis.get(`session:${tenantId}:${sessionId}`);
-  if (session === "revoked") throw new UnauthorizedError("session_revoked");
-}
-```
+Acceptance check: an on-call engineer can explain system state for agent jwt rotation key management from one dashboard and one runbook page.
 
-Call `assertSessionActive` at:
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-- Agent run creation
-- Tool invocations with side effects
-- Spend threshold crossings
+Related reading:
 
-Do not hit Redis on every read-only poll—balance cost vs risk.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-## Multi-region consistency
+## Merge checklist
 
-JWKS must be identical in all regions within seconds of rotation. Options:
+Teams usually discover Operating agents with jwt rotation key management after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-1. **Single source of truth** — S3/GCS object with CloudFront, short TTL
-2. **Replicated config service** — push JWKS to all clusters before switching active signer
-3. **GitOps** — commit JWKS JSON, deploy via pipeline (slower but auditable)
+Keep side effects at the edges and make every write idempotent. Operating agents with jwt rotation key management without retry semantics is a future incident write-up.
 
-Never rotate in us-east-1 first and us-west-2 an hour later while both sign tokens.
+Acceptance check: an on-call engineer can explain system state for agent jwt rotation key management from one dashboard and one runbook page.
 
-## Monitoring and alerts
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-Track:
+## Practical defaults for Operating agents with jwt rotation key management
 
-- `jwt.sign.kid` — distribution should shift gradually during rotation
-- `jwt.verify.failure` by reason (`unknown_kid`, `expired`, `bad_sig`, `wrong_aud`)
-- `jwks.fetch.error_rate` — spikes cause cascading 401s
-- `refresh.reuse_detected` — possible token theft
+I treat Operating agents with jwt rotation key management as an operations problem first. The goal is to bound tool calls and blast radius for jwt rotation key management, not to collect frameworks.
 
-Alert when `unknown_kid` exceeds baseline during overlap—it may mean JWKS publish lag or a rogue signer.
+Put a metric on the user-visible effect of agent jwt rotation key management before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-## Compliance and audit
+Acceptance check: an on-call engineer can explain system state for agent jwt rotation key management from one dashboard and one runbook page.
 
-Log key lifecycle events immutably: created, activated, retiring, retired. Tie `kid` to change ticket. Regulators and enterprise customers ask "when did this key exist and who approved rotation?"
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-Annual rotation is a minimum; some teams rotate quarterly or on personnel changes with HSM access. Document RTO for compromised key: activate break-glass key, revoke sessions, publish emergency JWKS within 15 minutes.
+After a month, delete unused flags and dual paths. `agent-jwt-rotation-key-management` accumulates temporary bridges faster than teams expect.
 
-## Testing rotation in CI
+## Review questions before merging agent jwt rotation key management work
 
-Run integration tests that simulate overlap:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent jwt rotation key management, that means making failure visible early.
 
-```typescript
-describe("JWT rotation overlap", () => {
-  it("verifies tokens from retiring and active keys", async () => {
-    const oldToken = await signTestToken({ kid: "retiring-kid" });
-    const newToken = await signTestToken({ kid: "active-kid" });
-    await expect(verifyAgentToken(oldToken)).resolves.toBeDefined();
-    await expect(verifyAgentToken(newToken)).resolves.toBeDefined();
-  });
-});
-```
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is copying a tutorial without matching production constraints.
 
-Schedule a staging rotation game day monthly—engineers should not learn JWKS on production incident #1.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with jwt rotation key management that needs a hero is not done.
 
-## The takeaway
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
 
-JWT rotation for agent platforms is JWKS publishing plus disciplined overlap: one active signer, retiring keys until tokens expire, KMS-backed private material, and session revocation for emergencies. Automate the runbook, monitor verify failures by `kid`, and rehearse rotation before a compromised key forces you to learn under fire.
+In review, require a short failure note covering retry, partial deploy, and copying a tutorial without matching production constraints. Missing that note blocks merge.
+
+## Field notes after thirty days of agent jwt rotation key management
+
+Teams usually discover Operating agents with jwt rotation key management after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with jwt rotation key management without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with jwt rotation key management that needs a hero is not done.
+
+Slug-specific note (agent-jwt-rotation-key-management): prioritize management behavior under load and verify with a fixture named `agent-jwt-rotation-key-management-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for agent jwt rotation key management. Expand only when the metric demands it.
 
 ## Resources
 
-- [RFC 7517 — JSON Web Key (JWK)](https://datatracker.ietf.org/doc/html/rfc7517)
-- [RFC 8725 — JSON Web Token Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)
-- [Auth0 — JSON Web Key Sets documentation](https://auth0.com/docs/secure/tokens/json-web-tokens/json-web-key-sets)
-- [jose — JavaScript JWT/JWKS library](https://github.com/panva/jose)
-- [NIST SP 800-57 — Key management recommendations](https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final)
+- Internal runbook seed: `agent-jwt-rotation-key-management`
+- https://12factor.net/
+- https://martinfowler.com/

@@ -1,131 +1,158 @@
 ---
-title: "Authz Prover"
+title: "How teams operationalize authz prover"
 slug: "authz-prover"
-description: "Authz Prover: how to make retries and timeouts intentional in production flutter systems — design tradeoffs, failure modes, instrumentation, and rollout checks."
+description: "How teams operationalize authz prover: how to measure authz prover before optimizing it — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-04-07"
 dateModified: "2026-08-12"
 tags:
-  - "Flutter"
-  - "Mobile"
-keywords: "authz, prover, flutter, production, engineering"
+  - "Engineering"
+  - "Authz"
+keywords: "authz, prover, production, engineering"
 faq:
-  - q: "What is Authz Prover?"
-    a: "Authz Prover is a production approach to make retries and timeouts intentional. It focuses on concrete failure modes, contracts, and metrics rather than a slide-deck definition."
-  - q: "When should teams invest in Authz Prover?"
-    a: "Invest when you are replacing a fragile legacy path. If error rate and latency already hurts users or cost, prioritize it; defer only if the path is unused."
-  - q: "What is the most common mistake with Authz Prover?"
-    a: "The usual failure is unlimited retries on non-idempotent calls. Teams also ship without measuring outcomes, then discover the design only during an incident."
+  - q: "What is How teams operationalize authz prover?"
+    a: "How teams operationalize authz prover is the production approach to measure authz prover before optimizing it. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in How teams operationalize authz prover?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with authz prover, prioritize it."
+  - q: "What is the most common mistake with How teams operationalize authz prover?"
+    a: "The usual failure is treating authz prover as a pure library problem. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-**Authz Prover** means you make retries and timeouts intentional — with an owner, a measurable signal, and a rollback you can execute tired. I reach for this when you are replacing a fragile legacy path; that is usually also when shortcuts like unlimited retries on non-idempotent calls start paging people.
+**How teams operationalize authz prover** means you measure authz prover before optimizing it — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like treating authz prover as a pure library problem start paging people.
 
-Below is how I implement and operate it in Flutter systems using Flutter, Dart: the contracts, the failure modes, and the checks I want before merge.
+This write-up is specific to `authz-prover` in a product context, using Redis, Postgres, Prometheus for the mechanics while keeping ownership human.
 
-## Authz Prover: production checklist
+## How teams operationalize authz prover: production checklist
 
-I have watched teams under-specify Authz Prover and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Teams usually discover How teams operationalize authz prover after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+With Redis, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz prover as a pure library problem.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz prover that needs a hero is not done.
 
-## Inputs, outputs, and invariants
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
-Most write-ups on Authz Prover stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+## Inputs, outputs, invariants
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For authz prover, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz prover before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Practically, being able to make retries and timeouts intentional means you choose boundaries on purpose: which process owns the source of truth, which retries are safe, and which errors are user-visible versus operator-only.
+Acceptance check: an on-call engineer can explain system state for authz prover from one dashboard and one runbook page.
 
-```dart
-class FlutterRepository {
-  Future<Result> run(Request req) async {
-    // Authz Prover
-    return Result.ok(await _client.post('/v1/action', body: req.toJson()));
+Concretely, being able to measure authz prover before optimizing it forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
+
+```typescript
+// How teams operationalize authz prover
+export async function handle_authz_prover(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("authz-prover");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
 }
 ```
 
-## Concurrency and retry behavior
+## Concurrency, retries, and timeouts
 
-Most write-ups on Authz Prover stop at the demo. This one starts from situations where you are replacing a fragile legacy path, because that is when the abstraction either pays rent or becomes toil.
+Teams usually discover How teams operationalize authz prover after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Make Authz Prover error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Prover — you only deployed it.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz prover without retry semantics is a future incident write-up.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Acceptance check: an on-call engineer can explain system state for authz prover from one dashboard and one runbook page.
 
-I also keep a short 'never again' list beside the code: unlimited retries on non-idempotent calls; skipping Authz Prover error rate; and shipping without a rollback that a tired on-call can execute.
+My never-again list for authz prover: treating authz prover as a pure library problem; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-| Approach | When it fits | Main risk |
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
+
+| Approach | Fits when | Main risk |
 | --- | --- | --- |
-| Minimal path | Early product, low blast radius | Hidden coupling; unlimited retries on non-idempotent calls |
-| Durable path | you are replacing a fragile legacy path | More moving parts; needs ownership |
-| Hybrid / staged | Migrating brownfield systems | Dual-running complexity |
+| Minimal | Early product, small blast radius | Hidden coupling; treating authz prover as a pure library problem |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Human workflows (support, ops, audit)
+## Support and audit workflows
 
-If you only remember one thing about Authz Prover: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+Teams usually discover How teams operationalize authz prover after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Put a metric on the user-visible effect of authz prover before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Prefer small diffs with a kill switch. Authz Prover changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prover.
 
-For reviews, I ask: what happens twice? what happens never? what happens partially? Authz Prover designs that cannot answer those three questions are not production-ready.
+Review prompts I use: what happens twice, what happens never, what happens partially? If How teams operationalize authz prover cannot answer, it is not production-ready.
 
-## Load and capacity notes
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
-I have watched teams under-specify Authz Prover and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Capacity and load notes
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Teams usually discover How teams operationalize authz prover after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+Put a metric on the user-visible effect of authz prover before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz prover that needs a hero is not done.
+
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
 Related reading:
 
 - [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 - [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
-- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-## Definition of done
+## Ship gate
 
-I have watched teams under-specify Authz Prover and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Production systems punish vague ownership and unmeasured happy paths. For authz prover, that means making failure visible early.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+Put a metric on the user-visible effect of authz prover before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Write the acceptance check in product language: when you are replacing a fragile legacy path, operators can explain system state without spelunking five tabs. If they cannot, keep iterating.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. How teams operationalize authz prover that needs a hero is not done.
 
-## Practical defaults I use for Authz Prover
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
-I have watched teams under-specify Authz Prover and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+## Practical defaults for How teams operationalize authz prover
 
-In Flutter stacks I lean on Flutter, Dart for the mechanics, but ownership stays human. Someone has to define invariants, name the dashboard, and decide what happens when unlimited retries on non-idempotent calls.
+Production systems punish vague ownership and unmeasured happy paths. For authz prover, that means making failure visible early.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+With Redis, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz prover as a pure library problem.
 
-Default to deny-by-default configs, explicit timeouts, and a single dashboard row for Authz Prover error rate. Expand only when the metric says you must.
+Acceptance check: an on-call engineer can explain system state for authz prover from one dashboard and one runbook page.
 
-## Review questions before merging Authz Prover work
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
-If you only remember one thing about Authz Prover: optimize for the failure you will actually hit at 2am, not the happy path in a design doc. That usually means designing so you can make retries and timeouts intentional.
+After a month, delete unused flags and dual paths. `authz-prover` accumulates temporary bridges faster than teams expect.
 
-Make Authz Prover error rate a first-class signal before you celebrate the launch. If you cannot see regressions within an hour, you do not yet operate Authz Prover — you only deployed it.
+## Review questions before merging authz prover work
 
-Prefer small diffs with a kill switch. Authz Prover changes that require a hero engineer on-call are not done, even if the feature flag is green.
+Production systems punish vague ownership and unmeasured happy paths. For authz prover, that means making failure visible early.
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Keep side effects at the edges and make every write idempotent. How teams operationalize authz prover without retry semantics is a future incident write-up.
 
-## Field notes after the first month of Authz Prover
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on authz prover.
 
-I have watched teams under-specify Authz Prover and then spend a quarter cleaning up production surprises. The work is less about clever APIs and more about making it routine to make retries and timeouts intentional.
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
 
-The anti-pattern is unlimited retries on non-idempotent calls. It looks fine in staging with one tenant and tidy data, then collapses under retries, partial deploys, or a noisy neighbor.
+After a month, delete unused flags and dual paths. `authz-prover` accumulates temporary bridges faster than teams expect.
 
-Document the semantic meaning of success and compensation. Future you will not remember why a shortcut was safe — and neither will the next team.
+## Field notes after thirty days of authz prover
 
-In code review, demand a threat/failure note: what happens on retry, on partial deploy, and on unlimited retries on non-idempotent calls. If it is missing, the PR is incomplete.
+Production systems punish vague ownership and unmeasured happy paths. For authz prover, that means making failure visible early.
+
+With Redis, Postgres, Prometheus, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is treating authz prover as a pure library problem.
+
+Acceptance check: an on-call engineer can explain system state for authz prover from one dashboard and one runbook page.
+
+Slug-specific note (authz-prover): prioritize prover behavior under load and verify with a fixture named `authz-prover-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for authz prover. Expand only when the metric demands it.
 
 ## Resources
 
-- https://martinfowler.com/
+- Internal runbook seed: `authz-prover`
 - https://12factor.net/
+- https://martinfowler.com/

@@ -1,375 +1,159 @@
 ---
-title: "AI Agents: Cert Manager Dns01"
+title: "Operating agents with cert manager dns01"
 slug: "agent-cert-manager-dns01"
-description: "cert-manager DNS-01 challenges for agent platforms — wildcard TLS, multi-tenant ingress, Route53 and Cloudflare solvers, propagation delays, and renewal failure modes."
+description: "Operating agents with cert manager dns01: how to bound tool calls and blast radius for cert manager dns01 — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-02-19"
-dateModified: "2026-02-19"
-tags: ["AI", "Agent", "Cert"]
-keywords: "cert-manager DNS-01, Let's Encrypt wildcard, ACME challenge, Kubernetes TLS, agent ingress, Route53 solver, Cloudflare DNS-01, certificate renewal"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, cert, manager, dns01, production, engineering"
 faq:
-  - q: "When should agent platforms use DNS-01 instead of HTTP-01?"
-    a: "Use DNS-01 when you need wildcard certificates (*.agents.example.com), when agent APIs sit behind internal-only ingress without public HTTP reachability, when terminating TLS at a layer that cannot serve ACME HTTP paths, or when issuing certs for services without public A records yet. HTTP-01 is simpler for single-hostname public ingress but cannot issue wildcards."
-  - q: "What IAM permissions does the Route53 DNS-01 solver need?"
-    a: "Minimum: route53:GetChange, route53:ChangeResourceRecordSets, route53:ListResourceRecordSets on the hosted zone; route53:ListHostedZonesByName for zone discovery. Scope IAM policies to the specific zone ARN. IRSA on EKS or workload identity on GKE avoids long-lived access keys in cluster secrets."
-  - q: "Why do DNS-01 challenges fail with 'propagation' or 'NXDOMAIN' errors?"
-    a: "Let's Encrypt queries authoritative DNS from multiple vantage points. Failure modes include TTL caching, CNAME to external DNS with delayed updates, split-horizon DNS where internal views differ from public, typos in zone names, and API rate limits on DNS providers. cert-manager's recursiveNameserversOnly and increased challenge timeout settings help; fixing DNS architecture helps more."
-  - q: "How do you prevent certificate expiry for agent microservices?"
-    a: "Monitor cert-manager Certificate Ready=False conditions, Prometheus metrics certmanager_certificate_expiration_timestamp_seconds, and alert at 14 days before NotAfter. Run cert-manager v1.13+ with automatic renewal at 2/3 lifetime. Test renewal monthly by forcing re-issue in staging. Document runbook for stuck challenges — expired agent gateway certs take down all tenant traffic."
+  - q: "What is Operating agents with cert manager dns01?"
+    a: "Operating agents with cert manager dns01 is the production approach to bound tool calls and blast radius for cert manager dns01. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with cert manager dns01?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with agent cert manager dns01, prioritize it."
+  - q: "What is the most common mistake with Operating agents with cert manager dns01?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-Wildcard TLS for `*.agents.example.com` broke our HTTP-01 automation on the first try — Let's Encrypt couldn't reach the ACME challenge path on tenant subdomains that didn't exist yet. Switching to **cert-manager with DNS-01** fixed issuance but introduced a new failure class: Route53 API throttling during parallel tenant onboarding, TXT records orphaned in `_acme-challenge` subdomains, and a silent renewal failure that expired the agent gateway cert on a Friday night because nobody wired alerts to the `Certificate` resource status.
+**Operating agents with cert manager dns01** means you bound tool calls and blast radius for cert manager dns01 — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Agent platforms often expose per-tenant subdomains (`acme.agents.example.com`), internal gRPC mesh endpoints, webhook receivers, and admin APIs behind the same ingress controller. DNS-01 proves domain control by publishing `_acme-challenge` TXT records — no public HTTP required — and it is the **only** ACME method Let's Encrypt accepts for wildcard certs. cert-manager automates the loop: create Certificate → Order → Challenge → solver creates TXT → CA validates → Secret populated → ingress references Secret.
+This write-up is specific to `agent-cert-manager-dns01` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## ACME DNS-01 flow in Kubernetes
+## Short answer: Operating agents with cert manager dns01
 
-```
-┌─────────────┐    Certificate     ┌──────────────┐    TXT record    ┌─────────────┐
-│ cert-manager│ ────────────────► │  ACME CA     │ ◄─────────────── │  Route53 /  │
-│  controller │ ◄── signed cert ── │ (Let's Encrypt)│   queries DNS   │  Cloudflare │
-└─────────────┘                    └──────────────┘                  └─────────────┘
-       │ creates
-       ▼
-  Secret tls-agent-wildcard ──► Ingress / Gateway API
-```
+I treat Operating agents with cert manager dns01 as an operations problem first. The goal is to bound tool calls and blast radius for cert manager dns01, not to collect frameworks.
 
-1. You define a `Certificate` referencing an `Issuer` or `ClusterIssuer`.
-2. cert-manager creates an `Order` and `Challenge` resource.
-3. DNS-01 solver patches TXT at `_acme-challenge.<hostname>`.
-4. CA polls DNS globally; on success, cert lands in `spec.secretName`.
-5. Renewal repeats automatically ~30 days before expiry (Let's Encrypt certs valid 90 days).
+Keep side effects at the edges and make every write idempotent. Operating agents with cert manager dns01 without retry semantics is a future incident write-up.
 
-## ClusterIssuer with Route53 solver
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cert manager dns01.
 
-Production pattern on EKS with IRSA:
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-```yaml
-# clusterissuer-letsencrypt-prod.yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod-dns01
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: platform-security@example.com
-    privateKeySecretRef:
-      name: letsencrypt-prod-account-key
-    solvers:
-      - dns01:
-          route53:
-            region: us-east-1
-            hostedZoneID: Z1234567890ABC
-            # IRSA: cert-manager SA annotated with role ARN
-        selector:
-          dnsZones:
-            - "agents.example.com"
-```
+## Constraints before abstractions
 
-cert-manager ServiceAccount annotation:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cert manager dns01, that means making failure visible early.
 
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: cert-manager
-  namespace: cert-manager
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/cert-manager-route53
-```
+Keep side effects at the edges and make every write idempotent. Operating agents with cert manager dns01 without retry semantics is a future incident write-up.
 
-IAM policy (scoped):
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with cert manager dns01 that needs a hero is not done.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["route53:GetChange", "route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"],
-      "Resource": "arn:aws:route53:::hostedzone/Z1234567890ABC"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "route53:ListHostedZonesByName",
-      "Resource": "*"
-    }
-  ]
+Concretely, being able to bound tool calls and blast radius for cert manager dns01 forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
+
+```typescript
+// Operating agents with cert manager dns01
+export async function handle_agent_cert_manager_dns01(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-cert-manager-dns01");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-## Wildcard certificate for agent ingress
+## Reference implementation notes (OpenTelemetry)
 
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: agent-wildcard-tls
-  namespace: agent-platform
-spec:
-  secretName: agent-wildcard-tls
-  issuerRef:
-    name: letsencrypt-prod-dns01
-    kind: ClusterIssuer
-  commonName: "*.agents.example.com"
-  dnsNames:
-    - "*.agents.example.com"
-    - "agents.example.com"   # apex if needed for marketing landing
-  renewBefore: 720h           # 30 days
-```
+I treat Operating agents with cert manager dns01 as an operations problem first. The goal is to bound tool calls and blast radius for cert manager dns01, not to collect frameworks.
 
-Ingress reference (nginx):
+Keep side effects at the edges and make every write idempotent. Operating agents with cert manager dns01 without retry semantics is a future incident write-up.
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: agent-tenant-ingress
-  namespace: agent-platform
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod-dns01
-spec:
-  tls:
-    - hosts:
-        - "*.agents.example.com"
-      secretName: agent-wildcard-tls
-  rules:
-    - host: "*.agents.example.com"
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: agent-gateway
-                port:
-                  number: 443
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cert manager dns01.
 
-For Gateway API, attach cert to `Gateway` listener TLS configuration referencing the same Secret.
+My never-again list for agent cert manager dns01: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Cloudflare and multi-solver setups
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-Agent platforms split DNS: public marketing on Cloudflare, internal service discovery on Route53. cert-manager supports **multiple solvers** with selectors:
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-```yaml
-spec:
-  acme:
-    solvers:
-      - selector:
-          dnsNames:
-            - "internal.agents.example.com"
-        dns01:
-          route53:
-            region: us-east-1
-            hostedZoneID: ZINTERNAL
-      - selector:
-          dnsZones:
-            - "agents.example.com"
-        dns01:
-          cloudflare:
-            apiTokenSecretRef:
-              name: cloudflare-api-token
-              key: api-token
-```
+## Quick path vs durable path
 
-Cloudflare API token needs `Zone:DNS:Edit` on the specific zone. Prefer tokens over global API keys. Watch Cloudflare's propagation — cert-manager can set `propagationPolicy: None` on Cloudflare solver in recent versions to skip full-zone polling when appropriate.
+I treat Operating agents with cert manager dns01 as an operations problem first. The goal is to bound tool calls and blast radius for cert manager dns01, not to collect frameworks.
 
-## Propagation, timing, and debugging stuck challenges
+Put a metric on the user-visible effect of agent cert manager dns01 before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-DNS-01 failures dominate cert-manager support threads. Checklist:
+Acceptance check: an on-call engineer can explain system state for agent cert manager dns01 from one dashboard and one runbook page.
 
-```bash
-# Inspect challenge state
-kubectl describe challenge -n agent-platform
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with cert manager dns01 cannot answer, it is not production-ready.
 
-# Expected TXT name and value appear in challenge status
-dig +short TXT _acme-challenge.tenant.agents.example.com @8.8.8.8
-dig +short TXT _acme-challenge.tenant.agents.example.com @1.1.1.1
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-# cert-manager logs
-kubectl logs -n cert-manager deploy/cert-manager -f --since=10m
-```
+## Edge cases demos miss
 
-Common root causes:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent cert manager dns01, that means making failure visible early.
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| NXDOMAIN | Wrong zone / delegated subdomain | Verify NS chain, hosted zone ID |
-| TXT exists internally only | Split-horizon DNS | Publish TXT to public authoritative |
-| Intermittent failure | Slow TTL, CNAME to external DNS | Lower TTL on `_acme-challenge`, avoid CNAME indirection |
-| 403 on Route53 | IAM too narrow or wrong zone | Audit IRSA role trust + policy |
-| Rate limited | Too many orders during load test | Stagger Certificate resources, use staging CA |
+Keep side effects at the edges and make every write idempotent. Operating agents with cert manager dns01 without retry semantics is a future incident write-up.
 
-Use Let's Encrypt **staging** issuer for CI and tenant-provisioning integration tests:
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with cert manager dns01 that needs a hero is not done.
 
-```yaml
-spec:
-  acme:
-    server: https://acme-staging-v02.api.letsencrypt.org/directory
-```
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-Staging certs are not trusted by browsers but exercise the full DNS loop without rate limit burns.
+Related reading:
 
-## Per-tenant certificates vs wildcard
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
-Wildcard `*.agents.example.com` covers all tenant subdomains with one cert — operationally simple. Some enterprise tenants demand **dedicated certs** with their own domain (`agents.acme.com`) via DNS-01 on their delegated zone:
+## Merge checklist
 
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: tenant-acme-custom-domain
-  namespace: tenant-acme
-spec:
-  secretName: tenant-acme-tls
-  issuerRef:
-    name: letsencrypt-prod-dns01
-    kind: ClusterIssuer
-  dnsNames:
-    - "agents.acme.com"
-  # Tenant provides DNS credentials via sealed secret or external-dns delegation
-```
+Teams usually discover Operating agents with cert manager dns01 after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Automate carefully — each custom domain is a renewal dependency and support ticket vector. Centralize monitoring.
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-## Security considerations
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with cert manager dns01 that needs a hero is not done.
 
-- **ACME account key** stored in cluster Secret — restrict RBAC; backup for account recovery.
-- **DNS provider credentials** in cert-manager namespace — network policy isolate cert-manager; rotate tokens quarterly.
-- **CT logging** — all Let's Encrypt certs appear in Certificate Transparency logs; expect subdomain discovery. Plan internal host naming accordingly.
-- **Private CAs** — air-gapped agent deployments may use cert-manager with Vault or step-ca instead of public ACME; DNS-01 still applies for internal zones.
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-Never grant cert-manager broad `route53:ChangeResourceRecordSets` on `*` — compromised cert-manager becomes DNS takeover for the entire domain.
+## Practical defaults for Operating agents with cert manager dns01
 
-## Observability and renewal SLOs
+Teams usually discover Operating agents with cert manager dns01 after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Prometheus alerts (kube-prometheus-stack includes cert-manager metrics):
+Put a metric on the user-visible effect of agent cert manager dns01 before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-```yaml
-# prometheus-rules/cert-manager.yaml
-groups:
-  - name: cert-manager
-    rules:
-      - alert: AgentCertExpiringSoon
-        expr: |
-          certmanager_certificate_expiration_timestamp_seconds{namespace="agent-platform"} - time() < 14 * 86400
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: "Agent TLS cert expiring within 14 days"
-      - alert: AgentCertNotReady
-        expr: certmanager_certificate_ready_status{condition="False"} == 1
-        for: 15m
-        labels:
-          severity: critical
-        annotations:
-          summary: "cert-manager Certificate not Ready — agent ingress at risk"
-```
+Acceptance check: an on-call engineer can explain system state for agent cert manager dns01 from one dashboard and one runbook page.
 
-Runbook steps for `CertificateNotReady`:
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-1. `kubectl describe certificate,certificateRequest,order,challenge`
-2. Verify TXT with public resolvers
-3. Check DNS provider status page and API quotas
-4. If challenge corrupted, delete Challenge resource for retry (cert-manager recreates)
-5. Temporary mitigation: import manually issued cert to Secret (document debt)
+After a month, delete unused flags and dual paths. `agent-cert-manager-dns01` accumulates temporary bridges faster than teams expect.
 
-Test renewal by annotating Certificate to force reissue in staging monthly.
+## Review questions before merging agent cert manager dns01 work
 
-## Interaction with agent deploy velocity
+I treat Operating agents with cert manager dns01 as an operations problem first. The goal is to bound tool calls and blast radius for cert manager dns01, not to collect frameworks.
 
-High churn tenant namespaces tempt engineers to embed `Certificate` per microservice. **Prefer shared wildcard** at gateway plus mTLS inside mesh for service-to-service. Fewer ACME orders = fewer DNS API calls = fewer Friday incidents.
+Keep side effects at the edges and make every write idempotent. Operating agents with cert manager dns01 without retry semantics is a future incident write-up.
 
-External-dns can coexist — ensure it does not delete `_acme-challenge` TXT records mid-validation. Use ownership annotations or exclude `_acme-challenge` via txtOwnerId patterns.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent cert manager dns01.
 
-## Gateway API and cert-manager Certificate discovery
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-Modern agent gateways using Gateway API attach TLS at the `Gateway` listener:
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: agent-gateway
-  namespace: agent-platform
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod-dns01
-spec:
-  gatewayClassName: istio
-  listeners:
-    - name: https-wildcard
-      hostname: "*.agents.example.com"
-      port: 443
-      protocol: HTTPS
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - name: agent-wildcard-tls
-            kind: Secret
-```
+## Field notes after thirty days of agent cert manager dns01
 
-cert-manager's `ingress-shim` equivalent for Gateway is the **`cert-manager.io/issuer` annotation on Gateway** or explicit `Certificate` resources — verify your cert-manager version supports Gateway API GA resources. Misconfiguration leaves listeners serving default fake certs while `Certificate` status shows Ready on an unreferenced Secret.
+I treat Operating agents with cert manager dns01 as an operations problem first. The goal is to bound tool calls and blast radius for cert manager dns01, not to collect frameworks.
 
-## cert-manager upgrade and CRD migration notes
+Put a metric on the user-visible effect of agent cert manager dns01 before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Agent platforms lagging cert-manager versions hit breaking changes: ACME API version bumps, solver config renames, and webhook failures blocking all pod creation during partial upgrades.
+Acceptance check: an on-call engineer can explain system state for agent cert manager dns01 from one dashboard and one runbook page.
 
-Safe upgrade path:
+Slug-specific note (agent-cert-manager-dns01): prioritize dns01 behavior under load and verify with a fixture named `agent-cert-manager-dns01-smoke`.
 
-1. Read release notes for target version (v1.13 → v1.16 common jump)
-2. Apply CRD updates **before** controller Deployment
-3. Staging cluster: full DNS-01 cycle on wildcard test cert
-4. Production: upgrade during low-traffic window; watch `certmanager_webhook_request_duration_seconds` for webhook timeouts
-
-Helm values to pin:
-
-```yaml
-# values-cert-manager.yaml
-installCRDs: true
-prometheus:
-  enabled: true
-  servicemonitor:
-    enabled: true
-extraArgs:
-  - --dns01-recursive-nameservers-only=true
-  - --dns01-recursive-nameservers=8.8.8.8:53,1.1.1.1:53
-```
-
-`dns01-recursive-nameservers-only` forces validation against public resolvers — catches split-horizon mistakes in CI before production orders fail.
-
-## Disaster recovery for ACME account and certificates
-
-Back up these cluster Secrets to encrypted object storage (not git):
-
-- `letsencrypt-prod-account-key` — losing it means new ACME account, fresh rate limits, re-validating all domain authorizations
-- `agent-wildcard-tls` — emergency import if cert-manager down during incident
-- DNS provider API tokens referenced by solvers
-
-Recovery runbook when cert-manager namespace deleted:
-
-1. Restore CRDs and Helm release from IaC
-2. Restore ACME account key Secret first
-3. Reapply ClusterIssuer and Certificate manifests
-4. DNS-01 challenges re-run automatically — expect 2–5 minute issuance if DNS healthy
-5. Verify ingress/Gateway picks up new Secret (may require rolling restart)
-
-Let's Encrypt rate limits: 50 certificates per registered domain per week, 5 duplicate certificates per week. Botched automation loops can exhaust limits — use staging, add `Certificate` creation guards in tenant provisioning webhooks.
-
-## mTLS and DNS-01 boundary
-
-DNS-01 proves control of DNS, not that traffic reaches your cluster. Agent **internal** services (model router, tool executor) should use mesh mTLS (Istio, Linkerd) with cert-manager-issued internal CA — separate `ClusterIssuer` using cert-manager's **CA issuer** or HashiCorp Vault — not public Let's Encrypt. Public DNS-01 certs belong at the north-south gateway only.
-
-Confusion between the two issuers causes internal services to request public certs for `.svc.cluster.local` names — CAs reject, challenges hang, on-call pages at 2 AM.
-
-## Closing
-
-cert-manager DNS-01 is the standard path for wildcard and internal agent ingress TLS. Success requires correct DNS authority, least-privilege cloud IAM, propagation-aware debugging, and renewal monitoring treated as production SLOs — not certificate install-and-forget. HTTP-01 remains fine for a single public hostname; everything else in multi-tenant agent land tends toward DNS-01 sooner or later.
+Default deny, explicit timeouts, and one dashboard row for agent cert manager dns01. Expand only when the metric demands it.
 
 ## Resources
 
-- [cert-manager DNS-01 documentation](https://cert-manager.io/docs/configuration/acme/dns01/)
-- [Let's Encrypt DNS-01 challenge](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)
-- [cert-manager Route53 solver](https://cert-manager.io/docs/configuration/acme/dns01/route53/)
-- [AWS IRSA for cert-manager on EKS](https://cert-manager.io/docs/configuration/acme/dns01/route53/#set-up-an-iam-role)
-- [Prometheus cert-manager metrics](https://cert-manager.io/docs/devops-tools/prometheus/)
+- Internal runbook seed: `agent-cert-manager-dns01`
+- https://12factor.net/
+- https://martinfowler.com/

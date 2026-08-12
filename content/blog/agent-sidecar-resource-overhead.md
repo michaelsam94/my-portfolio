@@ -1,157 +1,159 @@
 ---
-title: "AI Agents: Sidecar Resource Overhead in LLM Serving Pods"
+title: "Sidecar Resource Overhead for production agents"
 slug: "agent-sidecar-resource-overhead"
-description: "Right-size Envoy, tokenizer, and guardrail sidecars on GPU inference pods — requests, limits, and native sidecar lifecycle on Kubernetes 1.29+."
+description: "Sidecar Resource Overhead for production agents: how to make agent sidecar resource overhead observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-06-21"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
-  - "Kubernetes"
-  - "Serving"
-  - "MLOps"
-keywords: "sidecar overhead, GPU inference, Kubernetes sidecar, resource limits"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, sidecar, resource, overhead, production, engineering"
 faq:
-  - q: "When should teams prioritize Sidecar Resource Overhead in LLM Serving Pods?"
-    a: "When mesh, logging, or guardrail sidecars share nodes with GPU workloads."
-  - q: "What is the most common mistake with sidecar resource requests?"
-    a: "Copying sidecar requests from HTTP microservices onto GPU pods without profiling."
-  - q: "How to profile sidecar overhead on GPU nodes?"
-    a: "Compare pod scheduling latency, CPU throttle metrics, and inference p99 with sidecars on vs off in staging. Native sidecars (1.29+) change termination order — test rollouts."
-  - q: "Spot for inference or only batch?"
-    a: "Usually batch embeddings and training — not latency-sensitive online inference unless you have checkpointed warm pools and fallback on-demand capacity."
+  - q: "What is Sidecar Resource Overhead for production agents?"
+    a: "Sidecar Resource Overhead for production agents is the production approach to make agent sidecar resource overhead observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Sidecar Resource Overhead for production agents?"
+    a: "Invest when you are replacing a fragile legacy implementation. If user-visible errors or cost already move with agent sidecar resource overhead, prioritize it."
+  - q: "What is the most common mistake with Sidecar Resource Overhead for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-GPU nodes sat at 60% utilization while pending pods queued — each inference pod requested 2 CPU for sidecars alone.
+**Sidecar Resource Overhead for production agents** means you make agent sidecar resource overhead observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when you are replacing a fragile legacy implementation; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Right-size Envoy, tokenizer, and guardrail sidecars on GPU inference pods — requests, limits, and native sidecar lifecycle on Kubernetes 1.29+.
+This write-up is specific to `agent-sidecar-resource-overhead` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## The production story behind sidecar resource requests
+## Incident pattern involving agent sidecar resource overhead
 
-Copying sidecar requests from HTTP microservices onto GPU pods without profiling. Teams usually discover the gap only after a finance reconcile, a security review, or a slow metric drift that nobody pages until customers notice. Sidecar Resource Overhead in LLM Serving Pods is load-bearing once traffic, tenants, or compliance requirements grow past the pilot.
+I treat Sidecar Resource Overhead for production agents as an operations problem first. The goal is to make agent sidecar resource overhead observable and interruptible, not to collect frameworks.
 
-The pattern is predictable: demo-grade wiring ships in a sprint; production adds retries, partial failures, multi-tenant isolation, and humans who double-click submit. Sidecar Resource Requests is how you convert that chaos into an invariant someone can operate.
+Keep side effects at the edges and make every write idempotent. Sidecar Resource Overhead for production agents without retry semantics is a future incident write-up.
 
-## Designing sidecar resource overhead in llm serving pods for real constraints
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sidecar Resource Overhead for production agents that needs a hero is not done.
 
-Name three boundaries on a whiteboard: **ingress** (who triggers work), **enforcement** (where invariants are checked), and **evidence** (what you log for audits). For sidecar resource requests, enforcement must be synchronous on the critical path — advisory checks in notebooks are not controls.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Platform owns shared defaults; product owns domain configuration. Orphan ownership is how regressions return silently after launch.
+## Root cause in plain language
 
-Write a one-page decision record: what you rejected, what metrics gate rollback, and which environments may diverge. Link dashboards from the runbook header so on-call does not search Slack for URLs during an incident.
+I treat Sidecar Resource Overhead for production agents as an operations problem first. The goal is to make agent sidecar resource overhead observable and interruptible, not to collect frameworks.
 
-## Implementation walkthrough
+Keep side effects at the edges and make every write idempotent. Sidecar Resource Overhead for production agents without retry semantics is a future incident write-up.
 
-Ship the smallest production slice first: one tenant, one region, one workflow — with rollback documented before widening scope. Automate rotation, rebuilds, and reconciles so on-call never hand-edits sidecar resource requests during an incident.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sidecar resource overhead.
 
-Integration tests should mirror production topology — single-region staging is not enough if users are global. For client apps, exercise offline, process death, and token rotation — not only office Wi-Fi happy paths.
+Concretely, being able to make agent sidecar resource overhead observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
 ```python
-# Operational hook — sidecar resource requests
-def apply_sidecar_resource_overhead(ctx):
-    validate_preconditions(ctx)
-    result = execute(ctx)
-    emit_metrics(result)
-    return result
+# Sidecar Resource Overhead for production agents
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class AgentSidecarResourRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_sidecar_resource_o(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-sidecar-resource-overhead"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-## Kubernetes depth
+## The fix that held under load
 
-Profile sidecar CPU/memory on GPU nodes separately from app containers. Native sidecars change pod termination order — test during rollouts.
-Spot/preemptible workloads need checkpoint intervals bounded by notice window minus drain time. Queue must support at-least-once with idempotent workers.
+I treat Sidecar Resource Overhead for production agents as an operations problem first. The goal is to make agent sidecar resource overhead observable and interruptible, not to collect frameworks.
 
-## Failure modes worth rehearsing
+Put a metric on the user-visible effect of agent sidecar resource overhead before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-- Missing idempotency when clients retry.
-- Implicit defaults that differ between staging and production.
-- Dashboards green while user-visible SLO burns.
-- Credential or metadata rotation without overlap window.
-- Schema or index change without blue-green validation.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sidecar Resource Overhead for production agents that needs a hero is not done.
 
-Document for each: drop, retry, dead-letter, or fail-closed — and test under production-shaped load.
+My never-again list for agent sidecar resource overhead: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Metrics and alerts
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Leading indicators: error rate on sidecar resource requests, queue age, validation failure rate, stale read rate. Lagging indicators: incidents, audit findings, invoice disputes. Slice by tenant tier during rollout — global averages hide bad canaries.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | you are replacing a fragile legacy implementation | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Day-two operations
+## Tests and probes that catch regressions
 
-Runbooks fit one page: symptom, dashboard, mitigation, rollback. Assign an owner team; sidecar resource requests regresses when orphaned. Pick one tier-1 workflow this week, put enforcement on the critical path, add one leading metric, and game-day the top failure mode above.
+Teams usually discover Sidecar Resource Overhead for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Production hardening
+Put a metric on the user-visible effect of agent sidecar resource overhead before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-Pin versions affecting sidecar resource requests. Progressive rollout: internal tenants → canary → full promote. Keep previous config hot-swappable one release.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sidecar Resource Overhead for production agents that needs a hero is not done.
 
-## Handoff and ownership
+Review prompts I use: what happens twice, what happens never, what happens partially? If Sidecar Resource Overhead for production agents cannot answer, it is not production-ready.
 
-Sidecar Resource Overhead in LLM Serving Pods touches multiple teams — name DRIs in the service catalog. New hires should rollback safely using only the runbook within week one.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-## Further reading
+## Runbook lines that save minutes
 
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent sidecar resource overhead, that means making failure visible early.
 
-## Operating sidecar resource requests after scale events (review 1)
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Acceptance check: an on-call engineer can explain system state for agent sidecar resource overhead from one dashboard and one runbook page.
 
-When sidecar resource overhead in llm serving pods touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Related reading:
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
 
+## Platform guardrails afterward
 
-## Operating sidecar resource requests after scale events (review 2)
+I treat Sidecar Resource Overhead for production agents as an operations problem first. The goal is to make agent sidecar resource overhead observable and interruptible, not to collect frameworks.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Put a metric on the user-visible effect of agent sidecar resource overhead before you optimize internals. If you are replacing a fragile legacy implementation, you need that graph on day one.
 
-When sidecar resource overhead in llm serving pods touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sidecar resource overhead.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Practical defaults for Sidecar Resource Overhead for production agents
 
+Teams usually discover Sidecar Resource Overhead for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Operating sidecar resource requests after scale events (review 3)
+Keep side effects at the edges and make every write idempotent. Sidecar Resource Overhead for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Sidecar Resource Overhead for production agents that needs a hero is not done.
 
-When sidecar resource overhead in llm serving pods touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent sidecar resource overhead. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Review questions before merging agent sidecar resource overhead work
 
+Teams usually discover Sidecar Resource Overhead for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for you are replacing a fragile legacy implementation.
 
-## Operating sidecar resource requests after scale events (review 4)
+Keep side effects at the edges and make every write idempotent. Sidecar Resource Overhead for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Acceptance check: an on-call engineer can explain system state for agent sidecar resource overhead from one dashboard and one runbook page.
 
-When sidecar resource overhead in llm serving pods touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
+Default deny, explicit timeouts, and one dashboard row for agent sidecar resource overhead. Expand only when the metric demands it.
 
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
+## Field notes after thirty days of agent sidecar resource overhead
 
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent sidecar resource overhead, that means making failure visible early.
 
-## Operating sidecar resource requests after scale events (review 5)
+Keep side effects at the edges and make every write idempotent. Sidecar Resource Overhead for production agents without retry semantics is a future incident write-up.
 
-Traffic doublings, model swaps, and enterprise SSO enablement invalidate assumptions in the original design. Quarterly on-call reviews should update thresholds from recent incidents — not only the primary author's memory.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent sidecar resource overhead.
 
-When sidecar resource overhead in llm serving pods touches billing, auth, or retrieval, schedule a cross-team review after every major launch. Platform, product, security, and finance should agree on what the leading metric is and who owns rollback.
+Slug-specific note (agent-sidecar-resource-overhead): prioritize overhead behavior under load and verify with a fixture named `agent-sidecar-resource-overhead-smoke`.
 
-Game days to run: dependency slow-down, duplicate webhook delivery, index swap rollback, IdP cert rotation dry-run. Measure time-to-mitigate, not only time-to-detect. When providers change streaming or auth semantics without a deploy on your side, error-class metrics should catch drift within hours.
-
-Document one concrete lesson from each game day in the runbook header — future on-call should not rediscover the same failure mode.
-
-
-## Reference table
-
-| Container | Memory |
-|---|---|
-| istio-proxy | 64–256MB |
-| app | 256–1024MB |
+Default deny, explicit timeouts, and one dashboard row for agent sidecar resource overhead. Expand only when the metric demands it.
 
 ## Resources
 
-- [Kubernetes docs](https://kubernetes.io/docs/home/)
-- [Karpenter](https://karpenter.sh/)
+- Internal runbook seed: `agent-sidecar-resource-overhead`
+- https://12factor.net/
+- https://martinfowler.com/

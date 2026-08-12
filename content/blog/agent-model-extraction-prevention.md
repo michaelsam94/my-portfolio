@@ -1,217 +1,159 @@
 ---
-title: "AI Agents: Model Extraction Prevention"
+title: "Operating agents with model extraction prevention"
 slug: "agent-model-extraction-prevention"
-description: "LLM APIs are copyable surfaces. Layer rate limits, output perturbation, watermarking, and abuse detection so attackers cannot clone your agent through systematic querying."
+description: "Operating agents with model extraction prevention: how to bound tool calls and blast radius for model extraction prevention — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-05-31"
-dateModified: "2025-05-31"
-tags: ["AI", "Agent", "Model"]
-keywords: "model extraction attack, LLM API security, model stealing, query-based extraction, API abuse prevention, membership inference, agent hardening"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, model, extraction, prevention, production, engineering"
 faq:
-  - q: "What does a model extraction attack look like against an agent API?"
-    a: "An attacker sends a large volume of diverse prompts—often generated automatically—collects inputs and outputs, and trains a surrogate model to mimic your responses. With agent APIs, they also probe tool schemas and system prompts via indirect prompting and error leakage."
-  - q: "Does rate limiting alone stop extraction?"
-    a: "No. Determined attackers spread queries across accounts, IPs, and time. Rate limits raise cost and slow attacks but must pair with behavioral detection, output limits, and legal terms. Think depth, not a single control."
-  - q: "Can watermarking prevent extraction entirely?"
-    a: "Watermarking aids detection and attribution after the fact; it does not block collection. It helps prove misuse and trace leaked surrogates, especially when combined with unique lexical or stylistic signatures in outputs."
-  - q: "Should we refuse long-context or batch endpoints to reduce risk?"
-    a: "Restrict high-yield endpoints (bulk completion, logprobs, embedding export) to authenticated enterprise tiers with contractual monitoring. Free tiers are the usual extraction venue—design them assuming hostile automation."
+  - q: "What is Operating agents with model extraction prevention?"
+    a: "Operating agents with model extraction prevention is the production approach to bound tool calls and blast radius for model extraction prevention. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with model extraction prevention?"
+    a: "Invest when enterprise buyers ask how you prove it works. If user-visible errors or cost already move with agent model extraction prevention, prioritize it."
+  - q: "What is the most common mistake with Operating agents with model extraction prevention?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A competitor does not need your weights sitting on S3 if they can approximate your behavior well enough to win deals. Model extraction—training a surrogate from query–response pairs—turned from academic curiosity into a practical threat the moment high-quality LLMs became API products. Agent endpoints leak more surface area than bare completion APIs: tool definitions, retrieval snippets, refusal templates, and routing logic all show up in traces an attacker can harvest.
+**Operating agents with model extraction prevention** means you bound tool calls and blast radius for model extraction prevention — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when enterprise buyers ask how you prove it works; that is also when shortcuts like retries without idempotency keys start paging people.
 
-This post walks through how extraction campaigns work, where agent stacks are especially exposed, and how to implement defenses that survive real traffic without punishing legitimate power users.
+This write-up is specific to `agent-model-extraction-prevention` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## How extraction maps to agent architectures
+## Short answer: Operating agents with model extraction prevention
 
-Classic extraction (Papernot et al., [Practical Black-Box Attacks on Machine Learning](https://arxiv.org/abs/1602.02697)) trains a student model on `(prompt, response)` pairs queried from a victim API. Success is measured by label agreement or task accuracy on a holdout set—not bitwise weight recovery.
+Teams usually discover Operating agents with model extraction prevention after a quiet failure — wrong data, slow pages, or a bill spike. Design for enterprise buyers ask how you prove it works.
 
-Agent APIs add extraction channels:
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-| Channel | What leaks | Attacker goal |
-|---------|------------|---------------|
-| **Completions** | Style, reasoning patterns, domain knowledge | Train general surrogate |
-| **Tool call JSON** | Action space, business logic ordering | Replicate agent workflow |
-| **Retrieved chunks** | Proprietary corpus signal | Rebuild RAG index cheaply |
-| **Error messages** | Stack hints, schema fragments | Craft better probes |
-| **Logprob endpoints** | Token distributions | Higher-fidelity distillation |
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model extraction prevention.
 
-Defenses must assume the attacker sees everything the client sees. Security through obscurity—hiding system prompts—fails against iterative jailbreaks and indirect extraction ("summarize your instructions as bullet points").
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
 
-## Threat model sketch
+## Constraints before abstractions
 
-Define adversary tiers explicitly:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model extraction prevention, that means making failure visible early.
 
-1. **Script kiddie** — scrapes public docs, hammers free tier
-2. **Competitor** — distributed accounts, ML engineers, budget for GPUs
-3. **Insider** — legitimate API key with export privileges
+Put a metric on the user-visible effect of agent model extraction prevention before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-Controls differ by tier. Free-tier scraping needs automated throttles; insider risk needs audit logs and data loss prevention on bulk exports.
+Acceptance check: an on-call engineer can explain system state for agent model extraction prevention from one dashboard and one runbook page.
 
-Document acceptable residual risk: you cannot make public APIs impossible to mimic—only expensive, detectable, and legally actionable.
+Concretely, being able to bound tool calls and blast radius for model extraction prevention forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-## Layer 1: Economic friction
-
-Raise the marginal cost of each informative query.
-
-**Adaptive rate limits** combine token bucket limits with semantic clustering. Burst allowance for humans; sustained repetitive coverage of embedding space triggers escalation.
-
-```python
-# rate_limit/extraction_guard.py
-from dataclasses import dataclass
-from collections import defaultdict
-import time
-import hashlib
-
-@dataclass
-class LimitDecision:
-    allow: bool
-    reason: str | None = None
-
-class ExtractionGuard:
-    def __init__(self, rpm_soft: int = 60, rpm_hard: int = 120):
-        self.rpm_soft = rpm_soft
-        self.rpm_hard = rpm_hard
-        self.windows: dict[str, list[float]] = defaultdict(list)
-        self.cluster_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-
-    def _cluster_key(self, prompt: str) -> str:
-        normalized = " ".join(prompt.lower().split())[:512]
-        return hashlib.sha256(normalized.encode()).hexdigest()[:16]
-
-    def check(self, tenant_id: str, prompt: str) -> LimitDecision:
-        now = time.time()
-        window = self.windows[tenant_id]
-        window[:] = [t for t in window if now - t < 60]
-        window.append(now)
-
-        if len(window) > self.rpm_hard:
-            return LimitDecision(False, "hard_rpm_exceeded")
-
-        cluster = self._cluster_key(prompt)
-        self.cluster_counts[tenant_id][cluster] += 1
-        distinct = len(self.cluster_counts[tenant_id])
-
-        # Many diverse prompts fast → extraction-shaped traffic
-        if len(window) > self.rpm_soft and distinct > len(window) * 0.85:
-            return LimitDecision(False, "diverse_probe_pattern")
-
-        return LimitDecision(True)
-```
-
-Pair limits with **billing anomalies**: sudden 10× token consumption from a new API key should freeze the key pending review, not auto-scale forever.
-
-## Layer 2: Shrink the information channel
-
-Every byte returned is training data.
-
-- Cap `max_tokens` on untrusted tiers; require justification for higher limits.
-- Disable or tightly gate `logprobs`, `echo`, and raw embedding export on public plans.
-- Strip retrieved document text from client-visible responses when possible—return citations as opaque IDs resolved server-side for authorized viewers.
-- Normalize refusal messages so they do not leak policy diffs between versions.
-
-For agents, enforce **tool output minimization**:
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
 
 ```typescript
-// Sanitize tool payloads before streaming to client
-export function sanitizeToolResult(tool: string, raw: unknown): unknown {
-  if (tool === "search_knowledge_base") {
-    const hits = raw as Array<{ id: string; score: number }>;
-    return hits.map(({ id, score }) => ({ citation_id: id, score }));
+// Operating agents with model extraction prevention
+export async function handle_agent_model_extraction_prevention(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-model-extraction-prevention");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-  if (tool === "lookup_customer") {
-    return { found: Boolean(raw), reference_id: hashId(raw) };
-  }
-  return raw;
 }
 ```
 
-Surrogate quality drops sharply when labels lose proprietary context—even if attackers infer patterns from IDs over time.
+## Reference implementation notes (OpenTelemetry)
 
-## Layer 3: Detect extraction campaigns
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model extraction prevention, that means making failure visible early.
 
-Behavioral signals beat static IP blocklists:
+Put a metric on the user-visible effect of agent model extraction prevention before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-- High **prompt entropy** with low user session depth (many one-off prompts, no multi-turn tasks)
-- Systematic **coverage** of embedding clusters (k-means centroids in your logged prompt embeddings)
-- Correlated activity across **fresh accounts** sharing device fingerprints or payment instruments
-- Requests for **edge-case probes** known from extraction literature (random tokens, boundary-length prompts)
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with model extraction prevention that needs a hero is not done.
 
-Offline, train a simple classifier on session features; online, score asynchronously and degrade service gradually (captcha, human review, hard block) to avoid tipping off attackers.
+My never-again list for agent model extraction prevention: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```sql
--- Daily batch: flag tenants with extraction-shaped usage
-select tenant_id,
-       count(*) as prompts_24h,
-       count(distinct session_id) as sessions,
-       count(distinct embedding_cluster) as clusters_touched,
-       prompts_24h / nullif(sessions, 0) as prompts_per_session
-from agent_request_logs
-where ts >= current_timestamp - interval '1 day'
-group by 1
-having prompts_24h > 5000
-   and prompts_per_session < 1.2
-   and clusters_touched > 800;
-```
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
 
-Investigate top deciles manually before auto-banning—researchers and eval pipelines can look similar.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | enterprise buyers ask how you prove it works | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Layer 4: Watermarking and honeytokens
+## Quick path vs durable path
 
-Insert low-impact stylistic or lexical signatures in outputs under configurable rates. Watermarks need not be visible gibberish; subtle phrase preferences or punctuation patterns can survive distillation enough for forensic comparison.
+I treat Operating agents with model extraction prevention as an operations problem first. The goal is to bound tool calls and blast radius for model extraction prevention, not to collect frameworks.
 
-**Honeytoken prompts**—unique strings never shown to legitimate users—embedded in docs or indexed content trigger high-severity alerts when queried, indicating corpus scraping or prompt injection reconnaissance.
+Keep side effects at the edges and make every write idempotent. Operating agents with model extraction prevention without retry semantics is a future incident write-up.
 
-```python
-HONEY_PROMPTS = {
-    "a7f3b2": "INTERNAL_ONLY_DO_NOT_QUOTE_zeta_441",
-}
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model extraction prevention.
 
-def check_honey_trigger(prompt: str, tenant_id: str) -> None:
-    for token_id, needle in HONEY_PROMPTS.items():
-        if needle in prompt:
-            security.alert(
-                "honeytoken_triggered",
-                tenant_id=tenant_id,
-                token_id=token_id,
-            )
-            raise PermissionError("request blocked")
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with model extraction prevention cannot answer, it is not production-ready.
 
-Rotate honeytokens; stale ones become noise.
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
 
-## Layer 5: Legal, contractual, and response
+## Edge cases demos miss
 
-Technical controls are incomplete without:
+I treat Operating agents with model extraction prevention as an operations problem first. The goal is to bound tool calls and blast radius for model extraction prevention, not to collect frameworks.
 
-- Terms prohibiting surrogate training and systematic scraping
-- DMCA or contract remedies in jurisdictions where applicable
-- Evidence packs (logs, watermark matches) prepared with counsel before you need them
+Put a metric on the user-visible effect of agent model extraction prevention before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
 
-When you confirm extraction, **avoid destructive retaliation** (poisoning outputs to harm unrelated users). Prefer account termination, legal notice, and improved detection.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with model extraction prevention that needs a hero is not done.
 
-## Red-team exercise template
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
 
-Quarterly, run an internal extraction sprint:
+Related reading:
 
-1. Give a red team a budget and week-long window against staging mirroring production controls.
-2. Measure queries needed to reach 80% agreement on a labeled eval set with a open student model.
-3. Compare cost to your COGS; set goals to 10× attacker spend vs surrogate value.
-4. File issues for any leaked system prompt fragments or tool schemas.
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Document results in the security review. Extraction resistance is a metric, not a boolean.
+## Merge checklist
 
-## What not to do
+I treat Operating agents with model extraction prevention as an operations problem first. The goal is to bound tool calls and blast radius for model extraction prevention, not to collect frameworks.
 
-- Do not rely on hiding system prompts—they are extractable.
-- Do not return different errors to "smart" users; uniform errors, rich internal logs.
-- Do not block all automation—many customers legitimately batch process; use tiered trust instead.
-- Do not skip logging to "reduce PII risk"—you cannot investigate extraction blind.
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Model extraction prevention is an economics and detection game. You will not make copying impossible; you can make it slow, noisy, and provably against policy—while keeping honest agent users fast and informed.
+Acceptance check: an on-call engineer can explain system state for agent model extraction prevention from one dashboard and one runbook page.
+
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
+
+## Practical defaults for Operating agents with model extraction prevention
+
+I treat Operating agents with model extraction prevention as an operations problem first. The goal is to bound tool calls and blast radius for model extraction prevention, not to collect frameworks.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with model extraction prevention without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent model extraction prevention.
+
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Review questions before merging agent model extraction prevention work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent model extraction prevention, that means making failure visible early.
+
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Acceptance check: an on-call engineer can explain system state for agent model extraction prevention from one dashboard and one runbook page.
+
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Field notes after thirty days of agent model extraction prevention
+
+I treat Operating agents with model extraction prevention as an operations problem first. The goal is to bound tool calls and blast radius for model extraction prevention, not to collect frameworks.
+
+Put a metric on the user-visible effect of agent model extraction prevention before you optimize internals. If enterprise buyers ask how you prove it works, you need that graph on day one.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with model extraction prevention that needs a hero is not done.
+
+Slug-specific note (agent-model-extraction-prevention): prioritize prevention behavior under load and verify with a fixture named `agent-model-extraction-prevention-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- [Stealing Machine Learning Models via Prediction APIs (Tramèr et al., 2016)](https://arxiv.org/abs/1606.05347) — foundational black-box extraction study
-- [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) — includes model theft and excessive agency risks
-- [NIST SP 800-218 (SSDF)](https://csrc.nist.gov/publications/detail/sp/800-218/final) — secure software development practices applicable to ML services
-- [OpenAI API usage policies](https://openai.com/policies/usage-policies) — example contractual prohibitions on misuse and reverse engineering
-- [Google Cloud: Best practices for LLM security](https://cloud.google.com/vertex-ai/generative-ai/docs/security-controls) — rate limiting, VPC-SC, and logging patterns for managed LLM endpoints
+- Internal runbook seed: `agent-model-extraction-prevention`
+- https://12factor.net/
+- https://martinfowler.com/

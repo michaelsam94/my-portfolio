@@ -1,274 +1,159 @@
 ---
-title: "AI Agents: Data Quality Expectations"
+title: "Data Quality Expectations for production agents"
 slug: "agent-data-quality-expectations"
-description: "Expectations-as-code for agent pipelines—validating RAG chunks, tool schemas, eval datasets, and streaming ingestion with Great Expectations-style contracts that block bad data before it poisons retrieval."
+description: "Data Quality Expectations for production agents: how to make agent data quality expectations observable and interruptible — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-02"
-dateModified: "2025-03-02"
-tags: ["AI", "Agent", "Data"]
-keywords: "data quality, expectations, great expectations, agent pipeline, rag validation, schema contracts, data tests, eval datasets"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, data, quality, expectations, production, engineering"
 faq:
-  - q: "Why do agent systems need data quality expectations beyond API validation?"
-    a: "API schemas validate shape at request time, but agent pipelines accumulate silent drift: empty chunks in vector indexes, mislabeled eval rows, stale tool definitions in caches, and partial JSON from streaming parsers. Expectations assert statistical and semantic properties on datasets over time—catching drift before users see wrong answers."
-  - q: "Where should expectations run in an agent stack?"
-    a: "At document ingest before embedding, after ETL into feature stores, on eval dataset publishes, and on nightly snapshots of production conversation analytics. Fail fast on ingest for hard constraints; warn on distribution drift for soft constraints."
-  - q: "How is this different from LLM eval scores?"
-    a: "Eval scores measure model behavior on prompts. Data quality expectations measure input data integrity—missing fields, duplicate IDs, toxic content ratios, token length outliers. Bad data can make a good model look broken; expectations separate data incidents from model regressions."
-  - q: "What happens when an expectation fails in production?"
-    a: "Define actions per severity: block partition ingest, quarantine rows to a dead-letter bucket, page on-call for P0 (PII in wrong column), ticket for P2 drift. Agent pipelines should degrade gracefully—serve cached retrieval or fallback responses when fresh ingest is blocked, with user-visible status if SLA requires."
+  - q: "What is Data Quality Expectations for production agents?"
+    a: "Data Quality Expectations for production agents is the production approach to make agent data quality expectations observable and interruptible. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Data Quality Expectations for production agents?"
+    a: "Invest when the path is on a critical user journey. If user-visible errors or cost already move with agent data quality expectations, prioritize it."
+  - q: "What is the most common mistake with Data Quality Expectations for production agents?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The retrieval quality dashboard looked healthy: p95 latency normal, zero 5xx. Yet answer accuracy dropped eighteen points over two weeks. Root cause was not the reranker—it was a document ingest job that started emitting **empty text chunks** when a upstream HTML parser changed. Null checks existed on the API, but nobody asserted `chunk_text.length > 50` on the embedding batch. Data quality expectations would have blocked the partition before vectors hit the index.
+**Data Quality Expectations for production agents** means you make agent data quality expectations observable and interruptible — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when the path is on a critical user journey; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Agent platforms are data pipelines wearing a chat UI. RAG corpora, tool registries, session exports, labeling queues, and offline eval sets all need **contracts** that go beyond JSON Schema. This post covers expectations-as-code: declarative rules, where to enforce them, and how to wire failures into agent-specific runbooks.
+This write-up is specific to `agent-data-quality-expectations` in a agent context, using Postgres, Redis, Temporal for the mechanics while keeping ownership human.
 
-## From schema validation to expectations
+## Incident pattern involving agent data quality expectations
 
-| Layer | Validates | Example |
-|-------|-----------|---------|
-| JSON Schema | Structure | `tool.parameters.type == object` |
-| Business rules | Domain logic | `effective_date <= expiry_date` |
-| **Expectations** | Distribution & completeness | `null_rate(chunk_text) < 0.01` |
-| Eval harness | Model output quality | `faithfulness > 0.8` |
+Teams usually discover Data Quality Expectations for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Schemas fail a single bad row at the API. Expectations fail **batches** and **trends**—better suited to nightly ingest and analytics tables.
+Put a metric on the user-visible effect of agent data quality expectations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-## Core expectation types for agent data
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent data quality expectations.
 
-**Completeness.** Required fields populated: `session_id`, `embedding`, `source_uri`, `tool_name`.
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-**Uniqueness.** No duplicate `(document_id, chunk_index)` in vector ingest batches.
+## Root cause in plain language
 
-**Range and length.** Token counts within bounds; `chunk_text` between 100 and 8192 characters for your embedding model.
+I treat Data Quality Expectations for production agents as an operations problem first. The goal is to make agent data quality expectations observable and interruptible, not to collect frameworks.
 
-**Referential integrity.** Every `tool_id` in conversation logs exists in `tool_registry` snapshot for that date.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-**Distribution.** Language mix, toxicity score histogram, percentage of chunks tagged `legal` vs `support`—alert when KL divergence from baseline exceeds threshold.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Data Quality Expectations for production agents that needs a hero is not done.
 
-**Freshness.** `max(updated_at)` in index metadata within 24 hours of source CMS.
+Concretely, being able to make agent data quality expectations observable and interruptible forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
+
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
 ```python
-# expectations/rag_chunks.py
-import great_expectations as gx
+# Data Quality Expectations for production agents
+from dataclasses import dataclass
 
-context = gx.get_context()
+@dataclass(frozen=True)
+class AgentDataQualityERequest:
+    tenant_id: str
+    idempotency_key: str
 
-suite = context.add_expectation_suite("rag_chunks_v2")
-
-suite.add_expectation(
-    gx.expectations.ExpectColumnValuesToNotBeNull(column="chunk_text")
-)
-suite.add_expectation(
-    gx.expectations.ExpectColumnValueLengthsToBeBetween(
-        column="chunk_text", min_value=50, max_value=12000
-    )
-)
-suite.add_expectation(
-    gx.expectations.ExpectCompoundColumnsToBeUnique(
-        column_list=["document_id", "chunk_index"]
-    )
-)
-suite.add_expectation(
-    gx.expectations.ExpectColumnValuesToBeInSet(
-        column="content_type", value_set=["html", "pdf", "markdown", "slack"]
-    )
-)
+async def run_agent_data_quality_expec(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-data-quality-expectations"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Run the suite in a checkpoint against each Parquet partition landing in `s3://agent-corpus/staging/`.
+## The fix that held under load
 
-## Checkpoint actions and agent ingest gates
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent data quality expectations, that means making failure visible early.
 
-```python
-# pipelines/ingest_gate.py
-from great_expectations.checkpoint import Checkpoint
+Put a metric on the user-visible effect of agent data quality expectations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-checkpoint = Checkpoint(
-    name="rag_staging_gate",
-    run_name_template="rag_%Y%m%d",
-    data_asset_name="staging_chunks",
-    expectation_suite_name="rag_chunks_v2",
-    action_list=[
-        {"name": "store_validation_result"},
-        {
-            "name": "update_data_docs",
-            "site_names": ["team_site"],
-        },
-    ],
-)
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Data Quality Expectations for production agents that needs a hero is not done.
 
-result = checkpoint.run(batch_request=batch)
+My never-again list for agent data quality expectations: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-if not result.success:
-    metrics.emit("ingest.blocked", tags={"suite": "rag_chunks_v2"})
-    notify_slack("#agent-data", f"Ingest blocked: {result.statistics}")
-    raise IngestBlockedError(result.run_id)
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-embed_and_promote(batch)
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | the path is on a critical user journey | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Blocked ingest should **not** silently leave stale index—either continue serving previous partition with a banner in admin UI or route to keyword fallback if business rules allow.
+## Tests and probes that catch regressions
 
-## Tool registry and eval dataset expectations
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent data quality expectations, that means making failure visible early.
 
-Tool definitions are data products. Broken schemas surface as runtime tool-call errors—expensive and user-visible.
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```yaml
-# expectations/tool_registry.yaml
-expectation_suite_name: tool_registry_daily
-expectations:
-  - type: expect_column_values_to_not_be_null
-    kwargs: { column: name }
-  - type: expect_column_values_to_be_unique
-    kwargs: { column: tool_id }
-  - type: expect_column_values_to_match_json_schema
-    kwargs:
-      column: parameters_json
-      json_schema:
-        type: object
-        required: [type, properties]
-  - type: expect_table_row_count_to_be_between
-    kwargs: { min_value: 1, max_value: 500 }
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent data quality expectations.
 
-Eval datasets need stricter rules—wrong labels poison regression decisions:
+Review prompts I use: what happens twice, what happens never, what happens partially? If Data Quality Expectations for production agents cannot answer, it is not production-ready.
 
-```python
-def validate_eval_row(row: dict) -> list[str]:
-    errors = []
-    if not row.get("expected_tools"):
-        errors.append("missing expected_tools for tool-use eval")
-    if row.get("label") not in ALLOWED_LABELS:
-        errors.append(f"invalid label {row.get('label')}")
-    if len(row.get("prompt", "")) < 10:
-        errors.append("prompt too short")
-    return errors
-```
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-Publish eval sets only after batch expectation checkpoint passes; version with git tag `eval-v2025.03.02`.
+## Runbook lines that save minutes
 
-## Custom expectations for agent-specific semantics
+Teams usually discover Data Quality Expectations for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-Generic null checks miss domain failures. Implement custom expectations:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```python
-# expectations/custom/valid_markdown_links.py
-from great_expectations.expectations.expectation import ColumnMapExpectation
-from great_expectations.execution_engine import PandasExecutionEngine
-import re
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Data Quality Expectations for production agents that needs a hero is not done.
 
-class ExpectChunkMarkdownLinksResolvable(ColumnMapExpectation):
-    """Flag markdown links that are clearly malformed before embed."""
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-    map_metric = "column_values.chunk_links_valid"
-    success_keys = ("mostly",)
+Related reading:
 
-    @staticmethod
-    def _validate_link(value: str) -> bool:
-        if not value:
-            return True
-        links = re.findall(r"\]\(([^)]+)\)", value)
-        return all(link.startswith(("http://", "https://", "/")) for link in links)
-```
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [webhooks reliable delivery](https://blog.michaelsam94.com/webhooks-reliable-delivery/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
 
-Register with Great Expectations or your internal validator; share across ingest and CMS export jobs.
+## Platform guardrails afterward
 
-## Observability: data quality as metrics
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent data quality expectations, that means making failure visible early.
 
-Emit validation results to Prometheus/Datadog:
+With Postgres, Redis, Temporal, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-```python
-for result in validation_results:
-    tags = [f"expectation:{result.expectation_type}", f"suite:{suite_name}"]
-    metrics.gauge("data_quality.expectation.success", 1 if result.success else 0, tags)
-    if not result.success:
-        metrics.increment("data_quality.expectation.failure", tags)
-```
+Acceptance check: an on-call engineer can explain system state for agent data quality expectations from one dashboard and one runbook page.
 
-Dashboard panels:
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-- Pass rate by suite over 7 days
-- Top failing expectations
-- Rows quarantined vs promoted
-- Correlation between ingest failures and answer-quality eval drops
+## Practical defaults for Data Quality Expectations for production agents
 
-Separate **data incident** alerts from **model regression** alerts—on-call runbooks differ.
+I treat Data Quality Expectations for production agents as an operations problem first. The goal is to make agent data quality expectations observable and interruptible, not to collect frameworks.
 
-## Streaming and micro-batch validation
+Put a metric on the user-visible effect of agent data quality expectations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-Conversation analytics often stream through Kafka. Full GE checkpoints on unbounded streams need windowing:
+Acceptance check: an on-call engineer can explain system state for agent data quality expectations from one dashboard and one runbook page.
 
-```python
-# micro_batch every 5 minutes
-def validate_window(df_window):
-    result = suite.run(batch_data=df_window, result_format="SUMMARY")
-    if result.statistics["unsuccessful_expectations"] > 0:
-        dead_letter.publish(df_window.filter(failed_mask))
-    else:
-        warehouse.merge(df_window)
-```
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-For tool-call JSON parsed from streaming LLM output, validate **after** repair heuristics but **before** persistence—malformed tool args should not enter training exports.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
-## Testing expectations themselves
+## Review questions before merging agent data quality expectations work
 
-Meta-tests prevent silent suite rot:
+I treat Data Quality Expectations for production agents as an operations problem first. The goal is to make agent data quality expectations observable and interruptible, not to collect frameworks.
 
-```python
-def test_suite_catches_empty_chunks():
-    bad_batch = pd.DataFrame({"chunk_text": ["", "ok " * 30], "document_id": ["a", "b"], "chunk_index": [0, 0]})
-    result = checkpoint.run(batch_request=make_batch(bad_batch))
-    assert not result.success
-    assert any("ExpectColumnValuesToNotBeNull" in str(f) for f in result.run_results)
-```
+Put a metric on the user-visible effect of agent data quality expectations before you optimize internals. If the path is on a critical user journey, you need that graph on day one.
 
-When changing embedding models, update length expectations and re-baseline distribution tests—document in migration checklist.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Data Quality Expectations for production agents that needs a hero is not done.
 
-## Organizational patterns
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-**Data contracts between teams.** CMS team owns `rag_chunks_v2` suite; agent team owns `tool_registry_daily`. Producers fix upstream; consumers do not patch bad rows locally without audit.
+After a month, delete unused flags and dual paths. `agent-data-quality-expectations` accumulates temporary bridges faster than teams expect.
 
-**Versioned suites.** `rag_chunks_v2` → `v3` when adding `tenant_id` column—never mutate expectations in place without version bump.
+## Field notes after thirty days of agent data quality expectations
 
-**Documentation site.** GE Data Docs or internal MkDocs render latest validation results for PM and compliance—not just engineers.
+Teams usually discover Data Quality Expectations for production agents after a quiet failure — wrong data, slow pages, or a bill spike. Design for the path is on a critical user journey.
 
-## Failure modes and honest tradeoffs
+Keep side effects at the edges and make every write idempotent. Data Quality Expectations for production agents without retry semantics is a future incident write-up.
 
-**Over-blocking.** Too-strict expectations halt ingest during benign CMS experiments. Use warning severity for distribution drift; blocking only for integrity (null IDs, duplicates).
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent data quality expectations.
 
-**Under-sampling.** Validating 1% of rows misses rare PII column swaps. Stratified sampling by `content_type` and full validation on new sources for first 30 days.
+Slug-specific note (agent-data-quality-expectations): prioritize expectations behavior under load and verify with a fixture named `agent-data-quality-expectations-smoke`.
 
-**Latency.** Synchronous GE on large Parquet files slows ingest—run lightweight critical expectations inline, full suite async before promote.
-
-## Conversation analytics expectations
-
-Production agent traffic generates tables engineers query for product decisions—`daily_tool_usage`, `session_outcomes`, `retrieval_miss_rate`. These tables inherit the same drift problems as RAG ingest. Add expectations that mirror how PMs actually slice data:
-
-```python
-suite.add_expectation(
-    gx.expectations.ExpectColumnValuesToBeBetween(
-        column="tool_success_rate",
-        min_value=0.0,
-        max_value=1.0,
-    )
-)
-suite.add_expectation(
-    gx.expectations.ExpectColumnPairValuesAToBeGreaterThanB(
-        column_A="ended_at", column_B="started_at"
-    )
-)
-```
-
-Alert when `retrieval_miss_rate` jumps more than three standard deviations from a fourteen-day rolling baseline—often the first signal that corpus quality degraded before eval harness runs. Tie checkpoint failures to agent feature flags: disable auto-ingest for a source CMS when its partition fails twice in twenty-four hours while keeping read path on last-good snapshot.
-
-Document every expectation in plain language for non-engineers: "No chunk may be shorter than fifty characters" is auditable; `ExpectColumnValueLengthsToBeBetween(min_value=50)` is not. Link Data Docs to the on-call runbook entry for ingest blocked so whoever gets paged knows whether to rollback CMS, pause embed jobs, or widen a threshold with approval. Review suite pass rates in weekly data standups the same way you review model eval regressions.
-
-## Closing
-
-Data quality expectations turn agent pipelines from hope-and-monitor into contract-driven systems: empty chunks never embed, broken tool schemas never reach production registries, and eval datasets cannot ship with mislabeled rows. Pair API validation with batch checkpoints at ingest gates, emit validation metrics beside model evals, and block promotion when integrity fails. When answer quality moves, check data expectations first—often the model is fine and the corpus is not.
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [Great Expectations documentation](https://docs.greatexpectations.io/)
-- [dbt tests vs custom data quality](https://docs.getdbt.com/docs/build/data-tests)
-- [Monte Carlo: Data observability patterns](https://www.montecarlodata.com/blog-what-is-data-observability/)
-- [Google PAIR: Data Cards for datasets](https://pair.withgoogle.com/guidebook/chapters/data-collection/data-cards/)
-- [OpenLineage for pipeline metadata](https://openlineage.io/)
+- Internal runbook seed: `agent-data-quality-expectations`
+- https://12factor.net/
+- https://martinfowler.com/

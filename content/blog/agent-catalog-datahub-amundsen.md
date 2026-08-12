@@ -1,250 +1,159 @@
 ---
-title: "AI Agents: Catalog Datahub Amundsen"
+title: "Agent systems: catalog datahub amundsen"
 slug: "agent-catalog-datahub-amundsen"
-description: "DataHub and Amundsen give agent teams searchable lineage for RAG corpora, embedding tables, and feature stores—so engineers know what feeds the model before they break retrieval or violate policy."
+description: "Agent systems: catalog datahub amundsen: how to keep agent side effects idempotent around catalog datahub amundsen — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-03-09"
-dateModified: "2025-03-09"
-tags: ["AI", "Agent", "Catalog"]
-keywords: "DataHub, Amundsen, data catalog, metadata, lineage, RAG corpus, agent data governance, embedding tables, discovery, LinkedIn Amundsen"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, catalog, datahub, amundsen, production, engineering"
 faq:
-  - q: "Why do AI agent teams need a data catalog?"
-    a: "Agent pipelines consume dozens of tables, documents, and API feeds—often copied into vector indexes with stale sync. A catalog answers: who owns this corpus, when did it last update, what PII does it contain, and which agent tools read it? Without that, retrieval breaks silently when upstream schemas change and compliance cannot trace what the model saw."
-  - q: "How do DataHub and Amundsen differ for agent use cases?"
-    a: "Amundsen (Lyft/LinkedIn lineage) excels at human-friendly discovery—search, ownership, FAQs on datasets. DataHub (LinkedIn) adds event-driven metadata graph, fine-grained lineage, and active metadata (PII tags, contracts). Many teams run DataHub for governance automation and borrow Amundsen's UX patterns—or use DataHub's UI which converged many Amundsen features."
-  - q: "What metadata should be cataloged for RAG and agent tools?"
-    a: "Minimum: source system, refresh cadence, owner, classification (PII/public), embedding model version, chunk strategy, index URI, and downstream agent names that query it. Lineage should link warehouse tables → ETL job → object storage → embedding pipeline → vector collection."
-  - q: "Can agents query the catalog directly at runtime?"
-    a: "Yes, as a tool: expose DataHub's GraphQL or Amundsen's search API to the agent for 'what datasets cover customer churn?' Keep runtime queries read-only and cache results—catalog lookups are for developer and agent planning flows, not hot-path retrieval replacement."
+  - q: "What is Agent systems: catalog datahub amundsen?"
+    a: "Agent systems: catalog datahub amundsen is the production approach to keep agent side effects idempotent around catalog datahub amundsen. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Agent systems: catalog datahub amundsen?"
+    a: "Invest when on-call already feels weekly pain here. If user-visible errors or cost already move with agent catalog datahub amundsen, prioritize it."
+  - q: "What is the most common mistake with Agent systems: catalog datahub amundsen?"
+    a: "The usual failure is skipping metrics until the first incident. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A support agent started hallucinating return policies on a Tuesday. Retrieval looked healthy—same index, same chunk count. The actual problem was an upstream rename: `returns_policy_v2` had shipped to the warehouse Friday night, but the RAG sync job still read `returns_policy_v1`, which product had archived. Nobody updated the catalog entry because there was no catalog entry—just a Slack thread from six months ago saying "Sarah owns docs."
+**Agent systems: catalog datahub amundsen** means you keep agent side effects idempotent around catalog datahub amundsen — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when on-call already feels weekly pain here; that is also when shortcuts like skipping metrics until the first incident start paging people.
 
-Data catalogs—**DataHub** and **Amundsen** being the two most deployed open-source options—exist to prevent exactly this class of drift. For agent teams, they are not DBA vanity projects. They are the map of what your model can see, who is allowed to change it, and which production agents depend on each dataset.
+This write-up is specific to `agent-catalog-datahub-amundsen` in a agent context, using Temporal, OpenTelemetry, Postgres for the mechanics while keeping ownership human.
 
-## The agent data plane catalog must cover
+## What Agent systems: catalog datahub amundsen changes in day-two ops
 
-Traditional catalogs index warehouse tables. Agent systems add layers:
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent catalog datahub amundsen, that means making failure visible early.
 
-```mermaid
-flowchart LR
-  WH[(Warehouse tables)] --> ETL[Sync / ETL jobs]
-  ETL --> S3[Object storage / wiki export]
-  S3 --> Embed[Embedding pipeline]
-  Embed --> VDB[(Vector index)]
-  VDB --> Agent[Agent retrieval tool]
-  Agent --> User[User session]
-```
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Lineage must span the full chain. Breaking any link causes retrieval regression or policy violation. Catalog entries at each node:
+Acceptance check: an on-call engineer can explain system state for agent catalog datahub amundsen from one dashboard and one runbook page.
 
-| Asset type | Example | Critical metadata |
-|------------|---------|-------------------|
-| Source table | `prod.support_articles` | Owner, PII tags, refresh SLA |
-| Export job | `airflow.sync_support_docs` | Schedule, last success, schema hash |
-| Corpus bucket | `s3://rag/support/` | Version, document count, retention |
-| Embedding run | `embed-v3-2025-03-01` | Model, chunk size, overlap |
-| Vector collection | `support_qdrant_v3` | URI, replica count, agent consumers |
-| Agent tool | `search_support_kb` | Prompt dependency, fallback index |
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-## Amundsen: discovery-first catalog
+## Designing so you can keep agent side effects idempotent around catalog datahub amundsen
 
-Amundsen optimizes **findability**. Data scientists and agent engineers search by plain language, see table popularity, read curated descriptions, and Slack the owner from the UI.
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent catalog datahub amundsen, that means making failure visible early.
 
-Typical deployment: Neo4j graph for relationships, Elasticsearch for search, frontend React app, metadata service ingesting from Hive/Postgres/Snowflake/dbt.
+Keep side effects at the edges and make every write idempotent. Agent systems: catalog datahub amundsen without retry semantics is a future incident write-up.
 
-**Agent team workflow in Amundsen:**
+Acceptance check: an on-call engineer can explain system state for agent catalog datahub amundsen from one dashboard and one runbook page.
 
-1. Search "customer refund" → land on `refund_policy_docs` dataset page.
-2. Read description: "Synced daily from Confluence space REFUND; owner @sarah."
-3. Check lineage tab: Confluence export → S3 → embedding DAG → `refund_qdrant`.
-4. See downstream: `support-agent-v2` tagged as consumer (via custom metadata).
+Concretely, being able to keep agent side effects idempotent around catalog datahub amundsen forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Register agent consumers with a custom programmatic metadata push:
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
 ```python
-# catalog/amundsen_agent_registration.py
-from databuilder.extractor.rest_api_extractor import RestApiExtractor
-from databuilder.loader.file_system_mysql_csv_loader import FSMySQLCSVLoader
-from databuilder.task import DefaultTask
-from databuilder.transformers.dict_to_model import DictToModelTransformer
+# Agent systems: catalog datahub amundsen
+from dataclasses import dataclass
 
-def register_agent_consumer(
-    table_uri: str,
-    agent_name: str,
-    tool_name: str,
-    index_collection: str,
-):
-    """Push custom metadata: which agent tool reads this dataset."""
-    payload = {
-        "table_uri": table_uri,
-        "agent_consumers": [
-            {
-                "agent": agent_name,
-                "tool": tool_name,
-                "vector_collection": index_collection,
-                "registered_at": datetime.utcnow().isoformat(),
-            }
-        ],
-    }
-    # Wire into your Amundsen databuilder ETL job
-    # See: https://www.amundsen.io/amundsen/databuilder/
-    publish_metadata(payload)
+@dataclass(frozen=True)
+class AgentCatalogDatahuRequest:
+    tenant_id: str
+    idempotency_key: str
+
+async def run_agent_catalog_datahub_am(req, deps) -> None:
+    if await deps.store.seen(req.idempotency_key):
+        return
+    with deps.tracer.start_as_current_span("agent-catalog-datahub-amundsen"):
+        await deps.client.execute(req, timeout=2.0)
+    await deps.store.mark(req.idempotency_key)
 ```
 
-Amundsen shines when the primary pain is **"I cannot find the right corpus"** and culture rewards rich descriptions and ownership badges.
+## Failure modes specific to agent catalog datahub amundsen
 
-## DataHub: governance and active metadata
+I treat Agent systems: catalog datahub amundsen as an operations problem first. The goal is to keep agent side effects idempotent around catalog datahub amundsen, not to collect frameworks.
 
-DataHub treats metadata as an **event stream**—Kafka-backed MCP (Metadata Change Proposal) ingestion. Tags, glossary terms, lineage, and assertions (freshness, volume) update continuously.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-**Features agent teams leverage:**
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent catalog datahub amundsen.
 
-- **Lineage API** — programmatic upstream/downstream queries for CI gates.
-- **Glossary** — bind terms like "PII-Sensitive" to datasets; block agent ingestion if untagged.
-- **Assertions** — fail Airflow task if `support_articles` row count drops 50% vs yesterday before re-embedding.
-- **Domains** — partition metadata by product line (`support-agents`, `sales-agents`).
+My never-again list for agent catalog datahub amundsen: skipping metrics until the first incident; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-Emit lineage from the embedding pipeline:
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-```yaml
-# datahub/lineage_emitter.yaml
-# OpenLineage-compatible event (simplified)
-eventType: COMPLETE
-eventTime: "2025-03-09T14:00:00Z"
-run:
-  runId: embed-support-v3-run-4421
-job:
-  namespace: airflow
-  name: embed_support_docs
-inputs:
-  - namespace: s3
-    name: rag/support/export-2025-03-09/
-outputs:
-  - namespace: qdrant
-    name: support_qdrant_v3
-```
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; skipping metrics until the first incident |
+| Durable | on-call already feels weekly pain here | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-DataHub ingests OpenLineage events and renders graph edges in the UI. CI can query: "Does `support_qdrant_v3` still have upstream `returns_policy_v2`?" before promoting an agent deploy.
+## Signals worth paging on
 
-```python
-# ci/check_lineage_before_deploy.py
-import requests
+Teams usually discover Agent systems: catalog datahub amundsen after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-DATAHUB_GMS = "http://datahub-gms:8080"
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-def assert_upstream(dataset_urn: str, expected_upstream: str) -> None:
-    query = """
-    query upstream($urn: String!) {
-      dataset(urn: $urn) {
-        upstream { relationships { entity { urn } } }
-      }
-    }
-    """
-    resp = requests.post(
-        f"{DATAHUB_GMS}/api/graphql",
-        json={"query": query, "variables": {"urn": dataset_urn}},
-    )
-    upstreams = [
-        r["entity"]["urn"]
-        for r in resp.json()["data"]["dataset"]["upstream"]["relationships"]
-    ]
-    if expected_upstream not in upstreams:
-        raise RuntimeError(
-            f"Deploy blocked: {dataset_urn} missing upstream {expected_upstream}. "
-            f"Found: {upstreams}"
-        )
-```
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: catalog datahub amundsen that needs a hero is not done.
 
-## Choosing between DataHub and Amundsen
+Review prompts I use: what happens twice, what happens never, what happens partially? If Agent systems: catalog datahub amundsen cannot answer, it is not production-ready.
 
-| Criterion | Amundsen | DataHub |
-|-----------|----------|---------|
-| Primary UX | Search & discovery | Graph, governance, API |
-| Lineage depth | Good (manual + ingestion) | Strong (OpenLineage native) |
-| Operational overhead | Moderate (Neo4j + ES) | Higher (Kafka + GMS + UI) |
-| Policy automation | Limited | Tags, assertions, contracts |
-| Agent runtime tool | Search API | GraphQL + REST |
-| Maturity path | Maintenance mode concerns; LF Amundsen | Active LF AI & Data Foundation project |
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-Many enterprises standardize on **DataHub** for new deployments; Amundsen remains valuable if already embedded or if teams prioritize lightweight discovery without Kafka infrastructure.
+## Rollout sequence with Temporal
 
-Hybrid pattern: ingest into DataHub as source of truth, sync summary fields to an internal docs portal agents read during development.
+I treat Agent systems: catalog datahub amundsen as an operations problem first. The goal is to keep agent side effects idempotent around catalog datahub amundsen, not to collect frameworks.
 
-## Catalog-driven agent development workflows
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-**PR checklist for new RAG sources.** Require catalog URN in the pull request. CI verifies dataset exists, owner assigned, PII tag present, lineage edge to vector collection registered.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent catalog datahub amundsen.
 
-**On-call runbook linkage.** Each agent tool config stores `catalog_urn`. Incident dashboard links directly to catalog page for the corpus behind failing retrieval.
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-**Agent tool: `discover_datasets`.** Read-only GraphQL query against DataHub for planning tasks—"which tables mention churn?"—without hitting production vectors.
+Related reading:
 
-```typescript
-// tools/discover-datasets.ts
-const DISCOVER = `
-  query search($query: String!) {
-    search(input: { type: DATASET, query: $query, start: 0, count: 5 }) {
-      searchResults {
-        entity {
-          ... on Dataset {
-            urn
-            name
-            properties { description }
-            ownership { owners { owner { username } } }
-            tags { tags { tag { name } } }
-          }
-        }
-      }
-    }
-  }
-`;
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-export async function discoverDatasets(query: string) {
-  const res = await fetch(`${DATAHUB_GMS}/api/graphql`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: DISCOVER, variables: { query } }),
-  });
-  return res.json();
-}
-```
+## What I would delete after month one
 
-Guardrails: rate-limit tool calls, strip PII tags from LLM-visible summaries if users are external, log all catalog queries for audit.
+Teams usually discover Agent systems: catalog datahub amundsen after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-## PII, retention, and compliance
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-Catalogs centralize classification. Before embedding:
+Acceptance check: an on-call engineer can explain system state for agent catalog datahub amundsen from one dashboard and one runbook page.
 
-1. Tag columns/documents with glossary term `PII.DirectIdentifier`.
-2. DataHub assertion: zero PII-tagged fields in `public_agent_corpus` domain.
-3. Retention policy on catalog entity: `support_chats` → 90 days → triggers re-embed job on purge.
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-Auditors ask what data entered the model. Lineage from warehouse → vector index → agent session log (with corpus version hash) closes the loop. Store `embedding_run_id` in retrieval logs and point catalog to that run.
+## Practical defaults for Agent systems: catalog datahub amundsen
 
-## Adoption tactics that work
+I treat Agent systems: catalog datahub amundsen as an operations problem first. The goal is to keep agent side effects idempotent around catalog datahub amundsen, not to collect frameworks.
 
-**Do not boil the ocean.** Catalog the 20 datasets behind production agents first—not every warehouse table.
+With Temporal, OpenTelemetry, Postgres, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is skipping metrics until the first incident.
 
-**Assign owners with SLA.** Owner field must be a team, not a person who left. Require quarterly description review.
+Acceptance check: an on-call engineer can explain system state for agent catalog datahub amundsen from one dashboard and one runbook page.
 
-**Automate ingestion.** Manual catalog entries rot. Hook dbt, Airflow, and embedding DAGs to emit metadata on every run.
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-**Measure discovery success.** Track search queries, click-through to datasets, and time-to-find in engineer surveys. If nobody uses the catalog, fix UX before adding fields.
+Default deny, explicit timeouts, and one dashboard row for agent catalog datahub amundsen. Expand only when the metric demands it.
 
-## Failure modes
+## Review questions before merging agent catalog datahub amundsen work
 
-**Stale lineage.** Embedding job changes S3 path but lineage emitter still points to old bucket—CI passes, retrieval empty. Version lineage events with job git SHA.
+Teams usually discover Agent systems: catalog datahub amundsen after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
 
-**Over-tagging PII.** Everything marked sensitive → engineers ignore tags. Use automated classifiers with human review queue.
+Keep side effects at the edges and make every write idempotent. Agent systems: catalog datahub amundsen without retry semantics is a future incident write-up.
 
-**Catalog vs source of truth confusion.** Catalog describes reality; it does not enforce it. Pair metadata with Airflow gates and vector sync checks.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Agent systems: catalog datahub amundsen that needs a hero is not done.
 
-## Closing
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
 
-DataHub and Amundsen turn agent data from tribal knowledge into searchable, lineage-rich assets. Amundsen wins hearts with discovery UX; DataHub wins operational governance with events, assertions, and APIs. Agent teams need both capabilities in some proportion—find the corpus, trust its freshness, know who owns it, and prove what the model retrieved when something goes wrong.
+Default deny, explicit timeouts, and one dashboard row for agent catalog datahub amundsen. Expand only when the metric demands it.
+
+## Field notes after thirty days of agent catalog datahub amundsen
+
+Teams usually discover Agent systems: catalog datahub amundsen after a quiet failure — wrong data, slow pages, or a bill spike. Design for on-call already feels weekly pain here.
+
+Keep side effects at the edges and make every write idempotent. Agent systems: catalog datahub amundsen without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for agent catalog datahub amundsen from one dashboard and one runbook page.
+
+Slug-specific note (agent-catalog-datahub-amundsen): prioritize amundsen behavior under load and verify with a fixture named `agent-catalog-datahub-amundsen-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and skipping metrics until the first incident. Missing that note blocks merge.
 
 ## Resources
 
-- [DataHub documentation — lineage and GraphQL API](https://datahubproject.io/docs/)
-- [Amundsen documentation — architecture and databuilder](https://www.amundsen.io/amundsen/)
-- [OpenLineage specification for pipeline events](https://openlineage.io/)
-- [dbt exposures for downstream agent documentation](https://docs.getdbt.com/docs/build/exposures)
-- [LF AI & Data Foundation — DataHub project](https://lfaidata.foundation/projects/datahub/)
+- Internal runbook seed: `agent-catalog-datahub-amundsen`
+- https://12factor.net/
+- https://martinfowler.com/

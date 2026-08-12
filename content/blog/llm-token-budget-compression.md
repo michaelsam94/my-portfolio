@@ -1,225 +1,159 @@
 ---
-title: "Token Budget Compression for Long Agent Contexts"
+title: "LLM ops guide to token budget compression"
 slug: "llm-token-budget-compression"
-description: "Fit more agent memory into fixed context windows: summarization compressors, structured state extraction, tool result pruning, and lossy vs lossless strategies with eval gates for teams running LLM features in production."
+description: "LLM ops guide to token budget compression: how to operate token budget compression under token and quota pressure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-04-07"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "token budget compression agent, context window pruning, agent memory summarization, tool result compression"
+  - "Engineering"
+keywords: "llm, token, budget, compression, production, engineering"
 faq:
-  - q: "When should compression run — every turn or only near the limit?"
-    a: "Run a cheap token estimate every turn; trigger compression when usage crosses 70–80% of the model window minus reserved output tokens. Compressing too early loses detail; compressing at 99% risks mid-request truncation on tool results."
-  - q: "Is summarization lossy compression acceptable for agent state?"
-    a: "For narrative chat history, yes — with structured sidecar state for IDs, amounts, and decisions. Never summarize away tool call arguments, API response IDs, or user-confirmed values; extract those into a JSON state block first."
-  - q: "How do you evaluate compression quality?"
-    a: "Run golden agent trajectories with and without compression; compare task success rate, tool selection accuracy, and hallucination rate on held-out multi-turn scenarios. Block deploys if success drops more than your agreed threshold (typically 1–3%)."
-  - q: "Should tool results be truncated or summarized?"
-    a: "Truncate structured payloads first (drop large arrays, keep schema skeleton). Summarize prose results. For JSON APIs, prefer jq-style field selection over LLM summarization — it is deterministic and auditable."
+  - q: "What is LLM ops guide to token budget compression?"
+    a: "LLM ops guide to token budget compression is the production approach to operate token budget compression under token and quota pressure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in LLM ops guide to token budget compression?"
+    a: "Invest when traffic or tenant count is about to jump. If user-visible errors or cost already move with llm token budget compression, prioritize it."
+  - q: "What is the most common mistake with LLM ops guide to token budget compression?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A 128k context window sounds infinite until your agent ingests a 40-page PDF, twelve tool calls return full JSON payloads, and the planner still needs room for reasoning tokens. **Token budget compression** is how production agents stay coherent without silently dropping the invoice ID from turn three. The goal is not minimum tokens — it is maximum task success per dollar under a hard ceiling.
+**LLM ops guide to token budget compression** means you operate token budget compression under token and quota pressure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when traffic or tenant count is about to jump; that is also when shortcuts like retries without idempotency keys start paging people.
 
-## Anatomy of agent context bloat
+This write-up is specific to `llm-token-budget-compression` in a llm context, using Postgres, vLLM, OpenTelemetry for the mechanics while keeping ownership human.
 
-Typical long-running agent sessions accumulate weight unevenly:
+## Decision guide for LLM ops guide to token budget compression
 
-| Segment | Share of tokens (typical) | Compressibility |
-|---------|---------------------------|-----------------|
-| System prompt + tool schemas | 15–25% | Low (cache instead) |
-| User/assistant dialogue | 20–35% | Medium (summarize older turns) |
-| Tool results (JSON/HTML) | 30–50% | High (prune fields) |
-| Retrieved RAG chunks | 10–20% | Medium (re-rank, dedupe) |
-| Working scratchpad | 5–15% | Low until task completes |
+Teams usually discover LLM ops guide to token budget compression after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-Measure with your tokenizer (tiktoken, model-native counter) — character heuristics lie by 20%+ on code and CJK text.
+Put a metric on the user-visible effect of llm token budget compression before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Layered compression pipeline
+Acceptance check: an on-call engineer can explain system state for llm token budget compression from one dashboard and one runbook page.
 
-Apply stages in order from cheapest to most destructive:
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-```
-Turn N incoming
-    │
-    ▼
-[1] Structured state extraction ──► sidecar JSON (lossless for facts)
-    │
-    ▼
-[2] Tool result pruning ──► field allowlists, array caps
-    │
-    ▼
-[3] RAG deduplication ──► merge overlapping chunks
-    │
-    ▼
-[4] Dialogue summarization ──► rolling summary of turns 1..k
-    │
-    ▼
-[5] Emergency truncation ──► drop middle turns (last resort)
-```
+## When to refuse this approach
 
-Stage 5 should fire rarely and emit telemetry — if it triggers often, your tool schemas or RAG chunk size is wrong upstream.
+I treat LLM ops guide to token budget compression as an operations problem first. The goal is to operate token budget compression under token and quota pressure, not to collect frameworks.
 
-## Structured state extraction before summarization
+Put a metric on the user-visible effect of llm token budget compression before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Before summarizing "the user asked about order 8842," extract machine-readable facts:
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm token budget compression.
 
-```python
-from pydantic import BaseModel
-from typing import Optional
+Concretely, being able to operate token budget compression under token and quota pressure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-class SessionFacts(BaseModel):
-    order_ids: list[str] = []
-    confirmed_amounts: dict[str, str] = {}
-    pending_tool_calls: list[str] = []
-    user_constraints: list[str] = []
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-def extract_facts(messages: list[dict]) -> SessionFacts:
-    # Rule-based + small model pass on last K turns
-    ...
+```typescript
+// LLM ops guide to token budget compression
+export async function handle_llm_token_budget_compression(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("llm-token-budget-compression");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
+}
 ```
 
-Inject `SessionFacts` as a compact JSON prefix on every request. Summaries can drift; facts should not.
+## Minimal production setup
 
-## Tool result pruning
+Teams usually discover LLM ops guide to token budget compression after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-A CRM search returning 200 contacts is a token bomb. Define per-tool response profiles:
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-```yaml
-# tools/crm_search.response_profile.yaml
-max_tokens: 2000
-field_allowlist:
-  - id
-  - name
-  - email
-  - account.status
-array_limits:
-  contacts: 10
-truncate_strategy: head  # or relevance_score if sorted
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm token budget compression.
 
-Implement in the tool gateway, not the LLM:
+My never-again list for llm token budget compression: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-```python
-def prune_tool_result(tool_name: str, raw: dict) -> dict:
-    profile = load_profile(tool_name)
-    pruned = select_fields(raw, profile.field_allowlist)
-    pruned = cap_arrays(pruned, profile.array_limits)
-    return pruned
-```
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-Log `original_tokens`, `pruned_tokens`, `tool_name` for cost attribution.
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | traffic or tenant count is about to jump | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-## Rolling dialogue summarization
+## Cost, complexity, and ownership
 
-When dialogue history exceeds `SUMMARY_THRESHOLD` tokens, compress turns `[1..m]` into a summary block and keep `[m+1..now]` verbatim:
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm token budget compression, that means making failure visible early.
 
-```python
-COMPRESS_PROMPT = """Summarize the agent conversation below for continuation.
-Preserve: decisions made, user preferences, error recovery steps, unresolved tasks.
-Omit: pleasantries, repeated tool errors already fixed.
-Format: bullet points, max 400 words.
+Put a metric on the user-visible effect of llm token budget compression before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-Conversation:
-{turns}
-"""
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to token budget compression that needs a hero is not done.
 
-async def maybe_compress(session: Session) -> Session:
-    if session.token_count() < session.budget * 0.75:
-        return session
-    old_turns = session.turns[:-6]  # keep last 6 turns raw
-    summary = await llm.complete(COMPRESS_PROMPT.format(turns=old_turns))
-    session.replace_prefix(summary, keep_turns=session.turns[-6:])
-    return session
-```
+Review prompts I use: what happens twice, what happens never, what happens partially? If LLM ops guide to token budget compression cannot answer, it is not production-ready.
 
-Use a smaller/cheaper model for compression than for the main agent — quality requirements are lower.
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-## Prompt caching vs compression
+## Migration without dual-running forever
 
-Models with prompt caching (Anthropic, OpenAI prefix caching) reward stable prefixes. Structure context so static content comes first:
+Teams usually discover LLM ops guide to token budget compression after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
 
-1. System prompt + tool definitions (cached)
-2. Session facts JSON (semi-stable)
-3. Rolling summary (changes slowly)
-4. Recent turns + new user message (mutable tail)
+Keep side effects at the edges and make every write idempotent. LLM ops guide to token budget compression without retry semantics is a future incident write-up.
 
-Compression of the tail preserves cache hits on the prefix — re-summarizing the entire history every turn destroys cache economics.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm token budget compression.
 
-## Eval gates before shipping compression
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-Maintain a **compression regression suite**:
+Related reading:
 
-| Metric | Baseline | With compression | Gate |
-|--------|----------|------------------|------|
-| Multi-turn task success | 94% | ? | ≥ 92% |
-| Tool arg accuracy | 98% | ? | ≥ 97% |
-| Fact hallucination (held-out IDs) | 0.5% | ? | ≤ 1% |
-| p95 latency | 2.1s | ? | ≤ 2.5s |
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
 
-Run on CI for every change to thresholds, summary prompts, or prune profiles.
+## Definition of done
 
-## Lossy vs lossless decision tree
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm token budget compression, that means making failure visible early.
 
-- **Lossless:** session facts, confirmed user inputs, active tool call IDs, legal/compliance utterances.
-- **Lossy OK:** exploratory search results already acted upon, failed retry attempts superseded by success, verbose API docs retrieved once.
-- **Never lossy:** financial amounts after user confirmation, medical dosages, security credentials (should never be in context — reject upstream).
+Put a metric on the user-visible effect of llm token budget compression before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
 
-## Operational observability
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm token budget compression.
 
-Dashboard panels:
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
 
-- `context_tokens_by_segment` (stacked area)
-- `compression_events_total` by stage
-- `compression_trigger_ratio` = compressions / turns
-- Cost saved estimate = (tokens_before - tokens_after) × price_per_token
+## Practical defaults for LLM ops guide to token budget compression
 
-Alert if emergency truncation exceeds 5% of sessions — users are losing coherence.
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm token budget compression, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. LLM ops guide to token budget compression without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for llm token budget compression from one dashboard and one runbook page.
+
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-token-budget-compression` accumulates temporary bridges faster than teams expect.
+
+## Review questions before merging llm token budget compression work
+
+I treat LLM ops guide to token budget compression as an operations problem first. The goal is to operate token budget compression under token and quota pressure, not to collect frameworks.
+
+Put a metric on the user-visible effect of llm token budget compression before you optimize internals. If traffic or tenant count is about to jump, you need that graph on day one.
+
+Acceptance check: an on-call engineer can explain system state for llm token budget compression from one dashboard and one runbook page.
+
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-token-budget-compression` accumulates temporary bridges faster than teams expect.
+
+## Field notes after thirty days of llm token budget compression
+
+Teams usually discover LLM ops guide to token budget compression after a quiet failure — wrong data, slow pages, or a bill spike. Design for traffic or tenant count is about to jump.
+
+Keep side effects at the edges and make every write idempotent. LLM ops guide to token budget compression without retry semantics is a future incident write-up.
+
+Acceptance check: an on-call engineer can explain system state for llm token budget compression from one dashboard and one runbook page.
+
+Slug-specific note (llm-token-budget-compression): prioritize compression behavior under load and verify with a fixture named `llm-token-budget-compression-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
 
 ## Resources
 
-- [Anthropic — Prompt caching documentation](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
-- [OpenAI — tiktoken tokenizer](https://github.com/openai/tiktoken)
-- [LangChain — Conversation summary memory](https://python.langchain.com/docs/modules/memory/types/summary/)
-- [Lost in the Middle — LLM context position bias paper](https://arxiv.org/abs/2307.03172)
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
-
-## Operational checklist for production rollouts
-
-Before widening traffic, confirm dashboards exist for the leading indicators discussed above — not only lagging incident counts. Run a game day that exercises rollback: feature flag off, alias revert, or kill switch without a new deploy. Document who owns each control in the service catalog so on-call is not guessing during a Sev2.
-
-Slice metrics by tenant tier during canary. Global averages hide bad enterprise cohorts. Pair technical metrics with a sample of user-visible outcomes weekly — support ticket themes often lead dashboards by 48 hours.
-
-When third-party providers change defaults (models, TLS roots, streaming semantics), error-class metrics should catch drift within hours even if no deploy shipped on your side. Keep a changelog subscription for every dependency on the critical path.
-
-## Field notes from incident reviews
-
-Repeat incidents without automation tickets are a planning failure, not an engineering surprise. Capture toil hours in retro; fund paydown in the next sprint. Prefer idempotent handlers and explicit state machines over ad-hoc scripts that only the author understands.
-
-Audit trails matter for billing, auth, and safety paths. Log structured enums — not prose — so aggregation survives high volume. Redact secrets and tokens at the logging boundary; debugging can use correlation ids instead.
+- Internal runbook seed: `llm-token-budget-compression`
+- https://12factor.net/
+- https://martinfowler.com/

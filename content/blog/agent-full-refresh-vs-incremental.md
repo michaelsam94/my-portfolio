@@ -1,167 +1,159 @@
 ---
-title: "AI Agents: Full Refresh Vs Incremental"
+title: "Operating agents with full refresh vs incremental"
 slug: "agent-full-refresh-vs-incremental"
-description: "When agent pipelines should full-refresh versus incrementally sync state — CDC vs batch rebuild, vector index strategies, watermarking, and operational tradeoffs for RAG and tool caches."
+description: "Operating agents with full refresh vs incremental: how to bound tool calls and blast radius for full refresh vs incremental — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2025-02-21"
-dateModified: "2025-02-21"
-tags: ["AI", "Agent", "Full"]
-keywords: "full refresh, incremental sync, agent state, vector index rebuild, CDC, watermark, RAG pipeline, materialized view, idempotent upsert"
+dateModified: "2026-08-12"
+tags:
+  - "AI"
+  - "Agents"
+  - "Engineering"
+keywords: "agent, full, refresh, vs, incremental, production, engineering"
 faq:
-  - q: "When should an agent knowledge base use full refresh instead of incremental sync?"
-    a: "Full refresh is appropriate after schema-breaking changes, embedding model upgrades, corrupted index state, or when incremental lag exceeds your freshness SLO and catch-up would take longer than a clean rebuild. It is also the right default for small corpora under a few hundred thousand chunks where rebuild cost is negligible compared to operational complexity."
-  - q: "How do you prevent incremental sync from missing deletes or out-of-order updates?"
-    a: "Emit tombstone events for deletes, carry monotonic sequence numbers or LSNs from the source, and make consumers idempotent with upsert-by-primary-key semantics. Reconcile periodically with a checksum or row-count diff against the source of truth; incremental alone without reconciliation drifts silently."
-  - q: "What is the safest way to swap a vector index during full refresh?"
-    a: "Build the new index in a shadow namespace or alias (e.g., index_v2), validate recall on a golden query set, then atomically flip an alias pointer. Keep the old index for rollback until error rates and latency stabilize. Never mutate the live index in place during a full rebuild."
-  - q: "How do embedding model changes affect the refresh strategy?"
-    a: "A new embedding model invalidates all stored vectors — incremental row sync is insufficient because the vector space changed. Plan a full re-embed with versioned embedding metadata, dual-read during migration if needed, and feature flags to route queries to the correct index version until cutover completes."
+  - q: "What is Operating agents with full refresh vs incremental?"
+    a: "Operating agents with full refresh vs incremental is the production approach to bound tool calls and blast radius for full refresh vs incremental. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in Operating agents with full refresh vs incremental?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with agent full refresh vs incremental, prioritize it."
+  - q: "What is the most common mistake with Operating agents with full refresh vs incremental?"
+    a: "The usual failure is retries without idempotency keys. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-The argument between full refresh and incremental sync shows up the moment your agent stops being a demo and starts serving real tenants. A nightly batch job that re-indexes everything worked fine at ten documents; at ten million chunks with live deletes, permission changes, and embedding model upgrades, it becomes an outage waiting to happen. Incremental sync feels elegant until a missed tombstone leaves deleted PII in retrieval results. Full refresh feels safe until a six-hour rebuild blocks every deploy. The engineering question is not which pattern wins globally — it is which pattern matches your freshness SLO, corpus size, change rate, and failure modes.
+**Operating agents with full refresh vs incremental** means you bound tool calls and blast radius for full refresh vs incremental — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like retries without idempotency keys start paging people.
 
-Agent platforms accumulate derived state everywhere: vector indexes, tool-result caches, conversation summaries, permission denormalizations, and feature-store snapshots. The OLTP database remains authoritative; everything else is a projection. **Full refresh** rebuilds the projection from scratch. **Incremental sync** applies deltas — inserts, updates, deletes — as they occur or on a short schedule. Production systems almost always need both, selected per projection with explicit cutover rules.
+This write-up is specific to `agent-full-refresh-vs-incremental` in a agent context, using OpenTelemetry, Postgres, Redis for the mechanics while keeping ownership human.
 
-## When full refresh is the correct default
+## Short answer: Operating agents with full refresh vs incremental
 
-Full refresh wins when the cost of rebuilding is predictable and lower than the cost of incremental correctness. Concrete scenarios:
+Teams usually discover Operating agents with full refresh vs incremental after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-| Scenario | Why full refresh |
-|----------|------------------|
-| Embedding model upgrade | Vectors are incompatible; every document must be re-embedded |
-| Index corruption or unknown drift | Incremental cannot prove completeness |
-| Schema migration on chunk layout | Old incremental events lack new fields |
-| Small corpus (< 100k chunks) | Rebuild completes in minutes; CDC overhead not worth it |
-| Greenfield index after bad deploy | Faster to rebuild than debug poisoned segments |
+Put a metric on the user-visible effect of agent full refresh vs incremental before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-The operational shape is a **batch pipeline**: export source rows, transform, embed, bulk-load into a shadow index, validate, flip alias. Latency from source change to searchable is bounded by batch duration, not milliseconds.
+Acceptance check: an on-call engineer can explain system state for agent full refresh vs incremental from one dashboard and one runbook page.
 
-```python
-# Full refresh orchestrator — shadow index + alias swap
-async def full_refresh_index(
-    source: DocumentSource,
-    embedder: Embedder,
-    index: VectorIndex,
-    alias: str = "agent_kb_live",
-) -> RefreshResult:
-    shadow = f"{alias}_shadow_{int(time.time())}"
-    cursor = source.scan_all(batch_size=500)
-    total = 0
-    async for batch in cursor:
-        vectors = await embedder.embed_batch([d.text for d in batch])
-        await index.upsert_batch(shadow, zip(batch, vectors))
-        total += len(batch)
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
 
-    recall = await index.evaluate_recall(shadow, golden_queries=GOLDEN_SET)
-    if recall < RECALL_FLOOR:
-        await index.drop(shadow)
-        raise RefreshFailed(f"recall {recall:.3f} below floor {RECALL_FLOOR}")
+## Constraints before abstractions
 
-    await index.swap_alias(alias, shadow)
-    await index.drop_old_aliases(alias, keep=1)
-    return RefreshResult(chunks=total, recall=recall, shadow=shadow)
-```
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent full refresh vs incremental, that means making failure visible early.
 
-Never serve queries from a half-built index. Shadow builds isolate users from partial state. Golden-query recall gates prevent shipping a broken index because an embedder endpoint flaked mid-run.
+Keep side effects at the edges and make every write idempotent. Operating agents with full refresh vs incremental without retry semantics is a future incident write-up.
 
-## When incremental sync earns its complexity
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with full refresh vs incremental that needs a hero is not done.
 
-Incremental sync is mandatory when freshness SLOs are measured in seconds or minutes, when corpus size makes full rebuild prohibitively expensive, or when source change volume is low relative to total corpus size. A document deleted by a user must disappear from retrieval before the next query — batch refresh with a six-hour window fails compliance and trust.
+Concretely, being able to bound tool calls and blast radius for full refresh vs incremental forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-Incremental paths consume **change events** from CDC (Debezium, logical replication), message queues (outbox pattern), or application-emitted webhooks. Each event carries enough metadata to apply idempotent upserts and tombstone deletes.
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
 
 ```typescript
-type ChangeEvent =
-  | { op: "upsert"; id: string; tenantId: string; text: string; seq: bigint }
-  | { op: "delete"; id: string; tenantId: string; seq: bigint };
-
-async function applyIncremental(
-  event: ChangeEvent,
-  index: VectorIndex,
-  embedder: Embedder,
-): Promise<void> {
-  const lastSeq = await index.getWatermark(event.tenantId, event.id);
-  if (lastSeq !== null && event.seq <= lastSeq) {
-    return; // stale or duplicate — idempotent no-op
+// Operating agents with full refresh vs incremental
+export async function handle_agent_full_refresh_vs_incremental(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("agent-full-refresh-vs-incremental");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
   }
-
-  if (event.op === "delete") {
-    await index.delete(event.tenantId, event.id);
-  } else {
-    const vector = await embedder.embed(event.text);
-    await index.upsert(event.tenantId, event.id, vector, { seq: event.seq });
-  }
-  await index.setWatermark(event.tenantId, event.id, event.seq);
 }
 ```
 
-Watermarks per `(tenant_id, document_id)` prevent out-of-order replay from regressing state. At-least-once delivery from Kafka or SQS is assumed; exactly-once end-to-end requires this idempotency layer at the consumer.
+## Reference implementation notes (OpenTelemetry)
 
-## Hybrid architectures most teams actually ship
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent full refresh vs incremental, that means making failure visible early.
 
-Mature agent stacks rarely pick one mode globally. A practical split:
+Keep side effects at the edges and make every write idempotent. Operating agents with full refresh vs incremental without retry semantics is a future incident write-up.
 
-- **Incremental** for document CRUD, permission changes, and metadata updates on the hot path.
-- **Scheduled full refresh** (weekly or on-demand) as reconciliation — compare source row counts to index counts, run checksum samples, rebuild if drift exceeds threshold.
-- **Full refresh on trigger** for embedding version bumps, configured via feature flag or config change detection.
+Acceptance check: an on-call engineer can explain system state for agent full refresh vs incremental from one dashboard and one runbook page.
 
-```
-                    ┌─────────────────┐
-  OLTP (Postgres)   │  change events  │
-        │           └────────┬────────┘
-        │                    │ incremental consumer
-        ▼                    ▼
-   batch export ──────►  vector index (alias: live)
-        │                    ▲
-        └──── full refresh ──┘ (scheduled + on model change)
-```
+My never-again list for agent full refresh vs incremental: retries without idempotency keys; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-The reconciliation job catches what incremental misses: bugs in delete propagation, consumer downtime longer than retention, manual DBA edits bypassing CDC. Run it off-peak; alert on drift percentage, not just job success.
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
 
-## Cost and latency tradeoffs
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; retries without idempotency keys |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Full refresh cost scales with **corpus size × embed price × index write throughput**. A 5M-chunk corpus at $0.0001 per 1k tokens for embedding can exceed thousands of dollars per rebuild. Incremental cost scales with **daily change rate**, but adds standing infrastructure: Kafka, Debezium slots, consumer fleets, dead-letter handling.
+## Quick path vs durable path
 
-| Dimension | Full refresh | Incremental |
-|-----------|--------------|-------------|
-| Freshness | Batch interval (hours) | Seconds to minutes |
-| Compute spike | High during rebuild | Steady low |
-| Correctness proof | Strong after validation | Requires reconciliation |
-| Operational complexity | Lower | Higher (lag, ordering, DLQ) |
-| Rollback | Keep previous index alias | Replay from offset or rebuild |
+Teams usually discover Operating agents with full refresh vs incremental after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-For agent **tool caches** (API responses, computed summaries), incremental often means TTL-based invalidation plus selective refresh — not every cache layer needs CDC. Full refresh of a tool cache on deploy is acceptable when cache warm time is seconds and stale tools fail closed.
+Keep side effects at the edges and make every write idempotent. Operating agents with full refresh vs incremental without retry semantics is a future incident write-up.
 
-## Failure modes that decide the argument
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with full refresh vs incremental that needs a hero is not done.
 
-**Incremental lag** during traffic spikes leaves retrieval serving outdated permissions — a security issue, not just staleness. Monitor consumer lag, replication slot WAL retention, and p95 time-from-write-to-indexed. If lag exceeds SLO, pause writes to the index consumer and fall back to read-from-primary for critical paths, or trigger partial full refresh for affected tenants.
+Review prompts I use: what happens twice, what happens never, what happens partially? If Operating agents with full refresh vs incremental cannot answer, it is not production-ready.
 
-**Partial full refresh** without alias swap exposes users to incomplete indexes. Always build shadow, always gate on eval metrics.
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
 
-**Embedding model change mid-incremental** produces a mixed vector space if some chunks re-embed and others do not. Version-tag every vector with `embedding_model_id`; query routing must filter or rebuild consistently per version.
+## Edge cases demos miss
 
-**Delete propagation failure** is the silent killer. Integration tests must assert: insert → searchable → delete → not searchable, within SLO window. Property: for any document id, index state eventually matches source or alerts fire.
+I treat Operating agents with full refresh vs incremental as an operations problem first. The goal is to bound tool calls and blast radius for full refresh vs incremental, not to collect frameworks.
 
-## Testing and rollout discipline
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
 
-Contract tests between source schema and consumer mapping catch breaking migrations before production. Golden-path integration tests with real Postgres + Kafka (Testcontainers) validate ordering and tombstones.
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent full refresh vs incremental.
 
-Roll out incremental consumers with **dual-write shadow**: apply events to shadow index, diff sample queries against live, promote when diff rate is zero for 24 hours. Full refresh rollouts use canary tenants first — rebuild shadow for tenant cohort A, compare recall, expand.
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
 
-Feature flags should control query routing (`index_version`, `embedding_model_id`) independently of build pipelines so you can rollback query path without re-running a six-hour embed job.
+Related reading:
 
-## Observability essentials
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [designing for observability slos](https://blog.michaelsam94.com/designing-for-observability-slos/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Dashboards need four panels per projection: **lag** (seconds from source commit to indexed), **throughput** (events/sec), **error rate** (DLQ depth), and **freshness SLO burn**. Log structured fields: `document_id`, `tenant_id`, `seq`, `op`, `index_alias`, `embedding_model_id`.
+## Merge checklist
 
-Alerts on lag alone are insufficient — a stalled consumer with zero throughput also triggers. Combine lag > threshold AND consumer heartbeat age.
+I treat Operating agents with full refresh vs incremental as an operations problem first. The goal is to bound tool calls and blast radius for full refresh vs incremental, not to collect frameworks.
 
-## Closing
+Put a metric on the user-visible effect of agent full refresh vs incremental before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Full refresh versus incremental is a per-projection decision tied to freshness, cost, and correctness requirements — not an architectural religion. Ship incremental for hot document paths with watermarks, tombstones, and scheduled reconciliation. Full refresh remains your escape hatch for model changes, corruption, and proof-of-correctness. The teams that get burned treat incremental as "set and forget" or run full refresh in place without shadow indexes. Document the cutover runbook before you need it at 3 a.m.
+Acceptance check: an on-call engineer can explain system state for agent full refresh vs incremental from one dashboard and one runbook page.
+
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
+
+## Practical defaults for Operating agents with full refresh vs incremental
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent full refresh vs incremental, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. Operating agents with full refresh vs incremental without retry semantics is a future incident write-up.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent full refresh vs incremental.
+
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Review questions before merging agent full refresh vs incremental work
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent full refresh vs incremental, that means making failure visible early.
+
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. Operating agents with full refresh vs incremental that needs a hero is not done.
+
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and retries without idempotency keys. Missing that note blocks merge.
+
+## Field notes after thirty days of agent full refresh vs incremental
+
+Agent loops amplify mistakes: one bad tool call can fan out across systems. For agent full refresh vs incremental, that means making failure visible early.
+
+With OpenTelemetry, Postgres, Redis, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is retries without idempotency keys.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on agent full refresh vs incremental.
+
+Slug-specific note (agent-full-refresh-vs-incremental): prioritize incremental behavior under load and verify with a fixture named `agent-full-refresh-vs-incremental-smoke`.
+
+After a month, delete unused flags and dual paths. `agent-full-refresh-vs-incremental` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [Debezium PostgreSQL Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
-- [Elasticsearch Reindex API and Index Aliases](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-reindex.html)
-- [Pinecone: Understanding Hybrid Search and Metadata Filtering](https://docs.pinecone.io/guides/data/understanding-hybrid-search)
-- [dbt: Incremental Models](https://docs.getdbt.com/docs/build/incremental-models)
-- [AWS: Lambda Powertools Idempotency](https://docs.powertools.aws.dev/lambda/python/latest/utilities/idempotency/)
+- Internal runbook seed: `agent-full-refresh-vs-incremental`
+- https://12factor.net/
+- https://martinfowler.com/

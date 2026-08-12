@@ -1,217 +1,159 @@
 ---
-title: "Pkce Public Clients"
+title: "LLM ops guide to pkce public clients"
 slug: "llm-pkce-public-clients"
-description: "OAuth PKCE for agent public clients—desktop assistants, IDE plugins, and mobile copilots: verifier storage, loopback redirects, token refresh without embedded secrets for teams running LLM features in production."
+description: "LLM ops guide to pkce public clients: how to operate pkce public clients under token and quota pressure — tradeoffs, failure modes, instrumentation, and rollout checks for production systems."
 datePublished: "2026-01-02"
-dateModified: "2026-07-17"
+dateModified: "2026-08-12"
 tags:
   - "AI"
   - "LLM"
-keywords: "PKCE public client, OAuth agent desktop app, authorization code PKCE, loopback redirect, IDE plugin authentication, token refresh without client secret"
+  - "Engineering"
+keywords: "llm, pkce, public, clients, production, engineering"
 faq:
-  - q: "Why are AI agent clients treated as OAuth public clients?"
-    a: "Desktop agents, IDE extensions, and mobile copilots ship code to environments attackers can inspect. Embedded client secrets are extractable from binaries or JavaScript bundles within minutes. OAuth classifies these as public clients—they authenticate users via Authorization Code + PKCE, not via confidential client secrets at the token endpoint."
-  - q: "Where should the code verifier live during the auth flow?"
-    a: "In memory for the duration of the flow, keyed by state parameter. For desktop apps using loopback redirects, bind verifier to the local server instance that receives the callback. Never persist verifiers to disk or sync them across devices. Clear verifier immediately after successful token exchange or on flow timeout (typically 10 minutes)."
-  - q: "Can agent backends use refresh tokens on behalf of users?"
-    a: "Yes, but prefer a backend-for-frontend (BFF) that holds refresh tokens in HttpOnly cookies or a secure server-side store. Pure public clients on desktop may use OS keychains for refresh tokens with rotation enabled. Avoid refresh tokens in plaintext config files beside the agent binary."
-  - q: "What redirect URI patterns work for local agent installs?"
-    a: "RFC 8252 recommends http://127.0.0.1:{port}/callback with a random port chosen at runtime, registered as a pattern with your IdP where supported. Custom URI schemes (myagent://callback) work but are less portable and prone to inter-app hijacking on some platforms—loopback is preferred for desktop agents."
+  - q: "What is LLM ops guide to pkce public clients?"
+    a: "LLM ops guide to pkce public clients is the production approach to operate pkce public clients under token and quota pressure. It emphasizes contracts, failure modes, and metrics over slide-deck definitions."
+  - q: "When should teams invest in LLM ops guide to pkce public clients?"
+    a: "Invest when cost or error budgets are burning too fast. If user-visible errors or cost already move with llm pkce public clients, prioritize it."
+  - q: "What is the most common mistake with LLM ops guide to pkce public clients?"
+    a: "The usual failure is alerts on causes instead of user-visible symptoms. Teams also skip measurement until after launch, which turns a design choice into an incident."
 ---
-A security researcher demoed credential theft against a popular coding assistant: intercept the authorization code from a custom URI scheme handler, exchange it at the token endpoint using the public `client_id`, and impersonate the victim's GitHub-backed agent session. The vendor had shipped Authorization Code flow without PKCE because "desktop apps are hard." They were right about difficulty. They were wrong about skipping the one RFC that fixes public-client code interception.
+**LLM ops guide to pkce public clients** means you operate pkce public clients under token and quota pressure — with a named owner, a measurable signal, and a rollback a tired on-call can run. I reach for this when cost or error budgets are burning too fast; that is also when shortcuts like alerts on causes instead of user-visible symptoms start paging people.
 
-AI agent clients—Electron shells, IDE plugins, CLI tools with GUI login, mobile copilots—are **public OAuth clients**. They cannot hold secrets. Proof Key for Code Exchange (PKCE, RFC 7636) binds each authorization code to a verifier generated locally at flow start. Stolen codes are useless without the verifier. This post covers PKCE specifically for agent runtimes, not generic SPA tutorials.
+This write-up is specific to `llm-pkce-public-clients` in a llm context, using Postgres, vLLM, OpenTelemetry for the mechanics while keeping ownership human.
 
-## Threat model: what PKCE actually stops
+## Decision guide for LLM ops guide to pkce public clients
 
-Without PKCE:
+Teams usually discover LLM ops guide to pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-1. User completes login; IdP redirects to agent callback with `?code=AUTH_CODE`.
-2. Attacker obtains code via malicious local handler registration, network capture on misconfigured proxy, or phishing clone of the OAuth consent screen.
-3. Attacker POSTs to `/token` with `client_id`, `code`, `redirect_uri`.
-4. Attacker receives access (and refresh) tokens.
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-PKCE inserts step 2b: token endpoint requires `code_verifier` matching the `code_challenge` from step 1's authorize request. Attacker lacks verifier.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
 
-PKCE does **not** stop:
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
-- Malware with access to agent memory/keychain after login.
-- Phishing users into approving malicious OAuth clients (different client_id).
-- XSS in web-based agent shells—use CSP and BFF patterns there.
+## When to refuse this approach
 
-Scope PKCE as necessary, not sufficient, for agent auth.
+Teams usually discover LLM ops guide to pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-## End-to-end flow for desktop agents
+Keep side effects at the edges and make every write idempotent. LLM ops guide to pkce public clients without retry semantics is a future incident write-up.
 
-```
-┌──────────────┐   code_verifier (memory)   ┌──────────────┐
-│ Agent app    │◀──────────────────────────▶│ Loopback     │
-│ (main proc)  │   code_challenge in URL    │ HTTP server  │
-└──────┬───────┘                            └──────▲───────┘
-       │ open browser                               │ redirect
-       ▼                                            │
-┌──────────────┐         authorization code        │
-│ System       │───────────────────────────────────┘
-│ browser      │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│ Identity     │
-│ provider     │
-└──────────────┘
-```
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm pkce public clients.
 
-Sequence:
+Concretely, being able to operate pkce public clients under token and quota pressure forces explicit choices: source of truth, timeout budgets, and which errors users see versus operators.
 
-1. Agent generates `code_verifier` (43–128 chars, cryptographically random).
-2. Computes `code_challenge = BASE64URL(SHA256(verifier))`, method `S256`.
-3. Starts loopback listener on ephemeral port; launches browser to authorize URL with `code_challenge`, `state`, `redirect_uri=http://127.0.0.1:{port}/callback`.
-4. IdP redirects to loopback with `code` and `state`.
-5. Agent validates `state`, POSTs token request with `code_verifier`.
-6. Stores tokens in OS keychain; shuts down loopback server; zeroes verifier from memory.
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
 ```typescript
-import { createHash, randomBytes } from "crypto";
-import { createServer } from "http";
-
-function base64UrlEncode(buf: Buffer): string {
-  return buf.toString("base64url");
-}
-
-function generateVerifier(): string {
-  return base64UrlEncode(randomBytes(32));
-}
-
-function challengeFromVerifier(verifier: string): string {
-  return createHash("sha256").update(verifier).digest("base64url");
-}
-
-async function authorizeWithPkce(config: {
-  clientId: string;
-  authorizeUrl: string;
-  tokenUrl: string;
-  scopes: string[];
-}): Promise<{ accessToken: string; refreshToken?: string }> {
-  const verifier = generateVerifier();
-  const challenge = challengeFromVerifier(verifier);
-  const state = base64UrlEncode(randomBytes(16));
-  const port = await pickEphemeralPort();
-
-  const codePromise = waitForLoopbackCode(port, state, 600_000);
-
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: config.clientId,
-    redirect_uri: `http://127.0.0.1:${port}/callback`,
-    scope: config.scopes.join(" "),
-    state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-  });
-
-  await openSystemBrowser(`${config.authorizeUrl}?${params}`);
-
-  const code = await codePromise;
-
-  const tokenRes = await fetch(config.tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: config.clientId,
-      code,
-      redirect_uri: `http://127.0.0.1:${port}/callback`,
-      code_verifier: verifier,
-    }),
-  });
-
-  if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
-  return tokenRes.json();
+// LLM ops guide to pkce public clients
+export async function handle_llm_pkce_public_clients(input: unknown): Promise<Result> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error);
+  const span = tracer.startSpan("llm-pkce-public-clients");
+  try {
+    if (await repo.seen(parsed.data.idempotencyKey)) return { ok: true, deduped: true };
+    const out = await repo.execute(parsed.data);
+    await repo.mark(parsed.data.idempotencyKey);
+    return out;
+  } finally {
+    span.end();
+  }
 }
 ```
 
-Use `S256` exclusively. The `plain` challenge method is deprecated in OAuth 2.1.
+## Minimal production setup
 
-## IDE plugins and multi-process runtimes
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm pkce public clients, that means making failure visible early.
 
-VS Code and JetBrains plugins often split UI (extension host) and auth (external browser). Pitfalls:
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
 
-- **Verifier in extension storage** — readable if another extension compromises storage APIs. Keep verifier in the extension host memory only for the auth session; use a one-shot message channel from auth helper process.
-- **Shared redirect port** — two plugins starting loopback on the same port: bind `127.0.0.1:0`, register dynamic redirect with IdP if supported, or document fixed port ranges per product.
-- **Headless CI agents** — device code flow (RFC 8628) replaces PKCE loopback for unattended automation; do not disable PKCE in production to " simplify CI."
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
 
-For Electron agents, run loopback in the main process, not the renderer. Renderer compromise should not steal verifiers mid-flow.
+My never-again list for llm pkce public clients: alerts on causes instead of user-visible symptoms; shipping without a kill switch; and alerting only on infrastructure CPU.
 
-## Token storage after exchange
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
-| Storage | Access token | Refresh token |
-|---------|--------------|---------------|
-| OS keychain (Keytar, libsecret) | Acceptable | Preferred |
-| Encrypted local file (DPAPI/macOS Keychain wrapper) | Acceptable with rotation | Acceptable |
-| Environment variables | Never | Never |
-| Repo config / `.env` | Never | Never |
+| Approach | Fits when | Main risk |
+| --- | --- | --- |
+| Minimal | Early product, small blast radius | Hidden coupling; alerts on causes instead of user-visible symptoms |
+| Durable | cost or error budgets are burning too fast | More parts; needs a clear owner |
+| Staged hybrid | Brownfield migration | Dual-running complexity |
 
-Enable refresh token rotation if IdP supports it. On refresh reuse detection, revoke all sessions and force re-login—agents are high-value targets for long-lived refresh tokens.
+## Cost, complexity, and ownership
 
-Access tokens for tool calls should be short-lived (5–15 minutes). Agent orchestration layers refresh proactively at 80% TTL, not on 401 from first tool failure, to avoid half-completed multi-step plans failing mid-flight.
+Teams usually discover LLM ops guide to pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
 
-## Backend-for-frontend variant
+Put a metric on the user-visible effect of llm pkce public clients before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-Enterprise agents often proxy OAuth through a vendor cloud:
+Acceptance check: an on-call engineer can explain system state for llm pkce public clients from one dashboard and one runbook page.
 
-1. Desktop agent opens browser to *your* BFF `/auth/start`, not directly to IdP.
-2. BFF completes PKCE with IdP using server-side session storage for verifier.
-3. BFF sets HttpOnly session cookie; agent receives opaque device session token.
+Review prompts I use: what happens twice, what happens never, what happens partially? If LLM ops guide to pkce public clients cannot answer, it is not production-ready.
 
-Benefits: centralized audit, IP allowlists, refresh tokens never touch desktop. Tradeoff: offline mode requires explicit design—cached credentials or degraded local-only features.
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
-If you use BFF, desktop still uses PKCE on the BFF leg unless BFF uses mTLS device attestation instead (uncommon).
+## Migration without dual-running forever
 
-## IdP configuration checklist
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm pkce public clients, that means making failure visible early.
 
-- Register exact loopback pattern or dynamic port policy.
-- Disable implicit and password grants for agent client IDs.
-- Require PKCE (`code_challenge` required) via IdP policy—do not rely on client behavior.
-- Restrict redirect URIs—no `http://localhost` wildcard without port binding rules.
-- Set consent screen product name matching shipped binary to reduce phishing clones.
+Keep side effects at the edges and make every write idempotent. LLM ops guide to pkce public clients without retry semantics is a future incident write-up.
 
-For multi-tenant SaaS agents, separate OAuth clients per tenant only when tenants bring own IdP. Shared client with tenant routing simplifies PKCE redirect management.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
 
-## Testing PKCE implementations
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
-Automated:
+Related reading:
 
-- Unit test `challengeFromVerifier` against RFC 7636 appendix B vectors.
-- Integration test with WireMock IdP: reject token exchange when verifier wrong, challenge wrong, or code replayed.
+- [saga pattern distributed transactions](https://blog.michaelsam94.com/saga-pattern-distributed-transactions/)
+- [idempotency distributed systems](https://blog.michaelsam94.com/idempotency-distributed-systems/)
+- [event driven outbox pattern](https://blog.michaelsam94.com/event-driven-outbox-pattern/)
 
-Manual red team:
+## Definition of done
 
-- Capture authorize redirect, attempt token exchange without verifier—expect `invalid_grant`.
-- Replay code with old verifier after successful exchange—expect failure.
-- Swap `state`—loopback handler must reject before token exchange.
+I treat LLM ops guide to pkce public clients as an operations problem first. The goal is to operate pkce public clients under token and quota pressure, not to collect frameworks.
 
-Log auth failures with `error_code` from IdP, never log verifiers or codes.
+Put a metric on the user-visible effect of llm pkce public clients before you optimize internals. If cost or error budgets are burning too fast, you need that graph on day one.
 
-## Migration from implicit or static secrets
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
 
-If legacy agent shipped implicit flow or embedded `client_secret`:
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
 
-1. Register new public client with PKCE required.
-2. Ship agent update that migrates users on next login—force re-consent if scopes change.
-3. Revoke old client credentials after 90-day sunset.
-4. Monitor token endpoint for old `client_id` usage; alert on non-zero after cutoff.
+## Practical defaults for LLM ops guide to pkce public clients
 
-Communicate downtime window for CLI agents used in CI—provide device code path before killing legacy flow.
+I treat LLM ops guide to pkce public clients as an operations problem first. The goal is to operate pkce public clients under token and quota pressure, not to collect frameworks.
 
-## Closing thought
+Keep side effects at the edges and make every write idempotent. LLM ops guide to pkce public clients without retry semantics is a future incident write-up.
 
-PKCE for agent public clients is baseline hygiene, not advanced hardening. Generate verifiers locally, use S256, bind loopback redirects tightly, store refresh tokens in OS secure storage, and test failure paths where attackers present stolen codes. The coding-assistant breach pattern is public knowledge now—shipping without PKCE is a choice auditors and attackers both understand.
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
+
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
+
+In review, require a short failure note covering retry, partial deploy, and alerts on causes instead of user-visible symptoms. Missing that note blocks merge.
+
+## Review questions before merging llm pkce public clients work
+
+LLM paths fail softly — fluent wrong answers are worse than hard errors. For llm pkce public clients, that means making failure visible early.
+
+Keep side effects at the edges and make every write idempotent. LLM ops guide to pkce public clients without retry semantics is a future incident write-up.
+
+Ship behind a flag, canary by cohort, and write the rollback in the PR description. LLM ops guide to pkce public clients that needs a hero is not done.
+
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
+
+Default deny, explicit timeouts, and one dashboard row for llm pkce public clients. Expand only when the metric demands it.
+
+## Field notes after thirty days of llm pkce public clients
+
+Teams usually discover LLM ops guide to pkce public clients after a quiet failure — wrong data, slow pages, or a bill spike. Design for cost or error budgets are burning too fast.
+
+With Postgres, vLLM, OpenTelemetry, the mechanics are straightforward; the hard part is invariants. The anti-pattern I still see is alerts on causes instead of user-visible symptoms.
+
+Document what 'success' and 'undo' mean in product language. Future reviewers will not share your context on llm pkce public clients.
+
+Slug-specific note (llm-pkce-public-clients): prioritize clients behavior under load and verify with a fixture named `llm-pkce-public-clients-smoke`.
+
+After a month, delete unused flags and dual paths. `llm-pkce-public-clients` accumulates temporary bridges faster than teams expect.
 
 ## Resources
 
-- [RFC 7636: Proof Key for Code Exchange (PKCE)](https://datatracker.ietf.org/doc/html/rfc7636) — normative specification.
-- [RFC 8252: OAuth 2.0 for Native Apps](https://datatracker.ietf.org/doc/html/rfc8252) — loopback redirect guidance for desktop agents.
-- [OAuth 2.1 Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-11) — PKCE required for all clients; implicit flow removed.
-- [OAuth 2.0 Security BCP (RFC 9700)](https://datatracker.ietf.org/doc/html/rfc9700) — current best current practice for public clients.
-- [Auth0: PKCE for mobile and native apps](https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow-with-pkce) — practical implementation notes for native runtimes.
+- Internal runbook seed: `llm-pkce-public-clients`
+- https://12factor.net/
+- https://martinfowler.com/
